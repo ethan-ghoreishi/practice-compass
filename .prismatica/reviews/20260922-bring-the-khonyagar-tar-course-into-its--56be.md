@@ -1,37 +1,12 @@
 ---
 id: 20260922-bring-the-khonyagar-tar-course-into-its--56be
 contractId: 20260922-bring-the-khonyagar-tar-course-into-its--56be
-patchId: 1cd109159538feb7b5c057841a5076dc0147b49f
-reviewer: claude
+patchId: f87ddc5b91e7cf036e65b0bd3b26fa5a9814dbbf
+reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: "repertoire-lens: a course work must actually render in My repertoire on
-      its own instrument, not merely satisfy isWork()"
-    summary: No Khonyagar work ever appears in My repertoire. Tar is a
-      Persian-family instrument, and MyRepertoireView (Repertoire.tsx) routes
-      Persian-family works only through groupByDastgah (persian.ts), which omits
-      any item with no `persian` identity; the study-source groups exclude
-      Persian-family instruments. Khonyagar entries deliberately carry no
-      `persian` field, so every Khonyagar work is isWork() === true yet is
-      rendered in neither branch. This contradicts the approved desiredBehaviour
-      ('reaches My repertoire once, grouped under a «خنیاگر» study source'), the
-      non-goal's premise ('Its works group under their study source in My
-      repertoire'), ac-17, Show me, the new AGENTS.md section and the flow
-      report. The named tests for ac-6/ac-9 assert only isWork(), which is
-      necessary, not sufficient. Fixing it needs an owner decision (bring
-      Repertoire.tsx into scope, or give entries a persian identity against the
-      current non-goal) plus a named test over the rendered grouping.
-    counterexample: "createSeedDB() (Tar instrument family 'Persian');
-      planCatalogAddition(db, 'tar-khonyagar-s093-s106', 's096', entry, tarId)
-      creates «چهارمضراب ماهور», itemType full_piece, persian undefined. With
-      MyRepertoireView's own split scoped to Tar: repertoireWorks includes it
-      (isWork true), persianWorks includes it, groupByDastgah(persianWorks)
-      returns [] (skipped at `if (!p) continue`), otherWorks excludes it. My
-      repertoire renders no Khonyagar work, and the ac-17 owner step 'the
-      radif's چهارمضراب ماهور appears once in My repertoire' cannot pass."
-createdAt: 2026-09-22T22:48:18.493Z
-sealedAt: 2026-09-22T23:05:04.817Z
+verdict: approve
+createdAt: 2026-09-23T00:20:43.208Z
+sealedAt: 2026-09-23T00:26:12.170Z
 ---
 
 # Review: Bring the Khonyagar Tar course into its own Tar pathway with stable work identity and its complete material
@@ -45,449 +20,13 @@ sealedAt: 2026-09-22T23:05:04.817Z
 - **Contract:** 20260922-bring-the-khonyagar-tar-course-into-its--56be
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/34
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `1cd109159538feb7b5c057841a5076dc0147b49f`
+- **Diff patch-id:** `f87ddc5b91e7cf036e65b0bd3b26fa5a9814dbbf`
 
-## The plan the owner approved
+## Intent revision — supersedes the original request only where it conflicts
 
-Verbatim. `assumptions` and `possibleConflicts` are the Planner's advisory
-reading — check them against the diff rather than accepting them.
+- **2026-09-23T00:15:55.296Z** _(The owner's manual test settled the intended behaviour: Khonyagar entries are practice items first, not automatically curated repertoire. The sealed review found that no Khonyagar work appears in My repertoire. That is correct behaviour, and the contract wrongly promised the opposite. This removes that promise, pins the intended behaviour with a test (ac-18), and leaves Repertoire routing and all application behaviour unchanged.)_
 
-````yaml
-# Approved intent: Bring the Khonyagar Tar course into its own Tar pathway with stable work identity and its complete material
-
-The owner imported this plan and confirmed the change. Its approved meaning is
-recorded here verbatim; the transport snapshot is deliberately omitted.
-
-- **Kind:** existing-flow
-- **Risk tier:** heavy
-- **Builder:** claude
-
-## What the owner asked for
-
-This is the wording the owner and the planning agent settled on together, taken
-from the plan itself — not a description reconstructed afterwards.
-
-> Continue from the completed Classical Guitar Shed lane (now closed) and plan the most optimal Khonyagar/Tar lane. Claude should be the builder.
-> 
-> Source to inspect (available on the NAS too): /Volumes/Sandisk/video-courses/tar-classes/khonyagar-mirzapour
-> 
-> Treat the existing repo, the real Khonyagar folder structure/content, and the lessons learned from the CGS and Setar work as evidence rather than assumptions. Decide for yourself whether Khonyagar is best modelled as a structured course, pathway/reference data, lesson material, archive content, or a combination.
-> 
-> Optimise for the actual user experience of learning and practising Tar: useful course progression, repertoire where appropriate, practice material, routines/session planning, and automatic association of relevant videos/PDFs without unnecessary manual linking.
-> 
-> Carry forward the important correctness lessons from the CGS lane where relevant (disregard if not relevant):
-> - musical-work identity should be explicit and stable rather than inferred by fuzzy title matching;
-> - the same work appearing in multiple course locations should remain one repertoire item while retaining the complete material from all relevant locations;
-> - distinct file paths must not be silently collapsed merely because filenames/titles match;
-> - course/practice sections that contain multiple works or no single identifiable work should not become fake repertoire pieces;
-> - owner edits, provenance, Undo/removal behaviour, and existing Setar/CGS data must remain safe;
-> - prefer derived/reference data and existing concepts over new persisted schema or duplicated machinery where possible.
-> 
-> Also investigate the existing dated teacher/class folders separately rather than assuming they belong to the same model, and verify instrument attribution where ambiguous.
-> 
-> Keep the plan as wide as justified. Anticipate future additions/changes and reuse the multi-source media architecture from the completed CGS lane where appropriate. Prefer the smallest coherent architecture that gives a complete, useful Tar experience and minimises builder/reviewer rework.
-> 
-> Final validation pass (the owner's refinement, in their words):
-> 
-> The plan is strong and I do not want a redesign. Please make one final validation/revision pass before I import it.
-> 
-> In particular:
-> 
-> 1. Re-check work-key stability. Section ids are source-anchored (`s001`–`s106`), but make sure `w###` identities cannot change merely because the authored work table is reordered, corrected or a newly recognised work is inserted. Existing work identity must remain stable after first shipping; prefer an explicit/source-anchored authored identity rather than positional numbering if needed.
-> 
-> 2. Add a discriminating source-completeness invariant: the generated Khonyagar data must account for all 106 indexed sections, all 259 lesson videos exactly once at source identity level, and all four score books, with scanner/index/disk mismatches failing loudly.
-> 
-> 3. Re-evaluate, rather than assume, that equal-weight one-section-per-segment stage routines are the most useful application of the existing course machinery for Khonyagar, especially for 30-minute practice and stages with many sections. Use the course's own daily-practice guide as evidence. Keep the current design if it is still the best trade-off; change it only if there is a clearly better fit without unnecessary machinery.
-> 
-> Otherwise preserve the current architecture, scope and exclusions. Revalidate and return the updated import-ready plan.
-
-## Why
-
-Tar is the owner's third instrument and the only one with no real content in the app. Its pathway, `tar-honarestan`, is an honest placeholder: ten hand-authored stages whose own note says it is a framework drawn from Khonyagar's Honarestān teaching, to be filled in as the owner goes. Meanwhile the owner owns the complete Khonyagar (آزاد میرزاپور) Tar course: 259 lesson videos (~16h28m), a 106-section index and four score books, none of which the app can see.
-
-The CGS lane built what this needs, and built it generically: `COURSES: CourseData[]` ("A second course is a second entry"), `courseStageSeeds`, `courseFilesFor` (a work's files unioned across every entry naming it, deduplicated BY PATH), `carriedCourseWorkItem` (one work, one item, scoped to its own course), `planCatalogAddition` (the study source found or created), and `knownSourceFolders()` (derived from `COURSES`). So this lane is mostly DATA plus one scanner. The code changes are small, optional additions in `courseSeed.ts` that leave CGS unchanged. A work row may carry its own `files`, `guidance` and `strand`, where today it is always a single-PDF `piece` with the Guitar packet note. A work-bearing section may carry the work's `workTitle`, and item creation uses that title. There is also one condition in `StageDetail.tsx`.
-
-WHAT KHONYAGAR IS. It is a COURSE. It is a fixed download that does not grow, gets no renames and has no identity to reconcile against existing repertoire, so it needs no published index, digest or reconciler; it is not the Setar archive. It is also not a record of classes the owner attended, so it is not `Lesson` data. Its own `_فهرست — Index.md` states the structure and its `_راهنمای تمرین روزانه` states how to practise it.
-
-FINDINGS FROM THE REAL SOURCE, re-measured in this pass:
-
-1. THE NAS SERVES NFC; THE LOCAL DISK IS NFD. 78 of the 259 lesson filenames are decomposed on `/Volumes/Sandisk`. 76 of them differ from their index title by normalisation alone; `077` and `148` also by a double space. Re-probed in this pass on lesson 148: the decomposed name returns 404 text/html from the NAS and the composed one returns 206 video/mp4. Separately, `030`'s index title carries a leading space, which the earlier count missed. After NFC and whitespace collapse, every one of the 259 filenames matches its index title exactly. The rule: the stored path is the real filename NFC-normalised, and the displayed title is the index title with whitespace collapsed.
-
-2. KEYS ARE ASCII, TITLES ARE FARSI. `seedMigration.test.ts` asserts `hasPersianScript(key) === false` over the whole catalogue and every stage id. That file is heavy-tier (`**/*migration*`) and out of scope, and it passes unchanged: it counts nothing, and it pins `SEED_PATHWAY_IDS.tar` to `tar-honarestan`, which stays.
-
-3. WORK IDENTITY CANNOT BE INFERRED, AND IT LIVES AT THE LESSON, NOT THE SECTION. A crude title grammar over the section titles collapses every `اجرای X` into one empty stem, and it splits sections 52–55 from 56 on a ZWNJ alone (`پیش درآمد` vs `پیش‌درآمد`). The section is also the wrong unit. Works are taught INSIDE sections that are about something else:
-- پیش‌درآمد ابوعطا is lessons 124 and 125, in sections 21 and 22, whose other lessons are Honarestān exercises;
-- سرای امید is lessons 063 and 074, in sections 9 and 11;
-- کاروان is lesson 036;
-- section 17 teaches two works, in lessons 109 and 110.
-The earlier rule, that a section naming no single work yields none, would have silently dropped all of these. So the authored work table records each work by the LESSON numbers that teach it, and the scanner derives the rest mechanically. A section all of whose lessons belong to one work IS that work. A work taught in lessons of a mixed section is its own catalogue row, in the stage of its first lesson, carrying exactly those lessons' videos.
-
-4. SAME TITLE IS NOT SAME WORK. Section 26 is Musa Ma'rufi's چهارمضراب ماهور (Honarestān book 2); sections 95–97 and 101–104 are the radif's چهارمضراب ماهور; section 85, «چهارمضراب از ردیف ماهور», is a third. رنگ شور appears in both 30 and 32, and کرشمه in 25, 59 and 86–87. The source does not establish that any of these are one work, so they stay separate, and each pair is recorded as a diagnostic for the owner to confirm. A false split costs a visible duplicate that can later be joined by alias; a false merge destroys a record.
-
-WORK IDENTITY IS STABLE AFTER FIRST SHIPPING (point 1). Items persist `catalogKey`, and a work row's catalogue key IS its work key. A key that changes meaning therefore silently moves an owner's item onto a different work. Positional numbering (`w001`, `w002`… in table order) would do exactly that on the first reorder or insertion. So a work key is `w` plus its ANCHOR LESSON, the lowest lesson number that teaches it at first shipping (`w197` for پیش‌درآمد ماهور درویش‌خان). It is written as a literal in the authored table and never computed. Reordering the table cannot touch it; a newly recognised work gets its own anchor; a correction may add lessons to a work but may not remove its anchor.
-
-What an item actually persists decides what must never disappear. A work ROW's key is the item's `catalogKey`, so a shipped work row is never removed; a later merge gives it the existing alias (`CourseWork.workKey`) and keeps the row. A work that IS a section is held by the item as `sNNN`, and its work key lives only in the section's `workKey`, so a later merge may point that section at the other identity; the item keeps resolving, and nothing is destroyed. Two committed checks hold this, from a literal ledger written in the test and never derived from the data:
-- every shipped work-row key still exists, and every ledgered key that still resolves names a work that includes its anchor lesson, so no key can ever be re-pointed at a different work;
-- every shipped (stage, section) pair still exists, because a section moving stage orphans an item's material exactly as a renamed key would.
-Section keys `s001`–`s106` are the index's own section numbers.
-
-THE SOURCE IS ACCOUNTED FOR COMPLETELY, AT TWO LAYERS (point 2). The SCANNER reads the disk and the index, and exits non-zero and writes nothing on any mismatch. It requires:
-- the index's declared total (۲۵۹ گفتار), the lessons it lists and the `NNN - *.mp4` files on disk to agree;
-- sections 1–106, contiguous;
-- every lesson listed exactly once, under one section;
-- exactly 259 videos, the four listed score books and the two .md files in the folder, ignoring only dotfiles and `@eaDir`;
-- every filename to match its title after NFC and whitespace collapse;
-- every lesson in the work table to exist and belong to at most one work;
-- the stage table to partition 1–106 into contiguous runs.
-The COMMITTED DATA is then checked on its own, with 106, 259 and 4 written as literals in the test:
-- lesson numbers read from the video paths are exactly 1–259, each once, contiguous and in order within each section;
-- exactly the four score books appear, each referenced;
-- every path is NFC and inside the course folder;
-- every work's files are a subset of the sections' files.
-Measured today: 106 contiguous sections, 259 lessons with no gaps, each section's lessons contiguous, and nothing else in the folder.
-
-ROUTINES, RE-EVALUATED AGAINST THE COURSE'S OWN GUIDE, AND CHANGED (point 3). The earlier plan synthesised one routine per stage, with one equal-weight segment per section. The Daily Practice Guide contradicts that directly, and the arithmetic makes it worse:
-- The guide is shaped by BLOCKS, not sections. At 30 minutes it is warm-up & tuning 4, technique/etude 7, today's lesson 10, review 6, cool-down 3, and it says "keep the order and the proportions". Its principles are one skill at a time and "2–3 loops max per session".
-- Khonyagar's sections are SEQUENTIAL lessons: the guide's Block 3 is the one current گفتار. A CGS level's sections are concurrent strands practised every day for weeks. A section-per-segment routine fits the second and not the first.
-- A 30-minute run over a stage of 5–18 sections gives about 1.5–6 minutes per section. With nothing essential, `fitRoutineToMinutes` drops the LATEST segments first, so a short day cuts the frontier and keeps the oldest material. That is the opposite of the guide's Quick Win (blocks 1→3→6).
-- `applyRoutineRun` writes one block per bound item and applies its stats. One run therefore marks every section of the stage practised today, which removes all of them from the Session Plan's candidate pool for the day.
-Two claims in the earlier text were wrong. The guide DOES name a minimum set (the Quick Win), just not per section. And fitting an equal-weight routine to 30 or 60 minutes does not reproduce the guide's 30/60 columns, which are block proportions. A third was overstated: that the existing Session Plan "already has the guide's shape". It does not, as follows.
-
-WHAT THE SESSION PLAN ACTUALLY DOES, MEASURED. This pass ran the unchanged `buildSessionPlan` on two Tar states:
-- Week one, three new sections added: 10 min gives one section for 10; 30 min gives three sections at 10 each; 60 min gives three at 20. There is no warm-up and no cool-down, because nothing is familiar or settled yet.
-- A month in (one familiar section, one section due for review, the current new section, one settled piece): 30 min gives warm-up 4 → the due review 7 → the current section 15 → cool-down 4. At 60 min it gives warm-up 7, review 7, then three work segments of 16, 15 and 15, and no cool-down, because all five items were already placed.
-
-Where it agrees with the guide:
-- the warm-up comes first, at a pinned 12% share (4 of 30 minutes, the guide's own figure);
-- due reviews come from the spacing schedule, which is what the guide's review ladder describes, held to 3–7 minutes (the guide gives 6);
-- the cool-down comes last, the guide's golden rule;
-- under 12 minutes it is one focus;
-- at 30 minutes it seats at most four items, each a real block closed with a result.
-
-Where it does not:
-- The middle is ordered by priority, not technique → today's lesson → review, so a due review often comes BEFORE the new work. That breaks the guide's table, though it matches its principle 6 (retrieve cold before warming into it).
-- There is no separate technique block and no ear/radif block.
-- The warm-up and cool-down appear only when an item qualifies: a warm-up needs a familiar, not-too-hard item; a cool-down needs a settled item and at least 20 minutes. The guide's warm-up is tuning, open strings and a scale, which are not items.
-- Minutes follow the app's bucket weights, not the guide's 30/60 columns.
-- Its "lesson" bucket means preparation for a class, never the course's current گفتار.
-- In week one it also splits the time evenly across what has been added — but over at most three or four items at 30 minutes, not a whole stage.
-
-So the Session Plan is the closest EXISTING tool, not an implementation of the guide, and this lane presents it as exactly that. It stays unchanged: `plan.ts` and `SessionPlan.tsx` remain forbidden. Making it follow the guide's block order would change the plan for every instrument, which is a separate decision for the owner. The routine decision does not rest on the Session Plan; it stands on the four points above. The guide's own template reaches the owner as text, so its order is available to follow directly — tuning and open strings before starting the first segment, for example.
-
-So every Khonyagar stage ships `routine: []`. The existing gate (`course.group.routine.length > 0`) already hides "Use this level's routine" and "Build one for where I am". The caption beneath them is gated only on `course` and would otherwise explain two buttons that are not there, so it takes the same condition. That is the one page edit in this lane. `courseRoutineName`, the routine functions and every CGS routine are untouched. The guide reaches the owner as TEXT, in its own English: its daily template and Quick Win on the pathway, and its advice for each lesson type (technique, etude, chahārmezrāb/reng, radif/gusheh, pish-daramad/tasnif) as the guidance each section and work carries into Working notes. The owner can still write any Tar routine by hand, binding segments to these items.
-
-STRUCTURE. Units are the index's 106 sections. Stages are ten authored runs of consecutive sections, with the course's own three band names (تار مقدماتی / متوسطه / تار ۳) as the stage `group`. With routines gone, the reason for ten is no longer routine size. It is stage progress that means something (a single 61-section تار ۳ stage would read "3 of 61" for months) and a catalogue short enough to browse on a phone. The proposed runs keep every multi-section work inside one stage; they are listed in the assumptions and recorded with their evidence in `docs/khonyagar-course.md`.
-
-A NEW PATHWAY; THE OLD ONE IS LEFT ALONE. `tar-khonyagar` is added beside `tar-honarestan`, whose ten stages, and any items placed in them, stay exactly as they are. `reseedDefaultPathways` adds any pathway that does not yet exist together with its stages, so the new pathway reaches the owner's existing database through the Repertoire button that already exists. `createSeedDB` builds from the same seed list, so a fresh install or demo reset gets it too.
-
-THE DATED TEACHER FOLDERS ARE A DIFFERENT PROBLEM AND ARE EXCLUDED. This is unchanged from the earlier investigation: four teachers, 28 session folders, 207 files, 4.8 GB. The filenames name nothing; one folder is misspelled, one is named with a date range, one has a self-contradictory year, and `session-18-02-2026` cannot be parsed without guessing. `behrooz-hemati` sits under `tar-classes/` but carries a SETAR primer. These folders belong to `log-a-class` and the archive pipeline, once the owner has normalised them and confirmed each teacher's instrument.
-
-## Today
-
-The Tar pathway `tar-honarestan` exists with ten hand-authored stages and about twenty-six generic steps. Its own seed note says plainly that it is a framework to be filled in as the owner progresses. Nothing in the app knows the Khonyagar course exists.
-
-Concretely, today:
-- None of the course's 259 lesson videos, 106 sections or four score books is reachable from a practice item. A Tar item's Material section is empty, and the only way to attach anything is to type NAS links by hand, one at a time.
-- The course's repertoire is not in the app, so none of it can be practised, scheduled, reviewed or shown in My repertoire. That includes the Mahur radif gushehs, پیش‌درآمد ماهور درویش‌خان, تصنیف ز من نگارم, both چهارمضراب ماهور (Ma'rufi's and the radif's), and the works taught inside other lessons, such as پیش‌درآمد ابوعطا and سرای امید.
-- Several works are taught across consecutive sections: the radif's چهارمضراب ماهور spans seven, and پیش‌درآمد ماهور درویش‌خان six. Others are taught in lessons scattered across sections that are about something else. There is no way to express that each is one work.
-- There is no Tar-specific practice guidance anywhere in the app, although the course ships its own daily practice guide.
-- `COURSES` holds exactly one entry, `CGS_COURSE`. Every piece of course machinery the previous lane built — catalogue material, carried-forward work identity, study-source grouping and media-root registration — is available to Guitar only.
-- The `tar-classes` folder is served by the NAS at the same shared media root the app already derives. Nothing declares it, so `knownSourceFolders()` does not list it and no path beneath it can resolve.
-
-## Instead
-
-The Khonyagar course is a second entry in `COURSES`, and the course machinery the CGS lane built applies to Tar.
-
-- A new `tar-khonyagar` pathway presents the course's 106 sections as catalogue suggestions across ten stages, under the course's own three band headings (تار مقدماتی / متوسطه / تار ۳). Titles, stage codes and names are Farsi. Every key and id is pure ascii and anchored in the course's own numbering: `s001`–`s106` for sections, and `w` plus the anchor lesson for works. The pathway reaches the owner's existing database through the "restore default pathways" button that already exists, and fresh installs get it too.
-- `tar-honarestan` is untouched: same stages, same catalogue keys, same items. The owner keeps or deletes it as they wish.
-- Adding a section brings its lesson videos and its band's score book with it automatically, composed live from the catalogue by `itemFiles`, with no link ever typed. Every stored path is the real filename NFC-normalised, which is the form the NAS actually serves, so the files open with no new device setting. `tar-classes` registers itself through `knownSourceFolders()`, because the course declares its own `mediaPath`.
-- Every work the authored table names reaches My repertoire once, grouped under a «خنیاگر» study source created on first use. It is titled with the WORK's own name, never a part's or a performance's label.
-  - A work taught across several sections is ONE item carrying every one of those sections' files, deduplicated by path.
-  - A work taught inside a mixed section is its own row, carrying exactly its own lessons.
-  - A mixed section is itself no work.
-  - Two works that share a title stay two works.
-  - Nothing is ever merged without an explicit entry, and nothing is confused with a Setar or Guitar item of the same name.
-- A work's identity never changes after it ships. Its key is anchored to a lesson and recorded literally. A later correction may join two works, as an alias on a work row or a changed identity on a section, but never by renaming, removing or re-pointing a key an item holds.
-- The generated data accounts for the whole source: all 106 sections, each of the 259 lessons exactly once, and all four score books. The scanner refuses to write anything if the disk, the index and its own tables disagree.
-- Practice follows the course's own guide, not a generated routine. Khonyagar stages offer no "Use this level's routine" or "Build one for where I am", and no caption for them. The guide reaches the owner as text: its daily template and Quick Win on the pathway, and its advice for each kind of lesson in the Working notes of every item created from the course. For a timed session, the existing, unchanged Session Plan builds from the Tar items the owner has added, as it does for any instrument. It puts a warm-up first and a cool-down last when an item qualifies, and due reviews and the most urgent work in between, by priority. It does not reproduce the guide's block order or minute columns, and nothing in this lane says it does. The owner can still write any Tar routine by hand.
-- The dated teacher folders are not imported, and `docs/khonyagar-course.md` records exactly why and what would have to be true first.
-
-## Advisory — the planning agent's reading, not established fact
-
-The two lists below are the planning agent's interpretation. Deterministic code
-checked that this plan is complete, in scope, correctly bound, and correctly
-tiered; it did not and cannot check whether this reading of the app is right.
-Verify them against the code.
-
-**Assumptions**
-
-- VERIFIED, not assumed: the NAS serves NFC while the local disk is NFD. 78 of 259 lesson filenames are decomposed. Re-probed in this pass on lesson 148: the decomposed name returns 404, the composed one 206 video/mp4. Three index titles carry stray whitespace (`030` a leading space; `077` and `148` a double space), and after NFC plus whitespace collapse all 259 filenames match their index titles exactly.
-- VERIFIED: `https://192.168.0.20:5010/tar-classes/khonyagar-mirzapour/` and files beneath it resolve over the LAN route. The Tailscale route could not be probed from this machine and is covered by the owner check. Because the media root is derived per device, the iPhone needs no new configuration either.
-- VERIFIED completeness baseline: the index declares ۲۵۹ گفتار and lists 259 lessons, 001–259, with no gaps, under 106 contiguous sections. Each section's lessons are contiguous and in order. The folder holds exactly 259 mp4 files, the four listed score books and the two .md files, and nothing else apart from dotfiles.
-- VERIFIED: `createSeedDB` and `reseedDefaultPathways` both build from `seedPathways`, so the new pathway appears in a fresh seed as well as through the button. `seedMigration.test.ts` counts nothing and pins only Setar/Honarestān ids, so it passes unchanged. `migrations.test.ts` checks only idempotence over the seed. `pathways.test.ts` asserts `seed.pathways` has length 3 and `mediaRoots.test.ts` pins `knownSourceFolders()` to two folders; both are in scope and move to four and three.
-- VERIFIED: `StageDetail.tsx` gates its two course-routine buttons on `course.group.routine.length > 0` but gates their caption on `course` alone. With `routine: []` the buttons disappear by themselves and the caption needs the same condition, which is why that page is in scope for exactly one condition.
-- VERIFIED: `courseStageSeeds` writes the English `WORK_NOTE` ("Optional repertoire from the Level … practice packet") into every `CourseWork`'s notes, hard-codes `strand: 'piece'` on every work row, and `workFile` treats `CourseWork.file` as a single PDF. Khonyagar work rows need their own guidance, their own lesson videos and, for a gusheh taught inside a mixed section (گوشه کرشمه in lesson 135, section 25), the `radif` strand so it becomes a gusheh rather than a full piece. Hence the three optional `CourseWork` fields; CGS sets none of them.
-- VERIFIED: every one of the 18 CGS groups has a non-empty routine (7–10 segments), so the check that Guitar levels still build their own routine is writable as stated. The course material row (`ItemMaterial.tsx`) renders generic copy ("On your NAS · video"), so Khonyagar rows need no UI change there.
-- AGENTS.md's course section states in general terms that "A STAGE OFFERS TWO ROUTINES". That becomes false for Khonyagar, so the builder scopes that sentence to courses that ship a routine. It records there, not as a rule, why Khonyagar ships none, and that the Session Plan is the nearest existing tool rather than the guide's template.
-- VERIFIED by running the unchanged `buildSessionPlan` on two Tar states (the outputs are quoted in the rationale). The rules that produce them, read in `plan.ts`: `segmentTarget` seats at most four segments below 45 minutes; the warm-up needs an item that is neither new nor resting, has difficulty ≤ 3, and has 3+ sessions or a familiar status; the cool-down needs an integrated, performable or maintenance item and a budget of at least 20 minutes; the middle is sorted by score, not by bucket; the warm-up's share is pinned at `round(B × 0.12)`; review segments are held to 3–7 minutes. Its `lesson` bucket is class preparation (`lessonAgenda`), which Khonyagar items carry only if the owner commits one to a class.
-- VERIFIED: `stageUnits` shows `item?.title ?? entry.title`, and course order puts section 48 (a performance) and 49 (part three) before part one. Without `workTitle`, a multi-section work would enter My repertoire called «اجرای …» or «… بخش سوم», and every one of its section rows would show that label. With it, the item and all its added rows read as the work.
-- VERIFIED: `courseStageId` (`${pathwayId}-${groupKey}`) must equal `stageIdFor(pathwayId, slug)`, so every Khonyagar stage key must be its own slug (lowercase ascii and hyphens).
-- PROPOSED stage runs (authored; the builder confirms each against the source and records its evidence). مقدماتی: 1) s001–s005, instrument, mezrab, note values, 2/4 and 4/4, tuning; 2) s006–s013, frets, fingering and positions one to six; 3) s014–s023, 6/8, first pieces, pish-daramad and reng, ending on lesson 129 «توصیه‌های پایانی». متوسطه: 4) s024–s028, Mahur; 5) s029–s035, Shur; 6) s036–s045, Afshari, Segah, Isfahan, Dashti. تار ۳: 7) s046–s059; 8) s060–s074; 9) s075–s092; 10) s093–s106. The متوسطه/تار ۳ boundary is where the index itself changes shape, from topical multi-lesson sessions to one-gusheh and one-part sections of the Mahur radif and its pieces. No multi-section work crosses a stage boundary.
-- The four score books attach by band, the one place the source itself states a band (in the PDF titles): نت ۱ on stages 1–3 and نت ۲ on 4–6. In تار ۳, نت ۳ (ردیف ماهور) goes on radif/gusheh entries and نت ۴ (قطعات ضربی) on rhythmic and composed pieces.
-- Each entry's lesson type is authored in the scanner's table, which the grammar only proposes: `درس … کتاب هنرستان` → etude, `گوشه` → radif, `چهارمضراب`/`رنگ` → rhythmic piece, `پیش‌درآمد`/`تصنیف` → composed piece, anything else → technique. The type decides the strand, the band book and which of the guide's lesson-type paragraphs the entry carries. Only an entry that IS a work may carry a repertoire strand (`piece`, `repertoire` or `radif`, which becomes a gusheh work).
-- The guide's text is quoted in its own English, as written. Translating it would be authoring new content.
-- Roughly fifteen Khonyagar titles also appear in the owner's Setar registry (e.g. چهارپاره مرادخانی, ماهور صغیر, حصار, زنگوله, نیشابورک, دلکش). They are separate items on separate instruments and must never be deduplicated; `carriedCourseWorkItem` is already scoped to `ofThisCourse`, and an acceptance check pins it.
-- The generated data is a committed literal in its own file, kept separate from the 228 KB `courseData.ts` so neither course's regeneration can disturb the other. It ships in the offline PWA bundle.
-- Future Khonyagar corrections, or a third course, stay a data change: `COURSES` is the extension point, `knownSourceFolders()` derives from it, keys are only ever added, and a later work merge is an alias.
-
-**Possible conflicts**
-
-- Khonyagar and CGS now share `courseSeed.ts`. Every change there must keep CGS byte-identical. The sharpest points are the `WORK_NOTE` default, `workFile`'s single-PDF path and the title an item is created with.
-- A path emitted in the local NFD form 404s on the NAS while looking perfectly correct in the repository and in any local file listing. This cannot be caught by eye, and is held closed by the scanner and by a pure data check over the generated file.
-- `hasPersianScript` is asserted over `getCatalog()` in a heavy-tier file this lane cannot edit. A single Farsi character in any generated key or stage id fails a test the lane has no legal way to touch.
-- Identity errors are silent. A merged pair destroys one work's record; a section title in My repertoire is a fake piece; a work taught inside a mixed section that is not recorded is lost repertoire; a key re-pointed after shipping moves an owner's item onto a different work; a shipped work row removed orphans the item holding its key. The checks are written to discriminate each of these.
-- `courseFilesFor` deduplicates by PATH. Two genuinely different files whose titles match must both survive, and two references to one path must not appear twice.
-- A section moved to another stage after shipping orphans its items' material exactly as a renamed key would, because items persist `stageId` together with `catalogKey`. The (stage, section) ledger is what stops a later boundary 'correction' from doing this.
-- The new pathway arrives through `reseedDefaultPathways`, which the owner may press at any time, and through `createSeedDB` on a fresh install or demo reset. It must add the Khonyagar pathway and its stages and nothing else; in particular it must not touch `tar-honarestan`, whose pathway already exists.
-- The owner's original request names routines. This lane deliberately generates none for Khonyagar, because the course's own guide argues against section routines. The existing Session Plan is the nearest tool, but it follows its own priority order and weights, not the guide's five blocks. No pathway text, doc or AGENTS.md entry may say it follows the guide; the owner check states what it really produces.
-- The `StageDetail.tsx` edit must change the caption's condition only. Moving or re-wrapping its `<span dir="ltr">` would shift a recorded `direction.test.ts` site.
-- Once a multi-section work is added, every one of its section rows shows the work's title. `stageUnits` already shows the item's title for an added row, so the part labels are visible only on sections not yet added. That is intended, and the owner check states it.
-
-## The complete approved plan
-
-```json
-{
-  "format": "prismatica/start@1",
-  "request": "Continue from the completed Classical Guitar Shed lane (now closed) and plan the most optimal Khonyagar/Tar lane. Claude should be the builder.\n\nSource to inspect (available on the NAS too): /Volumes/Sandisk/video-courses/tar-classes/khonyagar-mirzapour\n\nTreat the existing repo, the real Khonyagar folder structure/content, and the lessons learned from the CGS and Setar work as evidence rather than assumptions. Decide for yourself whether Khonyagar is best modelled as a structured course, pathway/reference data, lesson material, archive content, or a combination.\n\nOptimise for the actual user experience of learning and practising Tar: useful course progression, repertoire where appropriate, practice material, routines/session planning, and automatic association of relevant videos/PDFs without unnecessary manual linking.\n\nCarry forward the important correctness lessons from the CGS lane where relevant (disregard if not relevant):\n- musical-work identity should be explicit and stable rather than inferred by fuzzy title matching;\n- the same work appearing in multiple course locations should remain one repertoire item while retaining the complete material from all relevant locations;\n- distinct file paths must not be silently collapsed merely because filenames/titles match;\n- course/practice sections that contain multiple works or no single identifiable work should not become fake repertoire pieces;\n- owner edits, provenance, Undo/removal behaviour, and existing Setar/CGS data must remain safe;\n- prefer derived/reference data and existing concepts over new persisted schema or duplicated machinery where possible.\n\nAlso investigate the existing dated teacher/class folders separately rather than assuming they belong to the same model, and verify instrument attribution where ambiguous.\n\nKeep the plan as wide as justified. Anticipate future additions/changes and reuse the multi-source media architecture from the completed CGS lane where appropriate. Prefer the smallest coherent architecture that gives a complete, useful Tar experience and minimises builder/reviewer rework.\n\nFinal validation pass (the owner's refinement, in their words):\n\nThe plan is strong and I do not want a redesign. Please make one final validation/revision pass before I import it.\n\nIn particular:\n\n1. Re-check work-key stability. Section ids are source-anchored (`s001`–`s106`), but make sure `w###` identities cannot change merely because the authored work table is reordered, corrected or a newly recognised work is inserted. Existing work identity must remain stable after first shipping; prefer an explicit/source-anchored authored identity rather than positional numbering if needed.\n\n2. Add a discriminating source-completeness invariant: the generated Khonyagar data must account for all 106 indexed sections, all 259 lesson videos exactly once at source identity level, and all four score books, with scanner/index/disk mismatches failing loudly.\n\n3. Re-evaluate, rather than assume, that equal-weight one-section-per-segment stage routines are the most useful application of the existing course machinery for Khonyagar, especially for 30-minute practice and stages with many sections. Use the course's own daily-practice guide as evidence. Keep the current design if it is still the best trade-off; change it only if there is a clearly better fit without unnecessary machinery.\n\nOtherwise preserve the current architecture, scope and exclusions. Revalidate and return the updated import-ready plan.",
-  "builder": "claude",
-  "summary": "Bring the Khonyagar Tar course into its own Tar pathway with stable work identity and its complete material",
-  "rationale": "Tar is the owner's third instrument and the only one with no real content in the app. Its pathway, `tar-honarestan`, is an honest placeholder: ten hand-authored stages whose own note says it is a framework drawn from Khonyagar's Honarestān teaching, to be filled in as the owner goes. Meanwhile the owner owns the complete Khonyagar (آزاد میرزاپور) Tar course: 259 lesson videos (~16h28m), a 106-section index and four score books, none of which the app can see.\n\nThe CGS lane built what this needs, and built it generically: `COURSES: CourseData[]` (\"A second course is a second entry\"), `courseStageSeeds`, `courseFilesFor` (a work's files unioned across every entry naming it, deduplicated BY PATH), `carriedCourseWorkItem` (one work, one item, scoped to its own course), `planCatalogAddition` (the study source found or created), and `knownSourceFolders()` (derived from `COURSES`). So this lane is mostly DATA plus one scanner. The code changes are small, optional additions in `courseSeed.ts` that leave CGS unchanged. A work row may carry its own `files`, `guidance` and `strand`, where today it is always a single-PDF `piece` with the Guitar packet note. A work-bearing section may carry the work's `workTitle`, and item creation uses that title. There is also one condition in `StageDetail.tsx`.\n\nWHAT KHONYAGAR IS. It is a COURSE. It is a fixed download that does not grow, gets no renames and has no identity to reconcile against existing repertoire, so it needs no published index, digest or reconciler; it is not the Setar archive. It is also not a record of classes the owner attended, so it is not `Lesson` data. Its own `_فهرست — Index.md` states the structure and its `_راهنمای تمرین روزانه` states how to practise it.\n\nFINDINGS FROM THE REAL SOURCE, re-measured in this pass:\n\n1. THE NAS SERVES NFC; THE LOCAL DISK IS NFD. 78 of the 259 lesson filenames are decomposed on `/Volumes/Sandisk`. 76 of them differ from their index title by normalisation alone; `077` and `148` also by a double space. Re-probed in this pass on lesson 148: the decomposed name returns 404 text/html from the NAS and the composed one returns 206 video/mp4. Separately, `030`'s index title carries a leading space, which the earlier count missed. After NFC and whitespace collapse, every one of the 259 filenames matches its index title exactly. The rule: the stored path is the real filename NFC-normalised, and the displayed title is the index title with whitespace collapsed.\n\n2. KEYS ARE ASCII, TITLES ARE FARSI. `seedMigration.test.ts` asserts `hasPersianScript(key) === false` over the whole catalogue and every stage id. That file is heavy-tier (`**/*migration*`) and out of scope, and it passes unchanged: it counts nothing, and it pins `SEED_PATHWAY_IDS.tar` to `tar-honarestan`, which stays.\n\n3. WORK IDENTITY CANNOT BE INFERRED, AND IT LIVES AT THE LESSON, NOT THE SECTION. A crude title grammar over the section titles collapses every `اجرای X` into one empty stem, and it splits sections 52–55 from 56 on a ZWNJ alone (`پیش درآمد` vs `پیش‌درآمد`). The section is also the wrong unit. Works are taught INSIDE sections that are about something else:\n- پیش‌درآمد ابوعطا is lessons 124 and 125, in sections 21 and 22, whose other lessons are Honarestān exercises;\n- سرای امید is lessons 063 and 074, in sections 9 and 11;\n- کاروان is lesson 036;\n- section 17 teaches two works, in lessons 109 and 110.\nThe earlier rule, that a section naming no single work yields none, would have silently dropped all of these. So the authored work table records each work by the LESSON numbers that teach it, and the scanner derives the rest mechanically. A section all of whose lessons belong to one work IS that work. A work taught in lessons of a mixed section is its own catalogue row, in the stage of its first lesson, carrying exactly those lessons' videos.\n\n4. SAME TITLE IS NOT SAME WORK. Section 26 is Musa Ma'rufi's چهارمضراب ماهور (Honarestān book 2); sections 95–97 and 101–104 are the radif's چهارمضراب ماهور; section 85, «چهارمضراب از ردیف ماهور», is a third. رنگ شور appears in both 30 and 32, and کرشمه in 25, 59 and 86–87. The source does not establish that any of these are one work, so they stay separate, and each pair is recorded as a diagnostic for the owner to confirm. A false split costs a visible duplicate that can later be joined by alias; a false merge destroys a record.\n\nWORK IDENTITY IS STABLE AFTER FIRST SHIPPING (point 1). Items persist `catalogKey`, and a work row's catalogue key IS its work key. A key that changes meaning therefore silently moves an owner's item onto a different work. Positional numbering (`w001`, `w002`… in table order) would do exactly that on the first reorder or insertion. So a work key is `w` plus its ANCHOR LESSON, the lowest lesson number that teaches it at first shipping (`w197` for پیش‌درآمد ماهور درویش‌خان). It is written as a literal in the authored table and never computed. Reordering the table cannot touch it; a newly recognised work gets its own anchor; a correction may add lessons to a work but may not remove its anchor.\n\nWhat an item actually persists decides what must never disappear. A work ROW's key is the item's `catalogKey`, so a shipped work row is never removed; a later merge gives it the existing alias (`CourseWork.workKey`) and keeps the row. A work that IS a section is held by the item as `sNNN`, and its work key lives only in the section's `workKey`, so a later merge may point that section at the other identity; the item keeps resolving, and nothing is destroyed. Two committed checks hold this, from a literal ledger written in the test and never derived from the data:\n- every shipped work-row key still exists, and every ledgered key that still resolves names a work that includes its anchor lesson, so no key can ever be re-pointed at a different work;\n- every shipped (stage, section) pair still exists, because a section moving stage orphans an item's material exactly as a renamed key would.\nSection keys `s001`–`s106` are the index's own section numbers.\n\nTHE SOURCE IS ACCOUNTED FOR COMPLETELY, AT TWO LAYERS (point 2). The SCANNER reads the disk and the index, and exits non-zero and writes nothing on any mismatch. It requires:\n- the index's declared total (۲۵۹ گفتار), the lessons it lists and the `NNN - *.mp4` files on disk to agree;\n- sections 1–106, contiguous;\n- every lesson listed exactly once, under one section;\n- exactly 259 videos, the four listed score books and the two .md files in the folder, ignoring only dotfiles and `@eaDir`;\n- every filename to match its title after NFC and whitespace collapse;\n- every lesson in the work table to exist and belong to at most one work;\n- the stage table to partition 1–106 into contiguous runs.\nThe COMMITTED DATA is then checked on its own, with 106, 259 and 4 written as literals in the test:\n- lesson numbers read from the video paths are exactly 1–259, each once, contiguous and in order within each section;\n- exactly the four score books appear, each referenced;\n- every path is NFC and inside the course folder;\n- every work's files are a subset of the sections' files.\nMeasured today: 106 contiguous sections, 259 lessons with no gaps, each section's lessons contiguous, and nothing else in the folder.\n\nROUTINES, RE-EVALUATED AGAINST THE COURSE'S OWN GUIDE, AND CHANGED (point 3). The earlier plan synthesised one routine per stage, with one equal-weight segment per section. The Daily Practice Guide contradicts that directly, and the arithmetic makes it worse:\n- The guide is shaped by BLOCKS, not sections. At 30 minutes it is warm-up & tuning 4, technique/etude 7, today's lesson 10, review 6, cool-down 3, and it says \"keep the order and the proportions\". Its principles are one skill at a time and \"2–3 loops max per session\".\n- Khonyagar's sections are SEQUENTIAL lessons: the guide's Block 3 is the one current گفتار. A CGS level's sections are concurrent strands practised every day for weeks. A section-per-segment routine fits the second and not the first.\n- A 30-minute run over a stage of 5–18 sections gives about 1.5–6 minutes per section. With nothing essential, `fitRoutineToMinutes` drops the LATEST segments first, so a short day cuts the frontier and keeps the oldest material. That is the opposite of the guide's Quick Win (blocks 1→3→6).\n- `applyRoutineRun` writes one block per bound item and applies its stats. One run therefore marks every section of the stage practised today, which removes all of them from the Session Plan's candidate pool for the day.\nTwo claims in the earlier text were wrong. The guide DOES name a minimum set (the Quick Win), just not per section. And fitting an equal-weight routine to 30 or 60 minutes does not reproduce the guide's 30/60 columns, which are block proportions. A third was overstated: that the existing Session Plan \"already has the guide's shape\". It does not, as follows.\n\nWHAT THE SESSION PLAN ACTUALLY DOES, MEASURED. This pass ran the unchanged `buildSessionPlan` on two Tar states:\n- Week one, three new sections added: 10 min gives one section for 10; 30 min gives three sections at 10 each; 60 min gives three at 20. There is no warm-up and no cool-down, because nothing is familiar or settled yet.\n- A month in (one familiar section, one section due for review, the current new section, one settled piece): 30 min gives warm-up 4 → the due review 7 → the current section 15 → cool-down 4. At 60 min it gives warm-up 7, review 7, then three work segments of 16, 15 and 15, and no cool-down, because all five items were already placed.\n\nWhere it agrees with the guide:\n- the warm-up comes first, at a pinned 12% share (4 of 30 minutes, the guide's own figure);\n- due reviews come from the spacing schedule, which is what the guide's review ladder describes, held to 3–7 minutes (the guide gives 6);\n- the cool-down comes last, the guide's golden rule;\n- under 12 minutes it is one focus;\n- at 30 minutes it seats at most four items, each a real block closed with a result.\n\nWhere it does not:\n- The middle is ordered by priority, not technique → today's lesson → review, so a due review often comes BEFORE the new work. That breaks the guide's table, though it matches its principle 6 (retrieve cold before warming into it).\n- There is no separate technique block and no ear/radif block.\n- The warm-up and cool-down appear only when an item qualifies: a warm-up needs a familiar, not-too-hard item; a cool-down needs a settled item and at least 20 minutes. The guide's warm-up is tuning, open strings and a scale, which are not items.\n- Minutes follow the app's bucket weights, not the guide's 30/60 columns.\n- Its \"lesson\" bucket means preparation for a class, never the course's current گفتار.\n- In week one it also splits the time evenly across what has been added — but over at most three or four items at 30 minutes, not a whole stage.\n\nSo the Session Plan is the closest EXISTING tool, not an implementation of the guide, and this lane presents it as exactly that. It stays unchanged: `plan.ts` and `SessionPlan.tsx` remain forbidden. Making it follow the guide's block order would change the plan for every instrument, which is a separate decision for the owner. The routine decision does not rest on the Session Plan; it stands on the four points above. The guide's own template reaches the owner as text, so its order is available to follow directly — tuning and open strings before starting the first segment, for example.\n\nSo every Khonyagar stage ships `routine: []`. The existing gate (`course.group.routine.length > 0`) already hides \"Use this level's routine\" and \"Build one for where I am\". The caption beneath them is gated only on `course` and would otherwise explain two buttons that are not there, so it takes the same condition. That is the one page edit in this lane. `courseRoutineName`, the routine functions and every CGS routine are untouched. The guide reaches the owner as TEXT, in its own English: its daily template and Quick Win on the pathway, and its advice for each lesson type (technique, etude, chahārmezrāb/reng, radif/gusheh, pish-daramad/tasnif) as the guidance each section and work carries into Working notes. The owner can still write any Tar routine by hand, binding segments to these items.\n\nSTRUCTURE. Units are the index's 106 sections. Stages are ten authored runs of consecutive sections, with the course's own three band names (تار مقدماتی / متوسطه / تار ۳) as the stage `group`. With routines gone, the reason for ten is no longer routine size. It is stage progress that means something (a single 61-section تار ۳ stage would read \"3 of 61\" for months) and a catalogue short enough to browse on a phone. The proposed runs keep every multi-section work inside one stage; they are listed in the assumptions and recorded with their evidence in `docs/khonyagar-course.md`.\n\nA NEW PATHWAY; THE OLD ONE IS LEFT ALONE. `tar-khonyagar` is added beside `tar-honarestan`, whose ten stages, and any items placed in them, stay exactly as they are. `reseedDefaultPathways` adds any pathway that does not yet exist together with its stages, so the new pathway reaches the owner's existing database through the Repertoire button that already exists. `createSeedDB` builds from the same seed list, so a fresh install or demo reset gets it too.\n\nTHE DATED TEACHER FOLDERS ARE A DIFFERENT PROBLEM AND ARE EXCLUDED. This is unchanged from the earlier investigation: four teachers, 28 session folders, 207 files, 4.8 GB. The filenames name nothing; one folder is misspelled, one is named with a date range, one has a self-contradictory year, and `session-18-02-2026` cannot be parsed without guessing. `behrooz-hemati` sits under `tar-classes/` but carries a SETAR primer. These folders belong to `log-a-class` and the archive pipeline, once the owner has normalised them and confirmed each teacher's instrument.",
-  "kind": "existing-flow",
-  "flowId": "work-a-pathway-stage",
-  "currentBehaviour": "The Tar pathway `tar-honarestan` exists with ten hand-authored stages and about twenty-six generic steps. Its own seed note says plainly that it is a framework to be filled in as the owner progresses. Nothing in the app knows the Khonyagar course exists.\n\nConcretely, today:\n- None of the course's 259 lesson videos, 106 sections or four score books is reachable from a practice item. A Tar item's Material section is empty, and the only way to attach anything is to type NAS links by hand, one at a time.\n- The course's repertoire is not in the app, so none of it can be practised, scheduled, reviewed or shown in My repertoire. That includes the Mahur radif gushehs, پیش‌درآمد ماهور درویش‌خان, تصنیف ز من نگارم, both چهارمضراب ماهور (Ma'rufi's and the radif's), and the works taught inside other lessons, such as پیش‌درآمد ابوعطا and سرای امید.\n- Several works are taught across consecutive sections: the radif's چهارمضراب ماهور spans seven, and پیش‌درآمد ماهور درویش‌خان six. Others are taught in lessons scattered across sections that are about something else. There is no way to express that each is one work.\n- There is no Tar-specific practice guidance anywhere in the app, although the course ships its own daily practice guide.\n- `COURSES` holds exactly one entry, `CGS_COURSE`. Every piece of course machinery the previous lane built — catalogue material, carried-forward work identity, study-source grouping and media-root registration — is available to Guitar only.\n- The `tar-classes` folder is served by the NAS at the same shared media root the app already derives. Nothing declares it, so `knownSourceFolders()` does not list it and no path beneath it can resolve.",
-  "desiredBehaviour": "The Khonyagar course is a second entry in `COURSES`, and the course machinery the CGS lane built applies to Tar.\n\n- A new `tar-khonyagar` pathway presents the course's 106 sections as catalogue suggestions across ten stages, under the course's own three band headings (تار مقدماتی / متوسطه / تار ۳). Titles, stage codes and names are Farsi. Every key and id is pure ascii and anchored in the course's own numbering: `s001`–`s106` for sections, and `w` plus the anchor lesson for works. The pathway reaches the owner's existing database through the \"restore default pathways\" button that already exists, and fresh installs get it too.\n- `tar-honarestan` is untouched: same stages, same catalogue keys, same items. The owner keeps or deletes it as they wish.\n- Adding a section brings its lesson videos and its band's score book with it automatically, composed live from the catalogue by `itemFiles`, with no link ever typed. Every stored path is the real filename NFC-normalised, which is the form the NAS actually serves, so the files open with no new device setting. `tar-classes` registers itself through `knownSourceFolders()`, because the course declares its own `mediaPath`.\n- Every work the authored table names reaches My repertoire once, grouped under a «خنیاگر» study source created on first use. It is titled with the WORK's own name, never a part's or a performance's label.\n  - A work taught across several sections is ONE item carrying every one of those sections' files, deduplicated by path.\n  - A work taught inside a mixed section is its own row, carrying exactly its own lessons.\n  - A mixed section is itself no work.\n  - Two works that share a title stay two works.\n  - Nothing is ever merged without an explicit entry, and nothing is confused with a Setar or Guitar item of the same name.\n- A work's identity never changes after it ships. Its key is anchored to a lesson and recorded literally. A later correction may join two works, as an alias on a work row or a changed identity on a section, but never by renaming, removing or re-pointing a key an item holds.\n- The generated data accounts for the whole source: all 106 sections, each of the 259 lessons exactly once, and all four score books. The scanner refuses to write anything if the disk, the index and its own tables disagree.\n- Practice follows the course's own guide, not a generated routine. Khonyagar stages offer no \"Use this level's routine\" or \"Build one for where I am\", and no caption for them. The guide reaches the owner as text: its daily template and Quick Win on the pathway, and its advice for each kind of lesson in the Working notes of every item created from the course. For a timed session, the existing, unchanged Session Plan builds from the Tar items the owner has added, as it does for any instrument. It puts a warm-up first and a cool-down last when an item qualifies, and due reviews and the most urgent work in between, by priority. It does not reproduce the guide's block order or minute columns, and nothing in this lane says it does. The owner can still write any Tar routine by hand.\n- The dated teacher folders are not imported, and `docs/khonyagar-course.md` records exactly why and what would have to be true first.",
-  "mustNotChange": [
-    "`tar-honarestan` is untouched: its ten stages, their ids, codes, titles and every catalogue key stay byte-identical, so any item the owner has already placed in them keeps its suggestion. `SEED_PATHWAY_IDS.tar` stays `tar-honarestan`, so the demo seed's Tar item keeps its stage.",
-    "The Setar class archive and the Classical Guitar Shed course are untouched: `sourceArchive.ts`, `sourceReconcile.ts`, `courseData.ts`, `scan-setar-classes.mjs` and `scan-cgs-course.mjs` stay as they are. So does every CGS stage, key, work, work note, routine and routine name, and the title a CGS item is created with.",
-    "No schema change and no migration: `SCHEMA_VERSION` stays where it is, `migrations.ts`, `io.ts` and `types.ts` are forbidden by scope, and nothing new is persisted in `PracticeDB`. The course is reference data in code.",
-    "`getNasBaseUrl()` and the derived shared media root keep their current values and meaning. `tar-classes` is registered only because the course declares its own `mediaPath`, through the existing `knownSourceFolders()` derivation. There is no new device setting, no per-source root and no resolver fallback.",
-    "`reseedDefaultPathways` and its Repertoire button are NOT changed. They already add a pathway that does not yet exist together with its stages, which is exactly how the new pathway reaches an existing database. A stage the owner deliberately deleted from an EXISTING pathway is still never resurrected.",
-    "Every shared course function keeps its current behaviour and signature for CGS: `courseStageSeeds`, `courseFilesFor`, `planCatalogAddition`, `carriedCourseWorkItem`, `buildLevelRoutine`, `buildPositionRoutine`, `courseRoutineName` and `courseRoutine`. The new optional fields (`CourseWork.files`, `CourseWork.guidance`, `CourseWork.strand`, `CourseUnit.workTitle`) are absent from every CGS entry, so CGS output is byte-identical.",
-    "Routine machinery and the Session Plan are untouched: `routines.ts`, `plan.ts`, `RoutineRunner.tsx`, `RoutineDuration.tsx` and `SessionPlan.tsx` are forbidden by scope.",
-    "Work identity stays course-scoped: a Khonyagar work can never reuse, rename or absorb a CGS item or a Setar archive item. A Setar piece sharing its name stays a separate item on a separate instrument.",
-    "Every catalogue key, work key and stage id is pure ascii. Once shipped, a section key, stage id or work-row key is only ever added, never renamed or removed, and no work key is ever re-pointed at a different work. `seedMigration.test.ts` therefore passes unchanged, and no already-added item is ever orphaned or silently moved onto a different work.",
-    "`addFromCatalog` keeps its contract: a catalogue item arrives `status: 'new'` with zero statistics and stays losslessly removable, so `isLosslesslyRemovable`, the Remove affordance and the durable Undo keep working. An Undo still reaches only an item the tap created.",
-    "No bytes enter the app: no video, PDF or image is ever attached, cached, synced or backed up. r-large-files-stay-on-nas holds unchanged.",
-    "Practising stays the only thing that completes a review or advances SM-2. Nothing here writes a block, a result or a schedule, and no imported section or work arrives with practice history.",
-    "Direction handling is unchanged: Farsi titles resolve natively through the existing `dir=\"auto\"` groups. The `StageDetail.tsx` edit changes a condition only, and no recorded `dir` site or `direction.test.ts` inventory entry moves.",
-    "`scripts/scan-khonyagar-course.mjs` is a build-time tool only: stdlib, dry-run by default, never imported by or reachable from any runtime path in `src/`.",
-    "No dated teacher-class folder is imported, and no `Lesson` record is created by this lane."
-  ],
-  "assumptions": [
-    "VERIFIED, not assumed: the NAS serves NFC while the local disk is NFD. 78 of 259 lesson filenames are decomposed. Re-probed in this pass on lesson 148: the decomposed name returns 404, the composed one 206 video/mp4. Three index titles carry stray whitespace (`030` a leading space; `077` and `148` a double space), and after NFC plus whitespace collapse all 259 filenames match their index titles exactly.",
-    "VERIFIED: `https://192.168.0.20:5010/tar-classes/khonyagar-mirzapour/` and files beneath it resolve over the LAN route. The Tailscale route could not be probed from this machine and is covered by the owner check. Because the media root is derived per device, the iPhone needs no new configuration either.",
-    "VERIFIED completeness baseline: the index declares ۲۵۹ گفتار and lists 259 lessons, 001–259, with no gaps, under 106 contiguous sections. Each section's lessons are contiguous and in order. The folder holds exactly 259 mp4 files, the four listed score books and the two .md files, and nothing else apart from dotfiles.",
-    "VERIFIED: `createSeedDB` and `reseedDefaultPathways` both build from `seedPathways`, so the new pathway appears in a fresh seed as well as through the button. `seedMigration.test.ts` counts nothing and pins only Setar/Honarestān ids, so it passes unchanged. `migrations.test.ts` checks only idempotence over the seed. `pathways.test.ts` asserts `seed.pathways` has length 3 and `mediaRoots.test.ts` pins `knownSourceFolders()` to two folders; both are in scope and move to four and three.",
-    "VERIFIED: `StageDetail.tsx` gates its two course-routine buttons on `course.group.routine.length > 0` but gates their caption on `course` alone. With `routine: []` the buttons disappear by themselves and the caption needs the same condition, which is why that page is in scope for exactly one condition.",
-    "VERIFIED: `courseStageSeeds` writes the English `WORK_NOTE` (\"Optional repertoire from the Level … practice packet\") into every `CourseWork`'s notes, hard-codes `strand: 'piece'` on every work row, and `workFile` treats `CourseWork.file` as a single PDF. Khonyagar work rows need their own guidance, their own lesson videos and, for a gusheh taught inside a mixed section (گوشه کرشمه in lesson 135, section 25), the `radif` strand so it becomes a gusheh rather than a full piece. Hence the three optional `CourseWork` fields; CGS sets none of them.",
-    "VERIFIED: every one of the 18 CGS groups has a non-empty routine (7–10 segments), so the check that Guitar levels still build their own routine is writable as stated. The course material row (`ItemMaterial.tsx`) renders generic copy (\"On your NAS · video\"), so Khonyagar rows need no UI change there.",
-    "AGENTS.md's course section states in general terms that \"A STAGE OFFERS TWO ROUTINES\". That becomes false for Khonyagar, so the builder scopes that sentence to courses that ship a routine. It records there, not as a rule, why Khonyagar ships none, and that the Session Plan is the nearest existing tool rather than the guide's template.",
-    "VERIFIED by running the unchanged `buildSessionPlan` on two Tar states (the outputs are quoted in the rationale). The rules that produce them, read in `plan.ts`: `segmentTarget` seats at most four segments below 45 minutes; the warm-up needs an item that is neither new nor resting, has difficulty ≤ 3, and has 3+ sessions or a familiar status; the cool-down needs an integrated, performable or maintenance item and a budget of at least 20 minutes; the middle is sorted by score, not by bucket; the warm-up's share is pinned at `round(B × 0.12)`; review segments are held to 3–7 minutes. Its `lesson` bucket is class preparation (`lessonAgenda`), which Khonyagar items carry only if the owner commits one to a class.",
-    "VERIFIED: `stageUnits` shows `item?.title ?? entry.title`, and course order puts section 48 (a performance) and 49 (part three) before part one. Without `workTitle`, a multi-section work would enter My repertoire called «اجرای …» or «… بخش سوم», and every one of its section rows would show that label. With it, the item and all its added rows read as the work.",
-    "VERIFIED: `courseStageId` (`${pathwayId}-${groupKey}`) must equal `stageIdFor(pathwayId, slug)`, so every Khonyagar stage key must be its own slug (lowercase ascii and hyphens).",
-    "PROPOSED stage runs (authored; the builder confirms each against the source and records its evidence). مقدماتی: 1) s001–s005, instrument, mezrab, note values, 2/4 and 4/4, tuning; 2) s006–s013, frets, fingering and positions one to six; 3) s014–s023, 6/8, first pieces, pish-daramad and reng, ending on lesson 129 «توصیه‌های پایانی». متوسطه: 4) s024–s028, Mahur; 5) s029–s035, Shur; 6) s036–s045, Afshari, Segah, Isfahan, Dashti. تار ۳: 7) s046–s059; 8) s060–s074; 9) s075–s092; 10) s093–s106. The متوسطه/تار ۳ boundary is where the index itself changes shape, from topical multi-lesson sessions to one-gusheh and one-part sections of the Mahur radif and its pieces. No multi-section work crosses a stage boundary.",
-    "The four score books attach by band, the one place the source itself states a band (in the PDF titles): نت ۱ on stages 1–3 and نت ۲ on 4–6. In تار ۳, نت ۳ (ردیف ماهور) goes on radif/gusheh entries and نت ۴ (قطعات ضربی) on rhythmic and composed pieces.",
-    "Each entry's lesson type is authored in the scanner's table, which the grammar only proposes: `درس … کتاب هنرستان` → etude, `گوشه` → radif, `چهارمضراب`/`رنگ` → rhythmic piece, `پیش‌درآمد`/`تصنیف` → composed piece, anything else → technique. The type decides the strand, the band book and which of the guide's lesson-type paragraphs the entry carries. Only an entry that IS a work may carry a repertoire strand (`piece`, `repertoire` or `radif`, which becomes a gusheh work).",
-    "The guide's text is quoted in its own English, as written. Translating it would be authoring new content.",
-    "Roughly fifteen Khonyagar titles also appear in the owner's Setar registry (e.g. چهارپاره مرادخانی, ماهور صغیر, حصار, زنگوله, نیشابورک, دلکش). They are separate items on separate instruments and must never be deduplicated; `carriedCourseWorkItem` is already scoped to `ofThisCourse`, and an acceptance check pins it.",
-    "The generated data is a committed literal in its own file, kept separate from the 228 KB `courseData.ts` so neither course's regeneration can disturb the other. It ships in the offline PWA bundle.",
-    "Future Khonyagar corrections, or a third course, stay a data change: `COURSES` is the extension point, `knownSourceFolders()` derives from it, keys are only ever added, and a later work merge is an alias."
-  ],
-  "possibleConflicts": [
-    "Khonyagar and CGS now share `courseSeed.ts`. Every change there must keep CGS byte-identical. The sharpest points are the `WORK_NOTE` default, `workFile`'s single-PDF path and the title an item is created with.",
-    "A path emitted in the local NFD form 404s on the NAS while looking perfectly correct in the repository and in any local file listing. This cannot be caught by eye, and is held closed by the scanner and by a pure data check over the generated file.",
-    "`hasPersianScript` is asserted over `getCatalog()` in a heavy-tier file this lane cannot edit. A single Farsi character in any generated key or stage id fails a test the lane has no legal way to touch.",
-    "Identity errors are silent. A merged pair destroys one work's record; a section title in My repertoire is a fake piece; a work taught inside a mixed section that is not recorded is lost repertoire; a key re-pointed after shipping moves an owner's item onto a different work; a shipped work row removed orphans the item holding its key. The checks are written to discriminate each of these.",
-    "`courseFilesFor` deduplicates by PATH. Two genuinely different files whose titles match must both survive, and two references to one path must not appear twice.",
-    "A section moved to another stage after shipping orphans its items' material exactly as a renamed key would, because items persist `stageId` together with `catalogKey`. The (stage, section) ledger is what stops a later boundary 'correction' from doing this.",
-    "The new pathway arrives through `reseedDefaultPathways`, which the owner may press at any time, and through `createSeedDB` on a fresh install or demo reset. It must add the Khonyagar pathway and its stages and nothing else; in particular it must not touch `tar-honarestan`, whose pathway already exists.",
-    "The owner's original request names routines. This lane deliberately generates none for Khonyagar, because the course's own guide argues against section routines. The existing Session Plan is the nearest tool, but it follows its own priority order and weights, not the guide's five blocks. No pathway text, doc or AGENTS.md entry may say it follows the guide; the owner check states what it really produces.",
-    "The `StageDetail.tsx` edit must change the caption's condition only. Moving or re-wrapping its `<span dir=\"ltr\">` would shift a recorded `direction.test.ts` site.",
-    "Once a multi-section work is added, every one of its section rows shows the work's title. `stageUnits` already shows the item's title for an added row, so the part labels are visible only on sections not yet added. That is intended, and the owner check states it."
-  ],
-  "scope": {
-    "allow": [
-      "src/domain/khonyagarData.ts",
-      "src/domain/courseSeed.ts",
-      "src/domain/courseSeed.test.ts",
-      "src/domain/khonyagarCourse.test.ts",
-      "src/domain/pathwaySeed.ts",
-      "src/domain/pathways.test.ts",
-      "src/domain/mediaRoots.test.ts",
-      "src/pages/StageDetail.tsx",
-      "scripts/scan-khonyagar-course.mjs",
-      "docs/khonyagar-course.md",
-      "AGENTS.md"
-    ],
-    "forbid": [
-      "src/domain/courseData.ts",
-      "scripts/scan-cgs-course.mjs",
-      "scripts/scan-setar-classes.mjs",
-      "scripts/publish-setar-index.mjs",
-      "src/domain/migrations.ts",
-      "src/domain/io.ts",
-      "src/domain/types.ts",
-      "src/domain/sourceArchive.ts",
-      "src/domain/sourceReconcile.ts",
-      "src/domain/mediaRoots.ts",
-      "src/domain/recordings.ts",
-      "src/domain/itemFiles.ts",
-      "src/domain/pathways.ts",
-      "src/domain/factories.ts",
-      "src/domain/labels.ts",
-      "src/domain/seed.ts",
-      "src/domain/routines.ts",
-      "src/domain/scheduling.ts",
-      "src/domain/plan.ts",
-      "src/domain/repertoire.ts",
-      "src/store/useStore.ts",
-      "src/store/syncEngine.ts",
-      "src/store/githubSync.ts",
-      "src/pages/PathwayDetail.tsx",
-      "src/pages/Today.tsx",
-      "src/pages/Settings.tsx",
-      "src/pages/SessionPlan.tsx",
-      "src/pages/RoutineRunner.tsx",
-      "src/components/RoutineDuration.tsx"
-    ]
-  },
-  "exclusions": [
-    "No import of the dated teacher/class folders (`afshin-alavi`, `amir-sharifi`, `behrooz-hemati`, `ghasem-rahimzadeh`), and no `Lesson` record created. Their names, dates and instrument attribution are unresolved in the source itself.",
-    "No change to the Setar archive, or to the Classical Guitar Shed course data, scanner or publisher.",
-    "No schema change, no migration, no new persisted collection and no new inbound-validation door.",
-    "No new media root, no per-source root and no resolver fallback. The course declares its `mediaPath` and the existing derivation does the rest.",
-    "No generated Khonyagar routine, and no change to the routine machinery. The course's guide asks for block-shaped days built around the current lesson, not a tour of every section in a stage.",
-    "No change to the Session Plan's order, buckets or proportions to match the guide. That would change the plan for every instrument and is a separate decision. No copy in this lane claims the Session Plan follows the guide's blocks.",
-    "No UI change beyond the caption's condition in `StageDetail.tsx`. The existing stage, pathway and Today surfaces already render any course.",
-    "No fabricated essential flags, per-section minutes or practice history. No translated or paraphrased guide text: it is quoted as written.",
-    "No transliteration of Farsi titles into keys, no positional work numbering, and no runtime title parsing. The grammar stays in the scanner and its conclusions are recorded.",
-    "No merge of two works on title similarity, including works that share an exact title (Ma'rufi's and the radif's چهارمضراب ماهور, the two رنگ شور sections, the three کرشمه sections). Ambiguous pairs are recorded as diagnostics for the owner.",
-    "No dastgāh, form or composer identity fields on Khonyagar entries in this lane. Its works group under their study source in My repertoire, and dastgāh grouping would be a later data change.",
-    "No automatic creation of items, works, routines or stages: every one is created by an explicit owner action.",
-    "No change to `reseedDefaultPathways`, the recommendation engine, the Session Plan, review scheduling or SM-2."
-  ],
-  "acceptance": [
-    {
-      "description": "Every media path in the generated Khonyagar data is NFC-normalised, which is the form the NAS serves, and lies inside the course's own folder with no `..` segment. A decomposed path would 404 while looking correct in the repository.",
-      "test": "every Khonyagar media path is NFC-normalised and inside the course folder"
-    },
-    {
-      "description": "Every Khonyagar catalogue key, work key and stage id is pure ascii, while its stage codes, titles and names are Farsi. The existing ascii invariant holds and the display stays in the course's own language.",
-      "test": "Khonyagar keys and stage ids are pure ascii while its titles are Farsi"
-    },
-    {
-      "description": "The generated data accounts for the whole source, with the counts written as literals. There are exactly 106 sections, `s001`–`s106`. The lesson numbers read from the section video paths are exactly 1–259, each exactly once, contiguous and in order within each section. Exactly the four score books appear and each is referenced at least once. Every work's files are a subset of the sections' files. Dropping, duplicating or misplacing one lesson fails.",
-      "test": "accounts for all 106 sections, each of the 259 lessons exactly once and all four score books"
-    },
-    {
-      "description": "Work identity is anchored and permanent, checked against a literal ledger written in the test and never derived from the data. Every shipped work-row key (the key an item holds as its `catalogKey`) still exists. Every ledgered work key `wNNN` that still resolves names a work whose lessons include lesson NNN. Reordering the table changes nothing. Removing a shipped work row, or re-pointing any key at a work without its anchor lesson, fails. Joining a work that is a section into another identity is still allowed.",
-      "test": "every shipped Khonyagar work row still exists and every shipped work key keeps its anchor lesson"
-    },
-    {
-      "description": "Every (stage id, section key) pair in a literal ledger of shipped pairs is still present, so a later boundary change cannot orphan an item's material.",
-      "test": "every shipped Khonyagar section stays in the stage it shipped in"
-    },
-    {
-      "description": "A work taught across several sections is one repertoire item, titled with the work's own name whichever of its sections is added first (a part or a performance included). It carries every section's files, each distinct file exactly once.",
-      "test": "a work spanning several sections is one item titled with the work carrying every section's files once"
-    },
-    {
-      "description": "Two distinct files are both kept when their titles match, and one file referenced from two entries appears once. Deduplication is by path, never by title.",
-      "test": "keeps two distinct files whose titles match and never repeats one path"
-    },
-    {
-      "description": "A mixed section yields each work it teaches as that work's own row, and the section itself is no work. Section 17 yields two works, from lessons 109 and 110. پیش‌درآمد ابوعطا is one row carrying exactly lessons 124 and 125, although they sit in sections 21 and 22, and neither of those sections is a work.",
-      "test": "a mixed section yields each work it teaches as its own row and becomes no work itself"
-    },
-    {
-      "description": "No Khonyagar section carries a repertoire strand (`piece`, `repertoire` or `radif`) unless it carries a work identity, so a section title never reaches My repertoire as a fake piece.",
-      "test": "no Khonyagar section carries a repertoire strand unless it is a work"
-    },
-    {
-      "description": "A performance or continuation section joins only the work an explicit table entry names. Two titles differing solely by ZWNJ or spacing (sections 52–55 and 56) are not merged unless an entry says so.",
-      "test": "joins a performance section only where the work table says so and never merges on a ZWNJ difference"
-    },
-    {
-      "description": "Two works that share a title stay separate items. Ma'rufi's چهارمضراب ماهور (section 26) and the radif's (sections 95–104) resolve to different identities, and adding one never reuses or lists the other's material.",
-      "test": "keeps two distinct works that share a title apart"
-    },
-    {
-      "description": "A Khonyagar work never reuses an item belonging to another course or to the Setar archive, even when the titles are identical, because work reuse is scoped to the course.",
-      "test": "a Khonyagar work never reuses an item from another course or instrument"
-    },
-    {
-      "description": "Every Khonyagar stage builds an empty level routine and an empty position routine, even with every one of its sections added, so the stage offers neither routine action. Every Guitar level still builds its own non-empty routine exactly as before.",
-      "test": "a Khonyagar stage builds no routine while every Guitar level still builds its own"
-    },
-    {
-      "description": "Every Khonyagar work's catalogue notes are its own lesson-type guidance from the course's guide, and never the Guitar course's English practice-packet sentence. Guitar works keep that sentence.",
-      "test": "a Khonyagar work carries its own guidance and never the Guitar packet note"
-    },
-    {
-      "description": "The existing Tar Honarestan pathway keeps every stage id, code, title and catalogue key it has today. The Classical Guitar Shed course keeps every stage, key, work, work note, routine, routine name and item-creation title it has today.",
-      "test": "leaves the Honarestan pathway and the Guitar course entirely unchanged"
-    },
-    {
-      "description": "The Khonyagar course declares its own media folder, so `tar-classes` is a known source folder derived from `COURSES`, with no new device setting and no change to the archive base.",
-      "test": "registers tar-classes as a known source folder without changing the archive base"
-    },
-    {
-      "description": "On the owner's own Mac and iPhone:\n- the Khonyagar pathway appears after restoring default pathways;\n- a section's lesson videos and its band's score book open from a practice item over both the LAN and Tailscale routes;\n- the radif's چهارمضراب ماهور appears once in My repertoire, under its own name and carrying all seven sections' videos, while Ma'rufi's stays a separate suggestion and the Setar item of that name is untouched;\n- پیش‌درآمد ابوعطا is its own row beside the exercise sections that contain it;\n- Khonyagar stages show no routine buttons and no routine caption;\n- a 30-minute Tar session from \"Plan this session\" is built only from Tar items, with a warm-up first and a cool-down last only when an item qualifies, and due reviews and current work in between by priority. It is not expected to follow the guide's block order, and nothing on screen claims it does;\n- the Honarestan pathway and all Setar and Guitar data are visibly unchanged.",
-      "test": "manual:OWNER"
-    }
-  ],
-  "risk": {
-    "touchesAuth": false,
-    "touchesPayments": false,
-    "touchesSavedData": true,
-    "copyOnly": false,
-    "rationale": "There is no schema change, no migration and no new persisted collection: `migrations.ts`, `io.ts`, `types.ts` and the store are all forbidden by scope. But the lane causes persisted records to be created through existing paths:\n- restoring default pathways (or a fresh seed) inserts a new `Pathway` and its `PathwayStage` rows;\n- adding a suggestion creates `PracticeItem` and `Material` rows, each carrying a persisted `stageId` and `catalogKey`.\n\nThose items then accumulate real practice, so getting identity wrong would corrupt the owner's own repertoire rather than merely render badly:\n- two works merged on a title would destroy one work's record;\n- a section title reaching My repertoire would be a fake piece;\n- a work taught inside a mixed section and left out would lose real repertoire;\n- a work key re-pointed after shipping would silently move an owner's item onto a different work;\n- a Khonyagar work reusing a Setar item would cross instruments;\n- an NFD path would look correct in the repository while opening nothing.\n\nThat is why the checks discriminate rather than proving only the happy path:\n- merged-versus-separate for multi-section works and for works that share a title;\n- one-row-versus-none for works inside mixed sections;\n- kept-versus-collapsed for two same-titled files;\n- anchored-versus-moved for every shipped key and (stage, section) pair;\n- exactly-once for every lesson;\n- reused-versus-distinct across courses;\n- empty-versus-built routines for Khonyagar against CGS;\n- NFC-versus-NFD for every path.\n\nMedia configuration is unchanged and stays per device, so `r-secrets-stay-on-device` is unaffected, and no file bytes enter the app."
-  },
-  "delta": {
-    "today": "Tar has a placeholder pathway and nothing else. `tar-honarestan` offers ten hand-authored stages of generic steps, and its own seed note says it is a framework to fill in as you go. The owner's complete Khonyagar course — 259 lesson videos (~16h28m), 106 sections and four score books — is invisible to the app. Not one video or score is reachable from a practice item, and the only way to attach one is to type NAS links by hand. Its repertoire is absent too: the Mahur radif gushehs, پیش‌درآمد ماهور درویش‌خان, تصنیف ز من نگارم, two different چهارمضراب ماهور, and works taught inside other lessons such as پیش‌درآمد ابوعطا cannot be practised, scheduled or reviewed. Works taught across several sections have no way to be one work. The course's own daily practice guide is nowhere in the app. `COURSES` holds exactly one entry, so the course machinery the Guitar lane built is available to Guitar alone.",
-    "instead": "Khonyagar is a second entry in `COURSES`. A new `tar-khonyagar` pathway presents the course's 106 sections across ten stages, under its own three band headings, in Farsi, with pure-ascii keys anchored in the course's numbering. It reaches the owner's existing database through the \"restore default pathways\" button that already exists, and `tar-honarestan` is left untouched beside it. Adding a section brings its lesson videos and its band's score book with it automatically, with no link typed and no new device setting; every path is stored in the NFC form the NAS actually serves. Every work the course teaches reaches My repertoire once, under the work's own name:\n- a work taught across seven sections is ONE item carrying all seven sections' files;\n- a work taught inside an exercise section is its own row carrying exactly its own lessons, and the section is none;\n- two works that share a title stay two.\nWork keys are anchored to a lesson and never change after they ship. The data accounts for every section, every lesson exactly once and every score book, and the scanner refuses to write if the disk and the index disagree. The stages generate no routine, because the course's own guide asks for block-shaped days around the current lesson, not a tour of every section. For a timed session, the existing Session Plan builds from these items as it does for any instrument: warm-up first and cool-down last when an item qualifies, due reviews and the most urgent work in between, by priority rather than in the guide's block order. The guide reaches the owner as text: its daily template on the pathway, and its advice for each kind of lesson in every item's Working notes. The dated teacher folders are not imported, and the reasons are recorded.",
-    "keep": [
-      "`tar-honarestan` keeps every stage, code, title and catalogue key it has today, and any item already placed in it keeps its suggestion.",
-      "The Setar class archive and the Classical Guitar Shed course are untouched: data, scanners, publisher, stages, keys, works, work notes, routines and routine names alike.",
-      "Seeing where you are in a stage stays derived from item status: `stageUnits` and `itemStageState` are unchanged, and a suggestion you have not taken stays a suggestion.",
-      "Taking a suggestion stays one tap, arrives honestly as \"Not practised yet\" with zero statistics, and stays losslessly removable until you practise it. An Undo still reaches only an item the tap created.",
-      "Routines and the Session Plan are unchanged: the same runner, the same duration control, the same plan builder. Any Tar routine the owner writes by hand works exactly as it does today.",
-      "The archive base and the derived media root keep their values and meaning, so no device needs reconfiguring and every existing reference resolves identically.",
-      "`reseedDefaultPathways` and its button are unchanged, so a stage deliberately deleted from an existing pathway is still never resurrected.",
-      "A Setar piece sharing a Khonyagar work's name stays a separate item on a separate instrument.",
-      "No file bytes enter the app, sync or a backup, and no item, work, routine or stage is created without an explicit owner action."
-    ],
-    "assumptions": [
-      "The NAS serves NFC while the local disk is NFD. This was verified directly, and re-probed in this pass: 404 on the decomposed form, 206 video/mp4 on the composed one. Every stored path is therefore the real filename NFC-normalised.",
-      "Stage boundaries, work membership (by lesson number) and lesson types are authored decisions, recorded in `docs/khonyagar-course.md`. The source states none of them mechanically, and a crude grammar demonstrably mis-groups this data. A work's key is `w` plus its anchor lesson, written literally, so a reorder, a correction or a newly recognised work cannot move an existing identity.",
-      "The Session Plan stays unchanged and is not presented as the guide's template. It shares the guide's frame (warm-up first, spaced review, cool-down last), but it orders the middle by priority and splits minutes by its own weights. Making it follow the guide's blocks would change every instrument's plan, and is left to a separate decision."
-    ],
-    "showMe": "Press \"restore default pathways\" on Repertoire. A new Tar pathway, «تار – آزاد میرزاپور (خنیاگر)», appears beside the Honarestān one, which is unchanged. Its note carries the course's daily practice template.\n\nOpen it: ten stages under تار مقدماتی, متوسطه and تار ۳, each listing the course's own sections in its own words.\n\nIn the first stage, add «به دست گرفتن مضراب تار و نواختن سیم‌ها». Its three lesson videos and نت ۱ are already under Material with no link typed, and tapping one plays it from the NAS. Its Working notes carry the guide's advice for a technique lesson.\n\nIn the third stage, sections 21 and 22 are exercise sessions, and پیش‌درآمد ابوعطا sits beside them as its own row. Add it, and exactly its two lessons come with it.\n\nIn the last stage, add «چهارمضراب ماهور - بخش دوم». My repertoire gains ONE item, named for the radif's چهارمضراب ماهور rather than for part two, carrying the videos of all seven sections that teach it, and each of those seven rows now reads as added. Musa Ma'rufi's چهارمضراب ماهور in stage four is still a separate suggestion, and your Setar item of the same name is untouched.\n\nThe stages offer no generated routine. For a timed session, choose \"Plan this session\" on Today for 30 minutes of Tar. In your first week, with a few new sections added, it splits the time across them, about 10 minutes each. Once some items are familiar and one is due, it looks more like: a 4-minute warm-up, the due review, the section you are learning, and a short cool-down on something settled. It orders the middle by priority, not by the guide's technique → lesson → review blocks. The guide's own order lives in the template on the pathway."
-  },
-  "desiredRules": [
-    "A course's work identity is explicit, recorded and permanent. Only an authored entry may join two sections or lessons into one work. Once shipped, no key an item holds is ever renamed or removed, and no work key is ever re-pointed at a different work; a later merge is an alias.",
-    "A stored media path is the file's real name in the normalisation form the server actually serves, never the form a local filesystem happens to hold. A path that looks right in the repository and 404s on the device is indistinguishable from correct until someone taps it.",
-    "Repertoire comes from the works a course teaches, identified at the lesson. A section that teaches several works, or none, is never itself a repertoire piece, and a work taught inside it is never lost.",
-    "Every identifier a course contributes is ascii and anchored in the source's own numbering, while every title the owner reads is in the course's own language.",
-    "Course data accounts for its whole source: every section, lesson and score book exactly once. A scan that cannot reconcile the disk, the index and its own tables writes nothing."
-  ],
-  "docsDelta": [
-    "AGENTS.md",
-    "docs/khonyagar-course.md"
-  ]
-}
-```
-````
+  Khonyagar course entries are practice items, not automatically curated repertoire. This supersedes the desired-behaviour bullet "Every work the authored table names reaches My repertoire once, grouped under a «خنیاگر» study source" and the matching Show-me step. A work is still ONE item under the work's own name, carrying every section's material, and it is still linked to the «خنیاگر» study source. But no Persian identity (form, dastgāh, composer or gusheh) is set or inferred from a title, and because Tar is Persian-family, My repertoire leaves an item without one out. The owner curates that metadata by hand as they progress, typically a form and/or dastgāh. A curated item then appears exactly as any curated Persian item does (under "No dastgāh yet" when it has no dastgāh). Repertoire routing is not changed.
 
 ## The Delta this change was framed from
 
@@ -545,18 +84,4267 @@ The stages offer no generated routine. For a timed session, choose "Plan this se
 
 
 
-## Files in this diff
+## Re-review after a rejection — scoped to the rework
 
-- AGENTS.md
-- docs/khonyagar-course.md
-- scripts/scan-khonyagar-course.mjs
-- src/domain/courseSeed.ts
-- src/domain/khonyagarCourse.test.ts
-- src/domain/khonyagarData.ts
-- src/domain/mediaRoots.test.ts
-- src/domain/pathwaySeed.ts
-- src/domain/pathways.test.ts
-- src/pages/StageDetail.tsx
+The last review of this contract asked for changes. This is NOT the whole plan
+restated: it is what changed since the previously reviewed head, plus the
+findings that review recorded, plus the full current text of every file the
+rework touched — the same Check already bound to this head is not to be
+rerun wholesale.
+
+**Findings from the previous review:**
+
+- **repertoire-lens: a course work must actually render in My repertoire on its own instrument, not merely satisfy isWork()** — No Khonyagar work ever appears in My repertoire. Tar is a Persian-family instrument, and MyRepertoireView (Repertoire.tsx) routes Persian-family works only through groupByDastgah (persian.ts), which omits any item with no `persian` identity; the study-source groups exclude Persian-family instruments. Khonyagar entries deliberately carry no `persian` field, so every Khonyagar work is isWork() === true yet is rendered in neither branch. This contradicts the approved desiredBehaviour ('reaches My repertoire once, grouped under a «خنیاگر» study source'), the non-goal's premise ('Its works group under their study source in My repertoire'), ac-17, Show me, the new AGENTS.md section and the flow report. The named tests for ac-6/ac-9 assert only isWork(), which is necessary, not sufficient. Fixing it needs an owner decision (bring Repertoire.tsx into scope, or give entries a persian identity against the current non-goal) plus a named test over the rendered grouping.
+  _counterexample:_ createSeedDB() (Tar instrument family 'Persian'); planCatalogAddition(db, 'tar-khonyagar-s093-s106', 's096', entry, tarId) creates «چهارمضراب ماهور», itemType full_piece, persian undefined. With MyRepertoireView's own split scoped to Tar: repertoireWorks includes it (isWork true), persianWorks includes it, groupByDastgah(persianWorks) returns [] (skipped at `if (!p) continue`), otherWorks excludes it. My repertoire renders no Khonyagar work, and the ac-17 owner step 'the radif's چهارمضراب ماهور appears once in My repertoire' cannot pass.
+
+**What changed since the previously reviewed head:**
+
+```diff
+diff --git a/AGENTS.md b/AGENTS.md
+index fb1f804e5be86a42aadee2ce98c64e142eb63cd2..9d2c941e304d39d299593f13c819aa65cb1e50bc 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2699,6 +2699,16 @@ never enters My repertoire under its own label; `stageUnits` already shows the i
+ title on every row of that work. This is the one creation-time change, and CGS sets
+ no `workTitle`.
+ 
++**A KHONYAGAR ITEM IS A PRACTICE ITEM FIRST, AND REACHES MY REPERTOIRE ONLY BY THE
++OWNER'S HAND.** No entry carries any Persian identity (form, dastgāh, composer or
++gusheh), and none may be inferred from a title: many course pieces are simplified
++practice versions the owner would not call repertoire. Tar is Persian-family, so My
++repertoire groups its works through `groupByDastgah`, which leaves an item with no
++Persian identity out — deliberately. The owner curates form and/or dastgāh as they
++progress, and a curated item then groups exactly as any other Persian item does ("No
++dastgāh yet" without a dastgāh). Repertoire routing is unchanged;
++`khonyagarCourse.test.ts` pins both halves.
++
+ **THE FOUR OPTIONAL FIELDS ARE ABSENT FROM EVERY CGS ENTRY.** `CourseWork.files`,
+ `CourseWork.guidance`, `CourseWork.strand` and `CourseUnit.workTitle` default to
+ exactly what CGS did before — a single packet PDF, the English practice-packet
+diff --git a/docs/khonyagar-course.md b/docs/khonyagar-course.md
+index c3501b1da1d2f7e0cd9a32b6ea95eaba4ca01d46..18596a153a94f24df22fcb7d0e2b17d88cba96c6 100644
+--- a/docs/khonyagar-course.md
++++ b/docs/khonyagar-course.md
+@@ -242,8 +242,16 @@ The type decides three things:
+ - **Course-scoped identity.** Work reuse (`carriedCourseWorkItem`) only ever
+   matches items in this course's own stages. A Setar or Guitar item of the same
+   name is never reused, renamed or absorbed.
+-- **The study source.** Items group under a «خنیاگر» study source in My
+-  repertoire, created on first use.
++- **The study source.** Every item created from the course is linked to a
++  «خنیاگر» study source, created on first use.
++- **Practice items first, not repertoire.** No entry carries any Persian
++  identity (form, dastgāh, composer or gusheh), and none is inferred from a
++  title: many course pieces are simplified practice versions. Tar is a
++  Persian-family instrument, so My repertoire groups its works by dastgāh and
++  leaves an item with no Persian identity out. It enters My repertoire only
++  when the owner curates that by hand (edit the item, pick "Composed piece",
++  give it a form and/or dastgāh), and then groups like any curated Persian
++  item: under its dastgāh, or under "No dastgāh yet" without one.
+ - **Where work rows sit.** A work row renders after the stage's sections, not
+   physically between the sections that teach it: `courseStageSeeds` emits units
+   then works for every course, and reordering it would change the Guitar
+@@ -309,8 +317,9 @@ change the plan for every instrument; that is a separate decision for the owner.
+   imported: the owner has normalised them, and each teacher's instrument is
+   confirmed. They then belong to the class-logging flow and the archive
+   pipeline, not to this course.
+-- No dastgāh, form or composer fields on Khonyagar entries yet. Works group
+-  under their study source; dastgāh grouping would be a later data change.
++- No Persian identity (form, dastgāh, composer or gusheh) on Khonyagar
++  entries, and none inferred from a title. The owner curates that metadata
++  by hand, and My repertoire's routing is unchanged.
+ - No generated routine, and no change to the routine machinery or the Session
+   Plan.
+ 
+diff --git a/src/domain/khonyagarCourse.test.ts b/src/domain/khonyagarCourse.test.ts
+index 4cdd9df79c70f599f1463044434f706d06861260..08ad0ee79072accde1feba59b1bbd5f045c6d106 100644
+--- a/src/domain/khonyagarCourse.test.ts
++++ b/src/domain/khonyagarCourse.test.ts
+@@ -18,7 +18,9 @@ import { hasPersianScript } from './farsi';
+ import { KHONYAGAR_COURSE, KHONYAGAR_LESSON_TYPES, KHONYAGAR_PATHWAY } from './khonyagarData';
+ import { catalogForStage, seedPathways, stageIdFor } from './pathwaySeed';
+ import { stageUnits } from './pathways';
++import { UNCLASSIFIED_DASTGAH, groupByDastgah } from './persian';
+ import { isWork } from './repertoire';
++import { createSeedDB } from './seed';
+ import type { PathwayStage, PracticeItem } from './types';
+ 
+ const NOW = new Date('2026-09-22T09:00:00.000Z');
+@@ -551,3 +553,39 @@ describe('Khonyagar work identity', () => {
+     }
+   });
+ });
++
++describe('Khonyagar and My repertoire', () => {
++  // My repertoire (Repertoire.tsx) sends a Persian-family instrument's works
++  // through groupByDastgah; the page itself cannot render in this Node suite,
++  // so this asserts that function and the instrument family that routes to it.
++  it('an uncurated Khonyagar item stays out of My repertoire until the owner gives it a form or dastgah', () => {
++    let db = createSeedDB(NOW);
++    const tar = db.instruments.find((i) => i.name === 'Tar')!;
++    expect(tar.family).toBe('Persian');
++
++    const created: PracticeItem[] = [];
++    for (const group of K.groups) {
++      const stageId = stageOf(group.key);
++      for (const entry of catalogForStage(stageId)) {
++        expect(entry.persian).toBeUndefined();
++        const plan = planCatalogAddition(db, stageId, entry.key, entry, tar.id, NOW);
++        db = { ...db, items: plan.items, materials: plan.materials };
++        if (plan.created) created.push(plan.items.find((i) => i.id === plan.itemId)!);
++      }
++    }
++    // Not vacuous: every section and work row was added, and works are among them.
++    expect(created.length).toBeGreaterThan(106);
++    expect(created.some(isWork)).toBe(true);
++    // Nothing is inferred from a title: no item arrives with Persian metadata,
++    // so none reaches My repertoire on its own.
++    for (const item of created) expect(item.persian).toBeUndefined();
++    expect(groupByDastgah(created)).toEqual([]);
++
++    // Curated by the owner, it groups exactly like any other Persian item.
++    const [work] = created.filter(isWork);
++    const withForm = { ...work, persian: { form: 'چهارمضراب' } };
++    expect(groupByDastgah([withForm])).toEqual([{ dastgah: UNCLASSIFIED_DASTGAH, items: [withForm] }]);
++    const withDastgah = { ...work, persian: { dastgahAvaz: 'ماهور' } };
++    expect(groupByDastgah([withDastgah])).toEqual([{ dastgah: 'ماهور', items: [withDastgah] }]);
++  });
++});
+```
+
+**Full current text of every file the rework touched:**
+
+### AGENTS.md
+
+```
+# AGENTS.md — development rules for Practice Compass
+
+This file is the contract for anyone (human or AI) extending this app. Read it before
+adding features. The whole value of the tool comes from what it *refuses* to do.
+
+## The one rule above all
+
+Preserve the core loop: **one item · one mode · one focus · one result · one next action.**
+If a change blurs that loop or adds a second thing to think about per step, it's wrong —
+even if it's "useful".
+
+**The loop CLOSES: the next action is read, not just written.** `PracticeBlock.nextAction`
+was captured on every close and read nowhere, so the one thing deliberately decided last
+time never reached the moment it was written for. `ActiveBlock` now shows it at the top,
+before you start playing, via `lastNextAction` (`blocks.ts`, tested) — the most recent
+NON-EMPTY one, so a later block that recorded none does not blank out a decision that
+still stands. Anything the app asks you to record, it must eventually USE.
+
+## One canonical home per kind of information (schema v13)
+
+Four homes, and nothing may compete with them (`src/domain/practiceInformation.ts`, pure
+and tested; the list of retired keys lives there, not in prose):
+
+- **`PracticeItem.notes` — "Working notes".** The item's ONE notebook: what this piece
+  is, what your teacher said, what to watch. It has the item's lifetime, and it is
+  readable AND editable *while practising* — the point of writing something down is that
+  it reaches you at the moment it was written for.
+- **`PracticeBlock.observation`** — what happened in ONE recorded block.
+- **`PracticeBlock.nextAction`** — the one thing to try next time, decided at that
+  block's close and read at the next one. (`PracticeBlock.constraint` — a legacy,
+  optional authored condition shown on the practice screen and in block history — belongs
+  to the block too, and is validated with the other two. Ordinary Start supplies none;
+  existing values are kept and displayed, never a new capture control.)
+- **`lessonAgenda`** — questions for a teacher and commitments to a class (its own
+  section below).
+
+Nothing copies one into another automatically. Reflection at the close screen never
+overwrites the notebook; the notebook is never dumped into a teacher sheet.
+
+**A DERIVED VALUE IS NOT A FIFTH HOME.** The item's most recent block observation is
+read straight from the blocks (`latestObservation`, `blocks.ts`, tested) and rendered
+WITH ITS DATE wherever current context is wanted. It used to be cached onto the item as
+`lastObservation`, which is how one fact became two that could disagree. Derive it; never
+store it back.
+
+**v12 → v13 RETIRES the fields that competed, and that exception is BOUNDED AND ONE-WAY.**
+`currentProblem`, `bestStrategy`, `tags`, `item.lastObservation`, `block.bodyNote` and the
+fourteen Persian/Guitar WORKING-DETAIL fields (`shahed`, `ist`, `foroud`, `ornamentIssue`,
+`mezrabIssue`, `phraseLabel`, `importantNote`, `rightHandIssue`, `leftHandIssue`,
+`toneIssue`, `fingering`, `tempo`, `stringNoiseIssue`, `bodyTensionNote`) are REMOVED, not
+migrated into `notes` — the owner settled (2026‑09‑16, `DECISIONS.md`) that their content
+was dummy test data, and merging dummy text into the one canonical notebook is the failure
+mode, not the fix. The Persian/Guitar IDENTITY fields (`dastgahAvaz`, `gusheh`, `form`,
+`composer`, `lessonNumber`, `barRange`) stay: they say what the piece IS and they group the
+repertoire. This waiver covers exactly those enumerated fields and nothing else. It is NOT
+permission to reset practice history, ratings, reviews, commitments, or any future
+meaningful text.
+
+`retirePracticeText` is DELETION ONLY — it never writes a value — which is what makes it
+idempotent and makes re-running it incapable of resetting current canonical text. It reads
+no clock, so two devices migrate the same database identically on different days, and it
+runs on EVERY inbound database rather than only one declaring `fromVersion < 13`, for the
+reason `migrateToV12` already records for itself: a database claiming the current schema
+can still carry a stray retired key from a partial conversion or a hand-edited file.
+
+**AFTER ANY INSTALL, EVERY ATTACHMENT THE DATABASE DESCRIBES HAS BYTES ON THIS DEVICE.**
+One invariant, enforced at both doors: `decodeBackupFiles` refuses a FULL backup that
+describes a file it does not carry, and `importFullBackup` refuses a STATE-ONLY file
+(`files` absent) that names an attachment whose blob is not already here. Refusing only the
+first is a one-way trap — a full export carries bytes for exactly the attachments `data`
+describes and can only OMIT one whose blob it cannot find, so a device left holding
+metadata for absent bytes exports a backup it then refuses, and publishes a snapshot every
+other device refuses too, permanently. Dropping the dangling metadata instead would be
+silent loss of the owner's own record. Both refusals name the file and change nothing.
+
+**AND AN ATTACHMENT'S IDENTITY IS CHECKED AT EVERY DOOR, NOT AT THE ONE THE CHECK HAPPENED
+TO LIVE IN.** The rule that two attachments may not share an id sat inside
+`decodeBackupFiles`, which returns on its FIRST line for a file with no `files` key — so it
+ran for a full backup and for nothing else. A sealed review reproduced the consequence: a
+state-only import (and equally a sync pull, an archive restore, or either half of
+hydration) installed two metadata rows claiming one id, and because the export emits one
+file per describing row, the device's own next full backup carried two files sharing an id
+and was refused by its own importer — the same permanent one-way trap as the two mismatches
+above, arriving through the door nobody was watching. An id is what an attachment's bytes
+are KEYED by, so two rows claiming one id are two rows claiming one file. The check is in
+`validateDB` now — the one function every inbound door already runs — and
+`decodeBackupFiles` keeps none of its own: one place, six doors, rather than six chances to
+miss it. It is deliberately bounded to attachment ids and is NOT a general duplicate-id
+sweep across every collection, which the contract's own non-goals rule out.
+
+**AND THE EXPORT IS DERIVED FROM THE CANONICAL METADATA, SO THE APP CANNOT WRITE A BACKUP
+ITS OWN IMPORTER REFUSES.** The trap has a second mouth, and closing only the inbound one
+left it open: `buildFullBackupWithRev` used to derive `files` from the blobs actually
+STORED, which is the opposite mismatch — bytes the database describes nowhere.
+`decodeBackupFiles` refuses those as orphans ("belongs to nothing this file describes"), so
+the export was unrestorable here and on every device a sync published it to. They are not
+exotic: a state-only import MUST preserve local blobs (that is its own contract) while
+replacing the database that named them, and `deleteItem`/`deleteLesson`/`resetDemo` drop
+metadata synchronously while their `void deleteBlob(...)` cleanup can fail on its own. So
+`files` is built from `db.attachments` ∩ the blobs held, carrying the METADATA's `ownerId`
+— the one the importer validates against and writes back onto the blob row, so an
+export→import round trip is idempotent rather than a second opinion about ownership.
+Unreferenced bytes are not part of the database the backup is OF; they stay on the device
+UNTOUCHED, never deleted to make the two agree, because deleting them is exactly what the
+state-only contract forbids. The opposite mismatch is not fixable at export — dropping the
+metadata is silent loss, refusing to export leaves a device unable to back up at all — and
+is instead prevented at the two doors above, `addAttachment` writing the blob BEFORE its
+metadata.
+
+**THE SURVIVING TEXT IS VALIDATED AT EVERY INBOUND DOOR, AND NEVER COERCED.**
+`validatePracticeText` (the four homes' own string fields — the block's `constraint`
+included — and nothing else) runs inside
+`validateDB`, so every door — import, sync pull, Keep remote, archive restore, cold-start
+recovery, and BOTH halves of the persist middleware — refuses the same thing. Absent and
+EMPTY are both legitimate (emptying a notebook is a deliberate act); `null` reads as
+absent, because that is what a serialiser writes for "no value" and every reader already
+treats it as missing. A present value of the wrong type is REFUSED with the record named,
+never coerced: `String({})` is how a note becomes the literal text "[object Object]" and
+the owner's real words are gone. The unfinished block's scratch observation lives OUTSIDE
+`PracticeDB` (on the store's ephemeral `active`) so that function never sees it — it gets
+the same rule and the same refusal from `validateUnfinishedText`, called by the same
+hydration hooks.
+
+**ONE EDITOR FOR THE NOTEBOOK, AND IT NEVER LOSES WHAT YOU JUST TYPED.**
+`src/components/ItemNotes.tsx` is the only way Working notes are edited — Item Detail, the
+practice screen and a bound routine segment all render that one component, so there is
+never a second copy of the text or a second way to write it:
+
+- **Saving is EXPLICIT (a Done button), never blur-only.** Blur-only saving makes a stale
+  copy authoritative the moment anything steals focus.
+- **"Saved" waits for IndexedDB to acknowledge the write** (`storageSettled()`,
+  `src/store/idb.ts` — the persist adapter's own in-flight write, not a sleep). A FAILED
+  write keeps the text on screen with Try again and Copy, and never shows a Saved state.
+  Try again must work from the failed state: the store has already accepted the value, so
+  a "nothing changed, skip the write" shortcut would make the retry a silent no-op.
+- **The draft is TAGGED with the item it was typed for** and dropped rather than written
+  when that changes. A timer tick, a store update from elsewhere, or a routine crossing
+  into the next bound segment re-renders this component constantly; without the tag, a
+  stale editor can commit A's words onto B.
+- **AN IN-FLIGHT WRITE NEVER OWNS THE EDITOR.** The textarea stays live while IndexedDB
+  acknowledges, so words typed in that window are NEWER than the ones being written. A
+  settling write may only speak for the text it actually CARRIED: it clears the draft and
+  says "Saved." when the draft is still exactly that text, and otherwise re-issues the
+  write for what is on screen now. Clearing the draft on whatever settles — which is what
+  it did — dropped those words and put a success message over the older ones, and letting
+  the newer text simply sit there unsaved would lose it the moment the screen was left. The
+  same rule holds on the failure path: Try again writes what is on screen NOW, not the text
+  that failed. Only the LATEST save may act at all (`saveSeq` — ONE ownership test, not a
+  second `forItem` comparison nothing could ever make disagree with it), and the draft is
+  read through a REF, never the closure the write was issued in nor a ref mirrored by an
+  effect: `storageSettled()` resolves in a microtask that can land between a keystroke and
+  React's next render. LEAVING THE SCREEN AND SWITCHING ITEM ARE OPPOSITE CASES, and both
+  are checked: unmounting (a different route) keeps the ref alive through the write's own
+  closure, so words typed while it settled are saved on the way out; switching ITEM bumps
+  `saveSeq` and the write says nothing at all, because those words were typed for a
+  notebook that is no longer the one on screen — the pre-existing tag rule above, not a
+  new exception to it.
+- **Editing notes changes nothing else.** Not the clock, the elapsed figure, the running
+  state, a block, a result, a review or any SM‑2 value.
+
+## Keep admin overhead low
+
+- Starting a block must stay **under 30 seconds**; closing one **under 60 seconds**.
+  Any new field in those flows must be optional and have a smart default.
+- Never add a required field beyond an item title.
+- Rich metadata stays progressive: hidden until the user asks for it.
+
+## Prioritise the quick‑start flow
+
+- Smart defaults are a feature, not a convenience. Status → mode, item → focus,
+  10‑minute duration. If you add a concept, give it a sensible default too.
+- Inline item creation must keep working from the Start screen and from recommendations.
+- **Exactly two creation paths, both one-step.** Quick add = title only (Start's
+  inline create is also title-only, with a link to the full form that returns to Start
+  with the item preselected). The full form ("Add practice item", `/items/new`, also
+  inline edit) is KIND-FIRST: it asks what you're adding (gusheh / composed piece /
+  piece / étude / passage / technique — `src/components/itemKinds.ts`, tested) and
+  shows only that kind's identity fields, in three groups: "What are you adding? /
+  Connect it (optional) / First practice setup". Connections (study source with inline
+  create, pathway stage, lesson, parent work) are settable AT creation — no
+  create-then-edit round trips, and never a third half-detailed path. Item detail
+  shows a "Connected to" summary near the top.
+
+## Today is a session workspace, scoped to one instrument
+
+The user practises one instrument at a time ("I'm practising Setar now"). Today is
+driven by a persisted `sessionInstrumentId`: the switcher at the top picks the
+instrument, everything below it (recommendation, class work, reviews, pathway position,
+quick add, Start) is scoped to that instrument, and the primary recommendation must stay
+above the fold on a 390×844 phone. The cross‑instrument "Overview" is a deliberate,
+secondary choice — never the default. Never hard‑code a morning/evening schedule and
+never surface another instrument's work inside a session. The Session Plan and
+Routines are two independent, peer doorway cards (`PlanCard`/`RoutinesCard` in
+`Today.tsx`) — a time-budgeted session and following a routine are separate systems,
+and OWNER acceptance testing (2026‑08‑28) found nesting routines inside the Session
+Plan's expanded panel read as routines being subordinate to picking a duration, so
+they were pulled out into their own doorway. Both start collapsed (~50px) so the
+primary recommendation stays above the fold; each has its own open/close state and
+its own "Resume your plan"/"Resume your routine" takeover. Routines are scoped to the
+session instrument (`routinesForInstrument`), each row showing Edit and — when a
+segment is essential — a visible "Short on time — essentials only" button, plus "New
+routine" ("Create a routine" when there are none yet). Today is the ONLY surface an
+unplaced routine is reachable from at all, so its rows carry the same Edit/Start/
+short-on-time affordances StageDetail's `RoutineCard`/PathwayDetail's `RoutineRow`
+give a placed one.
+
+**THE TWO DOORWAYS SIT ABOVE THE RECOMMENDATION, AND THAT IS AN OWNER JUDGEMENT, NOT A
+DERIVATION.** The 2026‑09‑11 lane BUILT the other order — Practise now directly under
+the instrument switcher, with Plan and Routines beneath it — on the argument that
+orchestrating a session is a choice you make INSTEAD of taking the suggestion. The owner
+tried it on their own iPhone and preferred the original: Plan and Routines read as
+belonging at the top of the page, and recommendation-first felt less natural. The order
+reverted before the lane shipped, which is a PASSING outcome of that check, not a
+failure. Both orders keep the recommendation above the fold at 390×844, so nothing here
+follows from the phone constraint — do not re-derive this ordering from first principles
+and quietly flip it back. It changes only when the owner says so.
+
+## Review actions have honest, distinct semantics
+
+Practising (closing a block) is the ONLY thing that can complete a review or advance
+SM‑2 — but it does not always do either. **Practice is exposure; only eligible retention
+evidence advances spacing.** A good session on an item whose review is not yet due is real
+practice (minutes, result, observation, next action all recorded) and is not the review it
+was scheduled for: `decideReview` KEEPS the date, leaves `srReps`/`srEase`/`srIntervalDays`
+untouched and leaves the pending row OPEN. `srLastProgressDay` holds that to at most one
+advance per local calendar day, so re-arming a date or reloading cannot buy a second.
+Nothing else may complete a review at all. "Not now" hides a due review for the rest of
+today (no schedule change). Snooze
+(+2d) genuinely moves the due date on both the review and the item — never fabricate a
+result, and never leave a stale overdue item after an action. The Finish button freezes
+the clock (`pauseSession`) before the close screen; reflection time is not counted.
+
+**ANSWERING NOTHING IS NOT DECLINING.** A result is REQUIRED to save a block — the six
+options are already the first thing on the close screen, so this adds no field (r-quick-start
+holds: it makes a choice already present a required one), and "Save without a result" keeps
+`not_logged` reachable and DELIBERATE. `computeReviewOutcome` takes a tri-state
+`ReviewAnswer` (`'scheduled' | 'declined' | 'unanswered'`) and returns
+`completeOpenReviews` ALONGSIDE `nextReviewDate`, because they are ONE decision: a close
+carrying no result keeps the item's date AND leaves its open Review row OPEN, while a
+genuine decline still clears the date and completes the row. `closeSession` must never
+decide the row separately — completing every open row unconditionally, next to a
+`!scheduleReview` branch that cleared the date, is exactly how one skipped tap used to
+erase the next date, close the open review, leave SM‑2 state stale and drop the item out
+of Due reviews for good, all while the panel read "Should this come back? Yes" above an
+empty date field. The row transform is `completeOpenReviewsFor` (`scheduling.ts`, tested)
+so the array change is reachable from a Node test; `CloseBlock` states the mapping in one
+place and the escape hatch forces `'unanswered'` even when a result had already filled in
+a date. r-explainable-scheduling's "the date shown is the date saved" now includes when
+that date is deliberately left UNCHANGED.
+
+**THE CLOSE SCREEN LEADS WITH THE MUSICIAN'S WORDS, AND DERIVES THE DATE ONCE.** How it
+went, what you noticed and what to try next time are always visible and come BEFORE the
+minutes and the scheduler. The whole scheduling decision is ONE honest line — "Review in
+2 days · Repair · …" — with the date field, the review-type choice, "Why this date?" and
+the come-back Yes/No a single tap behind it. (It used to run 1689px at 390×844, with the
+engine's controls fully expanded before a result had been chosen, and a two-column grid
+whose right column stacked five review-type pills vertically.)
+
+There is exactly ONE `ReviewPlan` value in that component (`review`, a `useMemo`): the
+engine's plan for the chosen result with any manual correction folded INTO it. The
+collapsed line, the date field and the value handed to `closeSession` are three
+renderings of THAT object, so a divergent date is UNREPRESENTABLE rather than merely
+guarded against — there used to be a second `planNextReview` call seeding the field from
+a different invocation than the preview. `clampSchedulingParams(db.settings)` is threaded
+into that one derivation. The line itself comes from `reviewSummaryLine`
+(`src/components/format.ts`, tested): a pure FORMATTER that reports the plan's `dueDate`,
+`reviewType` and `rationale` and computes no date of its own. Once the owner sets their
+own date the rationale becomes "The date you chose." — quoting the engine's reason would
+explain a number it did not pick. Never reintroduce a second derivation here.
+
+**A MANUALLY CHOSEN DATE SURVIVES CHANGING THE RESULT WHEN NO AUTOMATIC PLAN EXISTS.**
+`pickResult` clears the manual `override` on every fresh result — a correction made
+earlier belonged to the date the PREVIOUS result's plan produced, so carrying it forward
+would pin a date to a judgement it was never made about. But a manual-mode item
+(`item.reviewMode === 'manual'`) has NO automatic plan for ANY result — `computeReview`
+returns `null` unconditionally in manual mode, before it even looks at `result` — so the
+owner's typed-in date was never tied to a particular judgement in the first place, and
+clearing it on every result change silently threw away a date they had just chosen. The
+restructure once did exactly that (`setOverride(null)` unconditionally), turning a
+deliberate "come back on this date" into an accidental decline the moment the musician
+changed which result they picked. `reviewOverrideSurvivesResultChange`
+(`src/components/format.ts`, tested against the real engine across all six results, both
+a manual- and an auto-mode item) asks the ENGINE whether its answer depends on the
+judgement at all: it calls `planNextReview` once per result and returns true when all six
+produce the same date. Reading `item.reviewMode === 'manual'` directly — which is what it
+used to do — was a PROXY for that question, correct only while manual mode was the sole
+way an item could have no per-result plan. It is not any more: a protected pending date
+(one the owner chose, or a snooze) is kept for every result too, so a mode check would
+clear a just-typed date on an auto-mode item whose date was never tied to a judgement
+either. Calling the engine is still a boolean GATE on whether a per-result plan exists at
+all, never a second value CloseBlock could render — CloseBlock keeps its single
+derivation, and this function returns no date.
+
+**THE DUE-REVIEW ROW GIVES THE ITEM'S NAME THE ROOM.** "Not now" + "+2d" + ▶ used to take
+243px of a 356px row, leaving the title 113px — about 13 characters of a Farsi name, the
+one thing the row exists to identify. The text now claims a whole line whenever the three
+actions cannot sit beside it (`flex: 1 1 220px` with `flex-wrap`) and WRAPS instead of
+truncating. All three actions keep their existing, deliberately distinct meanings: this
+is layout only.
+
+## Nothing replaces an unfinished practice session
+
+`src/domain/practiceSession.ts` (pure, tested) is the sibling of `practiceSignal.ts`: that
+module owns pure decisions about a running clock's SIGNALS, this one owns pure decisions
+about the unfinished SESSION. Two INDEPENDENT questions live there and must never be
+conflated:
+
+- **PRESENCE** (`hasUnfinishedPractice`, `decideReplacement`) — does an unfinished session
+  exist? That, and ONLY that, decides whether a whole-database replacement may proceed.
+  Never `running`, so PAUSING PROTECTS A SESSION RATHER THAN EXPOSING IT; the frozen
+  `active`+`activeRoutine` pair the persist `merge` produces is unfinished practice like
+  any other.
+- **PLAUSIBILITY** (`isStaleClock`, `proposedCloseMinutes`) — does this session's elapsed
+  figure still look like time someone played? That decides the minutes `CloseBlock`
+  proposes and the ATTENTION state, and NOTHING else.
+
+**A HEURISTIC ABOUT A DURATION NEVER BECOMES AN AUTHORITY TO DESTROY PRACTICE.** A stale
+verdict must never be wired to a destructive path, and `decideReplacement` must keep
+reaching the SAME decision for a stale session as for a live one (a session paused at
+three genuine hours crosses any sensible threshold — discarding it would lose real
+practice). Staleness may never be fed into `shouldKeepAwake` or `nextSignal` either.
+
+`active` lives outside `db`, so `withRevision` never bumps `rev` while you practise: a
+mid-block device looks UNCHANGED to `decideSync`, a remote change resolves to `pull`, and
+the in-flight block is destroyed with no archive and no prompt. So: AUTOMATIC sync
+(`syncNow`) checks the predicate BEFORE attempting and reports a distinct `deferred`
+SyncPhase — a background merge waiting its turn is not an error and must not be dressed as
+one — while DELIBERATE replacement (Import, Restore archive, Keep remote) gets an explicit
+refusal naming the session. The guard for the inbound paths is the FIRST statement of
+`importFullBackup` (`backup.ts`), before the JSON is even parsed: `replaceAllBlobs` below
+it destroys every attachment blob, so a check placed after it would wipe them while
+returning "nothing was changed". Every deliberate caller already surfaces
+`{ok:false,error}`, so no `Settings.tsx` change is needed.
+
+The inbound guard is checked TWICE, and the second one is what makes it hold: the first
+check is `importFullBackup`'s opening statement, but `await replaceAllBlobs(...)` below it
+yields to the event loop, so a tap that starts a block while that transaction is in flight
+would reach `importDB` — which nulls `active`/`activeRoutine` — with no guard between. The
+second check sits in the same synchronous tick as the install, with nothing awaited in
+between, so it is genuinely the last word. It refuses honestly: the blobs are already
+written by then, so the message says so and invites re-running the import rather than
+claiming nothing changed. Both checks take the CALLER'S INTENT (`importFullBackup(text,
+intent)`), because a sync pull that reaches them is still AUTOMATIC — `syncNow` checked
+before the network fetch, and practice can begin during it. It defers, and `githubSync.ts`
+carries that verdict back out to `applyOutcome` (`pendingDeferral`, module scope for the
+same reason `running` is) so the phase is `deferred`, never `error`: App.tsx's retry
+watches `deferred`, so an `error` here would stop sync until something else happened to
+trigger one — the silent outage this lane exists to prevent. Ordering is NOT reversed to fix
+this — `replaceAllBlobs` is one
+IndexedDB transaction, so a failed blob write rolls back and leaves blobs and `db` alike
+untouched, which installing the `db` first would give up.
+
+PRESENCE IS NOT THE WHOLE GUARD. `decideReplacement` has TWO blocking reasons, and both
+are about practice that would be DESTROYED — neither is a heuristic about a duration. The
+second is the local REVISION: an inbound snapshot may only be installed over the database
+it was compared with. A block started AND FINISHED while a pull is in flight leaves no
+unfinished session for presence to see. That block is not in the incoming snapshot, and —
+if it landed after the pre-sync archive was taken — not in the only other copy either, so
+installing the snapshot would destroy a minute that was genuinely played. So `importFullBackup(text, intent,
+decidedFromRev)` compares the `rev` the replacement was DECIDED against with the `rev` now,
+in the same call as the presence check (ONE call answering both, so no await can ever be
+slipped between them). `rev` is a monotonic counter bumped on every db mutation, never a
+clock — no timestamp enters a sync decision. It only moves on a user action: `useSyncStatus`
+is a separate store and no effect or timer writes `db`, so a quiet sync run never trips it.
+The baseline is anchored where the decision was actually made — `buildLocalSnapshot` in
+`githubSync.ts` records it (`syncBaselineRev`, module scope for the same reason `running`
+is) so the guarded window covers the remote fetch and the archive too, not just
+`replaceAllBlobs`. It does NOT read that number from the store itself: it takes the one
+`buildFullBackupWithRev` (`backup.ts`) returns, captured in the SAME statement as the
+database (`const { db, rev } = useStore.getState()`) and before `allBlobs()` yields. Read
+after that await, the baseline would pair an OLD copy of the data with a NEWER revision
+number, and a block finished while the attachment blobs were being read would make
+`decideReplacement` — which is itself correct — answer "nothing was written since" about a
+database that had been written to. The pure decision is tested; this WIRING is protected
+structurally, the same way `installDatabase`'s is: the revision is not reachable from
+anywhere but the statement that reads the database. It is passed IN, never read from module scope inside `importFullBackup`:
+a manual Import or an archive restore has no earlier decision point than its own call and
+defaults to the `rev` on entry, and a stale baseline would make it refuse for no reason.
+PRESENCE is answered first so a message that can name the blocking session still does
+(ac-8). This deferral needs no retry watcher of its own — there is no blocking session for
+the presence retry to watch clear, but the very write that raised it bumped `rev`, which
+App.tsx's quiet-period auto-sync already watches, and the next run sees both sides changed
+and offers the owner an explicit conflict with both copies preserved. That trigger is only
+reliable because A SYNC REQUEST ARRIVING WHILE ONE RUNS IS REMEMBERED, NEVER DROPPED
+(`rerunWanted` in `githubSync.ts`: `syncNow` sets it instead of returning into nothing, and
+the run loops once more when it is set). `running` used to make such a request a silent
+no-op, so a run outlasting the 30-second quiet period swallowed the single retry that
+revision had scheduled and then deferred for that very revision — permanently waiting on a
+condition nothing was watching. Remembering the request fixes that at the root, for every
+trigger (open, quiet period, back online, deferral cleared) rather than for one
+counterexample, and cannot spin: the flag is cleared at the top of each lap, so another lap
+needs a genuinely new request that arrived during the previous one. `resolveConflict` drains
+it too — a request that arrived while the owner was deciding is owed a run just the same.
+
+A stale clock is labelled wherever the block appears on Today — the In-progress card AND
+the "still running elsewhere" row (`StaleNote`) — because those two are exhaustive and
+labelling only the first left the same block silent after switching instrument or choosing
+Overview, where with no GitHub sync configured no deferral notice exists either. A stale
+ROUTINE carries no such note: a run has no single target to judge an elapsed figure
+against, and `segmentElapsed` already clamps each segment to its authored duration.
+
+The deferral is VISIBLE and BOUNDED, never a silent permanent outage: `SyncNotice`
+(`Layout.tsx`) renders `deferred` and says what it is waiting on, Today labels a stale
+clock wherever the block is shown, and the resolution is the owner's — Finish, correct the minutes, or
+Discard. The RETRY watches the BLOCKING CONDITION CLEARING (`deferredSyncRetry`, an effect
+in `App.tsx` keyed on presence), never `rev`: `closeSession` writes a block and bumps the
+counter but `cancelSession` is a bare `set({ active: null })` that writes nothing, so a
+rev-watching retry resumes after a finish and waits forever after a discard. Seed the
+previous-presence ref with the CURRENT presence, or an ordinary load reads as a
+present→absent transition and fires a spurious sync.
+
+**Installing a database clears the ephemeral state that pointed at the old one.**
+`installDatabase` returns the new `db` TOGETHER WITH `active`/`activeRoutine`/`activePlan`
+nulled, `notNow` reset and a `sessionInstrumentId` that survives only if it still resolves
+(`'all'` always survives). Its SIGNATURE is the guarantee: `importDB`, `resetDemo` and
+`clearAll` are each a single `set()` of its result, so installing a database WITHOUT the
+reset is something the code cannot express — which matters because the Node environment
+cannot import `useStore.ts` (it pulls in Dexie via `./idb`), so the unit test proves the
+DECISION and the shape protects the WIRING. There are SIX whole-database replacements, not
+four: `resetDemo` and `clearAll` are called directly on the store and never touch
+`importFullBackup`, so a fix living only there would silently miss two of the three install
+points. Deliberate erasure keeps NO guard — those actions are aimed at destroying the data
+and already confirm first, so refusing them would be obstruction, not safety.
+
+## Practice totals are calendar figures, not rolling windows
+
+`practiceTotals` / `practiceTotalsByInstrument` / `startOfWeekISODate` (`selectors.ts`,
+tested) answer "how much have I practised?" — a compact minutes-and-blocks line low on
+Today (BELOW the recommendation, never above: "Practise now" stays above the fold at
+390×844) and the full today / this week / all time per-instrument view on Insights. Do NOT
+reuse `blocksInWindow`/`totalMinutesInWindow` for these: they filter on HOURS, so `days:1`
+means the last 24 hours and `days:7` the last 168 — a block from late last night is not
+today's practice. The week starts **Monday 00:00 local**.
+
+**A block belongs WHOLE to the local calendar day it BEGAN**, with none of its minutes
+apportioned across midnight or the Monday boundary. This was challenged and the code
+settles it: `durationMinutes` is the figure the owner ATTESTED to and this lane makes it
+diverge from wall clock on purpose (an abandoned block proposes its target), so
+`endedAt - startedAt` is not the authored duration; and `endedAt` is optional and ABSENT on
+routine blocks (`applyRoutineRun` passes none), so apportioning would apply to some blocks
+and not others. Splitting would overrule the owner's own correction with a number they
+never attested to. Totals stay NEUTRAL COUNTS — no goal, streak, score, bar that fills or
+colour that judges. Relatedly, `instrumentBalance` takes its denominator from only the
+blocks belonging to the instruments it emits rows for, so the percentages sum to 100 when
+a caller passes active instruments with all blocks (Today does).
+
+A calendar figure needs a LIVE clock: Today and Insights tick `now` once a minute
+(`setInterval` in each page) rather than freezing it at mount, or a screen left open across
+midnight keeps reporting yesterday's blocks as today's — and a running block never gains
+its stale label. Insights passes ALL of `db.instruments` to `practiceTotalsByInstrument`,
+not just the active ones, because its "All instruments" row counts every block: filtering
+to active instruments left a retired instrument's history with no row while its minutes
+stayed in the total. Rows with no practice are dropped at the call site, so the selector's
+"one row per supplied instrument" contract is unchanged.
+
+## Hands-free practice: the screen stays awake, and the app announces the end
+
+The practice loop assumes you put the device down and play. While a practice clock —
+an ordinary block (`ActiveBlock`) or a routine run (`RoutineRunner`) — is genuinely
+RUNNING and its screen is VISIBLE, the app holds a Screen Wake Lock so the clock stays
+readable without touching anything; pausing, finishing, discarding, unmounting
+(navigating away) and the document going hidden all release it. WHETHER to hold the
+lock is a pure, tested predicate — `shouldKeepAwake({ hasClock, running, visible })`
+(`src/domain/practiceSignal.ts`) — true only when all three hold. There is exactly ONE
+owner of the lock (`useScreenAwake`, wired once per practice screen), so two can never
+be held at once. Reacquiring on `visibilitychange` back to visible is required by the
+Screen Wake Lock specification (the platform releases a held lock the moment the
+document becomes hidden) — not a browser-specific workaround. No wake-lock outcome,
+success, rejection, or unsupported, may ever influence a recorded minute: the whole
+elapsed-time family (`sessionElapsedSeconds`, `runElapsedSeconds`, `locateClock`,
+`skipCurrentSegment`, `aggregateItemMinutes`) stays exactly as it was before this
+existed.
+
+**The decision of WHEN to announce is pure and tested** (`src/domain/practiceSignal.ts`):
+`nextSignal(marker, elapsedSeconds, boundarySeconds)` announces AT MOST ONCE per call —
+if elapsed has passed more boundaries than the marker records, it announces once and
+advances the marker to the number ACTUALLY passed, never by one. This is what makes a
+background/lock catch-up correct: a phone that wakes up several boundaries later
+announces once and lands on the right one. The marker is a COUNT OF BOUNDARIES ALREADY
+ANNOUNCED, living as an optional `signalledThrough?: number` on the store's EPHEMERAL
+`active`/`activeRoutine` (useStore.ts) — never in `PracticeDB`, so no `SCHEMA_VERSION`
+bump, no migration, and it never syncs or lands in a backup. An ABSENT marker reads as
+zero (nothing announced yet) — the honest reading for a session persisted before this
+feature existed. Boundaries are the run's ordered cumulative END boundaries: an ordinary
+block passes `[targetMinutes * 60]`; a routine passes `segmentBoundaries(segs)`
+(`src/domain/routines.ts`) — the SAME numbers `locateClock` advances on, by construction,
+not a second cumulative sum recomputed in the runner. A deliberate Skip calls
+`acknowledgeThrough` instead, which advances the marker to match elapsed WITHOUT
+announcing — the user ended the segment themselves, so telling them it ended is noise —
+and clears every boundary at or before elapsed (not just one), since Skip can produce a
+zero-length or repeated boundary that is legitimate input, never malformed.
+
+**The visual state change is the guaranteed signal**, always delivered regardless of the
+wake lock or any device capability: an ordinary block reaching its target shows a
+durable "target reached" ring state and a growing overtime figure
+(`formatClock(elapsed - targetSeconds)`) for as long as the block runs — it does NOT
+auto-finish; practising past the target is ordinary, and only Finish or Discard ends a
+block. A routine segment boundary is perceptible for a defined window after arrival
+(never a single-render flash), and routine completion is already durably shown by the
+existing "Routine complete" screen. Audio and vibration (`playSignalCue`,
+`useScreenAwake.ts`) are FEATURE-DETECTED BEST-EFFORT ONLY, wrapped so any failure is
+silent, and are never part of any automated check: `navigator.vibrate` is unimplemented
+in Safari on iOS, and a WebAudio context needs a user-gesture unlock that happens on the
+page that starts the clock (Today/StageDetail/SessionPlan) — never on the practice
+screen itself, which hands-free practice, by definition, never taps. It may therefore be
+silent on the owner's own iPhone; the OWNER device checks record what was actually heard
+rather than asserting it. Widening the frame to unlock audio at the start gesture is a
+separate lane. Neutral and non-gamified throughout: a state change and a number, never a
+streak, score, or
+celebration.
+
+**The wake lock itself is one shared, port-injected coordinator**
+(`src/components/screenAwake.ts`) — no `navigator`/`window`/`document`, so its whole
+ownership state machine (at most one outstanding request and one held sentinel; a
+rejected or unsupported acquisition swallowed silently; a pending acquisition that
+resolves after being disabled released immediately rather than stranded held) is
+reachable from an ordinary Node test. `src/components/useScreenAwake.ts` is the thin
+React/browser adapter that feature-detects (`'wakeLock' in navigator`) and supplies the
+real port, and wires `visibilitychange`.
+
+**Secure-context constraint, and it is NOT only the wake lock.** This note began as a
+wake-lock note and was read as one, which is how the same environment gap came back as a
+production-looking failure. THREE of this app's capabilities are withheld outside a secure
+context, and plain http:// on a LAN address is not one:
+
+- `navigator.wakeLock` — `undefined`, so hands-free practice cannot be exercised at all.
+- **`crypto.subtle` — `undefined`, while `crypto` itself is still present.** This is the
+  sharp one, because nothing about it reads as an environment gap: `sha256Hex`
+  (`canonical.ts`) is the content-identity hash behind BOTH whole-state sync comparison
+  and `parseSourceIndex`'s recomputation of the published index digest, so Sync now and
+  Refresh Setar archive fail TOGETHER, in one shared function, with the property stack
+  trace `Cannot read properties of undefined (reading 'digest')`.
+- The **service worker**, therefore the installed PWA and its offline capability — the
+  app's core promise — does not register at all.
+
+MEASURED, on the owner's own network (2026‑09‑18): `http://192.168.0.113:4173/` gives
+`isSecureContext: false`, `typeof crypto.subtle === 'undefined'`; the NAS over
+`https://192.168.0.20:...` gives `isSecureContext: true` with `crypto.subtle` present,
+self-signed Synology certificate and all — **HTTPS is a secure context whether or not the
+certificate is trusted**, so a LAN NAS route needs no public certificate to work. A build
+mirrored by `scripts/deploy-nas.sh` and opened over that HTTPS origin is the genuine route;
+`http://localhost` also qualifies, because browsers privilege localhost deliberately, which
+is exactly why no test here can see any of this.
+
+Production (GitHub Pages) is HTTPS and unaffected, and so is the installed iPhone PWA. This
+repo has no branch-preview deployment — `.github/workflows/deploy.yml` publishes only on
+push to `main` — so plain-HTTP LAN serving of an unmerged branch cannot exercise any of the
+three. Before drawing any conclusion about a secure-context-dependent feature from an
+unmerged branch, confirm `window.isSecureContext` on the ACTUAL test device and establish a
+genuine HTTPS route first.
+
+**The answer to this is a route, never a fallback.** `parseSourceIndex` REFUSES with a named,
+actionable sentence (`INSECURE_CONTEXT_REFUSAL`, `sourceArchive.ts`) checked BEFORE the
+file's own size/JSON/structure/digest order, because it is a fact about the DEVICE and no
+file can pass on a device that cannot hash — sending the owner to fix an index that is
+perfectly good is the failure mode a file-shaped error message produces. It does NOT hash
+some other way and carry on: the digest is the refresh IDENTITY (skipping it is how altered
+content gets reported "Already current"), and a pure-JS fallback would repair one of the
+three capabilities above while implying plain http:// were supported. `src/store/archiveIndex.test.ts`
+holds this closed with `crypto.subtle` removed exactly as a browser removes it, at the
+GitHub refresh — the one entry point the UI actually reaches — and at `readIndexFile`
+beside it, which is the same decoder and currently has NO production caller (an
+unwired fallback, noted here rather than left to be discovered as dead code).
+
+**SYNC IS NOT FIXED BY THIS AND CANNOT BE, IN THIS LANE.** `hashState` reaches
+`crypto.subtle` through the same `sha256Hex`, so over plain http:// **Sync now still
+throws the raw `Cannot read properties of undefined (reading 'digest')`** —
+`canonical.ts` is outside this change's allowed paths and `githubSync.ts`/`syncEngine.ts`
+are forbidden by it. That failure is confined to a non-secure origin, where the app is
+not the installed PWA and has no offline capability either; on HTTPS it does not arise.
+Giving Sync the same named refusal is a separate lane, and is a WORDING change at a
+boundary, never a second hash.
+
+## Hard "do nots" (require explicit user instruction to change)
+
+- ❌ **No gamification** — no streaks, points, badges, XP, leaderboards, confetti,
+  or fake "mastery %". Progress is shown as honest status + result, nothing else.
+- ❌ **No backend, no auth server, no service of our own.** The app is local‑first:
+  **IndexedDB (Dexie) is the source of truth** on each device (app state in the `kv`
+  table, attachment blobs in the `attachments` table) and everything works offline.
+  **Amended by explicit user decision (2026‑07‑11):** device sync IS sanctioned — via
+  the **user's own GitHub repo**. The engine (`src/store/syncEngine.ts`, port-injected
+  and fully unit-tested; GitHub transport in `gitRemote.ts`; wiring in `githubSync.ts`)
+  publishes whole snapshots ATOMICALLY with the Git Data API: blobs → tree → commit →
+  fast-forward-only ref update, so a race or partial failure never leaves a broken
+  remote. A brand-new EMPTY data repo is bootstrapped first via the Contents API
+  (`RemotePort.initialize()`) — the git-data endpoints 409 on an empty repo — then the
+  first snapshot commits as a child of that bootstrap commit; init failures surface a
+  clear message with the manual README fallback and never leave a partial snapshot. Decisions are three-way CONTENT-HASH comparisons (`decideSync` +
+  `canonicalStringify`/`hashState` in `src/domain/`), never timestamps — pathway-only
+  edits and deletions sync like everything else, and a store middleware
+  (`src/store/revision.ts`) bumps a `rev` counter on every db mutation. Both-changed =
+  explicit two-button conflict ("newest" is a hint, never an auto-winner), and BOTH
+  copies are preserved before any replace: the local copy goes to an in-app restore
+  slot (idb) and an `archive/…` branch; the remote copy stays reachable as the parent
+  commit. Legacy `state.json`+`files/` remotes stay readable; the first new push
+  migrates the format with the old snapshot kept in git history. Never a silent merge,
+  never per-field magic, never a custom server. Manual export/import stays as the
+  fallback. Free tiers only; no paid services.
+- ❌ **No AI or audio analysis** in v1 — no tone scoring, pitch detection, posture
+  tracking, or "AI teacher" judgement. The app organises; it does not grade.
+- ❌ **No guilt‑driven copy.** Insights are neutral observations, never nags.
+
+## The Pathway is a trust anchor — keep it that way
+
+Pathways exist so the user can **stop deciding what's next and just practise**, at their
+own pace, on a route they trust. Protect that:
+
+- **The item is the only unit of work — pathways are a view over items.** There is no
+  separate "step" object. A `PracticeItem` may carry a `stageId` (placing it inside a
+  pathway stage), a `strand`, and a `catalogKey`. Stage progress is *derived* from the
+  mastery status of the items in it (`itemStageState` in `pathways.ts`). Never reintroduce
+  a parallel to-do list next to items.
+- **The catalog is reference data in code, not persisted.** `pathwaySeed.ts` defines
+  per-stage `CatalogEntry` suggestions (gushes, lesson areas) with `about` guidance for
+  conscious practice — for the Classical Guitar Shed levels those entries are GENERATED
+  from the course's own tree (`courseSeed.ts` / `courseData.ts`; see "A COURSE is
+  reference data in code" below), which changes where they come from and nothing about
+  what they are; `addFromCatalog` turns one into a real item with one tap. The new
+  item is honestly **"Not practised yet"** (status `new`, zero stats) with an immediate
+  Undo — adding is organisation, not progress. Label suggestions as reference aids, never
+  canonical. Improving the catalog needs no migration; keep entry keys stable per stage.
+- **Adding from the catalog is losslessly reversible.** The Undo is DURABLE (persists until
+  dismissed or the item is practised — no timeout), and a fresh catalog item shows a "Remove"
+  affordance on its row and in the item's "Connected to". `isLosslesslyRemovable`
+  (`pathways.ts`, tested) gates this: `catalogKey` set AND status `new` AND zero blocks AND
+  `timesPractised === 0`. The store's `removeCatalogItem` re-checks the predicate against
+  LIVE blocks before delegating to `deleteItem`; once anything is logged, only the ordinary
+  delete-with-confirm remains. This is the one place a stage row grows a second 44×44 action
+  (− beside ▶); it disappears the moment the item is practised.
+- **Structure, not gamification.** Show honest position (items solid / in progress /
+  suggestions remaining). No streaks, scores, or fabricated mastery %.
+- **Pathways/stages stay editable data** (`pathways`, `pathwayStages`, `pathwayRoutines`)
+  with full CRUD. Sections are the stages' `group` string (rename via `renameSection`;
+  new stages pick their section explicitly). Deleting a stage/pathway must never delete
+  items — only detach them, and clear any stale `currentStageId` pin.
+- **Routines are ordinary editable data belonging to an instrument** (`src/domain/routines.ts`,
+  tested; CRUD in `src/store/useStore.ts`; editor at `src/pages/RoutineEdit.tsx`, route
+  `/routine/new` or `/routine/:id/edit`). `PathwayRoutine.instrumentId` is optional at rest
+  (a pre-v11 or General-pathway routine may have none — never fabricated) but REQUIRED for
+  every routine created from now on; editing an already-unscoped legacy routine (e.g. just
+  renaming it) must not invent one either — `RoutineEdit.tsx` defaults the Instrument field
+  to the existing routine's own value (possibly none), never to `instruments[0]`, and only a
+  brand-new routine requires a choice before Save is enabled. `pathwayId`/`stageId` are
+  optional PLACEMENT, not identity, so a routine can exist unplaced ("my Setar warm-up");
+  deleting a pathway or stage DETACHES its routines (clears the placement) rather than
+  deleting them — pathway deletion clears both `pathwayId` and `stageId`, stage deletion
+  clears only `stageId`. `RoutineSegment.itemId` optionally binds a segment to a real
+  `PracticeItem`; a bound itemId must always match the routine's instrument, enforced at
+  every edge (item deleted → unbind everywhere; item's instrument changes → unbind from
+  now-mismatched routines; routine's instrument changes → clear mismatched bindings and
+  detach an incompatible placement; pathway's instrument changes → detach an incompatible
+  placed routine) — never by silently rewriting either side's instrument. `retargetRoutineInstrument`
+  (`routines.ts`) is the one place these invariants are checked, and the store's `addRoutine`/
+  `updateRoutine` call it UNCONDITIONALLY on every create and every save, not only when the
+  instrument changed — a form is never trusted on faith for bindings or placement it didn't
+  actually re-derive. That check also covers a `pathwayId`/`stageId` that doesn't actually
+  resolve, not just one whose instrument mismatches: `addRoutine`/`updateRoutine` look up the
+  routine's claimed pathway AND stage live and pass both into `retargetRoutineInstrument`,
+  which never treats an unresolved `pathwayId` as an unscoped (therefore "compatible") General
+  pathway just because the lookup came back `undefined` — a placement pointing at a pathway
+  that no longer exists is cleared entirely, and a `stageId` that resolves to a *different*
+  pathway's stage is cleared on its own, leaving an otherwise-valid `pathwayId` placement
+  untouched. This is deliberately a save-time check, not a live one: editing a
+  routine while it is ACTIVELY RUNNING (unbinding an item, changing the instrument) is
+  allowed with no "is this active" guard, because `RoutineRunner.tsx` freezes the run's
+  segment list (`activeRoutine.authoredSegments`/`segs`) at start and never re-derives it
+  from the routine's current data — so a mid-run edit can never shorten or desync the
+  in-flight run, and `finishRoutine` still records the genuinely-elapsed minutes against
+  whatever item was actually practised. Discarding that instead would silently lose real
+  practice, which nothing in this app is allowed to do. Finishing a run writes **at most one
+  block per distinct bound item, never one per segment** — `aggregateItemMinutes` sums the
+  ACTUAL elapsed running time across every visit to that item's segments (the seeded CGS
+  Stage 1 routine repeats "Chunk chords" four times on purpose). The block's result stays
+  the factory default `not_logged`: a routine records time, never a judgement, and never
+  completes a review or advances SM-2. `focusForItem` (`src/domain/defaults.ts`) is the
+  shared strong focus default — the same one `startItemSession` uses — so a routine block
+  is indistinguishable from starting that item directly; do not reintroduce a third copy of
+  that fallback expression. The run in progress lives in the store as `activeRoutine`
+  (ephemeral — never in `PracticeDB`, same shape as `active`/`activePlan`), not component
+  state: navigating away (nav-bar tap, browser back) never silently loses genuinely-elapsed
+  bound-item practice, matching how an active block already survives navigation, and only
+  one routine can run at a time — starting a different one while another is active redirects
+  to resume it instead of overwriting its in-flight time. More generally, only ONE practice
+  clock of any kind runs at a time, enforced by the START **and** RESUME half of both:
+  `startSession` (so `startItemSession` and Session Plan's `beginPlanSegment`, which both
+  route through it) and `resumeSession` both refuse while `activeRoutine` is set;
+  `startRoutineRun` and `resumeRoutineRun` both refuse while `active` is set — the same
+  guard pair in each shared function covers every caller, rather than trusting each page to
+  check both. Resume needs the same guard as start: `active`/`activeRoutine` are both
+  persisted (`partialize`), so a dual state can reach a device from before this guard
+  existed, and resuming either clock without checking the other would tick both at once, the
+  same bug as a fresh concurrent start. Without either half, an ordinary block and a routine
+  could run concurrently and log the same wall-clock interval twice. Guarding start and resume
+  is not enough on its own: those guards only run on an in-app action, but the persisted dual
+  state itself re-enters the store on every load through the persist middleware's `merge` —
+  the only path by which a whole `active`+`activeRoutine` pair can reach live state without
+  going through either guard (`importDB`/`resetDemo`/`clearAll` all explicitly null both, and
+  a sync pull replaces only `db`) — so `merge` is the one place this closes for good. If
+  `merge` finds both `active` and `activeRoutine` set, it freezes both (the same
+  accumulate-and-stop transform `pauseSession`/`pauseRoutineRun` already do): each keeps
+  whatever time had genuinely elapsed, but neither is left `running` with a live timestamp to
+  keep ticking from, so a stale dual state can never silently double-log time going FORWARD
+  again. The historical overlap up to the moment of the freeze is deliberately left on both
+  sides rather than guessed away — there is no way to know from the data alone which of the
+  two was the "real" one, and discarding either would silently lose genuinely-elapsed practice,
+  which nothing in this app is allowed to do; it becomes a stale pair the ordinary finish/
+  discard flow (and then the same start/resume guards) makes the user resolve one of, same as
+  any other unclosed block. `RoutineRunner.tsx`'s "an ordinary block is already running"
+  redirect applies even to the routine the store considers "mine": once both can exist as a
+  frozen (not just running) pair, showing the routine screen just because it's the active one
+  would land the user on a Resume button that silently no-ops (`resumeRoutineRun` refuses
+  while `active` exists) — redirecting unconditionally to `/active` gives one deterministic
+  screen to resolve first, instead of a dead button on whichever screen they happened to load.
+  The pages that start a
+  clock (`Today.tsx`, `StageDetail.tsx`, `RoutineRunner.tsx`, and — for the out-of-scope
+  pages that still `navigate('/active')` after a now-blocked start — `ActiveBlock.tsx`
+  itself) resolve the conflict by redirecting to whichever clock is actually running instead
+  of leaving the user on a dead screen. `RoutineRunner.tsx` derives
+  remaining time from a wall-clock elapsed-seconds value (`runElapsedSeconds`/`locateClock`
+  in `routines.ts`), the same accumulated-plus-live-since-a-timestamp shape as
+  `sessionElapsedSeconds` — so pausing genuinely freezes it and a backgrounded/locked phone
+  catches up across MULTIPLE segment boundaries at once rather than losing time or advancing
+  one tick at a time. Skip clamps the current segment's effective duration to whatever
+  actually elapsed (never the full authored minutes); a segment played to completion keeps
+  its full duration. Choosing "short on time" (`segmentsForRun`) drops every non-essential
+  segment, honouring the syllabus's asterisk rule. "Finish routine" (mid-run) always saves
+  whatever bound-item time has genuinely elapsed via the same `finishRoutine` path as natural
+  completion — never a separate discard — with a caption stating that plainly, since ending
+  early must never silently fabricate or silently lose practice. Today's Routines card is
+  documented in its own bullet above.
+- **The current stage is the user's choice.** Teacher-led work jumps around:
+  `Pathway.currentStageId` (pin) always wins; "first incomplete stage" is only the
+  fallback. Never treat linear order as truth for Setar/Tar.
+- **Pieces can have parts** (`parentItemId`): parts are ordinary items grouped under a
+  piece/étude, with a deterministic "practise this part now" pick (`pickNextPart`) and a
+  calm stall hint (`stallHint`) — smaller unit or new strategy, never quotas.
+- **"My repertoire" is a DERIVED lens, not new structure.** Repertoire has exactly
+  three views: **Pathways · My repertoire · Practice list**. A "work" is any top-level
+  item with Persian identity (dastgāh/form/composer/gusheh) or a full piece/gusheh type
+  (`isWork`/`repertoireWorks` in `src/domain/repertoire.ts`, tested). Persian works
+  group by dastgāh via `groupByDastgah` (`src/domain/persian.ts` — folds spelling
+  variants, labels with the user's own majority spelling, standard dastgāh order) with
+  radif gushehs and composed maestro pieces side by side; other instruments group by
+  study source. Parent works appear ONCE; parts stay nested (never standalone
+  duplicates). Form/composer are compact metadata + filter chips, never a deep
+  hierarchy. Dastgāh/form suggestions are datalists (reference aids), free text always
+  wins. Never invent a parallel "pieces" object or a guitar-specific model.
+- **Sources stay simple.** A Material is instrument + one clear name + kind + status +
+  note. Piece-level detail (dastgāh, gusheh, composer, teacher) belongs on items, never
+  on sources — the removed parent-title/section/teacher-source fields must not return.
+  Sources are reached from Repertoire (not More), and are creatable inline from the
+  item form.
+- **Seeds are honest starting points, never fabricated authority.** Guitar = CGS. Setar =
+  a radif/dastgāh map (teacher-driven, explicitly "reorder me"). Tar = the Honarestān
+  method. Dastgāh intros use standard characterisations; per-gushe `about` text stays a
+  generic conscious-practice prompt (shāhed / ist / forud) — the teacher's account is the
+  authority, never invent specifics as if canonical.
+- **Calm, self-paced copy.** "Move on when it feels right, not by a deadline" is the voice.
+
+## Lessons (classes) and the deadline exception
+
+`Lesson` records (per instrument, date + free-form notes) support the user's real
+workflow: record the class, rewatch it, type up notes (often **in Farsi** — all free-text
+fields must stay direction-aware; `.input`/`.textarea` carry `unicode-bidi: plaintext`,
+which is the only place that rule is set — it is NOT global, and display text gets its
+direction from the grouping rule below), then
+create/link the concrete practice items (`lesson.itemIds` — a link, never ownership;
+unlinking keeps the item). "Originated in this lesson" (`itemIds`) is separate from
+"prepare this FOR that class" — a `preparation` entry in the lesson agenda (see below),
+which gives a priority boost climbing towards ITS OWN class's date
+(`lessonUrgencyScore`). This is the one sanctioned "deadline" in the app — a monthly
+class is a real commitment, not a manufactured streak. Keep it per-instrument and
+generic (future Tar/Guitar teachers), never guilt-toned. Attachments belong to an item
+OR a lesson (`AttachmentMeta.ownerType/ownerId`; blobs keyed by `ownerId` in Dexie) for
+SMALL files (PDFs/photos/short audio, size-capped). **Full class videos — and score
+PDFs/docs — are NAS references, never bytes:** `Lesson.recordings` (`LessonRecording`)
+holds title + a relative NAS path (or full https URL) + size/notes + an optional `kind`
+(`LessonFileKind` = video/pdf/doc/audio; schema **v9** stamps legacy refs `kind:'video'`).
+`resolveRecording` (`src/domain/recordings.ts`, tested) returns a discriminated
+`ok|no-base|bad-base|empty` result — the scheme-less-base bug is fixed by
+`normalizeBaseUrl` (prepends `https://`, rejects non-http(s), validates via `new URL`);
+`resolveRecordingUrl`/`needsBaseUrl` are thin wrappers. It joins the ref under the
+per-device NAS base URL (Settings, localStorage) and opens only on explicit tap — never at
+startup, never in IndexedDB/sync/backups; a `bad-base` never `window.open`s. Removing a
+reference never touches the NAS file. Lessons carry an optional `number`
+(`nextLessonNumber` prefills it, editable, never required; shown as "Class N · date"); refs
+render video-first then scores/docs with kind icons. The user's Setar class history imports
+additively via `buildSetarClassLessons` (`src/domain/setarClasses.ts`, tested) →
+`importSetarClasses`, which also **backfills** missing refs (video + one per PDF/doc,
+path-deduped) onto already-imported lessons — idempotent. `SETAR_CLASS_SESSIONS` lives
+between `// [scan:begin]`/`// [scan:end]` markers and is regenerated from the real NAS
+folder by `npm run scan:setar` (`scripts/scan-setar-classes.mjs`, stdlib, dry-run by
+default; pure helpers unit-tested) — references only, never copying bytes.
+
+## Lesson commitments and questions are ONE typed collection (schema v12)
+
+`PracticeDB.lessonAgenda` is the single home for "prepare this before that class" and
+"ask this at that class" (`src/domain/lessonAgenda.ts`, pure and tested; queries in
+`questions.ts`; UI in `src/components/LessonAgenda.tsx`). It replaced the item's rolling
+`assignedForLesson` boolean and its single mutable `teacherQuestion` string, neither of
+which could name WHICH class it meant or hold more than one answer.
+
+- **Two kinds, one discriminated union.** `preparation` links an item to a lesson;
+  `question` carries its own text, an OPTIONAL item, a lesson target and an open → asked
+  lifecycle with an optional answer. Never separate independently toggleable booleans
+  for next-class / asked / archived / completed.
+- **A commitment names ITS OWN class, and that class's date is its only deadline.**
+  `preparationDatesByItem` is the ONLY channel by which lesson intent reaches practice
+  priority. A commitment for March never inherits January's deadline, a past commitment
+  carries none, and an unassigned one carries none.
+- **A QUESTION CHANGES NO PRACTICE PRIORITY, EVER.** It used to add three points and
+  quietly reorder the day around a note to self.
+- **An entry with no lesson is visibly UNASSIGNED, never guessed onto a class.** New
+  entries default to the nearest upcoming lesson on that instrument with the date named
+  on screen; with no future lesson they are captured unassigned.
+- **Questions are selected BY LESSON ID** (`questionsForLessonId` /
+  `openQuestionsForLessonId`), not by instrument — every future class used to show the
+  identical list. `ClassQuestions` still exports them (Copy / Download / print), and a
+  refused clipboard now says so in a live region and offers a selectable textarea.
+- **Asked is explicit and reversible, and stays HISTORY.** Marking asked logs no
+  practice and changes no urgency; the entry leaves the open lists, stays with the class
+  it was asked at, and is never copied forward. An unasked question on a past class
+  stays there until the owner explicitly moves it (`retargetEntry`).
+- **Detaching preserves identity.** Deleting a lesson leaves its entries unassigned with
+  `detachedFromLessonId` set; deleting an item removes its preparations (a commitment to
+  prepare something that no longer exists means nothing) but KEEPS its questions with
+  `detachedFromItemId` — a question and the teacher's answer are the owner's record of a
+  class, not a property of the item. Nothing here deletes an item or its practice.
+- **A question is never cleared by practising.** `CloseBlock` can raise one; it becomes
+  its OWN entry and never overwrites another, and raising it does not commit the item to
+  a class.
+
+**The v11 → v12 migration converts legacy intent exactly once, and guesses nothing.**
+`migrateToV12` turns each `assignedForLesson === true` into ONE unassigned preparation
+and each non-empty `teacherQuestion` into ONE unassigned question — whatever the boolean
+said, because the two were always independent facts. It reads NO clock (its timestamps
+come from the item's own), so the same database migrates identically on two devices run
+on different days. Multiline text stays ONE question. Ids are deterministic
+(`prep:<itemId>` / `question:<itemId>`, with a `~2` suffix only when an unrelated entry
+already owns one), the conversion is presence-aware, and the legacy fields are removed
+only once their content is represented — so it is idempotent, including over an
+already-current database whose agenda is legitimately empty.
+
+**"REPRESENTED" MEANS SAME CONTENT, NOT MERELY A MATCHING ID.** A sealed review found
+`represented()` treated a matching generated `id`/`kind`/`itemId` alone as proof a
+question was already there — so a legacy `teacherQuestion` whose generated id happened to
+already name a DIFFERENT existing question (partial migration, a hand-edited file, an
+interrupted write) was silently DROPPED, because the pre-existing entry with the same id
+looked like "already represented". A preparation carries no content beyond the link
+itself, so any matching entry genuinely represents it, but a question's content IS its
+text: `represented()` now also compares that text, and a same-id/different-text match
+falls through to `freeId` exactly like an unrelated collision, so BOTH questions survive
+under distinct ids. This step also now runs on EVERY inbound database, not only one
+declaring `fromVersion < 12`: a database claiming the CURRENT schema can still carry a
+stray `assignedForLesson`/`teacherQuestion` from an incomplete conversion, and gating on
+the declared version silently accepted that leftover with nothing to show for it. Running
+it unconditionally costs nothing extra on genuinely current data — it is a no-op wherever
+neither legacy field survives.
+
+**Inbound validation rejects invalid NEW intent and tolerates legacy debris — but only
+where "legacy debris" is actually true.** `validateLessonAgenda` + `validateSchedulingFields`
+run inside `validateDB`, before `replaceAllBlobs` and before any install: unknown kinds,
+missing ids, duplicate ids, a missing instrument, empty question text, unreadable dates
+and a target that RESOLVES to a different instrument all refuse the import with
+actionable detail. A DANGLING `lessonId` is REFUSED: this app never leaves one dangling on
+its own — `deleteLesson` always converts a live `lessonId` to `detachedFromLessonId` (see
+`detachLesson`), so a `lessonId` that is neither absent nor resolving is invalid new
+intent, not legacy debris to wave through. A sealed review reproduced `validateDB`
+accepting `lessonId: 'nonexistent'` before this.
+
+**A DANGLING LIVE `itemId` IS REFUSED FOR THE IDENTICAL REASON, NOT TOLERATED.** This
+section previously tolerated it on the theory that the v11→v12 migration mints entries
+from `db.items` at the moment it runs, so an item deleted afterwards could leave its own
+agenda entries pointing at nothing. A sealed review found that theory does not hold
+against the app's own REAL producer: `deleteItem` (`useStore.ts`) always calls
+`detachItem` in the SAME synchronous update that removes the item — a preparation naming
+it is removed outright, and a question's `itemId` is converted to `detachedFromItemId` —
+so there is no in-app path that leaves a live `itemId` dangling any more than there is for
+`lessonId`. Preparations and questions alike now require a PRESENT `itemId` to resolve to
+a real item. A GENUINELY DETACHED record — `detachedFromItemId` set, `itemId` absent — is
+unaffected: `detachItem` destructures `itemId` OUT rather than setting it `undefined`
+(the same shape `detachLesson` already used for `lessonId`), so this strict check never
+sees one to reject, and `io.test.ts` proves that against the real `detachItem` producer,
+not a hand-built approximation of its shape.
+
+**CALENDAR VALUES ARE CHECKED FOR REAL VALIDITY, INCLUDING A QUESTION'S OWN `askedAt`.**
+`nextReviewDate`/`srLastProgressDay`/a review's `dueDate` (`isValidISODate`,
+`scheduling.ts`) and a question's `askedAt` (`isValidISODateTime`, `lessonAgenda.ts`) all
+round-trip their calendar components through `Date.UTC` rather than trusting a shape
+regex or `Date.parse` alone: `/^\d{4}-\d{2}-\d{2}$/` (or its date-time equivalent) happily
+matches `"2027-99-99"` and `"2026-02-30T12:00:00.000Z"`, and `Date.parse` silently
+NORMALISES an out-of-range day (February 30th becomes March 2nd) rather than rejecting
+it. A sealed review reproduced `askedAt` accepting exactly that string — the date-only
+check had already been fixed once, but its date-TIME sibling in a different file had not.
+The two checks stay small and separately owned, one per file, rather than merged into a
+shared import.
+
+**THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO, NOT ONLY `validateDB`'S IMPORT-PATH
+CALLERS.** A sealed review found Zustand's own persist `migrate`/`merge` (`useStore.ts`)
+called `migrateToCurrent` directly, bypassing everything above: a persisted schema NEWER
+than this build understands got silently stamped down to `SCHEMA_VERSION` by
+`migrateToCurrent`'s own final line and hydrated anyway, and an already-current v12
+database carrying a dangling live `itemId` or an impossible `askedAt` entered live state
+unchanged — reproduced through the real Zustand `persist.rehydrate()`, not merely
+`validateDB` called by hand. Both hooks now call `validateDB` itself — the SAME function,
+not a parallel check — so hydration refuses exactly what every other inbound door already
+refuses. Letting it THROW there (never caught) is deliberate: `hydrate()` only calls its
+own raw `set()` once `migrate`/`merge` return normally, and only persists the result back
+to storage after THAT — a thrown validation error rejects the whole promise chain before
+either happens, so a refused hydration leaves BOTH the live state and whatever is actually
+on disk exactly as they were, never a downgraded-and-relabelled or partially-installed
+in-between. The gate that flips `hydrated: true` deliberately stays UNFLIPPED on a refusal
+rather than forcing it open: every external call to `useStore.setState` — the only way to
+flip it — is itself wrapped by this same persist middleware to re-persist the current
+state immediately afterwards, so forcing it open here would write the live (fallback)
+database straight back over the very data a refusal, above all a genuinely newer schema,
+exists to protect. `getLastHydrationError()` (`useStore.ts`) still surfaces WHY, as a
+plain module variable rather than store state, for the identical reason — recording it
+through `setState` would trigger that same destructive write.
+
+**A REFUSED HYDRATION IS SURFACED TO THE UI, AND THE OWNER HAS A REAL WAY BACK IN.**
+`hydrated` never turns true on a refusal (zustand's own `onFinishHydration` fires only on
+the success path), so without a separate signal `App.tsx` stayed on "Loading…" forever
+with no visible reason. `onRehydrateStorage` also writes to `useHydrationStatus`
+(`useStore.ts`) — a second, UNPERSISTED store (the same shape `useSyncStatus` already
+uses) — distinguishing a genuinely newer schema (`tooNew`, an app-update problem) from
+invalid/corrupt current-version data (an owner-fixable one). `App.tsx` renders an
+explanation instead of the spinner whenever `!hydrated && hydrationStatus.refused`, reading
+`useHydrationStatus` only and never writing to `useStore` on its own, so simply SHOWING
+this screen touches neither the live nor the persisted database.
+
+A sealed review found the first version of this screen actionable in wording only: it told
+the owner to "use Import in Settings", but Settings — like every other route — mounts only
+once `hydrated` is true, which this exact refusal prevents. There was no way back in.
+`ColdStartRecovery` (`App.tsx`) closes that: a file control rendered directly on the
+refusal screen, shown ONLY for the invalid/corrupt-data case — never for `tooNew`, which
+has no safe import/downgrade and keeps the plain "update the app" guidance. It calls
+`recoverFromRefusedHydration` (`store/backup.ts`), a thin wrapper over `importFullBackup`
+rather than a second import implementation, so an invalid recovery file is rejected through
+the SAME §C7 validation every other inbound door already uses, with nothing written. On
+success it additionally flips `hydrated` true and clears the reactive refusal flag —
+`importFullBackup`/`importDB` install a valid `db` but have no reason to know about a gate
+that exists only before this device's very first successful hydration. The bytes already on
+disk are never touched by anything except that explicit, validated recovery: rendering the
+screen, and a rejected recovery attempt, both leave them exactly as they were.
+
+## Persian text is canonical, and direction-aware
+
+Built-in Setar/Tar data (pathway/section/stage names, catalogue gushehs, forms,
+composers, study sources, seeded items) is authored in **Farsi**; generic app UI and
+Classical Guitar stay English. STABLE ascii identifiers are decoupled from Farsi
+display: `StageSeed.slug` / `StepSeed.key` in `pathwaySeed.ts` keep stage ids and
+catalog keys byte-stable (fall back to `slug(code)`/`slug(title)` for English seeds), so
+the Farsi conversion needs no migration. `src/domain/farsi.ts` (tested) provides
+`normalizePersian` (fold Arabic↔Persian yeh/kaf, digits, ZWNJ, whitespace — preserves
+آ), `faCollator` for sorting, and Latin transliteration aliases for search
+(`persianSearchMatch`); `groupByDastgah` folds spelling variants and ranks by Farsi or
+Latin dastgāh names. Every Farsi surface resolves its direction NATIVELY, via
+`dir="auto"` — never by detecting a script in JavaScript and never by reordering text.
+Free-text FIELDS also carry `unicode-bidi: plaintext` (set on `.input`/`.textarea` in
+`global.css`, and nowhere else — this was previously described here as global, which was
+never true).
+
+**LAYOUT FOLLOWS THE DIRECTION OF THE CONTENT IT SHOWS.** A title and the details that
+belong to it sit in ONE group carrying `dir="auto"`, so a Persian item reads as one
+right-aligned block. Before 2026‑09‑11 direction sat on the TITLE alone at 47 sites and
+on no container anywhere: a Farsi title resolved RTL and hugged the right edge of its
+cell while its own "due 14 days ago" caption, carrying no direction at all, hugged the
+left — the app looked polished in English and broken on the two instruments whose seeded
+data is entirely Farsi. The rule is now mechanical, not a matter of care:
+
+- `dir="auto"` appears on GROUPS (the element holding a title together with the details
+  that belong to it) and on free-text FIELDS — **never bare on a title element**
+  (`truncate`, `title-md`, `page-title`, `stage-unit-title`).
+- The group is drawn so the TITLE is the first strong text inside it. Where an English
+  eyebrow precedes the title in the DOM — Today's Practise-now card, the close screen's
+  header, Session Plan's minutes/bucket line, ItemDetail's "practise this part now",
+  Today's Routines doorway ("Resume your routine"/"Routines" precedes the routine's own
+  name), ActiveBlock's "Last time you decided to try:"/"Working on:" — the group wraps
+  title + details and LEAVES THE EYEBROW OUT, because `dir="auto"` resolves from the
+  first strong character in the subtree. Getting this backwards doesn't just mis-align:
+  Today's Routines buttons carried `dir="auto"` on the whole button, so the fixed English
+  label — not the Farsi routine name that followed it — decided the resolved direction,
+  and the button never read the name at all.
+- **A detail that mixes languages needs its OWN nested `dir` inside the group, not the
+  group's resolved direction.** Two different cases, two different attributes:
+  - A detail that is ALWAYS ENGLISH BY CONSTRUCTION — `buildReason`/`planSegmentReason`'s
+    generated sentences (Today's recommendation reason, ItemDetail's "practise this part
+    now" reason, Session Plan's segment reason) — carries its own `dir="ltr"` isolate
+    around the whole sentence, nested inside the group. Grouped under a Farsi title, that
+    div/paragraph still resolves RTL and the detail still sits in the same right-aligned
+    block (nothing about ALIGNMENT changes) — but the isolate fixes the sentence's OWN
+    bidi base to LTR, so the title's RTL base can no longer drag the sentence's trailing
+    full stop to the visual start (FriBidi renders a trailing neutral character using the
+    surrounding base direction when nothing more specific claims it). `dir="ltr"` here is
+    a static fact about content that is never user text, not detection.
+  - A detail that is FREE TEXT the owner typed (ActiveBlock's `constraint`,
+    the "last time you decided to try" note) sitting after a fixed English label —
+    `Constraint: `, `Working on: `, `Last time you decided to try: ` — carries its own
+    `dir="auto"` around just the value, not the label. The label would otherwise be the
+    subtree's first strong text (the same eyebrow bug as above) and pin the whole line to
+    English regardless of what the owner actually typed.
+- A group that sits under an ancestor pinning `text-align: left` OR `text-align: center`
+  must set `text-align: start` on itself, or its own direction never reaches the
+  alignment — ActiveBlock's whole screen centres its timer and buttons regardless of
+  language (that stays, it isn't text), but the title group overrides back to `start`
+  so ac-6's "English stays left, Farsi goes right" actually holds on that screen. This
+  is a deliberate LAYOUT CHANGE for English on Active specifically (centred → left) and
+  does not conflict with "English keeps its layout exactly as it is today" elsewhere in
+  this file: that non-goal protects English from being flipped to a Farsi-style
+  right-align, it was never a promise that Active's pre-existing centring was sacred —
+  ac-6 names Active as a checked surface with exactly this expectation.
+- Group HEADINGS that render Farsi (the dastgāh sections, Materials' instrument sections)
+  take direction on the SECTION, so a heading can no longer disagree with the rows
+  beneath it.
+- A lone title with no caption of its own takes the group it shares with its badge or
+  action — the row itself.
+- OUT of scope by construction: `<option>` contents (the native control owns their
+  rendering) and titles inside `confirm()`/toast template strings (plain strings, not
+  laid-out blocks). `ItemForm.tsx`, `QuickAdd.tsx` and `RoutineEdit.tsx` hold field sites
+  only and are correct as they are.
+
+`src/components/direction.test.ts` holds this closed and records the surface list, so a
+missed title FAILS and a whole skipped file FAILS — and "fixing" one by deleting the
+attribute fails too, since that would break Farsi rendering outright. Genuine exceptions
+live in that test's explicit allowlist AND here; **the allowlist is currently EMPTY**,
+because every title on every surface turned out to have a group it could join. An
+exception must always be VISIBLE, never silent.
+
+**"a whole skipped file fails" is not the same guarantee as "a deleted site fails."** A
+per-FILE check ("does this file have at least one group somewhere") stays green as long
+as one group survives anywhere in the file — so deleting the Practise-now card's own
+`dir="auto"` from Today.tsx, which carries several other unrelated groups, passed that
+check even though the one thing it was there to prove had broken. `GROUP_SITE_INVENTORY`
+in that test is the fix: every group-level site, recorded in file-then-source order,
+DUPLICATES INCLUDED (three bare `<div dir="auto">` in Today.tsx are three sites, not one
+collapsed entry, or removing one of the three would still pass a de-duplicated list), and
+asserted with `toEqual` against the live scan. Deleting any one recorded site — anywhere,
+in any file — shrinks or reorders that array and fails, regardless of what else survives
+in the same file. It carries the same visibility contract as the title allowlist: a
+legitimate new group site must be added to the recorded array (a test fails until it is),
+never inferred silently. The scanner also strips `//` and `/* */` comments before
+matching — this file's own prose repeatedly writes the literal string `dir="auto"`, and
+matching inside a comment either produces a site with no real enclosing tag or, worse,
+walks backward out of the comment and mis-attributes an unrelated tag from earlier in the
+file.
+
+**A GROUP CARRYING DIRECTION IS NOT THE SAME CLAIM AS EVERY CHILD IN IT HAVING ITS OWN.**
+A sealed review rejected the first pass at this section for exactly that gap: the
+inventory above proves a title and its details share ONE resolved direction (the fix this
+whole rule exists for), but it says nothing about a CHILD inside that group whose own
+bidi base needs to be independent of the title's — a Farsi title makes the group resolve
+RTL, and anything else in that subtree with no `dir` of its own is exposed to that same
+RTL base. That is exactly right for a caption that belongs to the title (the point of
+grouping), but wrong for two other shapes:
+
+- **Fixed English page copy or generated metadata** — a hardcoded sentence
+  (`CloseBlock`'s "A few seconds to capture what happened.", `StaleNote`'s "Running far
+  past its target…"), or a phrase built from numbers and English words
+  (`{n} segments · {m} min`, `due {relativeDay(...)}`) — is never user text and never
+  changes language, so it carries its own `dir="ltr"` isolate, nested inside the group,
+  the same shape already established for `reason` props (Today/ItemDetail/SessionPlan).
+  The counterexample the review found: `CloseBlock.tsx`'s "A few seconds…" sentence sat
+  bare in the item-title group, so a Farsi title made its trailing full stop render at
+  the visual start — the same defect this section already fixed once, reappearing one
+  level down. `TodayRoutineRow`/`PathwayDetail`'s `RoutineRow`/`StageDetail`'s
+  `RoutineCard` all render the identical "N segments · M min" phrase and all needed the
+  same isolate — a fix applied to one occurrence of a repeated pattern and not the
+  others is exactly the kind of gap this closure exists to catch.
+- **An independently-authored value** — a question, an observation, a
+  pathway's own description or note — carries its own `dir="auto"` isolate for the same
+  reason `ActiveBlock`'s `constraint`/`previousNextAction` already do: its
+  language cannot be assumed from the title sitting next to it. The counterexample:
+  `ClassQuestions`' question and last-observation values sat bare in the title's `<li>`
+  group with no isolate of any kind — unlike `ActiveBlock`'s established shape (a fixed
+  English label left bare, immediately followed by the value in its own `dir="auto"`),
+  which `ClassQuestions` now matches rather than inventing a third pattern.
+
+**THIS IS DELIBERATELY NOT "no bare Latin text in a group."** A short fixed label
+immediately followed by its own isolate — `Constraint: ` before
+`<span dir="auto">{value}</span>`, and `ClassQuestions`' own dated
+`Last observed …` caption above the same shape — stays bare on purpose; flagging it would force a change to an
+already-correct, already-reviewed pattern. What actually breaks is a real PHRASE that
+reaches the end of a group's rendered content with nothing to isolate it — which is
+what `src/components/direction.test.ts`'s `unexemptedPhrase` scans for mechanically: it
+walks a group's body in source order, accumulating exposed literal text, and clears
+that accumulation the moment it is immediately followed by any element carrying its own
+`dir=` — regardless of the accumulated text's length, which is what keeps the
+`ActiveBlock` label shape passing. Only a run that survives to a TAG boundary (not an
+expression boundary — `{n} segments · {m} min` is one generated phrase split across two
+expressions and must not fragment into single, individually-innocent words) and reads
+as two or more words is flagged. This is the "detectable, not enumerated" half the
+rejected review asked for: a NEW hardcoded sentence dropped into a group without its own
+isolate fails this test on its own, the same way a missed title already failed the
+group-vs-title test above.
+
+What that scan cannot see from source — an independently-authored VALUE (an
+expression whose content is opaque, like `{q.lastObservation.text}`) needing `dir="auto"`, or
+a component like `StaleNote` whose OWN return value needs to be isolated regardless of
+which title group calls it — is a recorded ledger instead, `ISOLATED_VALUE_SITES` and
+`LTR_ISOLATE_SITES` in the same test file, carrying the identical visibility contract as
+`GROUP_SITE_INVENTORY`: a legitimate new one must be added, visibly, or the test fails
+until it is.
+
+**AN ISOLATE MUST BE INLINE. A BLOCK CARRYING ONE RESOLVES ITS OWN ALIGNMENT,
+INDEPENDENTLY OF THE GROUP.** A third rejected review found `ItemMaterial.tsx`'s NAS/
+device detail line isolated with `<div className="tiny faint" dir="ltr">…</div>` — the
+isolate correctly fixed the sentence's own bidi ordering, but moved the BUG rather than
+fixing it: `text-align: start`, inherited from the group, is a per-box COMPUTED value
+that resolves against THAT box's OWN `direction` — give the div its own `dir="ltr"` and
+its `text-align: start` resolves LEFT regardless of the group's (possibly RTL) resolved
+direction, splitting the detail from a right-aligned Farsi title exactly as before, just
+relocated one level down. An inline isolate (`<span dir="ltr">`, nested inside a block
+that carries no `dir` of its own) never has this problem: `text-align` only governs how a
+BLOCK aligns its own content, and a `<span>` is not itself a block — even where a flex
+container blockifies it into a flex item, that item sizes to its content, so there is no
+extra width for its own `text-align` to act on. Its `dir` therefore only ever isolates the
+Unicode bidi algorithm's treatment of the text inside it, never which edge anything
+visually sits on — the established shape throughout this file was always the span form,
+and the block form was a new, narrower regression in one fix. `direction.test.ts` now
+bans the shape mechanically rather than by care: no
+`dir="ltr"`/`dir="rtl"` may sit on any tag but `span`/`bdi`, full stop, so this class of
+bug cannot resurface in any file, named here or not — one location fixed and the anti-
+pattern deleted are two different guarantees, and only the second is durable.
+
+**A NATIVE LIST MARKER'S OWN LOGICAL POSITION IS NOT SOMETHING A GUTTER MEASUREMENT CAN
+GUARANTEE.** The third rejection found `ClassQuestions.tsx`'s `<ol>` reserving gutter
+space with `paddingInlineStart` alone while each `<li>` resolves its OWN direction via
+`dir="auto"`, and fixed it with symmetric `paddingInline` instead, reasoning that a
+marker landing on either side would then have room. A SIXTH SEALED FINDING, checked on
+the owner's own iPhone, found the number still escaping the card even with that room
+reserved: an outside `::marker`'s exact position for a direction-variable list item is a
+browser implementation detail — exactly the class of thing jsdom cannot compute either,
+which is why a padding measurement was ever trusted to stand in for it — not a distance a
+gutter can be sized against. The fix stops accommodating the native marker and removes it
+instead: `listStyle: 'none'` on the `<ol>`, with the ordinal rendered as a real element,
+the FIRST child of a flex `<li dir="auto">`. Flexbox's row axis is direction-aware BY
+SPECIFICATION (`flex-direction: row`'s start is the writing mode's own start, not a fixed
+physical side), so the number leads on the right for a Farsi question and on the left for
+an English one — and because it is now an ordinary flex child inside the `<li>`'s own
+content box, rather than a marker rendered in the padding area outside it, it can no
+longer escape the card on any device. It carries no `dir` of its own (a digit is
+bidi-neutral, so `dir="auto"` on the `<li>` skips it and still resolves from the title as
+before) and neither does the wrapper around title/question/details: `dir="auto"` skips a
+descendant that carries its own `dir` when hunting for a first strong character, so
+giving the wrapper one would leave the `<li>` with no resolution source at all — the same
+class of regression the `stage.title` revert and the instrument-name checks above already
+found. `direction.test.ts` now asserts the mechanism directly rather than a proxy for it:
+every `<ol>`/`<ul>` containing a `dir="auto"` `<li>` must disable the native marker
+outright, and that `<li>` must itself be a flex/grid container able to reorder its own
+content — a shape check on the fix itself, not a measurement around a browser behaviour
+nothing here can verify.
+
+Removing the native marker has an accessibility cost the visual fix alone doesn't pay
+back: WebKit drops an `<ol>`'s own list semantics from the accessibility tree once
+`list-style: none` removes its marker, so VoiceOver on the owner's own iPhone — the exact
+device this fix targets — would stop announcing "list, N items" or a question's position
+in it. `role="list"` on the `<ol>` restores that; the visible ordinal carries
+`aria-hidden` so it is not announced a second time on top of it.
+
+**A ROW'S OWN ALIGNMENT COMES FROM THE VALUE, NEVER FROM A LABEL MARKED OUT OF THE HUNT.**
+The sixth finding also covered `ClassQuestions`' `Problem:`/`Last time:` lines, diagnosed
+at the time as a WRAP-alignment gap: the established shape — a fixed English label left
+bare, immediately followed by the value in its own `dir="auto"` isolate — gives the
+value's own CHARACTERS correct bidi order, but a plain inline span has no width of its own
+to align a wrapped line within, so a long value was given `display: 'inline-block'` +
+`textAlign: 'start'` to align its OWN wrapped lines independent of whatever surrounded it.
+
+A SEVENTH SEALED FINDING found that diagnosis addressed the wrong claim. Giving the value
+its own wrap-line alignment is not the same claim as giving the ROW — the element that
+actually positions "Label: value" as a unit — the right alignment in the first place. The
+row itself was left BARE in both the original and the wrap-alignment fix, so it inherited
+whichever direction the TITLE above it resolved to, regardless of what script the VALUE
+was written in. For a Farsi title with a Farsi value this looked right by coincidence
+(inherited-from-title happened to match the value); for an English-titled item with a
+Farsi problem note, the whole row stayed pinned left — the label's inherited position, not
+the value's own — with the value's internal characters shaping correctly but its overall
+POSITION wrong regardless of whether it wrapped. This is exactly the "a group carrying
+direction is not the same claim as every child in it having its own" family two sections
+up, just not yet applied to a row whose OWN direction, not merely a child's bidi base,
+needed to track an independently-authored value.
+
+The fix moves `dir="auto"` from the value to the ROW, and marks the LABEL — never the
+value — with its own `dir="ltr"`. Not because the label's text ever changes: `dir="auto"`
+skips a descendant that carries its own `dir` when hunting for a first strong character
+(the exact mechanism the eyebrow/title split above already relies on), so marking the
+label takes it OUT of that hunt and leaves the deliberately bare value as the row's only
+candidate. Marking the value too would take BOTH out, leaving the row with nothing to
+resolve from and a silent fallback to LTR no matter what the value says — confirmed to
+fail the new check when tried, alongside the opposite mutation (removing the label's
+`dir="ltr"` entirely, reverting to the original bug), which the pre-existing
+`unexemptedPhrase` check also independently catches. Verified across all four
+title/value language combinations at both a 350px (iPhone-card-width) and a 700px
+(desktop) container width: a value's own language determines its row's alignment
+independent of the title, in both directions, at both widths — and with all four lines
+(title, question, Problem, Last time) now agreeing, the block reads as one attached unit
+against the marker rather than two aligned lines and two stray ones.
+
+`direction.test.ts` replaces the two `ISOLATED_VALUE_SITES` snippet entries with a SHAPE
+check, `isLabelFirstAutoRow`: any `dir="auto"` group whose body opens with a
+`<span dir="ltr">…</span>` must have no other `dir=` anywhere else in its body. It is not
+anchored to `ClassQuestions.tsx` — it would catch the identical regression in any future
+file adopting this label-first-row pattern, the same "shape, not a location list"
+discipline the instrument-name and native-marker checks above already established. This
+is deliberately NOT generalised to `ActiveBlock`'s
+`constraint`/`previousNextAction` or `RoutineRunner`'s `Next:` label, which use
+the older bare-label-then-isolate shape: those fields sit directly under their own title
+in this app's real data (never independently mismatched), so the failure this fixes does
+not arise for them, and touching files this lane's own brief did not name would be scope
+the sealed finding never asked for.
+
+**THE MARKER/TITLE GAP AND THE RAGGED LEFT EDGE ARE TWO DIFFERENT CLAIMS, AND ONLY ONE OF
+THEM WAS EVER BROKEN.** A follow-up OWNER pass on this same finding read as a second,
+distinct complaint — the ordinal "looked" detached from a Farsi question because the
+Problem/Last-time lines sat at the opposite (left) edge while the title and question sat
+right, an asymmetry a screenshot reads as "the number is not attached" even though the
+title itself was never the problem. Measured directly against the live DOM (real seeded
+Farsi data, cloned at a 340px container width, text extents read via
+`Range.getClientRects()`, not `getBoundingClientRect()` on the boxes): the ordinal's right
+edge sits at 338px, the title/question/Problem/Last-time lines all right-align flush
+against 330px — an 8px gap matching the authored `gap: 8` on every one of the four lines,
+not just the title. The remaining LEFT edges spread across a 143px range (62px-205px),
+because the four lines are different lengths and each is right-aligned within a box whose
+own right edge is pinned to the ordinal regardless of the box's width. That spread is
+mathematically invariant to how the box is sized: left edge = box_right minus line_width,
+and box_right never moves, so switching the wrapper from `flex: 1` (this file's `.grow`)
+to shrink-to-fit was tried and measured byte-for-byte identical before and after — proof
+that no flex-sizing change can touch it, because there is nothing wrong with the sizing to
+begin with. A ragged left edge on right-aligned lines of differing length is ordinary
+typography (the same thing an address block or a right-aligned caption does), not a
+resolvable defect, and the row-direction fix above is what actually closed the gap the
+owner was reacting to for THAT screenshot: before it, Problem/Last-time sat at the FAR left
+(~25px, the opposite edge entirely) while title/question sat at ~330px — a hard
+two-line/two-line split, not mere length variance. Once all four lines agree on which edge
+they hug, the remaining spread is length variance, and no further padding or flex-sizing
+change was warranted for it specifically. **This measurement is scoped to the ragged-edge
+question alone and is NOT a claim that every marker-attachment complaint was closed** — a
+NINTH finding below, on the exact same screenshot's underlying data, found a real,
+different structural bug in how the `<li>` itself picks its resolved direction. Read that
+finding for the actual fix; do not re-derive "nothing more to do here" from this measurement
+a second time.
+
+**THE `<li>`'S RESOLVED DIRECTION WAS ANCHORED ON THE WRONG CANDIDATE — THE OPTIONAL TITLE,
+NOT THE GUARANTEED QUESTION.** All of the verification above — this file's and the
+Seventh/Eighth findings' — used seed data where an item's title and its teacher question
+(then an item field, now a `lessonAgenda` entry) happen to share a language. That is exactly the one condition under which the underlying
+bug is invisible: `<li dir="auto">`'s hunt for a first strong character skips any
+descendant that carries its OWN `dir` (the same skip mechanism used throughout this file),
+and both the question and the Problem/Last-time rows already carried their own `dir="auto"`
+isolates — so the hunt could only ever land on the bare TITLE. Whichever language the TITLE
+happened to be in decided which side the ordinal rendered on, regardless of the question's
+own language. An OWNER pass with a title and question in DIFFERENT languages (reproduced
+directly against the live running app — the real Teacher Report page, not a clone — by
+temporarily setting an English title on the real seeded Farsi item via the store) showed
+this concretely: the ordinal and title landed together on the English side, while the
+question — right-aligned by its own independent `dir="auto"`, correctly, on its own terms —
+sat at the FAR OPPOSITE edge, unattached from the marker entirely. The reverse combination
+(Farsi title, English question) reproduced the mirror image. Neither combination is exotic:
+an item's title is free text the owner chooses for their own reasons and has no obligation
+to share a language with a teacher's question about it.
+
+The fix reverses which of the two is left bare. The lesson-agenda query behind this list
+(`openQuestionsForLessonId`, formerly `questionsForNextClass`) guarantees `q.question` is
+non-empty on every row this component ever renders — a question entry has no meaning
+without its text; `q.title` carries no such guarantee and is authored completely independently.
+The title now carries its OWN `dir="auto"` isolate (the same skip mechanism, deliberately
+applied to the OTHER field this time), so it renders in its own correct direction but is
+taken OUT of the `<li>`'s hunt; the question is left bare, so it is what the `<li>`'s
+`dir="auto"` actually finds — the marker now always tracks the question, the one field
+guaranteed present, never the optional title. Structural, not padding: this is the same
+skip mechanism this file already relies on throughout, applied to the correct field.
+Verified directly against the real, running page
+(not a synthetic clone) at both a 390px (real DOM node, width forced via the live element's
+own style, not `resize_window` — which does not affect layout in this environment — so the
+SAME component tree is exercised, just narrower) and the full desktop width: an English
+title with a Farsi question now attaches the marker to the question (right) with the title
+independently left-aligned; a Farsi title with an English question attaches the marker to
+the question (left) with the title independently right-aligned; the original matching-language
+case (both Farsi) is unaffected. `direction.test.ts` records this as a dedicated,
+mutation-tested shape check (`"the question anchors ClassQuestions' <li>..."`) asserting the
+title's tag carries `dir="auto"` and the question's does not — confirmed to fail under both
+reverted mutations (title bare again; question marked again) before being committed.
+
+**THE LESSON THIS FILE KEEPS RELEARNING:** matching-language seed data proves a fix works
+when title and value AGREE, and says nothing about what happens when they DISAGREE — the
+Seventh finding's row-direction fix and this Ninth finding are the same shape of gap,
+found twice because the same seed data was trusted twice. Any future verification of a
+mixed-language surface in this file should deliberately construct a MISMATCHED case, not
+only the matching one already in the seed.
+
+**THE SOURCE SCANNER'S OWN BLIND SPOT WAS THE BIGGER GAP.** `unexemptedPhrase` skipped
+every `{…}` expression as fully opaque, contributing zero words — which is exactly
+right for a single expression like a title, but means a run built ENTIRELY from
+expressions (`{MATERIAL_SOURCE_LABELS[m.sourceType]} · {MATERIAL_STATUS_LABELS[m.status]}
+·{' '} {itemCount(m.id)} item{…}`) read as zero words to the scanner while rendering
+three always-English fragments in a row, unisolated, in a group whose title could
+resolve RTL. This is precisely why the named counterexamples (`Materials.tsx`,
+`ItemCard.tsx`, `RoutineRunner.tsx`, `Lessons.tsx`, `Repertoire.tsx`) passed a test that
+was supposed to catch them. Fixed by counting an opaque, non-JSX-bearing expression as
+ONE token rather than zero — its actual text stays invisible from source, but its mere
+UNISOLATED PRESENCE next to other content is what the shape is; an expression whose own
+content contains nested JSX (`{cond && <div dir="auto">…</div>}`) stays fully opaque, its
+children already reachable by the outer whole-file scan. That single change, plus
+re-auditing every recorded group's body by hand, found the five named sites AND several
+more of the identical shape the review did not enumerate: `Repertoire.tsx`'s SECOND,
+near-duplicate dastgāh-count span (the non-Persian `sourceGroups` branch mirrors the
+fixed one exactly and had been missed), `ActiveBlock.tsx`'s mode/focus chips (the
+practice screen itself), `Attachments.tsx`'s and `ItemDetail.tsx`'s file kind/size line,
+`StartBlock.tsx`'s and `Today.tsx`'s item-type/status labels, `StageDetail.tsx`'s
+strand/status `meta` line, `PathwayDetail.tsx`'s "Current"/"Done"/item-count badges and
+its piece-count fallback, `Today.tsx`'s "routine running" indicator (at the time, one
+`dir="ltr"` isolate covering the whole phrase — a sealed review later found that this
+wrongly pinned the instrument name inside it too; see below) and its cross-instrument
+Overview row (a fixed sentence embedding the next item's own possibly-Farsi title —
+isolated the same way `StageDetail`'s undo banner already does, whole sentence under one
+`dir="ltr"`), and `Insights.tsx`'s generated observation sentences (several of which also
+embed an item's own title mid-sentence). One further site needed the OTHER isolate —
+`dir="auto"` for a value authored independently of its neighbour, not `dir="ltr"` for
+generated copy: `RoutineRunner.tsx`'s "Next: {label}" (the upcoming segment's own name).
+`PathwayDetail.tsx`'s pathway `source` field got the same treatment (free text beside the
+instrument name, at the time itself still wrongly isolated as `dir="ltr"` — see below),
+but its stage's own `title` was tried the same way and REVERTED: `stage.title` is not authored
+independently of `stage.code`, it is the SAME stage's own fuller name, and this file
+already settles (a few paragraphs up) that the two must AGREE on whichever direction
+the group resolves — isolating `stage.title` would have pulled it OUT of the button's
+own `dir="auto"` detection (a nested `dir` is skipped by the HTML auto algorithm),
+which can flip the group's resolved direction whenever `stage.code` itself carries no
+strong character. It stays a bare `<span>`, exactly like `stage.code`.
+
+**RE-DERIVING THE TEST'S OWN TAG TRAVERSAL FROM FIRST PRINCIPLES FOUND A DEEPER GAP
+THAN ANY SINGLE MISSED FILE.** `elementBody` (the helper both `unexemptedPhrase` and
+the isolate-skip logic use to find where an element's content ends) tracked nesting
+depth by incrementing on every opening tag and decrementing on every closing one —
+except a React Fragment shorthand, `<>`, starts with neither `/` nor a letter, so it
+matched NEITHER branch and never incremented depth, while its own close, `</>`, starts
+with `/` and DID match the closing branch, decrementing it. Every `<>…</>` pair inside
+a body therefore owed depth one MORE decrement than it was ever given an increment for
+— and this codebase's own established shape for a conditional detail
+(`{stage && (<><span>…</span><Link>…</Link></>)}`, exactly what `ItemDetail.tsx`'s
+header uses) hits that shape twice. On that header, depth reached zero several tags
+before the real `</header>`, so `unexemptedPhrase` silently stopped scanning before
+ever reaching `<span className="tiny faint">difficulty {item.difficulty}/5</span>` — a
+real, unisolated generated-English phrase that had been sitting in the group
+throughout every previous pass of this lane, invisible to a scanner whose entire claim
+is "detectable, not enumerated." Fixed by giving `<>` the same weight as any other
+opening tag. Re-running the FULL suite after the fix surfaced exactly this one
+violation — nothing else in the currently-scanned files was hiding behind the same
+bug — now closed with the same `dir="ltr"` (at the time, `instrumentName` sat in this
+same list too — a sealed review later found that wrong; see below — plus
+`ITEM_TYPE_LABELS`, "difficulty N/5", "saturated — consider resting") the rest of this
+section already established, while `stage.code` and the material label stay bare for the
+same reason `stage.title` does two paragraphs up. The lesson generalises beyond this one bug: an
+example-driven fix only ever closes the examples in front of it; only re-deriving a
+shared helper's own correctness from what it claims to do (does `<>` open or close a
+nesting level? — the answer was always "both, and this code only handled one") finds
+what a location list, however carefully audited, cannot.
+
+Two sites the stronger scanner flagged are recorded, VISIBLY, as genuine exceptions in
+`UNEXEMPTED_PHRASE_ALLOWLIST` rather than isolated: `PathwayDetail.tsx`'s stage-progress
+counter (`{sp.done}/{sp.total}`, e.g. "3/5") is digits only — numbers carry no bidi risk
+the way an English WORD dropped into an RTL run does — and `ItemDetail.tsx`'s
+pathway-plus-stage breadcrumb (`` `${pathway.name} — ` `` immediately followed by
+`{stage.code}`) is one continuous compound LABEL built from two fields, not a title
+split from an unrelated caption; there is no separate "caption" here with an opinion of
+its own about direction. The allowlist carries the same visibility contract as
+`ALLOWED_TITLE_SITES` — a stale entry (naming a site that no longer exists) fails its own
+test.
+
+**THE SCANNER'S OWN COMMENT-STRIPPING HAD A LATENT BUG THAT THIS WORK EXPOSED.**
+`stripComments` treated any `'`/`"` as a real string delimiter and scanned forward,
+unbounded, for its match — correct for a real JS string, wrong for plain JSX TEXT
+containing an apostrophe (`StageDetail.tsx`: "That stage doesn't exist."). Hitting that
+apostrophe outside any real string put the scanner into a phantom "inside a string"
+state that swallowed everything after it — real comments included — until an unrelated
+quote character somewhere later happened to close it, cascading into a chain of further
+phantom strings for the rest of the file. This had been silently true all along; it only
+surfaced now because a newly added comment happened to be inside the corrupted span and
+happened to quote `dir="ltr"` in its own prose, which the (no longer stripped) comment
+then exposed to the `dir="ltr"`/`dir="rtl"` block-isolate scan as if it were a real
+attribute. Fixed at the root rather than by rewording the comment: a `'`/`"` now only
+starts a real string if its matching quote appears before the next newline (every real
+string/attribute value in this codebase is single-line); otherwise it is passed through
+as ordinary text and scanning resumes normally right after it. Backtick template
+literals keep their original unbounded, multi-line scan. This makes EVERY check in this
+file more trustworthy, not just the new ones — the exact failure mode the file's own
+`stripComments` docstring already warned about ("worst, `enclosingTag` walking backward
+out of the comment and mis-attributing an unrelated tag") was silently possible for any
+file containing a stray apostrophe in plain prose, this codebase's Setar/Tar seed data
+included.
+
+**AN INSTRUMENT NAME IS THE OWNER'S OWN EDITABLE TEXT, NEVER GENERATED COPY — GETTING
+THIS BACKWARDS IS A CLASSIFICATION MISTAKE, NOT A MISSED LOCATION.** A sealed review
+found four sites (`ItemCard.tsx`, `ItemDetail.tsx`, `PathwayDetail.tsx`,
+`Repertoire.tsx`) pinning an item's or work's instrument name under `dir="ltr"` right
+alongside genuinely generated metadata like `ITEM_TYPE_LABELS` — Settings lets an
+instrument be renamed, Farsi included, so forcing a renamed instrument to LTR gives it
+the wrong bidi base, the exact defect every other isolate in this file exists to
+prevent. Auditing every remaining `LTR_ISOLATE_SITES` entry against its real source
+(not just the four named) found a fifth of the identical shape — `Today.tsx`'s "routine
+running" row bundled the instrument name and the fixed English suffix into ONE
+`dir="ltr"` span — and two more with no direction treatment AT ALL, invisible to that
+same audit because it can only see spans that already carry a `dir`: the Plan doorway's
+mismatched-instrument row (the exact twin of the routine row, same bundling, just
+missing the isolate rather than misusing it) and the weekly Balance row's instrument
+name, sitting bare inside a `.truncate` title span. All seven now isolate the
+instrument name on its own `dir="auto"` — nested one level in for the Balance row
+rather than on `.balance-row` itself, because that row is a CSS GRID and giving IT a
+resolved RTL direction would reverse its three columns for a Farsi instrument, flipping
+the bar and percentage to the other side. The fix generalises past these seven
+locations: `direction.test.ts` now also fails if any `dir="ltr"`/`"rtl"` isolate's body
+references `instrumentName` — a call, a bare identifier, or a property access like
+`b.instrumentName` all match, not only the call form (the widened check was itself the
+product of a caught regression: an earlier `\binstrumentName\(` version missed the
+Balance row's own property-access form) — or ItemCard's own `inst` alias for it, so a
+future regression anywhere in the file is caught by the SHAPE, not by whichever site a reviewer
+happened to name.
+
+**A FIFTH REJECTION FOUND THE SHAPE-BAN STILL WASN'T ENOUGH, BECAUSE IT WAS ONLY EVER A
+NEGATIVE CHECK.** Banning `dir="ltr"`/`"rtl"` around an instrument name catches nothing
+about a name rendered with NO direction treatment at all, an alias beyond the two literal
+anchors the check happened to know (`instrumentName`, `{inst}`), or a name fused into a
+template string (`` `${instrumentName(db, x)} plan` ``) before anything could render it —
+three shapes a fourth sealed review found live in the app (Repertoire's `PathwayCard`,
+Session Plan's two page titles, wide Lessons' sidebar heading and its detail-pane header,
+Today's cross-instrument "in progress"/"plan"/"routine" rows, Today's `EmptyState` title
+and "Before your … class" heading, and ActiveBlock's/CloseBlock's own eyebrow — the last
+two mis-classifying the instrument's own name as "the English eyebrow" in their own
+comments). `direction.test.ts` now asserts the invariant itself rather than banning one
+way of getting it wrong: `instrumentNameOccurrences` DISCOVERS every current renderer
+mechanically — the `instrumentName(db, id)` call, a bare `.instrumentName` property read,
+a LOCAL ALIAS of either (a destructured, renamed prop; a `const X = instrumentName(...)`
+binding; a `const X = …instruments….find(...)?.name` binding, generalised past the literal
+spelling "instrumentName" so a differently-named local is still caught), and a per-item
+`.name` read inside an `instruments.map`/`.filter().map` callback or an inline
+`instruments.find(...)?.name` — rather than requiring each to be re-listed by hand.
+`resolvesOwnDirection` then asserts the POSITIVE invariant: the name's nearest ancestor
+`dir` must be `"auto"`, AND nothing else may render before it within that SAME ancestor's
+body — a `dir="auto"` ancestor resolves from whichever strong character comes FIRST in
+its subtree, so an item's own title (or anything else) preceding the name inside the same
+auto group claims that resolution for itself, exactly the classification mistake this
+whole family exists to catch. `isFusedIntoTemplate` separately catches the template-fusion
+shape. A declaration/binding site (the alias's own introduction) and a value forwarded as
+a JSX ATTRIBUTE (`instrumentName={x}`, prop-drilling rather than a DOM text render — the
+receiving component is checked wherever IT renders the value; `ClassQuestions` never does)
+are both excluded, visibly, in the check's own comments rather than by a silent gap.
+
+Two real sites deliberately stay BARE and must keep passing exactly as they are:
+Insights.tsx's `<th dir="auto">{r.instrumentName}</th>` and Today.tsx's cross-instrument
+`<div className="grow" dir="auto">…<div>{inst.name}</div>…` row. Both already resolve
+correctly because the name is genuinely the FIRST strong content of their own dir="auto"
+ancestor; wrapping either in a nested isolate would BREAK, not fix, them — `dir="auto"`
+skips a descendant that already carries its own `dir` when hunting for a first strong
+character, so the ancestor would lose its only resolution source and silently fall back to
+LTR for a Farsi instrument, the same reasoning this file already used once to revert
+isolating `stage.title`. The completion gate for this check was empirical, not assumed:
+each discovery shape above was mutated back to its broken form in turn and confirmed to
+fail the test before being reverted, and the check itself asserts it discovers a non-zero
+set of sites overall, so a regression that makes every pattern silently stop matching
+cannot masquerade as "nothing to report."
+
+Two gaps are named here because this lane cannot close them, not because they were missed.
+`src/components/QuickAdd.tsx`'s instrument-picker button renders `{i.name}` with no
+direction treatment at all — a real instance of this same defect — but `QuickAdd.tsx`,
+`ItemForm.tsx` and `RoutineEdit.tsx` are this lane's own contract's declared non-goal
+("their dir=\"auto\" usage is already correct and must not be touched"), so
+`direction.test.ts`'s instrument-name check explicitly excludes all three rather than
+either silently passing over a real bug or failing a check this lane cannot act on.
+Separately, `src/domain/insights.ts` (a forbidden path here) bakes
+`${r.instrumentName} ${r.percent}%` for every instrument into one generated sentence
+before Today or Insights ever renders it — the identical "fused into a string" defect,
+sitting one layer below where a presentation-only lane can reach it. Today.tsx's own
+render of that sentence (`insight.body`) was still tightened to match Insights.tsx's
+existing inline `<span dir="ltr">` isolate (it was previously a bare, undirected block),
+but the embedded instrument name inside that generated sentence stays open pending a
+domain-layer fix and its own lane.
+
+**A RESOLVED DIRECTION THAT NEVER REACHES THE ALIGNMENT IS NOT A FIX, AND NEITHER IS ONE
+WITH NOTHING TO RESOLVE FROM.** A tenth sealed finding named two counterexamples, both in
+this same family, and both invisible to the guard as it stood.
+
+Repertoire's `PathwayCard` rendered a user-authored `pathway.name` inside
+`<button style={{ textAlign: 'left' }}>` with NO direction-resolving group between them. A
+Farsi pathway name shaped correctly — the browser's bidi algorithm needs no help for that —
+and then sat pinned to the English edge, split from its own instrument/stage caption
+underneath. The inline `<span dir="auto">` already on that caption could never have fixed
+it: `text-align` is a BLOCK concept, which is exactly why this file's own "an isolate must
+be INLINE" rule exists. The fix is ONE group carrying `dir="auto"` AND re-declaring
+`textAlign: 'start'`, sitting INSIDE the button (the Balance-row precedent — the chevron row
+and the progress bar are layout, not text). Either half alone leaves the name where it was:
+a group with no `start` resolves a direction the alignment never hears about, and a `start`
+with no group has no direction to resolve. The same shape, audited across the app, was live
+in two more places and fixed with it — Insights' `<th style={CELL} dir="auto">` (CELL pinned
+`textAlign: 'left'` over an instrument name the owner can rename to Farsi; it is `'start'`
+now) and RoutineRunner's "Recorded" rows under a card pinning `'left'`. `center` is
+deliberately NOT a forcing value: centred text points at no edge, so it cannot misalign an
+RTL run, and excluding it is also what keeps this rule from demanding an unrequested layout
+change on the deliberately centred practice screens.
+
+**EVERY LINE OF A MULTI-LINE FREE-TEXT FIELD RESOLVES ITS OWN DIRECTION — EXCEPT THE ONE
+THAT ANCHORS THE GROUP.** `ClassQuestions`' bulleted renderer for the question text and for the item's most
+recent block observation (one `<textarea>` each, so several
+distinct questions live as several lines of one string; `splitLines` in `format.ts`, tested)
+first shipped with every bullet bare, on the argument that lines typed into one box in one
+sitting share one direction. They do not — a Farsi question and an English one go into the
+same field — and bare lines all inherit the FIRST line's direction, dragging an English line
+RTL with its bullet on the wrong side, or the reverse. But the catch that argument was right
+about is real, and is why this is not simply "isolate every line": `dir="auto"` skips any
+descendant carrying its own `dir`, and the enclosing `<li dir="auto">` (and the dated
+last-observation value wrapper) has nothing else left to hunt once the title is isolated —
+isolating every line would leave the item with no resolution source and a silent LTR
+fallback, which is the ninth finding all over again. Both hold ONE way only: the FIRST line
+is the ANCHOR and stays BARE — it still follows its own language, because the direction it
+inherits is the direction it produced — and every line AFTER it carries its own `dir="auto"`
+on the row, so that line's text and its bullet follow it alone. The two branches are written
+out LITERALLY (never `dir={i === 0 ? undefined : 'auto'}`): `direction.test.ts` is a source
+scanner, and a computed attribute is invisible to every guard in it.
+
+`direction.test.ts` holds both closed with checks that assert the invariants rather than the
+presence of a group somewhere in a file — which is what the finding correctly said ac-5's
+own check could never fail on. The first discovers every element carrying a title class
+whose body renders an opaque data expression, and, when anything above it forces
+`textAlign: 'left'`/`'right'` — inline OR through a module-level style constant it names,
+the shape the Insights counterexample was actually written in — requires a `dir="auto"`
+group below that forcing element which re-declares `textAlign: 'start'`; it also fails any
+`dir="auto"` group that pins a physical alignment on ITSELF. The second asserts the anchor
+shape directly: exactly one bare branch, exactly one `dir="auto"` branch, and the isolate on
+the branch chosen for lines AFTER the first. Seven mutations were confirmed to fail before
+either was committed. Verification used DELIBERATELY MISMATCHED languages in both directions
+against the real running pages — the lesson this file keeps relearning, applied before the
+fact this time rather than after.
+
+**`text-align: start` IS NOT PORTABLE ACROSS ENGINES, AND CHROMIUM CANNOT SHOW YOU THAT.**
+Every finding above was checked in Chromium. An eleventh, checked in BOTH engines, found
+the owner's long-reported Safari-only question-alignment symptom and it was none of the
+causes previously guessed at: `ClassQuestions`' `<li dir="auto">` inherits `text-align`
+from an LTR ancestor, and WebKit inherits the RESOLVED PHYSICAL value (`left`) where
+Chromium inherits the LOGICAL keyword (`start`) and re-resolves it against the `<li>`'s own
+direction. So a Farsi question rendered hard against the ENGLISH edge while its ordinal —
+a direction-aware flex child, correct on its own terms — sat on the right. Identical DOM,
+identical CSS, two different pictures, and the Chromium-only checks that had passed nine
+times could never have seen it. The fix is one declaration: a block whose own direction is
+resolved by its content must RE-DECLARE `textAlign: 'start'` on itself, exactly as the
+tenth finding's rule already requires under an ancestor that pins a physical alignment —
+an inherited `start` is not the same thing as an own `start`.
+
+The general rule: **a direction fix verified in one engine is verified in one engine.**
+`tests/practice-information-layout.browser.test.ts` drives the changed surfaces in Chromium
+AND WebKit at 390×844 and desktop and asserts measured bounding positions, so this class of
+divergence fails a check rather than waiting for the next screenshot. A missing WebKit
+binary FAILS with `npx playwright install webkit`; it never skips. Two WebKit-only
+environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB under the
+automation driver (so that journey seeds state-only), and it reports
+`"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
+
+A THIRD, of the same kind, AND IT IS A RACE THE HARNESS CREATES RATHER THAN A BUG TO
+EXCUSE. WebKit refuses a `fetch()` issued while the document is being destroyed and — on
+GitHub's LINUX WebKit — reports it as an uncaught page error reading `"Fetch API cannot load …
+due to access control checks"`, which reads exactly like a CORS problem and is not one. The
+failing case arrives with NO `request`, NO route hit and NO `requestfailed` at all. It cannot
+be reproduced on the Mac: macOS WebKit reports the same teardown as `requestfailed: cancelled`
+with no page error, and a torn-down CORS PREFLIGHT as nothing whatsoever (measured, both). What
+tears a document down is NOT every navigation: the app is hash-routed, and `page.goto` to a
+different `#/route` is a same-document navigation in BOTH engines (a `window` marker survives).
+Only a `goto` to the URL the page is ALREADY on differs — Chromium keeps it same-document
+(firing `popstate`, so the router re-renders), WebKit performs a full document load. A journey
+therefore never calls `goTo` for the route it is already on: ac-18 reaches Settings through
+`openSettings` (More → Settings, the owner's own tap) and only `reload` loads a document. Making
+`goTo` a no-op for that case was tried and REVERTED: Chromium's `popstate` navigation is slack
+another journey's route wait relies on after an in-app navigation, and removing it made that
+journey race under a full-suite run. The trap is documented on `goTo` itself.
+
+**THE ANSWER IS TO REMOVE THE RACE, AND THE HISTORY OF TRYING TO EXCUSE IT IS WHY.** Six
+versions of an excuse were built and every one of them could withhold a genuine failure:
+a permanent set of cancelled URLs; a consuming time window (an unconsumed cancellation stayed
+a live credit any later genuine failure to that URL could spend); a rule reading the page
+error's `message` alone, which never contains the diagnosis — Playwright splits a page error
+at its first colon, the URL's own scheme colon, so the wording lands in `name` and the excuse
+was dead code; a backwards-only search, while WebKit delivers the page error 74–359µs BEFORE
+the request's own `requestfailed` (six of six, measured); a nearest-wins ranking on host+path,
+which threw away the QUERY and rested safety on a proximity that reads as 0ms or 1ms at
+`Date.now()` granularity; and finally full-URL identity plus a veto on genuine evidence, which
+STILL dropped a genuine diagnosis carrying no `requestfailed` of its own — exactly the CI
+failure's own shape — whenever an earlier unconsumed cancellation to that URL was the only
+thing in the log. That is the sealed finding that ended the attempt.
+
+**THE PREMISE WAS NEVER OBSERVED, SO NO RULE COULD EVER PROVE IT — AND WHAT A CANCELLATION
+LOOKS LIKE IS NOT EVEN PORTABLE.** Five cancellation shapes driven through macOS WebKit —
+navigating away mid-flight, reloading mid-flight, `AbortController`, a same-tick
+`location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
+`errorText: 'cancelled'` and NO page error. GitHub's Linux WebKit reports the same teardown as
+the access-control page error with no `requestfailed`, and does not reliably emit `cancelled`
+for a fetch reloaded across at all: two harness tests that asserted the macOS shape as a WebKit
+invariant failed on every Linux run and were removed (the genuine-refusal measurement and the
+end-to-end "kept and annotated" wiring check stay; neither needs a cancellation). A `pageerror`
+hands a test an `Error` and no request identity. So there is no positive evidence available to
+bind a specific error to a specific cancellation at any window or resolution, on either port,
+and an unprovable correlation is resolved the only safe way: `openPracticeApp` KEEPS every page
+error.
+`excusedCancellation` is gone. What survives is `requestFailureEvidence`
+(`tests/practiceBrowser.ts`), which only ANNOTATES a kept error with the browser's own
+`errorText` for every tracked request to that resource and how far each sat from it — because
+one bare CORS-shaped message with nothing to distinguish a cancellation from a real refusal is
+what made the original CI-only failure unreadable. It consumes nothing and withholds nothing,
+its full-URL identity (host, path and query; the fragment ignored, since a fragment never
+reaches the network while the message keeps it verbatim) only decides whether a row is labelled
+as the resource the error named, and `FAILURE_EVIDENCE_MS` bounds a REPORT rather than a
+suppression.
+
+**THERE WERE TWO RACES, AND FIXING THE FIRST WAS MISREAD AS FIXING BOTH.** Vite's default
+`cacheDir` is `node_modules/.vite`, ten test files each start their own dev server on one
+checkout, and the rollback journeys' baseline worktree SYMLINKS that same `node_modules` — so
+every server ran the dependency optimizer against one directory and raced to commit it
+(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`). A loser cannot serve its
+modules, so its page never paints and the cold-start wait fires. Each server gets a PRIVATE
+`cacheDir` now, and that race is gone. It was recorded as the cause of the access-control
+diagnosis too, and GitHub disproved that: with the private cache in place ac-18 still failed on
+Linux WebKit naming `README.md`. THE SECOND RACE IS A SYNC LEFT IN FLIGHT BY THE HARNESS.
+Settings' `connectAndSync` stores the config — which renders "Sync now" at once — and only then
+awaits `syncNow()`, holding the button DISABLED until that sync resolves. `connectSync` waited
+for the button to APPEAR, so every journey drove on while the repo bootstrap
+(`PUT contents/README.md`, behind a CORS preflight) was still running; ac-18's very next step is
+`goTo('/settings')` from `#/settings`, which in WebKit alone was a full document load (above).
+README is the only request the journey ever had in flight at a document load, which is why the
+failure never named anything else. `connectSync` now waits for the ENABLED button — the sync's
+own completion, read through the real control — and ac-18 no longer `goTo`s a route it is on.
+A journey may only drive on from a document with nothing in flight; that is the rule, and it is
+enforced by ordering, never by hiding what a torn-down request reports.
+
+**A COLD-START TIMEOUT IS A QUESTION, NOT A NUMBER TO RAISE**, and this lane proved it: three
+full-suite failures landed on that wait, in three DIFFERENT tests, and raising 60s to 120s
+bought exactly one more run before the next. The ceiling is back at its original 60s.
+
+The fake GitHub repo also now retains the fact that `main` EXISTS after its own bootstrap.
+`initialize()` writes `PUT contents/README.md` through the Contents API and real GitHub then
+resolves `git/ref/heads/main`; the fake answered 404 there until a SNAPSHOT existed, so
+`getHead()` kept returning null and EVERY later sync re-entered `initialize()` and issued
+another README PUT — measured at one every one to three seconds for a whole journey. Gating
+that route on the REF alone fixes it without touching what `decideSync` sees: `manifest.json`
+and `state.json` still 404 until something publishes a snapshot, so `readRemoteMeta` still
+returns null, the decision is still `first-push`, and the pull/conflict journeys are unchanged.
+Making the fake REMEMBER THE PUSH is deliberately NOT done — it was built and reverted once
+because it changes `decideSync`'s input and `setarInbound`'s pull journey then reads "Already
+in sync" instead of pulling. ac-18 asserts the bootstrap happens exactly once. This is a
+correctness fix for the fake, and it removes a stream of needless writes; it is NOT what closed
+the flake, and it was measured not to: with the bootstrap loop gone and the shared cache still
+in place, the failure simply moved from `README.md` to `contents/manifest.json`.
+
+**AND A HELPER THAT WAITS FOR THE SYMPTOM WAS BUILT HERE, MEASURED, AND DELETED.** `goTo` and
+`reload` were given a `settleSync` that waited for the app's GitHub traffic to fall quiet before
+navigating. It could not be shown to do anything on the Mac — where, as above, the failure is
+unreproducible by construction — and it was dead in the two journeys that call `page.reload()`
+directly anyway. It is still not the answer: waiting for traffic to go quiet before EVERY
+navigation treats the symptom everywhere, where the cause was one helper returning mid-sync and
+one engine-specific hidden reload, each fixed at its own line. Keeping harness code whose effect
+cannot be measured, and a normative claim that it is what fixed this, is how the next reader
+inherits a false cause — which is exactly what the private-cache claim above became for one
+round. Six clean local runs are not evidence about a Linux-only report shape; the CI log is.
+
+**WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
+the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
+canonical-homes section at the top of this file). Each `<li dir="auto">` is the ordinal, the
+title in its OWN `dir="auto"` isolate, the question left BARE so it anchors the `<li>`, and
+— when the item has one — the most recent block observation under a stacked, isolated
+`<span dir="ltr">Last observed YYYY-MM-DD</span>` caption. Read the seventh and tenth
+findings for why the caption stacks above the value instead of sitting inline with it; read
+the ninth for why the question, not the title, is what the `<li>` resolves from.
+
+**SEARCH GOES THROUGH THE FARSI-AWARE MATCHER AT EVERY SURFACE.** The data is
+authored in Farsi, so `title.toLowerCase().includes(query)` is not a search — it is
+a filter that can never match what the owner's keyboard emits: an iOS Arabic keyboard
+produces the ARABIC kaf (U+0643) and the seeded titles hold the PERSIAN kaf (U+06A9),
+and no amount of case folding bridges those. Both search boxes — Repertoire's practice
+list and Start's item picker — filter through `itemMatchesSearch` (`selectors.ts`,
+tested), the one wrapper over the existing `persianSearchMatch`. It is a WRAPPER, not
+a second matcher: `farsi.ts` keeps its behaviour exactly, and the wrapper exists so
+the WIRING is reachable from a Node test in a repo whose vitest environment is
+`'node'` and can therefore never render a screen. A new search surface calls it too.
+
+## Everything the app already knows reaches you where you are
+
+Which instrument you are practising, which piece you mean when you type it in Farsi,
+and which class files are already linked to a piece — none of that may sit one screen
+away from where you need it, and NONE of it is new stored data.
+
+**A BROWSE SCREEN OPENS ON THE INSTRUMENT YOU ARE PRACTISING, AND STILL WIDENS.**
+Repertoire (all three views — Pathways, My repertoire, Practice list) and Lessons seed
+their instrument filter from the SAME persisted `sessionInstrumentId` Today, Start, Quick
+Add, New Item and the Session Plan already read, via `defaultInstrumentFilter`
+(`selectors.ts`, tested): a resolvable session instrument seeds the filter, the `'all'`
+sentinel seeds the every-instrument view, and a session instrument that no longer
+resolves IN THE LIST THAT SCREEN'S OWN DROPDOWN RENDERS falls back to every-instrument
+rather than seeding a value with no matching option and showing an empty screen. These
+screens SEED from that value and never WRITE it: browsing another instrument's
+repertoire must not change what Today recommends. The cross-instrument view is never
+removed — only stopped from being the default you undo on every visit.
+
+**A NARROWED PATHWAYS VIEW HIDES GENERAL PATHWAYS TOO, NOT JUST OTHER INSTRUMENTS'
+OWN.** A `Pathway` with no `instrumentId` is General — cross-instrument by design — and
+can hold items from ANY instrument, so showing it while narrowed to Setar can still
+surface a Tar item's progress with no way to know it slipped through. `pathwaysForInstrumentFilter`
+(`selectors.ts`, tested) is the one place this is decided: a real filter keeps only
+pathways scoped to that exact instrument, and only the explicit `''` ("all") filter
+widens back to see General pathways too — the same opt-in-widen shape as everything else
+in this section, not a second rule.
+
+**AN ITEM'S MATERIAL IS COMPOSED, NEVER STORED.** `itemFiles(db, itemId)`
+(`src/domain/itemFiles.ts`, pure and tested) lists the NAS references of every lesson
+the item is LINKED to (`lesson.itemIds` → `lesson.recordings`), deduplicated BY PATH so
+a file referenced from two of those lessons appears once, followed by the item's own
+attachments — lessons newest first, kind order within a lesson, attachments oldest
+first. Nothing is persisted to make this view work and no new field exists; these links
+were always in the data and were simply never composed. An attachment's `ownerId` is not
+an item id on its own — a lesson's attachments share the same id space, so a lesson and an
+item can collide on id — so ownership is decided by `ownerType` AND `ownerId` TOGETHER, via
+one shared `attachmentsOwnedBy(attachments, ownerType, ownerId)` predicate (`itemFiles.ts`,
+exported and tested), with `itemOwnedAttachments` as its item-scoped wrapper. EVERY surface
+that lists, counts or removes attachments reuses it rather than re-deriving the check:
+Material's composition here, ItemDetail's Files CRUD list below, the shared `Attachments`
+component (a lesson's own file list, `ownerType="lesson"`), `ItemCard`'s file-count badge, and
+`deleteItem`/`deleteLesson` (`useStore.ts`) choosing which attachment metadata AND blobs to
+destroy — so no read, count or delete can cross-contaminate the other owner type on a
+colliding id. An item with no lesson link and no attachments yields an EMPTY LIST, and the
+surfaces render nothing rather than an
+empty frame. An item with no lesson link cannot reference NAS material at all — that is
+the honest gap, and closing it needs a persisted item-level reference, therefore a
+schema change and its own lane. Both the PRACTICE screen and ItemDetail render the WHOLE
+composition — a reference and an attachment for the same piece are never split across two
+sections of the screen. ItemDetail's existing Files section stays below it, but only for
+add/remove: that is a CRUD concern, never a second, partial presentation of what
+`itemFiles` already composed. It selects its list via the SAME `itemOwnedAttachments`
+predicate rather than filtering `ownerId` alone, so it can never present or remove a
+lesson's attachment that happens to share the item's id. It is therefore its own small
+list local to `ItemDetail.tsx`
+(name, size, Remove — no thumbnail, no Open), not the shared `Attachments` component used
+for a lesson's own attachments: that component's preview and Open are exactly the
+presentation Material already gives an item's files, and reusing it here would put the
+same file on screen twice.
+
+**THE TWO KINDS OPEN BY DIFFERENT MECHANISMS, SO EVERY ENTRY CARRIES WHICH IT IS.** A
+reference resolves through the configured NAS base URL; an attachment resolves to a
+blob on this device. `ItemFile` is a discriminated union on `source`
+(`'reference' | 'attachment'`) so the compiler — not a component's care — is what stops
+a reference being opened as a blob or an attachment being pushed through the base URL
+and 404ing. They share no identity field (a reference has a `path`, an attachment a
+`name`), so they are never merged and deduplication is WITHIN a kind, never across.
+
+**WHAT MAY RENDER INLINE IS A PURE PROPERTY OF THE ENTRY, decided in `itemFiles.ts`.**
+`inline` is true only for a LOCAL IMAGE attachment; every PDF, audio file and every NAS
+reference is open-only. Written inline in a component that rule would be unreachable
+from a Node test, and it is exactly the rule that keeps the practice screen a practice
+screen and the whole feature inside the existing production CSP: `blob:` images are
+already permitted, while a NAS origin is not knowable at build time and so could never
+render under a static policy in any case. Large media stays on the NAS — files are
+OPENED, never fetched into attachments, IndexedDB, sync or a backup.
+
+**MATERIAL DURING PRACTICE IS ONE CLOSED DISCLOSURE, BELOW THE TIMER.** `ActiveBlock`
+offers it only when `itemFiles` is non-empty, renders nothing until it is opened (a
+closed disclosure does zero async work), and sits in the same shape as "About this
+piece" — not a panel, not a viewer, not a dashboard. No material or viewer concern may
+influence a recorded minute, the wake lock, or a boundary announcement: the
+elapsed-time family, `shouldKeepAwake` and `nextSignal` are untouched by any of this.
+
+**A NAS REFERENCE IS STORED RELATIVE TO THE CONFIGURED BASE, so it stays portable.**
+An absolute URL saved verbatim is PINNED TO ONE ROUTE to the NAS: it dies on a phone
+away from home, and everywhere at once if the base URL ever changes.
+`relativizeReference(base, pasted)` (`recordings.ts`, tested) rewrites a pasted URL that
+sits UNDER the configured base into the path beneath it — requiring the path BOUNDARY
+(`base + '/'`, so `…/media` never swallows `…/mediaXYZ/`) and comparing normalised URLs,
+not raw strings. It DECODES per segment because `resolveRecording` re-encodes on the way
+out; a Farsi filename copied percent-encoded from a directory listing would otherwise be
+double-escaped into a dead link. Everything else is stored EXACTLY as given, because
+guessing is worse than mangling nothing: a different origin is a deliberate external
+link, a URL carrying a query or fragment is not a plain file path, and a blank or
+unparseable base is not something to reason from. This is what makes the transport
+(LAN address today, something else later) a decision that can be CHANGED WITHOUT
+REWRITING A SINGLE STORED REFERENCE — and it is the only thing this lane writes
+differently: the TEXT of an existing `LessonRecording.path`, its type and meaning
+unchanged.
+
+**BROWSE IS OFFERED ONLY WHERE IT CAN WORK.** Settings and the lesson add-reference form
+open the NAS listing at `normalizeBaseUrl(base)`; a blank or unparseable base yields no
+target and the action is disabled with a plain explanation, never a dead link or a
+same-origin request. A missing or unreachable NAS degrades to a disabled or absent
+action — never an error state, and never anything that blocks practising. Everything
+still works fully offline; the base URL stays per-device in localStorage, out of
+exports, backups and synced data.
+
+## The Setar archive is a SOURCE: it describes, it never testifies
+
+A read-only Node scanner on the NAS (`scripts/scan-setar-classes.mjs`, stdlib only) turns
+the normalised Setar class archive into a deterministic, CLOCK-FREE JSON index;
+`scripts/publish-setar-index.mjs` commits it to ONE file on ONE branch of the existing
+private data repo (`source-index` / `setar/index.json`); the app GETs it with the GitHub
+connection it already has and reconciles it purely. `docs/setar-archive.md` is the operator
+runbook, the corpus baseline and the recorded source hashes.
+
+**AND ONE SCAN IS ONE CONSISTENT VIEW OF EVERY INPUT, OR NONE.** The registry was the only
+input re-read after the walk, which made the guarantee exactly as narrow as the file it
+named — and the MEDIA is what a non-atomic NAS copy actually perturbs. Move a resource out
+before its folder is enumerated and put it back while later folders are walked: PIECES.csv
+never changes, the scan publishes an index that omits the file, and the next Refresh marks
+still-present material `unavailable`. The rename log had the identical exposure, read once
+and compared against nothing. `readSource` is now every input in ONE place, the whole of it
+is read TWICE and the two readings compared (sizes included, so a file still being copied is
+caught too), and any difference refuses before anything is written. It is a CONSISTENCY
+check, not atomicity: a perturbation stable across both readings agrees with itself and is
+indistinguishable from the archive genuinely being in that state. What it removes is the
+transient, which is what a copy in flight looks like.
+
+**AND A READ FAILURE IS NEVER VALID EMPTY SOURCE DATA — WHICH IS WHAT MADE THE TWO-READ
+CHECK LOOK CLEAN OVER A FALSE VIEW.** `catch { renameLogText = '' }` turned every failure to
+read RENAME-LOG.csv — a permission change, an I/O error, a mount that went away mid-copy —
+into an archive that has no rename log. Both readings then AGREED, the consistency check
+passed, and the scan published an index with no renames at all: a file that moved during
+that window is flagged `unavailable` and its saved references can never be repaired. Absence
+is an OBSERVATION (`{present:false}`, ENOENT only) and travels in the compared reading as
+one; anything else fails the scan. A required input is required outright, so a missing or
+unreadable PIECES.csv refuses rather than yielding an empty registry, and a present-but-EMPTY
+log — what a zero-byte copy in flight looks like — is refused by `readTable` exactly as the
+registry would be.
+
+**AND THE WALK SAYS WHAT IT COULD NOT TAKE IN.** Two readings agree about a file neither of
+them looked at, so the consistency check is blind by construction to anything the walk drops
+in silence. A symbolic link is still never FOLLOWED — a link out of the archive is a path
+this scanner has no authority over — and a session-named entry that is not a directory is
+still never opened; both are now `diagnostics` rows in the published index instead of
+vanishing, because an index quietly narrower than the archive is the same "partial view sold
+as complete" this whole section exists to refuse. Dotfiles, `@eaDir` and out-of-scope root
+folders stay silent: they are not archive content, and saying so 258 times is noise. It is a
+DIAGNOSTIC and not a refusal for the same reason a rename cycle is: a symlink is a stable
+property of the archive, not a transient, so refusing would leave the archive permanently
+unindexable until the owner went and deleted it — where the two-read check refuses only what
+disagrees with itself between two readings a moment apart.
+Finally, the compared reading carries each file's `mtimeMs`, which `buildIndex` never reads —
+a file edited IN PLACE at the same byte length changes no size and no CSV, and would
+otherwise be invisible to a check whose whole job is catching a mutation mid-scan. The
+determinism rule is untouched: altered mtimes still produce a byte-identical index.
+
+**THE APP NEVER PARSES A FILENAME.** The grammar — longest role prefix at a hyphen boundary,
+trailing digits as a part number, embedded digits and `-و-` as piece identity, never a
+token-0 split, never a largest-file heuristic — lives ONCE, in the scanner, because the app
+consumes an index rather than a directory. `src/domain/sourceArchive.ts` decodes and
+validates that index; a version newer than this build understands is REFUSED rather than
+read leniently.
+
+**AND THE DECLARED DIGEST IS RECOMPUTED, NEVER TAKEN ON FAITH.** `contentHash` is not a
+checksum the app may skip past: it is the REFRESH IDENTITY. `planArchiveImport` compares it
+with the hash already accepted to conclude nothing has changed, so content altered under a
+RETAINED old hash was reported "Already current" and its changed facts silently ignored —
+a sealed review reproduced it by editing one composer. `parseSourceIndex` (now async)
+recomputes the SCANNER's own digest — SHA-256 over `canonicalStringify` of the body minus
+`contentHash` and `generatedAt`, byte-for-byte `scan-setar-classes.mjs`'s `contentHash` /
+`canonicalJson` — and refuses a mismatch. It is the ONE boundary the GitHub fetch and the
+file fallback both pass through, so neither door can be given the check separately and miss
+it. `decodeSourceIndex` stays synchronous and digest-free on purpose: it is the STRUCTURAL
+decoder, and order inside `parseSourceIndex` is size → parse → structure → digest, so a
+broken file reports the error the owner can act on rather than a hash mismatch.
+
+**AND A VALID DIGEST SAYS THE FILE IS THE ONE THE SCANNER WROTE — NEVER THAT IT IS WELL
+FORMED.** The decoder NORMALISES before the graph's grammar runs, so the grammar only ever
+sees the decoder's own output: `resources: null` decoded to a session with no resources —
+a perfectly valid EMPTY LIST by the time the grammar saw it — and six files became zero
+behind a correct hash. Every absent-tolerant read had that shape, the scalars included
+(`part: "3"` became `null`, a wrong-typed `size` vanished, `rosterTrusted: 'yes'` became a
+boolean the grammar was happy with). `list` / `num` / `bool` (`sourceArchive.ts`) are the
+one rule instead: ABSENT is a default, PRESENT-AND-WRONG is a refusal naming the record —
+the same treatment `validatePracticeText` gives the owner's own words, and never a
+coercion.
+
+**AND THAT RULE HAD TO REACH THE STRINGS TOO.** It closed the lists and the scalars and left
+every string field with a default exactly as it was: `str(raw.form ?? '')` still read ABSENT
+and PRESENT-AND-NULL as the same thing, so a resource `title: null`, a piece's `form`,
+`composer` or `notes`, and a diagnostic's own `path` all decoded to `''` — an untitled row
+the grammar was perfectly happy with. `text()` is that one rule for strings: `undefined` is
+a default, anything else that is not text is refused naming the record. `part` and `group`
+stay genuinely nullable, because the scanner emits `null` for both; `size` does not, and a
+present null is refused BY THE DECODER rather than spread into its own output as a value the
+declared type does not admit and left for the grammar to catch downstream.
+
+**ARCHIVE EVIDENCE MAY ESTABLISH REPERTOIRE MEMBERSHIP, HISTORICAL LESSON PROVENANCE AND
+SOURCE MATERIAL. IT MAY NEVER ESTABLISH RECORDED PRACTICE, A RESULT, EXPOSURE, REVIEW
+COMPLETION OR SCHEDULING PROGRESS.** An imported item carries zero minutes, no
+`lastPractisedAt`, no result, no review row, no SM-2 state, no pathway placement and no
+catalogue identity. The owner's own `تمرین-من` recordings are the sharpest case: their
+membership and role survive in the graph as provenance (the six-session
+`پیش-درامد-سه-گاه-فروتن` chain is six CLASSES, never six weeks and never practice), and the
+files themselves are never a resource anywhere.
+
+**A CLASS RECORDING BELONGS TO ITS LESSON; A NAMED SCORE BELONGS TO ITS PIECE; AN UNNAMED
+DEMONSTRATION BELONGS TO EVERY CANONICAL MEMBER OF ITS SESSION.** That last one is the
+archive's own rule (`CRAWLER-BRIEF.md` §4): the teacher records the week's pieces in one
+take, so there is no single piece to attribute it to and the information simply does not
+exist in the filename. The ROSTER is the registry's answer to "what was assigned at class
+N", never a set inferred from the files present — and when the two disagree, the unnamed
+demo is NOT expanded across a guessed set; the disagreement is reported instead.
+
+**IDENTITY IS BYTE-EXACT AND TRANSPORT-INDEPENDENT.** `canonical_fa` is the join key,
+unfolded and untransliterated; `aliases_seen` is literal SEARCH data (`itemMatchesSearch`
+takes them, `persianSearchMatch` unchanged) and is NEVER consulted to decide which piece a
+record is. App ids are deterministic hashes of the source identity (`sourceItemId`,
+`sourceLessonId`), so two devices importing the same index separately agree on which record
+is which. Asset paths are stored RELATIVE TO THE ARCHIVE ROOT, so changing the transport
+rewrites no stored record; each device configures its own base once.
+
+**EXACT BINDINGS WIN; WEAK EQUIVALENCES ASK.** A record already bound to a source identity
+IS that entity, whatever its title or date has since been edited to. A legacy class is
+auto-adopted only on instrument + date + number + EXACT source-path evidence — the owner's
+real upcoming class 38 (2026‑09‑27) and archive session 38 (2026‑08‑04) are the live
+counterexample to merging on a number. An exact title or literal-alias match produces
+Link / Create separately / Skip, never an automatic merge and never "pick the first
+candidate"; a built-in `catalogKey` (`iraq`) is never equated with a canonical key (عراق).
+
+**NEW IMPORTED PIECES ARRIVE RESTING** (`status: 'dormant'`), as an administrative import
+policy stated BEFORE the import: ninety-four live candidates would flood Today and every
+session plan. They stay searchable, stay in My repertoire and start directly.
+
+**AN IMPORTED CLASS IS HISTORY EVEN WHEN ITS DATE IS IN THE FUTURE.** The archive runs to
+September 2026, so a device whose clock is behind it holds future-dated records of classes
+that already happened. `isUpcomingLesson` (`sourceArchive.ts`) checks `origin === 'archive'`
+BEFORE the date, and it is the ONE predicate `nextLessonFor`, `nextLessonDates`,
+`defaultTargetLesson`, `preparationDatesByItem` and every Lessons badge / default selection /
+question sheet go through. A plain `date >= today` anywhere here turns thirty-nine pieces of
+history into thirty-nine deadlines.
+
+**THE COMMIT IS ONE MUTATION, REBASED, VALIDATED AND ACKNOWLEDGED.**
+`commitArchiveImport` (`useStore.ts`) re-plans against the database as it is NOW — a note
+saved or a block finished while the index was being fetched is never lost — refuses with
+`stale` when the rebase raises a NEW question OR when a DECISION'S OWN PREMISE HAS MOVED,
+runs the whole proposed database through
+`validateDB` before installing any of it, and waits for IndexedDB to acknowledge. A FAILED
+write reports `unsaved` and the retry WRITES AGAIN even though the in-memory graph already
+matches, because "Already current" over data that was never saved is the lie this guards.
+It never calls `importDB`/`installDatabase`/`resetDemo`/`clearAll` and never touches a blob:
+a refresh ADDS to the database, it does not replace it, so the running clock, the routine,
+the plan, `notNow` and `sessionInstrumentId` are all untouched. An unchanged refresh returns
+the SAME database object, so it cannot bump the revision or churn a timestamp.
+
+**AN OWNER'S RECONCILIATION ANSWER IS A DECISION TOO, AND A SKIP IS PERSISTED.** A sealed
+review found three halves of this missing. SKIP lived only in the preview's own `decisions`
+argument, so "no, not this one" survived exactly as long as the screen did — a reload, or
+the next refresh, asked the identical question again with nothing in the database to show it
+had ever been answered; `planArchiveImport` writes a `piece`/`session` suppression for it
+now, the same record every other deliberate removal writes, which a refresh, a reload and a
+sync all already respect (idempotent, so answering twice does not grow the list). CREATE
+SEPARATELY was honoured for an item and silently dropped for a LESSON, so two
+indistinguishable legacy classes re-asked for ever. And a decision taken against an
+ALREADY-CURRENT index — a skip, or one registry field applied — was reported "Already
+current" and thrown away unwritten, because `commitArchiveImport` judged it by
+`summary.unchanged`, which answers about the INDEX alone. The store asks
+`applyArchiveImport` itself now (it returns the SAME OBJECT when a plan changes nothing),
+so there is one source of truth for that question and it is the function that does the
+writing. `applyArchiveImport` counts a field decision only when the plan actually OFFERS
+that field, so both sides of the preview/commit boundary mean the same thing by "nothing to
+do". An OFFER is not a change: an unanswered suggestion writes nothing and says so.
+Suggestions are RENDERED in `ArchiveRefresh.tsx` — one control per field, the owner's
+current value and the archive's proposal each resolving their own direction — and a decision
+is keyed by `piece:field`, because keying by piece alone made choosing a composer evict the
+dastgāh choice made a moment earlier. What is DURABLE here is the suppression a skip writes
+and the value an applied field writes — never the in-flight selection itself: an unpressed
+suggestion is component state, and it is re-derived from the graph on the next refresh
+precisely because nothing about it was stored.
+
+**AND A DECISION IS ABOUT THE STATE THE OWNER SAW, NOT MERELY ABOUT ITS TARGET.** A new
+QUESTION is not the only way a rebase invalidates an answer, and refusing only on that let
+the opposite case through silently: choose the archive's composer over an EMPTY field, then
+type one of your own before pressing Apply, and the rebase found nothing to ask about and
+wrote the registry value over the words just written. An `apply-field` decision therefore
+carries `from` — the value of the owner's it was chosen against — and
+`decisionMatchesSuggestion` is the ONE test both the plan's summary and
+`applyArchiveImport`'s write use, so a preview and a commit cannot mean different things by
+"this still applies". A LINK decision has a premise too: `link-item`/`link-lesson` may only
+adopt a record that is still UNBOUND and still this instrument's — the same conditions the
+candidate list was built from — because a target bound elsewhere, moved or deleted since
+would otherwise be silently rebound, or fall through and CREATE a record instead of linking
+one, which is not the action the owner chose. Both kinds land in `plan.staleDecisions`, one
+channel rather than two, and the commit refuses on either whether or not `rev` moved. The
+screen DROPS a stale decision rather than re-submitting it for ever, and re-previews: the
+question, or the suggestion's real current value, is shown as it is now.
+
+**AND A DECISION NAMES ITS RECORD, NOT ONLY ITS PIECE — AND EVERY DECISION IS ACCOUNTED
+FOR.** The premise rule above closed the case where the owner's VALUE moved and left the two
+cases where the RECORD did. Both loops open with "already bound? nothing to decide" /
+"already suppressed? nothing to decide", so a decision about a record that became bound
+between the preview and the commit was never looked at at all: no adoption, no question, and
+an EMPTY `staleDecisions`, so the commit reported success for an action it had not performed.
+An `apply-field` decision was worse than ignored — keyed by piece and value alone, it was
+REDIRECTED onto whichever record held that piece by commit time, and a sync installing a
+database where the same piece is bound to item B, also with an empty composer, took a choice
+made about A.
+
+So `apply-field` carries `itemId` (identity) as well as `from` (premise), and
+`decisionMatchesSuggestion` compares all four; and `planArchiveImport` marks every decision
+it ACTS on and sweeps the rest. An unmarked decision is either an action that has ALREADY
+HAPPENED — the same answer still in hand on the next preview — or an answer to a question
+that no longer stands, which is stale. That already-done branch is LOOP PREVENTION rather
+than politeness: `ArchiveRefresh` drops a stale decision and re-previews, and a realised
+action can never be consumed by a loop that skips its own record, so without it the same
+decision would go stale for ever. The sweep is why this holds for Link, Create, Skip and
+apply-field together instead of a stale check bolted inside each early return, and the
+premise rule above is now one of its outcomes rather than a second mechanism beside it.
+
+**AND A STORED PATH HAS ONE READING.** Adoption evidence and path repair both have to
+decide what file a stored reference names, and they used to decide it differently:
+`hasSourcePathEvidence` stripped the legacy prefix and followed the rename log, while
+`repairReferencePath` also understood a full URL under this device's verified base. So a
+class whose references were saved as full links carried perfectly good evidence that
+nothing recognised — adoptable by one rule and unfixable by the other. `readArchiveRelative`
+is that one reading, and both go through it.
+
+**AND THAT WAS ONLY HALF OF IT: THE RENAME CHAIN HAD THREE READINGS.** Repair followed the
+whole logged chain, adoption took a SINGLE HOP, and a suppression took none at all — so one
+log gave three different answers about one file. With A→B→C logged, B in session 1 and C in
+session 2, a unique legacy class was adopted AS SESSION 1 on the strength of B and then had
+that very reference repaired into session 2: bound to one class, pointing at another's
+files. `followRenames` is that one reading now (a CYCLE is reported, never walked — a log
+that loops says nothing about where the file is), and three things use it: evidence, repair,
+and the owner's own hides.
+
+**AND "REPORTED" HAD TO BE UNIGNORABLE.** `followRenames` handed back
+`{ path, cycle: true }` — a perfectly usable-looking path beside a flag — and only ONE of its
+three callers read the flag: adoption refused it, while the suppression re-key and
+`retainMissing` walked straight past it. Hide A, publish A->B and B->A, and the re-key moved
+the owner's hide onto B: A came back into view and the wrong file went dark. It returns
+`string | null` now, so there is no way to drop the verdict and still have a path. A hide
+stays exactly where the owner put it, a row the incoming index no longer lists keeps its
+provenance flagged rather than being deleted on the strength of a destination nothing can
+read, and repair says "the rename log loops on this path" instead of rewriting to an
+arbitrary stop on the loop. The SCANNER diagnoses the topology in the first place, and it is
+ONE rule rather than a mechanism per shape: A REPLACEMENT NAME IS PUBLISHED ONLY WHERE THE
+LOG DETERMINES IT UNIQUELY AND TERMINALLY. A loop names no file; a path given TWO
+destinations names no file either; and a chain walking into either cannot say where it
+ended. All of them are dropped with a diagnostic (ac-12's own rule: cycles and multiple
+destinations DIAGNOSE, never guess), so a published index carries neither, and the app still
+refuses to read one from any other source — `checkSourceGraph` rejects a second row for one
+`from` at the decoder AND at the persisted door. The fork case had exactly the defect the
+loop rule exists to prevent, said the other way round: the scanner published the FIRST
+destination and diagnosed the second as "not applied", so the app was handed a mapping the
+log cannot support and used it as EXACT IDENTITY — repairing an authored reference onto it
+and re-keying an owner's hide onto it. The diagnostic names every destination it saw, once
+and in sorted order, because `diagnostics` is inside `contentHash` and a shuffled log must
+still produce the same index. An ordinary chain beside a loop or a fork still publishes: one
+bad topology does not cost the archive its good provenance.
+
+A RESOURCE SUPPRESSION IS KEYED BY PATH, so left on the old name
+a hidden file simply reappeared under the new one while the old row sat there flagged
+unavailable. Re-keying it is not editing an owner decision — it is the same decision about
+the same bytes said in the archive's current words, the `itemId` scope carried untouched and
+`suppressionKey` de-duplicating the result. For the same reason a renamed row is DROPPED
+from the retained graph instead of flagged `unavailable`: the log says exactly where the
+bytes went, so that file moved, it did not disappear. The comparison is against every path
+the incoming graph describes, ACROSS sessions — a rename can move a file into a DIFFERENT
+session (the log's own A→B→C shape does exactly that), and asking only "is it still in this
+session" flagged such a file as gone while the same bytes sat in the graph under their new
+name. Safe to drop, where a piece or a
+session would not be: only those carry item/lesson bindings, so no binding can dangle on a
+resource row, and a manual unclassified lesson's own reference reaches material through the
+LESSON, never through this graph. A file that really is gone still keeps its provenance,
+flagged, exactly as before.
+
+**A DELETION IS A DECISION, AND IT IS RECORDED IN THE SAME MUTATION.** `deleteItem`,
+`deleteLesson` and `unlinkItemFromLesson` write a narrowly scoped `SourceSuppression`
+alongside the change, so a refresh, a reload, a hydration and a sync all respect it rather
+than resurrecting what the owner removed. Hiding a resource carries the ITEM id, so a
+demonstration shared by eight pieces stays available to the other seven. Lifting a
+suppression (`resetArchiveSuppression`) permits reimport. Moving an archive-bound item to
+another instrument is REFUSED with an actionable message rather than emitting a graph
+`validateDB` would reject at every door.
+
+**ONE COMPOSITION FOR MATERIAL, SCOPED BY THE GRAPH.** `itemFiles` (`itemFiles.ts`) now
+composes, in order: what the archive scopes to this piece (corrections first, clean scores
+retained, demonstration parts as one ordered group, each row carrying its session and role
+as provenance), then the owner's own DIRECT item references, then the references of LINKED
+lessons that are NOT archive-bound. An archive-bound lesson contributes nothing through the
+link route — its files reached the list already, correctly scoped — which is what stops a
+class recording and someone's practice takes from landing on a piece. A manual, unclassified
+lesson still contributes everything it has, because nothing knows the scope and inventing
+one would be a guess.
+
+**A LESSON IS THE OPPOSITE CASE: EVERY FILE ON IT HAS EXACTLY ONE SECTION THAT RENDERS IT.**
+An ITEM's material is composed from OTHER records — linked lessons, the graph — that the
+item's own page has no section for, which is precisely why `itemFiles` must stay the whole
+composition. A LESSON owns its own references and its own attachments, and its page already
+renders each in the section that can edit and remove them. `lessonFiles` composed those as
+well, so an authored NAS reference the index describes nowhere — the owner's own practice
+takes on an adopted class — and every local attachment were rendered TWICE: once above,
+where nothing can be done with them, and once again where they live. `lessonFiles` is now
+the ARCHIVE's contribution alone (an archive-bound class keeps no copy of its session's
+files, so nothing else can show them); "Class recording & scores" keeps the owner's
+references, `Attachments` keeps the attachments, and each Remove button is NAMED after its
+own file rather than saying "Remove this link" three times over.
+
+**AND "HAS A RECORDING" IS ABOUT THE CLASS, NOT ABOUT THAT ARRAY.** An imported historical
+class keeps no copy of its session's files, so `lesson.recordings` is empty and the
+empty-state card invited the owner to add a class recording directly beneath the one already
+playing above it. That state is read through the same composition the section above renders
+— not the session's `hasClassRecording` flag — so a class recording the owner has HIDDEN does
+not count as one that is there.
+
+**SCHEMA v14 IS ADDITIVE, AND THE WHOLE GRAPH IS VALIDATED AT EVERY DOOR.**
+`migrateToV14` adds an EMPTY `archiveSources` and changes nothing else; it is unconditional
+and idempotent for the reason `migrateToV12` and `retirePracticeText` already are.
+`archiveSources` is in `validateDB`'s ARRAY_KEYS *and* in its reconstructed return value — a
+new collection left out of that object literal is silently dropped on the way in.
+`validateArchiveSources` refuses duplicate source ids, duplicate piece keys, duplicate
+session numbers, wrong types, unsafe paths, invalid part groups, dangling or duplicated
+item/lesson bindings, an instrument mismatch and an unsafe direct reference, naming the
+record. A resource marked `unavailable` is a VALID state — the file is gone from the NAS and
+its provenance is kept — not a dangling reference.
+
+**THE NESTED GRAPH HAS ONE GRAMMAR — AND THE DECODER RUNS IT OVER ITS OWN OUTPUT, WHICH IS
+NOT THE SAME CLAIM AS RUNNING IT OVER WHAT ARRIVED.** (A later sealed review found exactly
+that gap; the `list`/`num`/`bool` rule above is what closes it, and the grammar below is
+what the decoder's OUTPUT and every persisted graph are both held to.) `decodeSourceIndex` and
+`validateArchiveSources` used to state the shape separately, and the second stated LESS of
+it: it checked a resource's path and its part group and walked straight past
+`members[].roles`, `piece.aliases`, a resource's `kind`/`title`/`pieces`, a session's
+`folder` and `roster`, and the rename and diagnostic rows entirely. A sealed review set
+`members[0].roles` to `null` in an imported file: every door ACCEPTED and PERSISTED it, and
+the first production reader to touch it — `repeatChains`, doing `m.roles.includes(...)` —
+threw while rendering material. `planArchiveImport` had the identical exposure through
+`new Set([piece.key, ...piece.aliases])`. `checkSourceGraph` (`sourceArchive.ts`) is that
+grammar in ONE place; the decoder runs it over its own normalised output and
+`validateArchiveSources` runs it over every persisted source, so a reader may dereference
+any field the grammar admits and nothing else can reach the database. The fix is the
+GRAMMAR, never a defensive guard in a component: a reader written against a validated graph
+is the point of validating it. `unavailable` stays legal on a piece, a session and a
+resource, and a suppression's `itemId` and `at` are checked too — a non-string `itemId`
+silently widens a hide scoped to ONE item.
+
+**AND A GRAMMAR OF FIELD TYPES SAYS EVERY VALUE IS READABLE, NEVER THAT THE GRAPH AGREES
+WITH ITSELF.** A resource physically sitting in class 2's folder, listed under class 1, is
+type-perfect at every door and attributes someone else's file to the wrong class on every
+screen that reads it. So `checkSourceGraph` also checks the RELATIONS, and the same four at
+both doors: a resource's path is `<that session's folder>/<name>` and nothing else; a
+resource attributed to a piece has that piece's membership recorded for that ROLE, so no
+file can surface as a piece's material with nothing in the graph saying it belongs to it; a
+`group` belongs only to a demonstration, and the parts sharing one are material for the same
+pieces with distinct part numbers, so an arbitrary group cannot invent one logical resource
+out of unrelated files; and `hasClassRecording` agrees with whether a class-role resource is
+actually there, which itself may never name a piece.
+
+These run over what the source still DESCRIBES. `unavailable` is retained provenance about
+what it has STOPPED describing — a piece dropped from the registry, a file deleted from the
+NAS — so holding those rows to the current source's internal agreement is a category error,
+and would make every refresh after a removal refuse at every door. The group's LABEL format
+is deliberately not asserted: that is the scanner's grammar, and this file's own rule is
+that the grammar lives once.
+
+**AND THE RECORD'S OWN FIELDS ARE CHECKED, NOT ONLY ITS NESTED GRAPH.** `acceptedAt` was
+the one persisted field with no check at all, while Settings renders it
+(`acceptedAt.slice(0, 16)`) to say when the index last changed — so a v14 import carrying
+`acceptedAt: null` was accepted, persisted, and then threw while the screen drew. It is
+held to a REAL calendar instant (`isValidSourceDateTime`, a local sibling of
+`isValidSourceDate` rather than a shared import, for the reason `askedAt` and `dueDate`
+already keep their checks one per file): a shape regex matches
+`"2026-02-30T12:00:00.000Z"` and `Date.parse` silently normalises it into March. `renames`
+and `diagnostics` are required AT REST where the grammar tolerates them absent, because the
+decoder always emits both and the planner reads them unguarded. A suppression's `at` is
+provenance only — nothing reads it back as a date — so it is held to being real text and no
+further. The fix is this DOOR, never a guard in `ArchiveRefresh.tsx`.
+
+**A BASE IS AN ORIGIN AND A PATH, AND NOTHING ELSE.** Everything appends a path AFTER the
+base, so a credential, a query or a fragment in it is not untidiness:
+`https://user:pass@nas.example/media?token=secret` made "Open archive root"
+`…?token=secret/` and a file `…?token=secret/session-1/x.mp4` — a password on screen in
+every device URL, addressing no file at all. `normalizeBaseUrl` REFUSES all four
+(`username`, `password`, `search`, `hash`) rather than stripping them, because a rewritten
+base names a different server and only the owner can say what they meant; the media
+sentence says WHY. That is the whole family in one place: `resolveRecording`,
+`relativizeReference`, `archiveRootUrl`, `describeArchiveAccess` and the reconciler's
+`verifiedBase` (through `archiveRootUrl`) all pass through it. A stored ABSOLUTE url is
+still opened as the owner saved it — their own authored link, not this device's configured
+base, and nothing here mints one.
+
+**THE MEDIA BASE IS THE ARCHIVE ROOT, NOT THE MEDIA ROOT ABOVE IT.** This is the one setting
+a device carries from before the archive existed, and this lane silently changed what it
+must contain: legacy references were written relative to the NAS media root and began
+`setar-classes/`; every reference the app writes now is relative to the ARCHIVE root and
+begins `session-…`. `resolveRecording` APPENDS to the base and preserves its whole path
+prefix (`/media/`, `/archives/v2/` — ac-14's own test), so it is correct either way and a
+base one folder too high is not a resolver defect: it is a URL that addresses nothing.
+Settings names the archive folder, shows it in the placeholder, and no longer promises that
+the base can be changed freely — for a device configured before this lane, correcting it
+once is required. There is deliberately NO second archive-specific base and no resolver
+fallback: one base per device, ending in the archive folder, is what ac-14 and ac-20 state.
+
+**TRANSPORT IS PER DEVICE AND NEVER SYNCED.** `resolveRecording` encodes each Farsi segment
+ONCE and now REFUSES an unsafe relative path outright (`status: 'unsafe'`); the Mac base
+(`https://192.168.0.20:5010/setar-classes/`), the iPhone base and any future base resolve
+the same stored path with each one's own path prefix preserved. `relativizeReference` will
+not store a pasted URL whose decoded form steps OUT of the base — it keeps the pasted text
+exactly as given instead. The arbitrary-clip "Test link" is gone: a single clip proves
+nothing (it fails for a renamed file and passes for a base whose other thousand files are
+unreachable), so Settings opens the ARCHIVE ROOT and `describeArchiveAccess` states the
+index and the media as two separate facts. Reading the index proves GitHub answered and
+says nothing about the NAS; a certificate rejection, a blocked cross-origin request and an
+outage are indistinguishable from a web page, so none of them is ever called absence.
+
+**THE 67 LEGACY PATHS ARE REPAIRED EXACTLY, OR DIAGNOSED.** `src/domain/setarClasses.ts` is
+FROZEN — no longer a workflow, now the ledger of what the old bundled importer wrote — and
+`repairReferencePath` maps all 67 through the archive's own 257-row rename log. No fuzzy
+matching by title, size or modification time; a cycle, a missing target or an ambiguous
+mapping is reported. A full URL converts only under a VERIFIED base, and one carrying a
+query or fragment is left alone. Where an old and a current row now point at one physical
+file, BOTH rows survive with their own titles and notes: deleting one deletes something the
+owner wrote.
+
+**AND THE REFRESH ITSELF DOES IT — a helper with no production caller repairs nothing.**
+The rename log is published WITH the index, so the one moment the app can repair a stored
+path is the moment it accepts a new graph; a sealed review found a uniquely adoptable
+legacy class being adopted and left pointing at names the archive renamed years ago — bound
+and broken. `planArchiveImport` now runs `repairLessonReferences` in ONE pass over the
+lessons this archive OWNS: the ones this plan adopts and the ones already bound. A lesson
+the archive has no claim on is not something a refresh may rewrite. The pass produces the
+objects the plan SHOWS (`adoptedLessons`) and the ones it installs (`repairedLessons`), so a
+preview cannot display an old path while the commit writes a new one. `verifiedBase` is
+threaded from the device's own configured media base, so a stored full URL under it converts
+and everything else stays exactly as the owner saved it.
+A cycle, a rename whose destination is gone and an unsafe path become plan `attention`
+rows — but `not-described` does NOT (see `RepairReason`): the index deliberately describes
+only material scoped to pieces and classes, so 125 of the archive's 258 files (the owner's
+own practice takes) are absent from it BY CONSTRUCTION, and a path it never names and never
+renamed is outside what it knows, never evidence that the file is gone. Those three personal
+references are retained historical links, unflagged — and RETAINED IS NOT THE SAME CLAIM AS
+LEFT IN THE OLD NAMESPACE.
+
+**A REFRESH LEAVES AN ARCHIVE-OWNED LESSON IN ONE NAMESPACE, OR THE OWNER'S OWN FILES DIE
+WHEN THE BASE IS CORRECTED.** The device media base is the archive ROOT (below), so every
+stored path is archive-relative and the legacy `setar-classes/` folder segment is not part
+of it. `repairReferencePath` stripped that segment only on the way to a path the index
+DESCRIBES and then threw the stripped form away for a `not-described` one — so a refresh
+left the described rows archive-relative and the undescribed rows legacy-prefixed, on the
+same class. OWNER testing found the consequence: with the base still naming the media root
+above the archive, a class recording resolved to `…:5010/session-39-…/…` and opened nothing;
+correcting the base to `…:5010/setar-classes/` fixed every described row and would have
+killed exactly the rows a refresh never reports — the owner's own practice takes, at
+`…/setar-classes/setar-classes/…`. Saying a path in the current namespace is NOT a claim
+that the file exists (no `attention` row is raised, `not-described` still says nothing), and
+it is IDEMPOTENT: only a path whose text actually changes is written, so a second refresh
+writes nothing and cannot bump the revision (asserted at the PLAN level, where the rule is
+stated, not only on the helper). ORDER MATTERS ONCE PER DEVICE: under the old base a legacy
+path still opens, so correcting the base BEFORE refreshing avoids a transient in which those
+files have moved namespace and the base has not. A legacy-prefixed reference on a lesson the
+archive does NOT own is still never rewritten — that rule stands — so such a reference stays
+in the old namespace and is the one known gap; it is the owner's to repoint, not a
+refresh's to guess at.
+
+**LESSON NOTES ARE THE SAME DURABLE EDITOR AS THE ITEM NOTEBOOK.** `DurableNotes`
+(exported from `ItemNotes.tsx`) is the one implementation — explicit Done, a draft tagged
+with the record it was typed for, "Saved." only after IndexedDB acknowledges, retry and copy
+on failure, and an in-flight write that never owns the textarea — and `LessonNotes.tsx` is a
+thin wrapper over it. The defect it fixes was NOT in an editor: `updateLesson` read
+`patch.notes ?? l.notes`, which cannot tell an OMITTED patch field from a deliberately empty
+one, so clearing a class's notes wrote the previous notes straight back. The store decides
+on the PRESENCE of the key now, the same distinction `resolveReviewDate` already makes for a
+date.
+
+**SECRETS.** The NAS publisher's credential is a SEPARATE, repository-scoped token
+(Contents write + metadata read, no workflow or admin scope) living only in the NAS
+runtime's protected configuration. GitHub does not issue branch-scoped tokens: the
+branch/path restriction is a property of `publish-setar-index.mjs`, and must never be
+described as credential isolation. The app's own browser token and each device's media base
+stay device-local exactly as before. No credential and no archive root enters a source
+archive, a committed file, a manifest, app data, a log, sync or a backup.
+
+## A COURSE is reference data in code — it is not an archive
+
+The owner's Classical Guitar Shed "Woodshed" course is a DOWNLOADED, FIXED tree
+whose own `notes.md` and `LEVEL_GUIDE.md` already state everything about it.
+`scripts/scan-cgs-course.mjs` (stdlib only, dry-run by default, never imported by
+or reachable from any runtime path) reads it into `src/domain/courseData.ts`, and
+`src/domain/courseSeed.ts` is the hand-written reader beside it. `docs/cgs-course.md`
+is the operator runbook, the corpus baseline and the recorded deviations.
+
+**IT MUST NOT REUSE THE SETAR ARCHIVE MACHINERY, AND THE REASON IS NOT TIDINESS.**
+That source GROWS, gets RENAMED and carries piece identity to reconcile against
+existing repertoire — which is why it needs a published index, a content digest,
+a reconciler and a persisted graph validated at six doors. A course has none of
+that to reconcile. So it sits on the rung `pathwaySeed.ts` already stands on:
+reference data in code, with NO persisted graph, NO new inbound door, NO schema
+change and NO migration. `SCHEMA_VERSION` stays 14 and `PracticeDB` gains
+nothing. `sourceArchive.ts`, `sourceReconcile.ts`, the published index format,
+the scanner, the publisher and the refresh/adoption flow are all untouched.
+
+**THE GRAMMAR LIVES IN THE SCANNER AND NOWHERE ELSE.** The app never parses a
+folder name, a `notes.md` heading or a syllabus table — it consumes the generated
+data. `courseData.ts` is the scanner's OUTPUT and is never edited by hand; a
+course change is answered by re-running the scanner and committing new data.
+
+**THE SOURCE OF A LEVEL'S ROUTINE IS `LEVEL_GUIDE.md`, NOT THE SYLLABUS PDF, AND
+THAT IS A MEASURED CORRECTION TO THE APPROVED PLAN.** The plan said "transcribed
+from the syllabus with its `***` segments essential". There is no `***` anywhere
+in the corpus — `grep -r` returns nothing — and the 1A syllabus PDF, whose text
+extracts cleanly, carries no minute-by-minute routine at all. Every level's
+`LEVEL_GUIDE.md` DOES carry a uniform Core (⭐, every session) / Rotation A /
+Rotation B / Reference split with time budgets, so Core → `essential: true`,
+Rotation → not essential, Reference → not in the routine at all. Level 3 is not
+the exception the plan expected either: 3A, 3D, 3E and 3F all carry full tables,
+so every level is derived uniformly rather than one being given prose about not
+having a routine. Target BPMs come from the syllabus table where it can be read
+and are ABSENT with a diagnostic where it cannot — a wrong tempo on a real
+section is worse than none, and the mechanism is validated against 1A's
+hand-authored ground truth.
+
+**AND A PRESERVED KEY GOES TO THE SECTION IT ACTUALLY NAMES.** Where a level
+ships two folders of one family, the base key is taken by the one with real
+content, never merely the lower ordinal: 2E's `08_Sight_Reading` is an empty stub
+beside the real `09_Sight_Reading`, and first-by-ordinal left an already-added
+item attached to a titleless folder while the level's own routine named the
+other — a key that survives but points at the wrong thing is the same failure as
+a key that disappears, wearing a passing test. A duplicate key is two sections
+claiming ONE item (`stageUnits` maps a key to a single item, `addFromCatalog`
+takes the first entry under it): the scanner refuses to emit one and
+`pathways.test.ts` holds the generated data to it.
+
+**MATERIAL IS DERIVED; GUIDANCE IS COPIED ONCE.** The "regenerating reaches every
+item that already exists" claim above is bounded to FILES. A section's guidance,
+BPM line and checklist are written into the item's Working notes at creation by
+`itemFromCatalogEntry`, exactly like every other catalogue entry — and must stay
+that way, because the notebook is the owner's to edit and a regeneration that
+overwrote it would destroy their words. Re-running the scanner updates an
+existing item's material and not its notes.
+
+**KEYS ARE ADDED, NEVER RENAMED — AND THAT IS A TEST, NOT AN INTENTION.** Every
+catalogue key the old generic `cgsOutline()` placeholders produced (`chords`,
+`arpeggios`, `scales`, `exercises`, `rhythm-study`, `sight-reading`, `piece`,
+`other-study`, `phrasing`, `fretboard-mastery`, `practice-skills`) is taken by the
+real section that replaces it, so an item the owner had already added stays
+attached to its suggestion instead of becoming a silently detached non-catalogue
+unit. A second section of the same family (2E's two Scales sections, 3A's two
+Arpeggios sections) gets its OWN new key rather than displacing the base one.
+`src/domain/pathways.test.ts` records every pre-import stage id and key and fails
+if one disappears. **Level 1A keeps its fourteen hand-authored steps and both of
+its routines byte for byte** — and a PRESERVED KEY STILL HAS TO REACH THE SECTION
+IT NAMES. 1A's keys are slugs of their own titles (`warm-up-stretches`) and match
+no course unit key (`warm-up`), so the level the owner STARTS from was the one
+level with no composed material at all and — worse — the one level whose
+essentials 1B's "where I am" routine carries forward, which could therefore never
+bind to an item however much 1A had actually been added. Byte-stable but
+unreachable is the same failure as renamed, wearing a passing test.
+`COURSE_LEGACY_KEYS` (`courseSeed.ts`, the hand-written reader — never the
+generated data) records which course section each legacy key names, and BOTH
+readers go through it: `courseFilesFor` for material and `unitItem` for the
+segment→item join. It ADDS a reading of those keys and changes none of them.
+Many-to-one is deliberate and is what the course says (Chunks and Thumb-chunks
+are both the one Right Hand Technique section); where a segment must pick ONE
+item it takes the first key in the list that has one, so the choice is
+deterministic. Every entry is asserted against the LIVE catalogue in
+`courseSeed.test.ts` — a stale alias fails rather than quietly aliasing nothing,
+the same visibility contract `direction.test.ts`'s inventories carry. Thirteen of
+the fourteen resolve; "Technique primer — What is Technique" does not, because no
+course section clearly corresponds to it, and a guessed section's videos on a real
+step is the same failure as a guessed BPM on a real section.
+
+**A COURSE ENTRY BECOMES REPERTOIRE ONLY WHERE THE COURSE NAMES A WORK, AND
+`repertoire.ts` IS UNCHANGED.** The fix is upstream, in what the catalogue
+DECLARES. `STRAND_TO_ITEM_TYPE` maps `strand: 'piece'` to `full_piece`, which is
+why the old generic "Piece" placeholder created a repertoire work literally called
+"Piece": the bug was the TITLE, never the strand. The level's own study IS the
+Piece section — it keeps its `piece` key and its `piece` strand and gains the real
+name the course gives it ("1B Piece — Study #1") — and the named packet works from
+that section's own Sheet Music lists are their own entries with their composers in
+the title. Every
+drill, exercise, rhythm, sight-reading and reading section stays what it was and
+never reaches My repertoire. A separate "study" entry beside the Piece section is
+NOT emitted: it would put one study in repertoire twice.
+
+**AND ONE MUSICAL WORK IS ONE REPERTOIRE ITEM, HOWEVER MANY ENTRIES NAME IT.**
+That was the hole the first pass left, and it is the same "one study in repertoire
+twice" the paragraph above already refuses, arriving through the OTHER channel: the
+Piece SECTION and the PACKET WORKS are two entries the course can name one piece
+by, and each minted its own `full_piece`. A sealed review reproduced both shapes —
+3B's section ("Malagueña by Lecuona") beside `work-lecuona-malaguena`, literally the
+same score PDF; and 2E's study ("Carulli Valse Op.50 No.7") beside 3F's
+`work-carulli-valse-op-50-no-7-1`, a level apart with no shared file at all, because
+2E's own folder holds no copy of the Valse.
+
+**THE FIX IS AN IDENTITY, NOT A DEMOTION.** Closing the second channel — making the
+section practice material wherever the level also names packet works — was built,
+and the OWNER rejected it: a work they are learning at 2E must reach My repertoire
+AT 2E, not only if a later level's packet happens to name it. So every entry that is
+a work carries a `workKey`, and `courseWorkKey` (`courseSeed.ts`) is the ONE
+resolution every surface reads — `carriedCourseWorkItem`, therefore
+`planCatalogAddition` and `stageUnits` alike, so the tap and the row can never
+disagree:
+
+- A packet work's identity is its own key, derived from the WORK. That already
+  joins a work the course carries across levels: Ferrer Ejercicio is titled
+  identically in 2C-2F, so it slugs identically.
+- A Piece section the course names ONE study for carries that study's identity
+  (`unit.workKey`) while its catalogue key stays `piece`.
+- A packet entry that IS an earlier level's study under another name carries that
+  study's identity, from `WORK_ALIASES` in the scanner. Three pairs, each stated by
+  the course's own words, and one of them — 3B's, where the packet entry is the
+  section's own single score — is DROPPED outright rather than aliased, since the
+  section is already that work at that very level.
+
+An ordinary per-stage key carries no identity at all, so `chords` in 1B can never be
+reused by 2B's; that narrowing is what the identity check buys, and it is asserted
+directly. Every surface reads that one resolution — the tap, the stage row, and the
+routine binding (`unitItem`) — so a work taken at 3F still binds 2E's own Piece
+segment and still counts as added when 2E's "where I am" routine is built.
+
+**MATCHING THE TWO BY NAME IS WHAT THIS REFUSES.** The cross-level pairs have no file
+to compare, so a match would have to join "Malagueña by Lecuona" to "Lecuona
+Malaguena" and "Fernando Sor Etude #1 Op.44" to "Sor Etude No.1 op 44 Practice
+Packet" — token fuzz whose false positive MERGES TWO GENUINELY DIFFERENT WORKS into
+one repertoire item, which is silent destruction of the owner's own record. This file
+already refuses that shape by name for the Setar archive's own path repair ("No fuzzy
+matching by title, size or modification time"). Identity is DECLARED instead, in the
+scanner where the grammar lives, and a stale entry — one naming a packet work the
+course no longer has, or pointing at a key that is no level's study — FAILS the scan
+rather than quietly aliasing nothing.
+
+**AND THE COURSE ITSELF SAYS WHICH PAIRS ARE REAL, WHICH IS WHY THE TABLE IS THREE
+LINES AND NOT SIXTY.** Studies #1-#9 (1B-2D) each carry their OWN score image inside
+their section ("Study #4 page 1"), and those sections' sheet lists are the course's
+alternatives — 2B labels its list "Other appropriate pieces" in so many words. "Allen
+Mathews — Small Etude #1" is NOT Study #1, and aliasing them would have been the
+false merge this whole rule exists to prevent. Only the six "Full course: X" sections
+(2E, 2F, 3A, 3B, 3D, 3E) have no study sheet of their own, and only three of those are
+named again elsewhere. `NOT_A_PACKET_WORK`'s `^click here` is LOAD-BEARING here, not
+tidiness: 3D and 3E name their study's own score as an instruction, and an instruction
+admitted as a "work" would mint a repertoire item called "Click here…" beside the
+section that is the real work.
+
+AND "NAMES A WORK" IS THE WHOLE RULE, INCLUDING WHERE THE COURSE DOES NOT — AND
+WHERE IT NAMES MORE THAN ONE. 3C's Piece section is a comma list ("Excerpts + Fur
+Elise, Minuet in G, Red is the Rose") and 3F's is "Repertoire + Video Review": the
+scanner already DIAGNOSED that it could not name a study there and then kept the
+`piece` strand anyway, so both still became `full_piece` items titled after the
+section — a repertoire work called "3F Piece: Repertoire + Video Review", which is
+the same defect as the old "Piece" placeholder said the other way round. 3A is the
+third shape and the same failure: "Tarrega Study in C + Canon in D" is TWO distinct
+works, `studiesFrom` splits them correctly, and the section then rejoined them into
+one `full_piece` item because nothing had been skipped — while the stage already
+offered each of them as its own packet work. Two works cannot be one repertoire
+item. All three sections are emitted as practice material (`strand: 'other'`) and
+their REAL works reach My repertoire as that section's own packet works, which is
+where the course does name them. The
+KEY stays `piece` — keys are added, never renamed — and it is the SCANNER that
+decides this, because the grammar lives there and the app consumes the data. It
+is FORWARD-ONLY, as every catalogue change is: an item already created from that
+entry keeps the `itemType` stored on it, since regenerating the course reaches an
+item's MATERIAL and never its stored fields. AND A DOWNLOAD IN A SHEET-MUSIC
+LIST IS NOT AUTOMATICALLY A WORK EITHER — the same rule one level down. 3F's
+list carries "Here's the video review checklist" beside four real pieces and it
+became a repertoire work called exactly that; an AID (a syllabus, a materials
+list, course notes, a checklist) is skipped and stays reachable as one of that
+section's own FILES.
+
+**A WORK CARRIED FORWARD ACROSS LEVELS IS ONE WORK, AND THAT LOOKUP IS THE ONLY
+CROSS-STAGE ONE.** A packet work's key is derived from the WORK (`work-<slug>`),
+so Ferrer Ejercicio carries one key in all four levels it appears in and adding it
+from 2E reuses the item created from 2C. `CatalogEntry.key` is otherwise unique
+PER STAGE, not globally — `chords` exists in every level — so the ordinary reuse
+stays a `(stageId, catalogKey)` match and a `chords` item in 1B can never be
+reused by 2B's. Two lookups, two scopes, two tested rules; neither may leak into
+the other.
+
+THAT LOOKUP LIVES IN ONE PLACE AND EVERY SURFACE READS IT (`carriedCourseWorkItem`,
+`courseSeed.ts`). It used to be private to `planCatalogAddition`, which made the
+reuse something only the STORE could see: `stageUnits` still resolved an entry
+against that stage's own items alone, so 2E showed Ferrer Ejercicio as an untaken
+suggestion, its "+" handed back the 2C item while the banner said "Added", and the
+Undo beside that message then offered to delete an item created at another level
+weeks earlier — losslessly removable, so it would have gone. One resolution, one
+answer on every surface. It is narrow by construction: only a key the CURRENT
+stage's own course declares as a WORK resolves, and only against an item in a
+stage of that SAME course.
+
+AND AN UNDO MAY ONLY EVER REACH AN ITEM THE TAP ACTUALLY CREATED. That authority
+is structural rather than contingent on the row happening to resolve:
+`planCatalogAddition` returns `created`, `addFromCatalog` carries it out, and
+`StageDetail` raises the undo banner only on a real creation. The row's own "−"
+follows the same rule — an item that lives in ANOTHER stage is not this row's to
+delete — and `removeCatalogItem` still re-checks `isLosslesslyRemovable` against
+live blocks underneath both.
+
+**COURSE MATERIAL IS COMPOSED FROM THE CATALOGUE, NEVER STORED ON THE ITEM.** An
+item created from a course entry holds only its stage and its catalogue key;
+`itemFiles` reads that section's videos, scores, images and contrast-card folder
+out of the course data EVERY TIME. That is what makes re-running the scanner after
+a course change reach every item that already exists, and it is why the owner
+never types a link. No bytes enter the app, sync or a backup: a course file is
+OPENED where it lives, exactly like a class recording, and the contrast-card decks
+(1663 images) are ONE folder reference — never a viewer, a flashcard player or a
+deck-by-deck list.
+
+**AND A WORK'S MATERIAL IS THE WORK'S, NOT THE ENTRY'S — WHICH IS THE SAME
+IDENTITY, READ ONE SURFACE FURTHER ON.** `carriedCourseWorkItem` already makes
+one musical work ONE item however many entries name it, and `courseFilesFor`
+then composed from the item's own `stageId`/`catalogKey` alone — so the material
+depended on WHICH entry the owner happened to add FIRST. Take 2E's Carulli Valse
+section and 3F's packet score was unreachable from the item; take 3F's packet
+entry first and 2E's own section material was. Half a work either way round, on
+the one item the identity rule exists to produce. `courseFilesFor` resolves
+`courseWorkKey` FIRST and, where there is one, composes the files of EVERY entry
+in that course naming that work — course order, units then works within a group
+— so both addition orders compose the same LIST, not merely the same set. An
+ORDINARY per-stage key carries no identity at all, so `chords` still composes
+only its own section and nothing widens with it. DEDUPLICATION IS BY THE FILE'S
+OWN PATH, AND BY NOTHING WEAKER. It was by BASENAME, to keep the copy of one
+packet the course ships in each level's folder that names it (Ferrer Ejercicio
+runs 2C-2F) from appearing four times — and a sealed review found what that
+bought: a basename is not a file's identity, so two genuinely different scores
+sharing one (two revisions of `Ferrer-Ejercicio.pdf`, a regenerated course that
+renamed a folder rather than its files) had the SECOND SILENTLY DROPPED from the
+one list a work's material is composed into, with nothing on the item saying a
+score was missing. Nothing in this data can establish content identity — a
+`CourseFile` is a path, a kind and a title, with no size and no digest — and
+inventing one would mean a scanner field, a regenerated `courseData.ts` and a
+new claim to keep true, machinery bought for a cosmetic. COMPLETENESS BEATS
+TIDINESS: a repeated packet costs the owner one extra row they can SEE, a hidden
+one costs them material they cannot. A path IS authoritative, it is the same
+reading the scanner's own `packetWorks` dedup uses (`seen.has(file)` on the full
+relative path — the claim that it read a basename was simply untrue), and
+`itemFiles` keys its own rows by path too, so each copy is a distinct row with
+its own stable id rather than a collision. The fifteen identical packet copies
+the old key collapsed now appear once per level that ships one.
+`courseSeed.test.ts` proves this against the LIVE data in the counterexample's
+own hardest shape — distinct paths sharing a basename AND a title, so no weaker
+key could tell them apart — and asserts that set is NON-EMPTY first, or a
+regenerated course with no such collision would pass while asserting nothing.
+The item's own provenance is
+NOT rewritten to make this work: `stageId`/`catalogKey` stay what the tap
+created them as, which is what keeps an Undo and the row's "−" bounded to the
+stage that actually created the item, and nothing new is persisted. Its TITLE
+and its Working notes still come from the entry that created it, deliberately:
+a renamed item keeps its name on every row, and regeneration reaches an item's
+material and never the notebook. `courseSeed.test.ts` sweeps EVERY identity the
+course names from more than one entry — enumerated from the generated data, not
+a written list, so a regenerated course is swept too — in both addition orders,
+for identity, composed material, stage presentation, routine binding and the
+`created: false` that keeps Undo away from an item this tap did not make.
+
+**ONE MEDIA ROOT PER DEVICE, DERIVED — NOT A SECOND BASE AND NOT A RESOLVER
+FALLBACK.** The NAS serves one tree with `setar-classes/`, `classical-guitar/` and
+`tar-classes/` side by side, so the configured archive base is exactly
+`<media root>/setar-classes`. `deriveMediaRoot` (`mediaRoots.ts`) takes the folder
+ABOVE it, and `mediaRoot` lets an explicit per-device override win. `getNasBaseUrl()`
+keeps its stored value and its meaning: every Setar and lesson code path reads the
+same string it always did and every existing reference resolves byte-identically.
+Nothing resolves against two bases in turn — each composed reference carries
+`root: 'archive' | 'media'` and `baseForItemFile` picks exactly ONE, so a course
+file is never retried against the archive base and a class recording never against
+the root. NOTHING IS GUESSED: the derivation applies only when the base's last
+segment names a folder a shipped source declares (`knownSourceFolders()`), and
+anything else — the LEGACY base one folder too high included — yields no root at
+all, so a course file reports `no-base` and offers no open action rather than
+pointing at a dead link. That state is not new: Setar references are already
+broken in it, and correcting the base once fixes both. A BASE THAT CANNOT BE READ
+IS AN UNRECOGNISED BASE, NEVER A THROWN ERROR: a lone `%` is a legal URL path and
+an illegal escape, so `decodeURIComponent` on the last segment raises a URIError —
+and this runs while Settings and every material row are DRAWING, with the archive
+base read in the same expression, so an unreadable base took the whole screen down
+and ARCHIVE rows with it. A segment that will not decode is left exactly as given,
+matches no known source, and yields no root.
+
+**A ROUTINE'S AUTHORED MINUTES ARE PROPORTIONS, AND DURATION IS A SECOND
+INDEPENDENT KNOB.** `fitRoutineToMinutes` (`routines.ts`, tested) scales
+proportionally to the authored minutes — preserving the syllabus's own proportions,
+which is the whole point of a curriculum routine — returns the input array
+UNCHANGED at the authored total so doing nothing behaves exactly as before, and
+when the target cannot seat every segment at a one-minute floor it DROPS using the
+routine's own priority: non-essential first, latest first, so `essential` keeps
+meaning what it means. A surviving segment keeps its label, note, essential flag
+and bound item; only the MINUTES ever move.
+
+THE FLOOR IS A REPAIR, NOT A MINUTE SPENT BEFORE THE PROPORTIONS ARE READ. Giving
+every surviving segment one minute up front and sharing out only the remainder
+distorts every share for no reason: 1:9 fitted to 20 came out 3:17, where the
+authored proportion is exactly 2:18 and already satisfies the floor. The split is
+proportional over the WHOLE target (largest remainder, earliest index on a tie),
+and only then is a segment rounded to nothing lifted to one minute, taking it from
+the longest that can spare one. The total never moves and it terminates, because
+`kept.length <= target` guarantees a donor.
+
+It COMPOSES with `segmentsForRun` rather than replacing it — essentials-only is a
+CONTENT decision, duration is a TIME decision — and `segmentsForRun` keeps its
+exact meaning and signature. COMPOSING IS SOMETHING THE OWNER CAN ACTUALLY DO:
+every surface rendered the duration control with no way to say essentials-only,
+and the separate "Short on time" button started immediately at the authored
+length, so "twenty minutes, essentials only" was the one combination two controls
+could never express. `RoutineDuration` carries both — the total, and its own
+essentials-only tick, which re-seeds the offered total because changing the
+CONTENT changes what the authored length is.
+
+AND WHAT IT DROPS, IT SAYS HONESTLY. Cutting far enough reaches the essential
+segments too, and the caption called every drop "non-essential" — a plain untruth
+about the one distinction ⭐ exists to make. `describeFitDrop` (`routines.ts`,
+tested) is that sentence, a pure FORMATTER rather than an expression inside the
+render, for the reason this file keeps giving: written inline it is unreachable
+from a Node test, and it was the sentence, not the arithmetic, that was wrong. The
+Session Plan's `allocateMinutes` is deliberately NOT reused: it allocates by bucket
+priority with a pinned warm-up share and a 2-25 minute clamp, which would distort a
+one-minute syllabus segment and entangle two systems the app keeps as peers. Only
+`validateBudgetMinutes` and its 5-120 bound are shared, so the control rejects
+exactly what "Plan this session" rejects. `RoutineDuration.tsx` is ONE component on
+all three routine surfaces (Today, a stage, a pathway) so they cannot drift, and it
+starts the run ITSELF before navigating — `startRoutineRun` already takes its
+segments from the caller and the runner freezes whatever it is given, so fitting
+needs no runner change at all. `RoutineRunner.tsx` is untouched.
+
+**A STAGE OF A COURSE THAT SHIPS A ROUTINE OFFERS TWO, AND BOTH ARE ORDINARY
+EDITABLE DATA.** That is every Guitar level. A course stage whose `routine` is
+empty (every Khonyagar stage — see its own section below) offers neither button and
+no caption for them; the owner can still write a routine by hand. "Use this
+level's routine" is the syllabus's own; "Build one for where I am"
+(`buildPositionRoutine`) is the PREVIOUS level's essential segments — the
+maintenance the syllabus itself carries forward — followed by only the segments of
+the current level whose catalogue item the owner has ACTUALLY ADDED. Neither is a
+live view. The catalogue-to-item flow is the position marker and no new stored
+concept is introduced. A SEGMENT IS MATCHED BY ITS OWN DECLARED CATALOGUE KEY, on
+`(stageId, catalogKey)` TOGETHER: a position routine spans two stages by
+construction, so a key-only lookup would silently bind the wrong level's item.
+Three consequences are deliberate — adding one of the level's optional repertoire
+works enables no segment (the syllabus routines contain no piece segment at that
+level anyway), an item the owner created by hand with no catalogue key is not one
+of the course's sections, and a segment the marker leaves out is one edit away from
+being added back. The ONE widening is a work's own IDENTITY (`courseWorkKey`): a
+Piece section's segment binds to that work's item wherever in the course it was
+first taken, because the stage ROW already shows it as added there and a segment
+that left it out would be the same split resolution `carriedCourseWorkItem` exists
+to refuse, one surface further on. An ordinary section carries no identity, so
+nothing else widens with it.
+
+**BUYING LEVELS 4A-5F LATER IS A DATA CHANGE, AND THE ACTION THAT ADDS THEM ADDS
+NOTHING ON ITS OWN.** Re-run the scanner, ship the regenerated data, and use the
+course-scoped "Add new levels from this course" on the pathway.
+`reseedDefaultPathways` AND ITS REPERTOIRE BUTTON ARE NOT CHANGED: they keep adding
+stages only for pathways that do not yet exist. Making that shipped button additive
+would change what it does to every existing pathway and would SILENTLY RESURRECT a
+stage the owner deliberately deleted, because a deleted stage's deterministic id is
+absent in precisely the same way a never-seeded one is. The new action cannot do
+that: `offeredCourseLevels` OFFERS the levels absent from the pathway — keyed by the
+stage's deterministic id, never by its title, so a level the owner RENAMED is never
+offered again — and `planCourseLevels` adds only the ones explicitly selected. A
+deleted stage therefore reappears in a LIST, never in the pathway.
+
+**THE TWO STORE-APPLIED DECISIONS ARE PURE FUNCTIONS APPLIED AS ONE `set()`.** The
+Node test environment cannot import `useStore.ts` (it pulls in Dexie via `./idb`),
+so `planCatalogAddition` and `planCourseLevels` prove the DECISION in
+`courseSeed.test.ts` and their SHAPE protects the WIRING — the same
+shape-protects-the-wiring pattern `installDatabase` already uses.
+`planCatalogAddition` returns the items AND the materials together, so
+`addFromCatalog` can never apply half of a change: it never calls the `addMaterial`
+action (that would be a second `set()`), and `resolveCourseSource` returns the SAME
+materials array when nothing was minted, so a second course item can never create a
+duplicate "Classical Guitar Shed" study source. `addFromCatalog` keeps its contract
+otherwise: a catalogue item still arrives `status: 'new'` with zero statistics and
+stays losslessly removable.
+
+## The Khonyagar Tar course is a second entry in `COURSES`
+
+The owner's complete Khonyagar course («تار – آزاد میرزاپور (خنیاگر)»: 259 lesson
+videos, a 106-section index, four score books) is the SECOND course, read by
+`scripts/scan-khonyagar-course.mjs` into `src/domain/khonyagarData.ts` and presented
+as a new `tar-khonyagar` pathway BESIDE `tar-honarestan`, which is untouched.
+Everything in "A COURSE is reference data in code" above applies unchanged; this
+section records only what differs. `docs/khonyagar-course.md` is the runbook, the
+authored tables' evidence and the open questions.
+
+**A STORED PATH IS THE REAL FILENAME, NFC-NORMALISED — THE FORM THE NAS SERVES.**
+78 of the 259 filenames are decomposed on the local disk, and the decomposed name
+404s from the NAS while the composed one plays. A path in NFD looks right in the
+repository and in any local listing and opens nothing, so the scanner normalises
+every name BEFORE it becomes a path and a test holds every committed path to NFC.
+The displayed title is the INDEX title with whitespace collapsed, which is why two
+different files (lessons 148 and 149) share one title — deduplication stays by path.
+
+**WORK IDENTITY LIVES AT THE LESSON, NOT THE SECTION.** Works are taught inside
+sections about something else (پیش‌درآمد ابوعطا is lessons 124–125, in two exercise
+sections), and one section can teach two (section 17). The scanner's work table
+records each work by the LESSONS that teach it: a section all of whose lessons teach
+one work IS that work (it keeps its `sNNN` key and carries `workKey` and
+`workTitle`); a work taught inside a mixed section is its own `CourseWork` row
+carrying exactly its own lessons (`files`); a mixed section is no work and never
+carries a repertoire strand. A lesson belongs to a work only when its own index title
+names that piece or gusheh. Nothing is joined on a title, a ZWNJ or a space, and two
+works that share a name stay two; the ambiguous pairs are `diagnostics` for the
+owner, because a false split is a visible duplicate an alias can later join and a
+false merge destroys a record.
+
+**A WORK KEY IS `w` PLUS ITS ANCHOR LESSON, WRITTEN AS A LITERAL, AND NEVER CHANGES
+MEANING AFTER IT SHIPS.** Positional numbering would silently move an owner's item
+onto a different work on the first reorder. A work ROW's key is the item's
+`catalogKey`, so a shipped row is never removed (a later merge is an alias on it); a
+work that IS a section may later be pointed at another identity through its
+`workKey`, because the item holds `sNNN`. A section never moves stage. Literal
+ledgers in `khonyagarCourse.test.ts` — never derived from the data — fail if any of
+this breaks.
+
+**WHERE A MULTI-SECTION WORK IS ADDED FROM DOES NOT DECIDE WHAT IT IS CALLED.**
+`planCatalogAddition` titles an item created from a section carrying `workTitle` with
+the WORK's name, so a performance («اجرای …») or a part («… بخش سوم») added first
+never enters My repertoire under its own label; `stageUnits` already shows the item's
+title on every row of that work. This is the one creation-time change, and CGS sets
+no `workTitle`.
+
+**A KHONYAGAR ITEM IS A PRACTICE ITEM FIRST, AND REACHES MY REPERTOIRE ONLY BY THE
+OWNER'S HAND.** No entry carries any Persian identity (form, dastgāh, composer or
+gusheh), and none may be inferred from a title: many course pieces are simplified
+practice versions the owner would not call repertoire. Tar is Persian-family, so My
+repertoire groups its works through `groupByDastgah`, which leaves an item with no
+Persian identity out — deliberately. The owner curates form and/or dastgāh as they
+progress, and a curated item then groups exactly as any other Persian item does ("No
+dastgāh yet" without a dastgāh). Repertoire routing is unchanged;
+`khonyagarCourse.test.ts` pins both halves.
+
+**THE FOUR OPTIONAL FIELDS ARE ABSENT FROM EVERY CGS ENTRY.** `CourseWork.files`,
+`CourseWork.guidance`, `CourseWork.strand` and `CourseUnit.workTitle` default to
+exactly what CGS did before — a single packet PDF, the English practice-packet
+note, the `piece` strand — so CGS output is byte-identical, and a fingerprint of
+every Guitar and Honarestān stage, entry, routine and created title captured BEFORE
+this change holds that closed.
+
+**IT SHIPS NO ROUTINE, AND THE SESSION PLAN IS NOT THE GUIDE.** The course's own
+guide shapes a day by BLOCKS around the one current lesson (warm-up, technique,
+today's lesson, review, cool-down), where Khonyagar's sections are sequential lessons
+rather than CGS's concurrent strands; a section-per-segment routine fitted to 30
+minutes would drop the newest sections first and mark a whole stage practised in one
+run. So every stage has `routine: []` and StageDetail's caption takes the same
+`routine.length > 0` condition as its two buttons. The guide reaches the owner as
+TEXT, quoted as written: its daily template and Quick Win in the pathway note, and
+its paragraph for each lesson type in every section's and work's Working notes. The
+unchanged Session Plan is the nearest existing tool — warm-up first and cool-down last
+only when an item qualifies, the middle by PRIORITY rather than the guide's block
+order, minutes by its own weights — and nothing in this app may claim it follows the
+guide. Changing that would change every instrument's plan and is a separate decision.
+
+**THE DATED TEACHER FOLDERS UNDER `tar-classes/` ARE NOT THIS COURSE.** Their names,
+dates and even instrument (one carries a Setar primer) are unresolved in the source
+itself; they belong to class logging and the archive pipeline once normalised, and
+this course creates no `Lesson` record.
+
+## Review scheduling stays explainable
+
+`decideReview` (in `scheduling.ts`) is the ONE pure decision behind closing a block: the
+date disposition, the SM-2 transition and the sentence that explains them, together.
+`planNextReview` previews it, `computeReviewOutcome` turns it into the write, and the
+close screen renders it — three renderings of one value, never three derivations. Per
+item it tracks `srReps` / `srEase` / `srIntervalDays`, plus `nextReviewSource` (who chose
+the current date) and `srLastProgressDay` (the one-advance-per-day marker). Every number
+is published in `docs/scheduling-evidence.md`.
+
+**PRACTICE IS EXPOSURE; ONLY ELIGIBLE RETENTION EVIDENCE ADVANCES SPACING.** Eligible
+means ALL THREE of: a logged `stable_alone` / `stable_in_context` / `performable`; at or
+after the pending due date (or the first opportunity, when no date exists); and spacing
+not already advanced today. Each of those independently blocks an advance. A missing,
+`undefined` or `not_logged` result never advances — which is exactly what a routine block
+is, so routine exposure can never become a retention judgement.
+
+**`same` IS NOT FAILED RECALL.** This engine used to map it to a quality of 2, which fell
+into the slip branch and reset a schedule the musician had every reason to trust. No
+improvement is distinct from deterioration. Before a due date, `same` and
+`slightly_better` change nothing; AT a due automatic review they REPEAT the current gap
+(the configured first gap if there is none) without touching repetitions or ease, and
+neither is ever described as a slip.
+
+**ONLY `worse` MAY BRING AN AUTOMATIC DATE FORWARD**, to the EARLIER of the existing date
+and the repair proposal — never later, so a repeated negative close cannot slide
+tomorrow's repair into next week. Nothing else is read as failure: not duration, not
+mode, not difficulty, not a teacher question, not a stale clock.
+
+**A DATE THE OWNER OWNS IS NOT THE ENGINE'S TO MOVE.** A FUTURE date is PROTECTED when
+the owner chose it (typed, snoozed, or re-armed — `nextReviewSource: 'user'`), when the
+item is on a fixed cadence, or when its provenance predates this field and is therefore
+unknown. Early practice, `worse` included, leaves it exactly where it is. Protection ends
+when the date comes due: it is then the review, whoever chose it. Manual mode with no
+newly chosen date preserves the pending schedule — an empty automatic proposal is not an
+implicit "no".
+
+**ONE ADVANCE PER ITEM PER LOCAL CALENDAR DAY**, recorded as `srLastProgressDay`. It is
+an administrative eligibility marker, never a measured retention score: clearing and
+re-arming the date, a reload, a sync, or simply closing a second block cannot buy a
+second expansion.
+
+**THE RATIONALE REPORTS THE FINAL SAVED DATE.** It used to quote the raw setting: a
+three-day repair gap on an easy, unimportant item produced a four-day date and said
+"three days".
+
+**A CLOSE THAT ONLY KEEPS A DATE COMPLETES NOTHING.** `ReviewOutcome.completeOpenReviews`
+is false for a `keep`, so extra practice before a review leaves that pending row OPEN —
+it is not the review it was scheduled for. `closeOverrideDate` (`format.ts`, tested) is
+the seam that makes this hold: the close screen SHOWS the date that will stand, which for
+an early session is the item's existing one, and passing that back as an explicit
+override would both stamp every engine-proposed date as the owner's and turn every keep
+into a write. Only a date actually typed into the field is an override.
+
+**AN OPEN DATE EDITOR IS BOUND TO THE ITEM AND THE DATE IT WAS OPENED FOR.** The same rule
+as the notebook's draft tag, on the panel that edits a review date
+(`reviewDateDraftFor`, `format.ts`, tested; used by `ScheduleAgain` in `ItemDetail.tsx`).
+`/items/A` → `/items/B` is a route PARAMETER change: React keeps the same component
+instance and only moves the props, so an open draft survived it and "Save date" wrote it
+through the NEW item's callback — A's 2027‑02‑10 landing on B, silently replacing a
+schedule B's owner never touched. The draft therefore carries `forItem` AND the item's own
+pending date at the moment it was seeded, and is reconciled on EVERY render rather than
+reset from an effect, so there is no paint in which the box shows A's date while Save
+points at B. A different item DROPS it; the item's own date moving beneath an UNTOUCHED
+seed re-seeds the box, because saving a captured date would silently revert a change the
+owner never saw; the item's date moving beneath TYPED text leaves the text alone (it is
+their intent, not a stale capture) and only catches the baseline up.
+`ReviewOwnership`'s refusal message carries the same tag, for the same
+reason: a refusal about A's schedule shown under B is a statement about the wrong item.
+
+**THREE FACTS NEED THREE FIELDS, AND CONFLATING TWO OF THEM EXEMPTED A WHOLE TRANSITION.**
+`seeded` used to hold "the item's date, or today when it had none", which made "this item
+has no date" indistinguishable from "this item's date happens to be today". The only way to
+stop a dateless item's today-box being re-seeded to empty was therefore to skip the
+comparison ENTIRELY whenever the item had no date — and a sealed review reproduced what
+that exemption let through: a live update (a sync pull, a review declined elsewhere) that
+CLEARS the item's pending date left the box showing, and "Save date" writing, a date the
+item no longer had. There is no exemption now. `seeded` is the item's OWN date and is empty
+when it has none, `offered` is what the box was actually filled with (that date, or today),
+and "untouched" is `text === offered`. present→different, present→absent and absent→present
+are then ONE rule instead of three cases with three answers, and a cleared date re-seeds the
+box to exactly what opening it fresh on that item would offer. `today` is passed in, because
+`format.ts` is pure and the screen already has the day it is rendered against.
+
+The browser proof is a REAL SYNC PULL (`review-ownership.browser.test.ts`, ac-12), not a
+description of one: a pull is the only thing that replaces an item's date while
+`ScheduleAgain` stays MOUNTED — an import leaves the page, and "Review today" is offered
+only when the item has no date — so the journey installs the same fake GitHub transport the
+inbound journey uses (now shared, in `tests/practiceBrowser.ts`) and triggers the app's own
+`online` listener. Both halves are checked there: an untouched box follows the item, typed
+text stands.
+
+**"Schedule again" is administration, not practice.** `scheduleAgainPlan` sets ONE date on
+the item and its pending row, CREATING the row when none is open (the case the old date
+helper could not reach, which left a declined review unreachable from the item's own
+screen). No block, no result, no statistics, no SM-2 movement.
+`pendingScheduleConflict` REPORTS legacy open rows that disagree rather than silently
+discarding one.
+
+**HANDING A DATE BACK TO THE ENGINE IS ALSO ADMINISTRATION, AND IT KEEPS THE DATE.**
+"Use automatic scheduling" (`transferToAutomaticReview`, `scheduling.ts`, tested) transfers
+WHO MANAGES the next review and nothing else. The pending calendar date is kept EXACTLY as
+it is; `reviewMode` becomes `'auto'` and `nextReviewSource` becomes `'auto'`, which together
+mean the ENGINE now has authority over that date — never that the date was mathematically
+generated, and never that a review happened. No block is written, no result is invented, and
+`srReps`/`srEase`/`srIntervalDays`/`srLastProgressDay`, every statistic, every status and
+every completed review row are left byte-for-byte alone. Only later ELIGIBLE real practice
+supplies retention evidence. **The button's explanation must never call the retained date a
+new calculation** — that is the one sentence this whole transition exists to be honest about.
+
+It REFUSES rather than guesses when the schedule is ambiguous: open rows that disagree with
+the item or with each other, or rows pending with no item date at all, are a decision the
+owner has to make (the existing "Change review date" makes it), and the refusal says which.
+With no date and no open rows the item simply becomes unscheduled under automatic
+management — `nextReviewSource` stays ABSENT, because there is no date whose provenance it
+could describe — and stays that way until an explicit "Review today". It is idempotent, and
+it is reached ONLY by that explicit control: an ORDINARY item save never releases a
+protected date, so editing a title cannot quietly hand the engine a date the owner chose.
+`updateItem` routes the whole change through it and refuses the save WHOLE on an ambiguous
+schedule, rather than applying the other fields and dropping the transfer.
+
+"Review today" is separate, and records no practice: it sets today's date on the item and
+its row. It resolves the day at the moment of the ACTION, not from the polled `now` — the
+same guard `CloseBlock`'s Save already uses, and for the same reason: a screen left open
+across local midnight would otherwise write the day it was rendered on rather than the day
+the owner tapped.
+
+Keep it deterministic and explainable — don't turn it into an opaque model. Item status
+labels are plain-language for the user — keep the enum keys stable and only change the
+display labels in `labels.ts`.
+
+**The engine is visible AND adjustable, never magic.** `SchedulingParams`
+(`src/domain/types.ts`) holds bounded knobs — the SM-2 first/second/slip-reset gaps and
+the Session Plan minute shares — persisted as an OPTIONAL `PracticeDB.settings` (schema
+**v10**; `undefined ⇒ DEFAULT_SCHEDULING_PARAMS`, so old backups import unchanged and
+`validateDB` carries the field through). `DEFAULT_SCHEDULING_PARAMS` reproduces the
+historical constants EXACTLY — `decideReview`/`planNextReview` take an optional `params`
+whose default is byte-identical to before (a snapshot test guards this). Every call site
+that shows OR persists a date must thread the SAME params (`db.settings`): the store into
+`closeSession`, `CloseBlock` into both preview calls — the date shown must equal the date
+saved. `clampSchedulingParams` enforces the bounds (never trust raw input). Settings' "How
+scheduling works" section states the real priority formula and the SM-2 rungs in plain
+English with live values, offers bounded inputs + "Reset to recommended", and CloseBlock's
+review row links to it ("Why this date?").
+
+**"THE DATE SHOWN EQUALS THE DATE SAVED" ALSO HAS TO SURVIVE THE SAVE ITSELF, NOT JUST
+THE RENDER.** `CloseBlock`'s `now` (`useDecisionNow`) only refreshes every 30 seconds plus
+visibility/focus, while `closeSession` used to compute its OWN fresh `new Date()` at call
+time — so a Save clicked in the narrow window after the local day had genuinely rolled,
+but before either the poll or a visibility event caught up, could write a decision
+`computeReviewOutcome` recomputed for TODAY while the screen had only ever shown
+YESTERDAY's. A sealed review named this gap explicitly. `closeSession` now takes the
+screen's own `now` (`CloseSessionInput.now`, defaulting to `new Date()` only for the rare
+caller with no prior decision to keep in step) instead of reading a fresh clock at module
+scope, so once a save actually proceeds it writes EXACTLY the value just previewed —
+never a second, independently-computed one. The day check itself lives in `CloseBlock`:
+`handleSave` compares the true instant against `now` first, and on a mismatch sets a
+local `nowOverride` and returns WITHOUT calling `closeSession` — refreshing the decision
+visibly (the date field, the rationale, everything derived from `now` recomputes) while
+the draft (result, observation, next action) is untouched, so the very next
+Save simply works. This is deliberately a small, local override rather than a change to
+`useDecisionNow`'s shared contract — `SessionPlan.tsx` and `LessonAgenda.tsx` also read
+that hook and neither needed this.
+
+## The Session Plan is a view over real blocks, not a new to-do list
+
+The Session Plan (`src/domain/plan.ts`, pure + fully tested; `/plan` page) lays out one
+time-budgeted session for the current instrument: ordered segments in five buckets
+(`warmup · lesson · review · deep · cooldown`), each with minutes, a mode/focus, and a
+one-sentence reason. It **reuses the same `scoreItems` priority numbers** as the
+recommendation engine — no second, hidden ranking. It is organisation, never judgement:
+no scores, no "optimal" claims, no gamification.
+
+- **The invariant: minutes NEVER exceed the budget, and normally use all of it**
+  (`buildSessionPlan`, `allocateMinutes` — weighted split, min 2 and max 25 per segment,
+  drops the lowest-priority segments when the budget can't seat them all). An HONEST
+  REMAINDER is allowed and stated in the summary: two items and two hours is not a reason
+  to propose a sixty-minute block on each. Budgets are whole minutes from 5 to 120;
+  anything else (non-finite, zero, out of range) is REJECTED at the boundary
+  (`validateBudgetMinutes`) rather than clamped into a session the owner never chose.
+  Keep it deterministic (explicit `now`, stable score-desc-then-id tiebreaks) and keep
+  the edge cases green (0 items, 1 item, resting-only, everything practised-today →
+  repeats honestly and says so). `redistributePlan`/`swapSegment` are the pure editors and
+  preserve each segment's identity, role and reason; the preview page tweaks a LOCAL copy
+  before `startPlan`.
+- **THE ANCHOR COMES FROM REAL URGENCY, BEFORE ANY ROLE DECORATION.** A five-minute
+  session used to pre-select new deep work and only then consider an item committed for
+  tomorrow's class. Under 12 minutes the session is ONE useful main focus, no warm-up and
+  no cool-down. Usable material, improvisation, rhythm and theory are ordinary useful
+  work even though they fit none of the old buckets.
+- **Warm-up is a ROLE an ordinary familiar item fills, never a tag.** `isWarmupSuitable`
+  wants low demand (difficulty ≤ 3) AND evidence of familiarity (a settled status or 3+
+  real sessions) — an unfamiliar demanding étude is not a warm-up because it is labelled
+  "technique". It never consumes a due review or a class commitment, its share
+  (`warmupShare`) is a PINNED allocation target rather than a weight, and with nothing
+  suitable it is omitted honestly.
+- **ONE eligibility policy** (`isProactiveCandidate`) across Today, the initial build,
+  regeneration, swaps and every fallback: resting material never surfaces in a
+  suggestion, and a fallback never widens to reach it. Direct, deliberate practice of a
+  resting item stays available and its review data is untouched.
+- **A SWAP SHARES THE BUILD'S OWN CANDIDATE POOL, NOT JUST ITS ELIGIBILITY POLICY.** A
+  sealed review found `swapSegment` filtering by `isProactiveCandidate` alone and then
+  searching `scored` directly — bypassing the build's OWN practised-today exclusion
+  (`candidatePool`, shared by both now) and the warm-up pool's extra due/lesson
+  exclusions. Concretely: three same-instrument usable items scored 5/4/3 with the
+  middle one practised one minute ago today; a five-minute build correctly stepped past
+  it for the fresher lowest-scoring one, but Swap handed it right back because fresh
+  work scored lower — the exact material the build had just deliberately set aside, with
+  an ordinary "focus" reason as if nothing were off. A warm-up swap could likewise reach
+  a candidate that was due for review or committed to a class, which the build's own
+  warm-up pool excludes on purpose (that slot belongs to the actual need, never spent as
+  a warm-up). `candidatePool` (`plan.ts`) is now the ONE practised-today/repeat-fallback
+  computation both `buildSessionPlan` and `swapSegment` draw from, and swap's own
+  eligibility switch repeats the warm-up bucket's due/lesson exclusion verbatim. Swap
+  deliberately does NOT replay the build's diversity preference (a tie-break among
+  segments chosen together in one pass, which a single substitution has none of) — see
+  `swapSegment`'s own docstring for why that is a documented choice, not an oversight.
+- **Over-practice is bounded, decaying recent MINUTES**, not a block count and not a run
+  of identical results (`recentExposureMinutes`, `exposurePenalty`). Three "same" results
+  in January are a strategy hint in January, not a permanent penalty in September, and
+  one 30-minute session is the same exposure as three 10-minute ones. A modest diversity
+  preference (≤ 2 points, from the item's existing strand/type) is subordinate to every
+  real need.
+- **A preview is rebuilt for what it is FOR** — instrument and budget — and is marked as
+  needing regeneration when the underlying practice data changes beneath it, rather than
+  silently starting stale work. `beginPlanSegment` revalidates the item LIVE
+  (`planSegmentStartable`): deleted or moved to another instrument ⇒ visibly skipped,
+  another clock running ⇒ refused. Skipping logs nothing.
+- **A PLAN CAN GO STALE WITH NO DATABASE WRITE AT ALL: THE CLOCK MOVING PAST IT.**
+  `SessionPlan.tsx` tracked staleness only via `rev` (the store's mutation counter) and a
+  `seedKey` of `instrumentId|budget` — neither moves when a preview is simply left open
+  across local midnight. A sealed review reproduced this: yesterday's segments, reasons
+  and "for today's class" labels stayed on screen and startable with the Start button
+  enabled, because `build` (the live recomputation) had quietly changed underneath while
+  nothing told the visible `plan` state to notice. The preview now also tracks the LOCAL
+  CALENDAR DAY it was built for (`baseDay`, set alongside `baseRev`) and is `stale`
+  whenever `rev` OR the day has moved — the same "mark it, don't silently rewrite it"
+  treatment `rev` already got, so a deliberate swap or removal survives a midnight
+  exactly as it survives any other change underneath the plan.
+- **THE PASSIVE `stale` FLAG ABOVE STILL LAGS THE TRUE INSTANT BY UP TO ITS OWN POLL
+  INTERVAL — STARTING A PLAN CANNOT TRUST IT ALONE.** `stale` is derived from
+  `useDecisionNow`'s own `now`, which refreshes at most every 30 seconds plus
+  visibility/focus — a real device left untouched across local midnight, with no event to
+  fire and no poll due yet, still reads `stale === false` and shows an ENABLED Start
+  button for up to that whole window. A sealed review reproduced this against the real
+  wiring: build at 23:59:59, click Start at 00:00:01 with no dispatched event, and the old
+  code installed yesterday's selections. Starting a plan is an authority boundary, so
+  `start()` (`SessionPlan.tsx`) checks a FRESH `new Date()` against `baseDay` directly —
+  via the extracted pure `planPreviewDayHasPassed(baseDay, now)` (`plan.ts`), the same rule
+  `stale`'s own day comparison already applies, just evaluated against the true instant
+  instead of the polled one — before ever calling `startPlan`. A mismatch refuses the
+  start and sets a small local `nowOverride` (the same shape `CloseBlock`'s own Save-race
+  guard already uses) so `now`/`today`/`stale` immediately catch up and the existing
+  banner and disabled button render — a visible refusal, never a silent no-op click. This
+  does not touch the `rev`-based half of `stale`: a store mutation already re-renders the
+  subscribed component synchronously, so only the CLOCK side of staleness can lag behind a
+  click in the first place.
+- **The plan runs REAL practice blocks — it is not a countdown.** `RoutineRunner` (the
+  warm-up timer) stays untouched. The runner orchestrates the existing
+  start→`/active`→`/close` flow: "Start this segment" = `beginPlanSegment` seeded from the
+  segment (its minutes become the target). `closeSession` has a tail that, when a plan is
+  running and the closed block was the current segment, marks it `done` and advances the
+  pointer — **the plain flow (no active plan) is byte-identical to before.** Skipping logs
+  nothing. Practising is still the only thing that CAN complete a review or advance SM-2,
+  and a plan segment closed before that item's review is due keeps the date and the
+  spacing state exactly as an ordinary early session does.
+- **The running plan is EPHEMERAL** — `activePlan` + `planMinutesByInstrument` live in the
+  store (persisted via `partialize`), **never in `PracticeDB`, so no schema bump and it
+  never syncs/backs-up as data.**
+- **Today's plan card stays collapsed (~50px) above "Practise now"** so the primary
+  recommendation stays above the fold at 390×844 (verified). Putting it BELOW the
+  recommendation was built and tried in the 2026‑09‑11 lane and the owner preferred it
+  where it is — see "Today is a session workspace" above. It becomes "Resume your plan"
+  while one runs. The evidence behind the bucket shape (spacing, interleaving, retrieval
+  practice, end-on-stability) is cited soberly in `plan.ts` and `DECISIONS.md` — sane
+  defaults, adjustable via `SchedulingParams`, never dressed up as an optimum.
+
+## Device & infrastructure
+
+**MacBook-first in daily use** (laptop open while practising — notes, files, webcam as
+mirror), iPhone as the companion; the phone constraint still binds (primary
+recommendation above the fold at 390×844). Both run the **same installed PWA** served
+from **GitHub Pages** (`.github/workflows/deploy.yml` publishes `dist/` on every push to
+main; the repo is public by explicit user decision, 2026‑07‑11 — the user does not need
+the app or data private). Prod base `/practice-compass/` (override with `PC_BASE`)
+matches the Pages project path. CI (`ci.yml`) still gates lint + tests + build. The
+installed PWA works fully offline; hosting reliability only affects updates.
+`scripts/deploy-nas.sh` remains an OPTIONAL LAN mirror — never the primary, and no
+Tailscale requirement in the main flow.
+
+**Devices sync via the user's GitHub data repo** (Settings → Sync): on app open, after
+30 quiet seconds following changes (rev-driven), on returning online, and manually.
+Status shows device name, last sync, current revision + short content hash, plain
+errors, and a "restore archived copy" recovery action. The UI must stay honest about
+the model: whole snapshots, hash-compared, explicit conflicts, both sides preserved.
+The PAT is scoped to the single data repo (Contents R/W) and lives only in
+localStorage — never in backups or synced data.
+
+**Attachment size policy is enforced, not claimed** (`attachmentPolicy` in
+`src/domain/files.ts`, tested): warn over 10 MB and for any video, refuse over 40 MB
+with a clear message. Class videos live on the NAS as recording references, never the app.
+
+**Hybrid storage — keep the roles distinct (Settings explains them):** LOCAL data
+(IndexedDB) is the source of truth and works offline. GITHUB SYNC is the small,
+versioned multi-device state transport — one private data repo per app that genuinely
+needs it; a phone-only app uses local + NAS backup and needs no GitHub repo. NAS BACKUP
+is the user's own independent full export — never treat sync git history as the only
+backup. NAS RECORDINGS hold the large videos the other three must never carry. Do not
+replace GitHub sync with a NAS backend, and do not fold recordings into sync/backup.
+
+**The app shell is a fixed-height flex column and only `<main>` scrolls** — nothing is
+`position: fixed/sticky`, so the nav bar cannot drift. The shell height is **`100dvh`
+(dynamic viewport) with a `100vh` fallback via `@supports`**, NOT `height: 100%`: in an
+installed iOS PWA with `viewport-fit=cover`, `100%` resolves to the layout viewport
+which stops above the home-indicator safe area, leaving the bar floating above the
+physical bottom with dead space beneath. With `100dvh` the shell reaches the true
+bottom and the bar's own `env(safe-area-inset-bottom)` padding lifts just its buttons
+clear. **The iOS software keyboard must not drift the shell:** `useViewportGuard`
+(`src/components/useViewportGuard.ts`, wired once in `Layout`) listens to `visualViewport`
+and, when no editable is focused, resets any layout-viewport displacement to 0; on focus it
+scrolls the field into `<main>` instead. It is a no-op without `visualViewport` and must
+stay pure glue — never restructure the shell to "fix" the keyboard. Five EQUAL nav tabs
+(no raised centre button — Today owns the primary Start
+action); route changes scroll `<main>` to top; per-route page widths (narrow for focused
+practice, wide ~1100px for browsing/notes on desktop); serif is for headings only,
+controls/nav/metadata are sans. Pathway catalogue rows use a stable
+`[state · minmax(0,1fr) · one 44×44 action]` grid so adding a suggestion swaps only the
+action icon (+→▶) without reflowing the text; status shows once (no duplicate badge);
+detach lives in the item's "Connected to", not the row. The service worker registers in PROMPT mode: updates show an in-app "new version
+→ Reload" banner (checked hourly and on visibilitychange) and the build stamp
+(`__APP_VERSION__`) is visible in Settings — reinstalling is never the update path.
+The public build ships a restrictive CSP meta (self + api.github.com only), injected
+at build time (`cspPlugin` in vite.config.ts). Pages deploys ONLY behind lint + tests
++ build (deploy.yml single dependency chain).
+
+**Canonical names in user-facing copy:** practice item (the only unit of work) ·
+Study source (where an item comes from: radif, method book, collection, course,
+teacher handout — nothing else) · Pathways / My repertoire / Practice list (the three
+Repertoire views) · "Add practice item" (full form) · "Based on / reference" (a
+pathway's provenance) · "Connect it (optional)" (the links group). A practice item may
+link to a study source, a stage, lessons and a parent work at once; links never
+duplicate the item.
+
+## Colour is checked by a test, not by eye
+
+`src/styles/contrast.test.ts` computes WCAG ratios from the SHIPPED stylesheet and fails
+the suite if a listed pair drops below AA for small text (4.5:1). The checked
+(foreground token, background token) pairs are written out explicitly in that test, so a
+token that is NOT covered is a visible omission rather than a silent one; the claim is
+bounded to those pairs and is not a claim about every possible combination. A
+translucent background (`--tone-*-soft` behind a `.badge`/`.chip`, `--accent-soft`
+behind a selected option) is composited over the opaque surface the pair names — badges
+are the only place `--tone-rest` renders at all, so an opaque pair for it would be a
+fiction.
+
+Every block that declares the palette is asserted, not just the first: `global.css`
+declares the light palette TWICE — at `:root[data-theme='light']` and again inside
+`@media (prefers-color-scheme: light) { :root:not([data-theme]) }` — and the duplicate is
+what an owner who has never picked a theme actually sees. **Move a light token in both
+blocks or the test fails.** Only tokens that FAIL a listed pair move; every passing token
+is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim` and
+`--accent-contrast` are unchanged), and no layout, spacing or type changes with them.
+
+## Architecture rules
+
+- **Domain logic stays pure.** Everything in `src/domain/` must be free of React and
+  side effects, and must take an explicit `now: Date` instead of calling `new Date()`
+  internally. This keeps it deterministic and unit‑testable.
+- **The recommendation engine stays deterministic and explainable.** Every recommended
+  card must produce a one‑sentence reason from the same numbers that ranked it. No
+  hidden heuristics, no models.
+- **The store is the only place that mutates app data.** UI components call store actions;
+  they never touch IndexedDB or rebuild domain objects by hand. Attachment **blobs** are the
+  one exception: they live in IndexedDB via `src/store/idb.ts` and the `attachments.ts`
+  service (too big for the reactive JSON); only their lightweight metadata sits in the store.
+- **Storage is async.** The store hydrates from IndexedDB after load; `App` gates render on
+  `hydrated`. Every inbound database — rehydration, manual import, sync pull,
+  conflict-keep-remote, archive restore — runs through the one shared `validateDB`
+  (`src/domain/io.ts`), which itself runs the `migrateToCurrent` chain
+  (`src/domain/migrations.ts`) plus the newer-schema guard and the §C7 semantic checks;
+  persistence changes must keep it green and bump `SCHEMA_VERSION`. Rehydration reaches it
+  via BOTH halves of the persist middleware — `migrate` when the persisted version differs
+  from the current one, `merge` UNCONDITIONALLY otherwise — because Zustand skips `migrate`
+  entirely once the persisted version already matches, which would otherwise let an
+  already-current database carry a stray legacy field, or genuinely invalid data, forever
+  (a sealed review reproduced exactly this — see the lesson-agenda section above for the
+  legacy-field fix, and "THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO" above for the
+  validation/newer-schema fix and why re-running either a second time is safe). Schema
+  **v13** retires the competing practice-text fields (`retirePracticeText`; see "One
+  canonical home per kind of information" at the top of this file for the enumerated,
+  one-way waiver) and adds `validatePracticeText`/`validateUnfinishedText` to the §C7
+  checks. Schema
+  **v12** converts legacy lesson intent into `lessonAgenda` and
+  adds the two scheduling-metadata fields (`nextReviewSource`, `srLastProgressDay`) —
+  neither is ever guessed for old data, so an existing future date keeps UNKNOWN
+  provenance and is protected accordingly. Schema **v11** backfills a routine's `instrumentId` from the pathway
+  it belonged to — but only when that pathway names an instrument that actually resolves
+  in `db.instruments` (a General pathway, a legacy empty-string id, or a dangling
+  reference all leave the routine honestly unscoped rather than inventing one), and never
+  overwrites a routine that already has one.
+- **One file per route** under `src/pages/`. Shared UI primitives live in
+  `src/components/`. Pure helpers go in their own non‑component modules (this also keeps
+  React Fast Refresh and the `react-refresh` lint rule happy).
+
+## Tests are not optional
+
+`npm test` must pass. The suite guards the behaviour that makes the recommendations
+trustworthy; if you change the scoring formula or scheduling intervals, update the tests
+in the same change and make sure they still describe correct behaviour.
+
+**Two of them drive the REAL app in a real browser.**
+`tests/daily-practice.browser.test.ts` and `tests/lesson-agenda.browser.test.ts` are
+ordinary Vitest tests using Playwright as a LIBRARY through `tests/practiceBrowser.ts`,
+so their results land in the same report everything else does — a standalone Playwright
+run would prove nothing to the check engine. Each starts its own Vite dev server and its
+own browser CONTEXT (its own IndexedDB, its own localStorage, no GitHub and no NAS), at a
+390×844 viewport, with the clock fixed so every derived date is deterministic. They seed
+themselves by importing a fixture through the real Settings control and drive rendered
+controls by role and name — never a debug hook, never a source regex.
+
+Local setup, once: `npx playwright install chromium`. **A missing browser FAILS these
+tests with that instruction; it never skips them** — a check that quietly passes because
+it did not run is worse than no check at all. All three CI workflows install the browser
+before `npm test` for the same reason.
+
+`tests/fixtures/practice-decisions-v11.json` is the legacy (pre-agenda) database; the
+v12 one is its migrated output plus the scheduling state a v12 build writes.
+`practice-information-v12.json` is a full backup — attachment bytes included — carrying
+every retired field, and `practice-information-v13.json` is its `validateDB` output, so
+the retirement is asserted against real bytes rather than a hand-written expectation. The
+unit tests read the SAME bytes the journeys import, through Vite's `?raw`.
+
+**Six journeys now, not two**, all through the same harness — plus the rendered
+cold-start recovery inside `src/domain/io.test.ts`, which drives the real `App` in the
+same way. The two named above, plus
+`practice-information.browser.test.ts`, `practice-information-inbound.browser.test.ts`,
+`review-ownership.browser.test.ts` and `practice-information-layout.browser.test.ts` (the
+two-engine one). The inbound journey drives the REAL sync orchestrators against a fake
+GitHub installed at the `fetch` boundary (`page.route('https://api.github.com/**')`) — the
+real transport, real `syncNow`/`resolveConflict`/`restorePreSyncArchive`, no live writes —
+and the rollback journey stands up a DISPOSABLE checkout of the baseline commit
+(`git worktree add --detach`, `node_modules` symlinked, served by a second Vite server via
+`openPracticeApp`'s `root` option) so "the old app refuses the new file" is proved against
+the app that actually wrote the backup, not a description of it.
+
+## Roadmap items are allowed (they were designed for)
+
+Audio recording attachment, PWA offline install, CSV export, calendar reminders, a
+simple audio note per block, teacher‑sharing PDF. These extend the tool without breaking
+the philosophy. Anything that contradicts the "do nots" above needs an explicit decision
+from the user, recorded here.
+```
+
+### docs/khonyagar-course.md
+
+```
+# The Khonyagar Tar course: scanner, data and what the app does with it
+
+The owner practises Tar from an offline copy of the complete Khonyagar course
+(«تار – آزاد میرزاپور (خنیاگر)»): 259 lesson videos (~16h28m), a 106-section
+index and four score books. This file is the operator runbook for bringing that
+course into the app. It records what the scanner reads, every authored decision
+the source does not make for itself, and the corpus baseline.
+
+It is the second entry in `COURSES`, beside the Classical Guitar Shed
+(`docs/cgs-course.md`). It uses the same machinery, and for the same reason it
+is **not** the Setar archive (`docs/setar-archive.md`). A downloaded course is a
+fixed tree that does not grow, gets no renames and has no identity to reconcile.
+So it is reference data in code, with **no persisted graph, no new validation
+door, no schema change and no migration**. It is not `Lesson` data either: it is
+a course the owner follows, not a record of classes they attended.
+
+---
+
+## 1. The shape of it
+
+    /Volumes/Sandisk/video-courses/            ← the shared MEDIA ROOT
+      setar-classes/                           ← the Setar archive (unchanged)
+      classical-guitar/…                       ← the CGS course (unchanged)
+      tar-classes/
+        khonyagar-mirzapour/                   ← this course, one flat folder
+          _فهرست — Index.md                    ← 106 sections, 259 lessons, 4 books
+          _راهنمای تمرین روزانه — Daily Practice Guide.md
+          001 - اجزای ساز.mp4 … 259 - گوشه زنگوله.mp4
+          نت ۱ … نت ۴ ….pdf                    ← the four score books
+        afshin-alavi/ amir-sharifi/ behrooz-hemati/ ghasem-rahimzadeh/   ← NOT imported, §7
+
+Baseline, measured when this lane was built: the index declares ۲۵۹ گفتار and
+lists 259 lessons, 001–259, with no gaps, under 106 contiguous sections. Each
+section's lessons are contiguous and in order. The folder holds exactly 259
+mp4 files, the four listed books and the two `.md` files, and nothing else.
+
+## 2. The scanner
+
+    node scripts/scan-khonyagar-course.mjs            # DRY RUN — reports only
+    node scripts/scan-khonyagar-course.mjs --write    # writes src/domain/khonyagarData.ts
+
+Node stdlib only, **dry-run by default**, build-time only. Nothing in `src/`
+imports it. `--root`, `--media-path` and `--out` point it elsewhere.
+
+**A scan that cannot reconcile the disk, the index and its own tables writes
+nothing.** It throws, before any output, unless every one of these holds:
+
+- the index's declared total (۲۵۹), the lessons it lists and the `NNN - *.mp4`
+  files on disk agree;
+- the sections are 1–106 in order, each lesson is listed once under one section,
+  and each section's lessons are contiguous;
+- the folder holds exactly those videos, the four books the index lists and the
+  two `.md` files (dotfiles and `@eaDir` ignored);
+- every filename matches its index title after NFC and whitespace collapse;
+- every work key is `w` plus a lesson that work teaches, every lesson named in
+  the work table exists, and no lesson belongs to two works;
+- the stage table partitions 1–106 into contiguous runs, each key naming its own
+  run, and no multi-section work crosses a stage boundary;
+- every work row's files are files some section already carries.
+
+### Two facts about the real source decide every path and title
+
+**The NAS serves NFC; the local disk is NFD.** 78 of the 259 filenames are
+decomposed on `/Volumes/Sandisk`. Probed on lesson 148, the decomposed name
+returns 404 text/html from the NAS and the composed one returns 206 video/mp4.
+A decomposed path looks right in the repository and opens nothing. So the
+stored path is the **real filename, NFC-normalised**. `khonyagarCourse.test.ts`
+holds every committed path to that.
+
+**The index is the title; the disk is the path.** Three index titles carry
+stray whitespace: `030` has a leading space, and `077` and `148` a double space.
+The displayed title is the index title with whitespace collapsed. After NFC and
+that collapse, every filename matches its title exactly. That is also why
+lessons 148 and 149 are two different files with the same displayed title.
+
+### What is authored, and where
+
+The scanner holds three literal tables, because the source does not state these
+things mechanically, and a crude title grammar demonstrably mis-groups this
+data:
+
+1. **Stages** — ten runs of consecutive sections (§3).
+2. **Works** — each work's anchored key, title, lesson type and the LESSON
+   numbers that teach it (§4).
+3. **Section type overrides** — corrections to the type grammar's proposal. It
+   is empty today.
+
+Everything else is derived mechanically from those tables and the index.
+
+## 3. Stages
+
+| Stage key (id `tar-khonyagar-<key>`) | Band (`group`) | Sections | Evidence |
+|---|---|---|---|
+| `s001-s005` | تار مقدماتی | 1–5 | instrument, mezrab, note values, 2/4 and 4/4, tuning |
+| `s006-s013` | تار مقدماتی | 6–13 | frets, fingering, positions one to six |
+| `s014-s023` | تار مقدماتی | 14–23 | 6/8, first pieces, pish-daramad and reng; ends on lesson 129 «توصیه‌های پایانی» |
+| `s024-s028` | تار متوسطه | 24–28 | Mahur |
+| `s029-s035` | تار متوسطه | 29–35 | Shur |
+| `s036-s045` | تار متوسطه | 36–45 | Afshari, Segah, Isfahan, Dashti |
+| `s046-s059` | تار ۳ | 46–59 | the Mahur radif from زیرافکن to کرشمه |
+| `s060-s074` | تار ۳ | 60–74 | ز من نگارم to دلکش |
+| `s075-s092` | تار ۳ | 75–92 | رنگ قهر و آشتی to رنگ کوراغلی |
+| `s093-s106` | تار ۳ | 93–106 | نیشابورک to زنگوله, and the radif's چهارمضراب |
+
+The three band names are the course's own: the score books state them in their
+titles. The مقدماتی/متوسطه boundary follows the course's own closing lesson
+(129). The متوسطه/تار ۳ boundary is where the index changes shape, from topical
+multi-lesson sessions to one-gusheh and one-part sections of the Mahur radif and
+its pieces. Ten stages rather than three keep stage progress meaningful: a
+single 61-section تار ۳ stage would read "3 of 61" for months. They also keep
+each catalogue short enough to browse on a phone.
+
+Stage codes are Farsi («جلسه ۱–۵»). Stage ids and every catalogue key are pure
+ascii and anchored in the index's own numbering. Section keys are `s001`–`s106`.
+
+## 4. Works — identity lives at the lesson
+
+Works are taught INSIDE sections that are about something else:
+
+- پیش‌درآمد ابوعطا is lessons 124 and 125, in exercise sections 21 and 22;
+- سرای امید is lessons 063 and 074, in sections 9 and 11;
+- section 17 teaches two works, in lessons 109 and 110.
+
+So each work is recorded by the lessons that teach it:
+
+- A section **all** of whose lessons teach one work IS that work. It keeps its
+  section key `sNNN`, and carries the work's identity (`workKey`) and its name
+  (`workTitle`).
+- A work taught in lessons of a **mixed** section is its own catalogue row
+  (`CourseWork`), keyed by its work key. It sits in the stage of its first
+  lesson and carries exactly those lessons' videos plus the band book.
+- A mixed section is itself **no work**. It carries a practice strand
+  (`technique` or `exercise`), never `piece`, `repertoire` or `radif`.
+
+**The membership rule.** A lesson belongs to a work only when its OWN index
+title names that piece or gusheh, whether it teaches it, continues it or
+performs it. Context and technique lessons in the same session stay section
+material: an introduction to the dastgāh, a mezrab pattern, an unnamed
+Honarestān درس. Named Honarestān lessons are works, for example
+«درس ۵۷ (پیش درآمد ماهور)» and «درس ۶۲ (زرد ملیجه)».
+
+Counts today: 72 works. 71 sections are wholly one work, 30 works are rows
+taught inside mixed sections, and 35 sections are practice material.
+
+### A work's key never changes after it ships
+
+A work key is `w` plus its **anchor lesson**, the lowest lesson that taught it
+at first shipping. Examples are `w197` for پیش‌درآمد ماهور درویش‌خان and `w246`
+for the radif's چهارمضراب ماهور. The key is written as a literal in the table
+and never computed, so reordering the table cannot move it, and a newly
+recognised work gets its own anchor. A correction may ADD lessons to a work; it
+may never remove the anchor.
+
+What an item persists decides what must never disappear:
+
+- **A work ROW's key IS the item's `catalogKey`.** A shipped row is never
+  removed. A later merge keeps the row and gives it the other identity as an
+  alias (`CourseWork.workKey`).
+- **A work that is a section** is held by the item as `sNNN`, and its work key
+  lives only in the section's `workKey`. A later merge may point the section at
+  the other identity; the item keeps resolving.
+- **A section never moves stage**, because items persist `stageId` together
+  with `catalogKey`.
+
+`khonyagarCourse.test.ts` holds all three against literal ledgers written in
+the test at first shipping, never derived from the data. Every shipped
+(stage, work row) pair still exists. Every shipped work key that still resolves
+names a work that includes its anchor lesson. Every shipped (stage, section)
+pair is still present.
+
+### Same title is not same work
+
+Nothing is joined on title similarity, ZWNJ or spacing. Sections 52–55
+(«پیش درآمد…») and 56 («پیش‌درآمد…») are one work only because the table lists
+their lessons under `w197`. The scanner reports these open questions for the
+owner as `diagnostics` in the generated data, rather than deciding them
+silently:
+
+- **Three چهارمضراب:** w138 (Ma'rufi's, section 26), w246 (the radif's,
+  sections 95–97 and 101–104) and w235 (section 85, «چهارمضراب از ردیف ماهور»).
+- **Two رنگ شور:** w148 (Ma'rufi's, section 30) and w153 (unattributed,
+  section 32).
+- **Three گوشه کرشمه:** w135 (section 25), w205 (section 59) and w236
+  (sections 86–87, «کرشمه و تحریر»).
+- **Lesson 087:** «آموزش نوایی» is recorded as a named piece, w087. It could
+  instead be the Navā gusheh.
+- **Section 20:** it says «دو قطعه» but names only one piece, w121; درس ۶۵
+  stays section material.
+- **Lesson 141:** «درس ۲۴ از کتاب دوم هنرستان» names no piece.
+- **The radif's چهارمضراب books:** w235 and w246 carry the rhythmic-pieces book
+  by the band rule, but their score may be in the radif book.
+
+A false split costs a visible duplicate, which a later alias can join. A false
+merge destroys a record. So the table always splits when in doubt.
+
+### Lesson types, strands and books
+
+The course guide names five lesson types. The scanner's grammar proposes one
+for every entry:
+
+- A work's type comes from the work table: radif (a gusheh), rhythmic
+  (chahārmezrāb / reng) or composed (pish-daramad / tasnif / a named piece).
+- A section that is not wholly one work is **etude** when most of its own
+  non-work lessons are Honarestān درس‌ها, and **technique** otherwise.
+- A section whose every lesson teaches a work, but not ONE work (section 43
+  teaches two), takes its first work's type. It is still no work itself.
+
+The type decides three things:
+
+- **The strand.** radif → `radif` (a gusheh work); rhythmic and composed →
+  `repertoire`; etude → `exercise`; technique → `technique`. Only a work may
+  carry a repertoire strand.
+- **The book.** Stages 1–3 carry نت ۱ and stages 4–6 carry نت ۲. In تار ۳, radif
+  entries carry نت ۳ (ردیف ماهور), and rhythmic and composed entries carry نت ۴
+  (قطعات ضربی).
+- **The guidance.** Every section and work carries the guide's own paragraph
+  for its type, quoted in its own English as written. The paragraph lands in
+  the item's Working notes when the item is created. It is never the Guitar
+  course's practice-packet sentence.
+
+## 5. What the app does with it
+
+- **The pathway.** `tar-khonyagar` is appended to the seeded pathways beside
+  `tar-honarestan`, which is left exactly as it was. `reseedDefaultPathways`
+  adds a pathway that does not yet exist, so "restore default pathways" on
+  Repertoire brings it into an existing database. A fresh install or a demo
+  reset gets it from the same seed.
+- **The pathway note.** The note quotes the guide's daily template and Quick
+  Win. The template's table is flattened to one line per block, in its own
+  words, because the note renders as plain text.
+- **Material.** Adding a section or work composes its lesson videos and its
+  band book live from the catalogue (`itemFiles` → `courseFilesFor`), with no
+  link typed. `tar-classes` is a known source folder because the course
+  declares its `mediaPath`, so the media root the device already derives
+  resolves it on the LAN and Tailscale routes alike.
+- **One work, one item.** Adding any section of a multi-section work, a part or
+  a performance included, creates ONE item titled with the work's own name
+  (`workTitle`). The item carries every section's files, deduplicated by path.
+  Every one of its section rows then reads as added under that name.
+  Deduplication is by path, never by title: lessons 148 and 149 share a title
+  and both stay.
+- **Course-scoped identity.** Work reuse (`carriedCourseWorkItem`) only ever
+  matches items in this course's own stages. A Setar or Guitar item of the same
+  name is never reused, renamed or absorbed.
+- **The study source.** Every item created from the course is linked to a
+  «خنیاگر» study source, created on first use.
+- **Practice items first, not repertoire.** No entry carries any Persian
+  identity (form, dastgāh, composer or gusheh), and none is inferred from a
+  title: many course pieces are simplified practice versions. Tar is a
+  Persian-family instrument, so My repertoire groups its works by dastgāh and
+  leaves an item with no Persian identity out. It enters My repertoire only
+  when the owner curates that by hand (edit the item, pick "Composed piece",
+  give it a form and/or dastgāh), and then groups like any curated Persian
+  item: under its dastgāh, or under "No dastgāh yet" without one.
+- **Where work rows sit.** A work row renders after the stage's sections, not
+  physically between the sections that teach it: `courseStageSeeds` emits units
+  then works for every course, and reordering it would change the Guitar
+  course. So in stage 3, پیش‌درآمد ابوعطا sits in the same stage list as
+  sections 21 and 22, at its end.
+
+## 6. Routines, and what the Session Plan really does
+
+**Every Khonyagar stage ships `routine: []`.** StageDetail therefore shows
+neither "Use this level's routine", "Build one for where I am" nor their
+caption. The owner can still write any Tar routine by hand, binding segments to
+these items. There are four reasons, and all of them come from the course's own
+guide:
+
+1. **The guide is shaped by blocks, not sections.** Its 30-minute day is
+   warm-up & tuning 4, technique/etude 7, today's lesson 10, review 6 and
+   cool-down 3, and it says to keep that order and those proportions. It also
+   says "2–3 loops max per session".
+2. **Khonyagar's sections are sequential lessons.** The guide's Block 3 is the
+   one current گفتار. A CGS level's sections are concurrent strands practised
+   daily for weeks.
+3. **A section-per-segment routine inverts the guide's minimum day.** A
+   30-minute run over a stage of 5–18 sections gives about 1.5–6 minutes per
+   section. With nothing essential, `fitRoutineToMinutes` drops the LATEST
+   segments first, cutting the frontier and keeping the oldest material. The
+   guide's Quick Win (blocks 1 → 3 → 6) is the opposite.
+4. **One run marks a whole stage practised.** `applyRoutineRun` writes a block
+   per bound item, so one run would mark every section practised today and
+   empty the Session Plan's candidate pool for the day.
+
+**The Session Plan is the nearest existing tool, not the guide's template.** It
+is unchanged, and it builds from the Tar items the owner has added, as it does
+for any instrument:
+
+- The warm-up comes first, at a pinned 12% share, but only when a familiar,
+  not-too-hard item qualifies.
+- Due reviews come from the spacing schedule.
+- The cool-down comes last, but only with a settled item and at least 20
+  minutes.
+- The middle is ordered by **priority**, not by the guide's technique → lesson
+  → review blocks, so a due review often comes before the new work.
+- There is no separate technique block and no ear/radif block.
+- Minutes follow the app's own weights, not the guide's 30/60 columns.
+- Its "lesson" bucket means preparing for a class, never the course's current
+  گفتار.
+
+In week one, with only new sections added, it splits the time evenly across at
+most three or four of them. Making it follow the guide's block order would
+change the plan for every instrument; that is a separate decision for the owner.
+
+## 7. What is NOT here
+
+- **The dated teacher folders** (`afshin-alavi`, `amir-sharifi`,
+  `behrooz-hemati`, `ghasem-rahimzadeh`) are not imported, and no `Lesson`
+  record is created. They are four teachers and 28 sub-folders (26 session
+  folders, plus `radif-mirza-hoesingholi` and `to-be-organised`), 207 files and
+  about 4.8 GB. The filenames name nothing. One folder is misspelled
+  (`seission-6-…`), several are named with a date range, one range has a
+  self-contradictory year (`session-2-02-12-2024-23-12-2025`), and
+  `session-18-02-2026` and `session-9` cannot be placed without guessing.
+  `behrooz-hemati` sits under `tar-classes/` but carries a SETAR primer
+  («دستور سه‌تار ابتدایی»). Two things must be true before they can be
+  imported: the owner has normalised them, and each teacher's instrument is
+  confirmed. They then belong to the class-logging flow and the archive
+  pipeline, not to this course.
+- No Persian identity (form, dastgāh, composer or gusheh) on Khonyagar
+  entries, and none inferred from a title. The owner curates that metadata
+  by hand, and My repertoire's routing is unchanged.
+- No generated routine, and no change to the routine machinery or the Session
+  Plan.
+
+## 8. Changing it later
+
+A correction is a data change: edit the scanner's tables, re-run it with
+`--write`, and commit the regenerated `khonyagarData.ts`. The rules:
+
+- Keys are only ever added.
+- A shipped work row stays; a later merge is an alias on it.
+- A section never moves stage.
+- A work never loses its anchor lesson.
+
+The ledgers in `khonyagarCourse.test.ts` fail if any of these is broken. A new
+work, or a newly recognised one, gets its own anchored key and is added to the
+ledgers.
+```
+
+### src/domain/khonyagarCourse.test.ts
+
+```
+import { createHash } from 'node:crypto';
+import { describe, expect, it } from 'vitest';
+import { canonicalStringify } from './canonical';
+import { CGS_COURSE } from './courseData';
+import {
+  COURSE_LEGACY_KEYS,
+  buildLevelRoutine,
+  buildPositionRoutine,
+  carriedCourseWorkItem,
+  courseFilesFor,
+  courseRoutineName,
+  courseStageId,
+  planCatalogAddition,
+  type CourseFile,
+} from './courseSeed';
+import { createItem } from './factories';
+import { hasPersianScript } from './farsi';
+import { KHONYAGAR_COURSE, KHONYAGAR_LESSON_TYPES, KHONYAGAR_PATHWAY } from './khonyagarData';
+import { catalogForStage, seedPathways, stageIdFor } from './pathwaySeed';
+import { stageUnits } from './pathways';
+import { UNCLASSIFIED_DASTGAH, groupByDastgah } from './persian';
+import { isWork } from './repertoire';
+import { createSeedDB } from './seed';
+import type { PathwayStage, PracticeItem } from './types';
+
+const NOW = new Date('2026-09-22T09:00:00.000Z');
+const IDS = { guitar: 'g', setar: 's', tar: 't' };
+
+/**
+ * Everything the Honarestān pathway and the Guitar course present today, as
+ * one canonical value: stages, catalogue, routines, the routine each level
+ * builds, the title and material every entry is created with. Hashed so the
+ * ledger is a literal captured BEFORE this lane changed anything.
+ */
+function untouchedFingerprint(): string {
+  const seeded = seedPathways(IDS, NOW);
+  const keep = (pathwayId: string) => pathwayId === 'tar-honarestan' || pathwayId === 'cgs';
+  const stages = seeded.pathwayStages.filter((s) => keep(s.pathwayId));
+  const value = {
+    pathways: seeded.pathways.filter((p) => keep(p.id)),
+    stages,
+    routines: seeded.pathwayRoutines.filter((r) => !!r.pathwayId && keep(r.pathwayId)),
+    catalogue: stages.map((s) => ({ stage: s.id, entries: catalogForStage(s.id) })),
+    legacy: COURSE_LEGACY_KEYS,
+    levels: CGS_COURSE.groups.map((g) => ({
+      key: g.key,
+      level: buildLevelRoutine(CGS_COURSE, g.key, []),
+      position: buildPositionRoutine(CGS_COURSE, g.key, []),
+      names: [courseRoutineName(g, 'level'), courseRoutineName(g, 'position')],
+    })),
+    created: stages
+      .filter((s) => s.pathwayId === 'cgs')
+      .flatMap((s) =>
+        catalogForStage(s.id).map((e) => {
+          const add = planCatalogAddition({ items: [], materials: [] }, s.id, e.key, e, 'g', NOW);
+          const item = add.items.find((i) => i.id === add.itemId)!;
+          return {
+            stage: s.id,
+            key: e.key,
+            title: item.title,
+            type: item.itemType,
+            notes: item.notes,
+            files: courseFilesFor(s.id, e.key),
+          };
+        }),
+      ),
+  };
+  return createHash('sha256').update(canonicalStringify(value)).digest('hex');
+}
+
+describe('the pathways this lane must not touch', () => {
+  it('leaves the Honarestan pathway and the Guitar course entirely unchanged', () => {
+    expect(courseStageId(CGS_COURSE, '1b')).toBe('cgs-1b');
+    expect(untouchedFingerprint()).toBe('905de18c315c545aa8c020b9310ef9d05b02c151bdcb7a982d573e41ccbe34af');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Khonyagar course, read as reference data. Every check runs against the
+// REAL generated `khonyagarData.ts` — the owner's own 259 lessons — and every
+// ledger below is a LITERAL written at first shipping, never derived from the
+// data it guards.
+// ---------------------------------------------------------------------------
+
+const K = KHONYAGAR_COURSE;
+const stageOf = (groupKey: string) => courseStageId(K, groupKey);
+const REPERTOIRE_STRANDS = new Set(['piece', 'repertoire', 'radif']);
+
+/** The lesson number a video path names, read from the path — never from a title. */
+function lessonOf(f: CourseFile): number | undefined {
+  const m = f.kind === 'video' ? f.path.match(/\/(\d{3}) - [^/]+\.mp4$/) : null;
+  return m ? Number(m[1]) : undefined;
+}
+const lessonsOf = (files: CourseFile[]) => files.map(lessonOf).filter((n): n is number => n !== undefined);
+
+const units = K.groups.flatMap((g) => g.units.map((u) => ({ group: g, unit: u })));
+const rows = K.groups.flatMap((g) => g.works.map((w) => ({ group: g, work: w })));
+
+/** Every catalogue entry naming one identity: `[stageId, catalogKey]`. */
+function entriesOf(identity: string): [string, string][] {
+  return [
+    ...units.filter(({ unit }) => unit.workKey === identity).map(({ group, unit }) => [stageOf(group.key), unit.key] as [string, string]),
+    ...rows.filter(({ work }) => (work.workKey ?? work.key) === identity).map(({ group, work }) => [stageOf(group.key), work.key] as [string, string]),
+  ];
+}
+function identityFiles(identity: string): CourseFile[] {
+  return [
+    ...units.filter(({ unit }) => unit.workKey === identity).flatMap(({ unit }) => unit.files),
+    ...rows.filter(({ work }) => (work.workKey ?? work.key) === identity).flatMap(({ work }) => work.files ?? []),
+  ];
+}
+
+function stageRecord(groupKey: string): PathwayStage {
+  const s = seedPathways(IDS, NOW).pathwayStages.find((x) => x.id === stageOf(groupKey));
+  if (!s) throw new Error(`no seeded stage ${groupKey}`);
+  return s;
+}
+
+/** Add one catalogue entry the way the store does, returning the new state and item. */
+function add(items: PracticeItem[], stageId: string, key: string) {
+  const entry = catalogForStage(stageId).find((e) => e.key === key);
+  if (!entry) throw new Error(`no catalogue entry ${stageId}/${key}`);
+  const plan = planCatalogAddition({ items, materials: [] }, stageId, key, entry, 't', NOW);
+  return { items: plan.items, item: plan.items.find((i) => i.id === plan.itemId)!, created: plan.created };
+}
+
+// --- literal ledgers, written when these keys first shipped -----------------
+
+/** Every (stage, work row) an item may hold as `stageId` + `catalogKey`. */
+const SHIPPED_WORK_ROWS: [string, string][] = [
+  ['s006-s013', 'w036'], ['s006-s013', 'w043'], ['s006-s013', 'w044'], ['s006-s013', 'w048'], ['s006-s013', 'w063'],
+  ['s006-s013', 'w080'], ['s006-s013', 'w087'], ['s014-s023', 'w093'], ['s014-s023', 'w101'], ['s014-s023', 'w104'],
+  ['s014-s023', 'w109'], ['s014-s023', 'w110'], ['s014-s023', 'w113'], ['s014-s023', 'w118'], ['s014-s023', 'w121'],
+  ['s014-s023', 'w124'], ['s014-s023', 'w128'], ['s024-s028', 'w135'], ['s024-s028', 'w136'], ['s024-s028', 'w138'],
+  ['s024-s028', 'w140'], ['s029-s035', 'w146'], ['s029-s035', 'w153'], ['s036-s045', 'w163'], ['s036-s045', 'w165'],
+  ['s036-s045', 'w167'], ['s036-s045', 'w174'], ['s036-s045', 'w177'], ['s036-s045', 'w181'], ['s036-s045', 'w184'],
+];
+
+/** Every work key that shipped. Its number is its ANCHOR lesson. */
+const SHIPPED_WORK_KEYS = [
+  'w036', 'w043', 'w044', 'w048', 'w063', 'w080', 'w087', 'w093', 'w101', 'w104', 'w109', 'w110', 'w113', 'w118',
+  'w121', 'w124', 'w128', 'w135', 'w136', 'w138', 'w140', 'w142', 'w146', 'w148', 'w153', 'w155', 'w157', 'w159',
+  'w163', 'w165', 'w167', 'w169', 'w171', 'w174', 'w177', 'w179', 'w181', 'w184', 'w186', 'w188', 'w190', 'w191',
+  'w192', 'w197', 'w204', 'w205', 'w206', 'w211', 'w212', 'w213', 'w214', 'w219', 'w220', 'w221', 'w222', 'w223',
+  'w227', 'w229', 'w230', 'w231', 'w235', 'w236', 'w238', 'w242', 'w244', 'w245', 'w246', 'w250', 'w251', 'w252',
+  'w258', 'w259',
+];
+
+/** Every (stage, section) pair that shipped. */
+const SHIPPED_SECTIONS: Record<string, string[]> = {
+  's001-s005': ['s001', 's002', 's003', 's004', 's005'],
+  's006-s013': ['s006', 's007', 's008', 's009', 's010', 's011', 's012', 's013'],
+  's014-s023': ['s014', 's015', 's016', 's017', 's018', 's019', 's020', 's021', 's022', 's023'],
+  's024-s028': ['s024', 's025', 's026', 's027', 's028'],
+  's029-s035': ['s029', 's030', 's031', 's032', 's033', 's034', 's035'],
+  's036-s045': ['s036', 's037', 's038', 's039', 's040', 's041', 's042', 's043', 's044', 's045'],
+  's046-s059': ['s046', 's047', 's048', 's049', 's050', 's051', 's052', 's053', 's054', 's055', 's056', 's057', 's058', 's059'],
+  's060-s074': ['s060', 's061', 's062', 's063', 's064', 's065', 's066', 's067', 's068', 's069', 's070', 's071', 's072', 's073', 's074'],
+  's075-s092': ['s075', 's076', 's077', 's078', 's079', 's080', 's081', 's082', 's083', 's084', 's085', 's086', 's087', 's088', 's089', 's090', 's091', 's092'],
+  's093-s106': ['s093', 's094', 's095', 's096', 's097', 's098', 's099', 's100', 's101', 's102', 's103', 's104', 's105', 's106'],
+};
+
+describe('the Khonyagar course as data', () => {
+  it('every Khonyagar media path is NFC-normalised and inside the course folder', () => {
+    const paths = [
+      ...K.groups.flatMap((g) => g.units.flatMap((u) => u.files.map((f) => f.path))),
+      ...K.groups.flatMap((g) => g.works.flatMap((w) => (w.files ?? []).map((f) => f.path))),
+    ];
+    const folders = [K.mediaPath, ...K.groups.map((g) => g.mediaPath), ...units.map(({ unit }) => unit.mediaPath)];
+    expect(paths.length).toBeGreaterThan(259);
+    for (const p of [...paths, ...folders]) {
+      expect(p).toBe(p.normalize('NFC'));
+      expect(p === K.mediaPath || p.startsWith(`${K.mediaPath}/`)).toBe(true);
+      expect(p.split('/')).not.toContain('..');
+      expect(p.split('/')).not.toContain('.');
+      expect(p.startsWith('/')).toBe(false);
+    }
+    // Not vacuous: these paths DO carry characters a decomposing filesystem
+    // would store differently — exactly the ones that 404 in NFD.
+    expect(paths.filter((p) => p.normalize('NFD') !== p).length).toBeGreaterThan(50);
+    // Lesson 148's real name has one space where its index title has two; the
+    // path is the FILE's name, and the title is the index's, collapsed.
+    const l148 = units.flatMap(({ unit }) => unit.files).find((f) => lessonOf(f) === 148)!;
+    expect(l148.path).toBe(`${K.mediaPath}/148 - آموزش رنگ شور از موسی معروفی.mp4`.normalize('NFC'));
+    expect(l148.title).toBe('آموزش رنگ شور از موسی معروفی');
+  });
+
+  it('Khonyagar keys and stage ids are pure ascii while its titles are Farsi', () => {
+    const ascii = /^[\x20-\x7e]+$/;
+    const stageIds = K.groups.map((g) => stageOf(g.key));
+    for (const id of stageIds) {
+      expect(id).toMatch(/^tar-khonyagar-s\d{3}-s\d{3}$/);
+      // Byte-identical to the id the pathway seed gives the same stage.
+      expect(stageIdFor(K.pathwayId, id.slice(K.pathwayId.length + 1))).toBe(id);
+      expect(hasPersianScript(id)).toBe(false);
+      for (const e of catalogForStage(id)) {
+        expect(e.key).toMatch(/^[sw]\d{3}$/);
+        expect(ascii.test(e.key) && !hasPersianScript(e.key)).toBe(true);
+        expect(hasPersianScript(e.title)).toBe(true);
+      }
+    }
+    for (const { unit } of units) if (unit.workKey) expect(unit.workKey).toMatch(/^w\d{3}$/);
+    for (const { work } of rows) expect((work.workKey ?? work.key)).toMatch(/^w\d{3}$/);
+
+    for (const g of K.groups) {
+      expect(hasPersianScript(g.code)).toBe(true);
+      expect(hasPersianScript(g.title)).toBe(true);
+      expect(hasPersianScript(g.group)).toBe(true);
+    }
+    for (const { unit } of units) {
+      expect(hasPersianScript(unit.title)).toBe(true);
+      if (unit.workTitle) expect(hasPersianScript(unit.workTitle)).toBe(true);
+    }
+    for (const { work } of rows) expect(hasPersianScript(work.title)).toBe(true);
+    expect(hasPersianScript(KHONYAGAR_PATHWAY.name)).toBe(true);
+    expect(hasPersianScript(K.sourceName)).toBe(true);
+    expect(new Set(K.groups.map((g) => g.group))).toEqual(new Set(['تار مقدماتی', 'تار متوسطه', 'تار ۳']));
+  });
+
+  it('accounts for all 106 sections, each of the 259 lessons exactly once and all four score books', () => {
+    // 106 sections, s001–s106, in the index's own order.
+    expect(units).toHaveLength(106);
+    expect(units.map(({ unit }) => unit.key)).toEqual(
+      Array.from({ length: 106 }, (_, i) => `s${String(i + 1).padStart(3, '0')}`),
+    );
+    // Lessons read from the video PATHS: 1–259, each once, contiguous and in
+    // order within each section — dropping, duplicating or misplacing one
+    // lesson breaks the one sequence below.
+    const perSection = units.map(({ unit }) => lessonsOf(unit.files));
+    for (const ls of perSection) {
+      expect(ls.length).toBeGreaterThan(0);
+      ls.forEach((n, i) => i > 0 && expect(n).toBe(ls[i - 1] + 1));
+    }
+    expect(perSection.flat()).toEqual(Array.from({ length: 259 }, (_, i) => i + 1));
+    // Nothing but lesson videos and score books.
+    const all = units.flatMap(({ unit }) => unit.files);
+    expect(all.filter((f) => f.kind === 'video')).toHaveLength(259);
+    expect(all.every((f) => f.kind === 'video' || f.kind === 'pdf')).toBe(true);
+    // Exactly the four score books, each referenced at least once.
+    const books = new Set(all.filter((f) => f.kind === 'pdf').map((f) => f.path));
+    expect([...books].sort()).toEqual(
+      [
+        'نت ۱ - دروس تکمیلی تار مقدماتی.pdf',
+        'نت ۲ - تکمیلی تار متوسطه.pdf',
+        'نت ۳ - تار ۳ ردیف (ماهور).pdf',
+        'نت ۴ - تار ۳ قطعات ضربی.pdf',
+      ].map((b) => `${K.mediaPath}/${b}`).sort(),
+    );
+    // Every section carries exactly one book.
+    for (const { unit } of units) expect(unit.files.filter((f) => f.kind === 'pdf')).toHaveLength(1);
+    // Every work's files are files the sections already carry.
+    const sectionPaths = new Set(all.map((f) => f.path));
+    for (const { work } of rows) {
+      expect(work.files?.length).toBeGreaterThan(0);
+      for (const f of work.files ?? []) expect(sectionPaths.has(f.path)).toBe(true);
+    }
+  });
+});
+
+describe('Khonyagar work identity', () => {
+  it('every shipped Khonyagar work row still exists and every shipped work key keeps its anchor lesson', () => {
+    for (const [groupKey, key] of SHIPPED_WORK_ROWS) {
+      expect(K.groups.find((g) => g.key === groupKey)?.works.some((w) => w.key === key)).toBe(true);
+      expect(catalogForStage(stageOf(groupKey)).some((e) => e.key === key)).toBe(true);
+    }
+    for (const key of SHIPPED_WORK_KEYS) {
+      const files = identityFiles(key);
+      // A key may stop resolving only because a section joined another
+      // identity; if it resolves, it still names the work its anchor taught.
+      if (files.length === 0) continue;
+      expect(lessonsOf(files)).toContain(Number(key.slice(1)));
+    }
+    // Every shipped row is one of the shipped keys. A key held only by sections
+    // may stop resolving (a later join is allowed), but not vacuously: today
+    // every shipped key resolves.
+    for (const [, key] of SHIPPED_WORK_ROWS) expect(SHIPPED_WORK_KEYS).toContain(key);
+    expect(SHIPPED_WORK_KEYS.filter((key) => entriesOf(key).length > 0).length).toBeGreaterThan(60);
+  });
+
+  it('every shipped Khonyagar section stays in the stage it shipped in', () => {
+    for (const [groupKey, keys] of Object.entries(SHIPPED_SECTIONS)) {
+      const catalogue = catalogForStage(stageOf(groupKey)).map((e) => e.key);
+      for (const key of keys) expect(catalogue).toContain(key);
+    }
+    expect(Object.values(SHIPPED_SECTIONS).flat()).toHaveLength(106);
+  });
+
+  it('a work spanning several sections is one item titled with the work carrying every section\'s files once', () => {
+    const multi = [...new Set(units.map(({ unit }) => unit.workKey).filter((k): k is string => !!k))].filter(
+      (k) => entriesOf(k).length > 1,
+    );
+    // Not vacuous, and the two the owner named are among them.
+    expect(multi).toEqual(expect.arrayContaining(['w192', 'w197', 'w206', 'w214', 'w246']));
+
+    for (const identity of multi) {
+      const entries = entriesOf(identity);
+      const title = units.find(({ unit }) => unit.workKey === identity)!.unit.workTitle!;
+      const expected = [...new Set(identityFiles(identity).map((f) => f.path))];
+      for (const [firstStage, firstKey] of entries) {
+        let state = add([], firstStage, firstKey);
+        const item = state.item;
+        expect(state.created).toBe(true);
+        expect(item.title).toBe(title);
+        expect(isWork(item)).toBe(true);
+        for (const [stageId, key] of entries) {
+          const again = add(state.items, stageId, key);
+          expect(again.created).toBe(false);
+          expect(again.item.id).toBe(item.id);
+          state = { ...again, item };
+        }
+        expect(state.items).toHaveLength(1);
+        const files = courseFilesFor(item.stageId!, item.catalogKey!).map((f) => f.path);
+        expect(new Set(files).size).toBe(files.length);
+        expect(files.sort()).toEqual([...expected].sort());
+      }
+    }
+
+    // The radif's چهارمضراب ماهور, concretely: seven sections, nine lessons,
+    // one book — added from part two, it is the WORK, and all seven rows read so.
+    expect(entriesOf('w246').map(([, k]) => k)).toEqual(['s095', 's096', 's097', 's101', 's102', 's103', 's104']);
+    const { items, item } = add([], stageOf('s093-s106'), 's096');
+    expect(item.title).toBe('چهارمضراب ماهور');
+    const files = courseFilesFor(item.stageId!, item.catalogKey!);
+    expect(lessonsOf(files)).toEqual([246, 247, 248, 249, 253, 254, 255, 256, 257]);
+    expect(files.filter((f) => f.kind === 'pdf')).toHaveLength(1);
+    const rowsNow = stageUnits(stageRecord('s093-s106'), items).filter((u) => u.item?.id === item.id);
+    expect(rowsNow.map((u) => u.key)).toEqual(['s095', 's096', 's097', 's101', 's102', 's103', 's104']);
+    expect(rowsNow.every((u) => u.title === 'چهارمضراب ماهور')).toBe(true);
+    // A performance section added first is the work too, never «اجرای …».
+    expect(add([], stageOf('s046-s059'), 's057').item.title).toBe('پیش‌درآمد ماهور درویش‌خان');
+    expect(add([], stageOf('s046-s059'), 's048').item.title).toBe('رنگ دوم ماهور از درویش‌خان');
+  });
+
+  it('keeps two distinct files whose titles match and never repeats one path', () => {
+    // Lessons 148 and 149 are two different videos whose index titles match
+    // once whitespace is collapsed. Assert the pair exists before relying on it.
+    const w148 = courseFilesFor(stageOf('s029-s035'), 's030');
+    const videos = w148.filter((f) => f.kind === 'video');
+    expect(videos).toHaveLength(2);
+    expect(videos[0].title).toBe(videos[1].title);
+    expect(videos[0].path).not.toBe(videos[1].path);
+    expect(lessonsOf(videos)).toEqual([148, 149]);
+
+    // One file referenced from several entries appears once: the band book
+    // every part of the radif's چهارمضراب carries.
+    const w246 = courseFilesFor(stageOf('s093-s106'), 's101');
+    const book = `${K.mediaPath}/نت ۴ - تار ۳ قطعات ضربی.pdf`;
+    expect(entriesOf('w246').length).toBe(7);
+    expect(w246.filter((f) => f.path === book)).toHaveLength(1);
+
+    // And across EVERY identity: nothing dropped, nothing repeated — the list
+    // is exactly the distinct paths of every entry, whatever their titles.
+    for (const key of SHIPPED_WORK_KEYS) {
+      const [stageId, entryKey] = entriesOf(key)[0];
+      const got = courseFilesFor(stageId, entryKey).map((f) => f.path);
+      expect(new Set(got).size).toBe(got.length);
+      expect([...got].sort()).toEqual([...new Set(identityFiles(key).map((f) => f.path))].sort());
+    }
+  });
+
+  it('a mixed section yields each work it teaches as its own row and becomes no work itself', () => {
+    const stage3 = K.groups.find((g) => g.key === 's014-s023')!;
+    const unit = (key: string) => units.find(({ unit: u }) => u.key === key)!.unit;
+
+    // Section 17 teaches two works, in lessons 109 and 110; it is neither.
+    expect(unit('s017').workKey).toBeUndefined();
+    expect(REPERTOIRE_STRANDS.has(unit('s017').strand)).toBe(false);
+    expect(lessonsOf(unit('s017').files)).toEqual([107, 108, 109, 110]);
+    const taught = stage3.works.filter((w) => lessonsOf(w.files ?? []).some((n) => n === 109 || n === 110));
+    expect(taught.map((w) => w.key)).toEqual(['w109', 'w110']);
+    expect(lessonsOf(taught[0].files ?? [])).toEqual([109]);
+    expect(lessonsOf(taught[1].files ?? [])).toEqual([110]);
+
+    // پیش‌درآمد ابوعطا is ONE row carrying exactly lessons 124 and 125, although
+    // they sit in sections 21 and 22 — neither of which is a work.
+    const abuAta = stage3.works.find((w) => w.key === 'w124')!;
+    expect(abuAta.title).toBe('پیش‌درآمد ابوعطا');
+    expect(lessonsOf(abuAta.files ?? [])).toEqual([124, 125]);
+    expect(stage3.works.filter((w) => lessonsOf(w.files ?? []).some((n) => n === 124 || n === 125))).toHaveLength(1);
+    for (const key of ['s021', 's022']) {
+      expect(unit(key).workKey).toBeUndefined();
+      expect(REPERTOIRE_STRANDS.has(unit(key).strand)).toBe(false);
+    }
+    const added = add([], stageOf('s014-s023'), 'w124');
+    expect(added.item.title).toBe('پیش‌درآمد ابوعطا');
+    expect(isWork(added.item)).toBe(true);
+    expect(lessonsOf(courseFilesFor(added.item.stageId!, added.item.catalogKey!))).toEqual([124, 125]);
+    // Adding the section beside it is practice material, never a second work.
+    const section = add(added.items, stageOf('s014-s023'), 's021');
+    expect(section.created).toBe(true);
+    expect(isWork(section.item)).toBe(false);
+    expect(section.item.title).toBe('قطعه‌نوازی ۱');
+  });
+
+  it('no Khonyagar section carries a repertoire strand unless it is a work', () => {
+    for (const { group, unit } of units) {
+      expect(REPERTOIRE_STRANDS.has(unit.strand)).toBe(!!unit.workKey);
+      expect(!!unit.workTitle).toBe(!!unit.workKey);
+      const entry = catalogForStage(stageOf(group.key)).find((e) => e.key === unit.key)!;
+      expect(isWork(add([], stageOf(group.key), entry.key).item)).toBe(!!unit.workKey);
+    }
+    for (const { work } of rows) expect(REPERTOIRE_STRANDS.has(work.strand ?? 'piece')).toBe(true);
+    // Not vacuous: both kinds exist in the real data.
+    expect(units.filter(({ unit }) => !unit.workKey).length).toBeGreaterThan(20);
+    expect(units.filter(({ unit }) => unit.workKey).length).toBeGreaterThan(20);
+  });
+
+  it('joins a performance section only where the work table says so and never merges on a ZWNJ difference', () => {
+    const sectionsOf = (identity: string) => units.filter(({ unit }) => unit.workKey === identity).map(({ unit }) => unit.key);
+    expect(sectionsOf('w197')).toEqual(['s052', 's053', 's054', 's055', 's056', 's057']);
+    expect(sectionsOf('w192')).toEqual(['s048', 's049', 's050', 's051']);
+
+    // The titles are kept exactly as the index writes them: parts one to four
+    // with a space, part five with a ZWNJ. Nothing folds them — the join is the
+    // work table's, and the same composer's رنگ is a different work.
+    const title = (key: string) => units.find(({ unit }) => unit.key === key)!.unit.title;
+    for (const key of ['s052', 's053', 's054', 's055']) expect(title(key).startsWith('پیش درآمد ماهور')).toBe(true);
+    expect(title('s056').startsWith('پیش\u200cدرآمد ماهور')).toBe(true);
+    const stem = (key: string) => title(key).split(' - ')[0];
+    expect(stem('s056')).not.toBe(stem('s052'));
+    expect(stem('s056').replace(/[\u200c\s]/g, '')).toBe(stem('s052').replace(/[\u200c\s]/g, ''));
+
+    // Performances («اجرای …») join exactly the work the table names…
+    for (const [key, identity] of [['s048', 'w192'], ['s057', 'w197'], ['s063', 'w206'], ['s104', 'w246']] as const) {
+      expect(title(key).startsWith('اجرای')).toBe(true);
+      expect(units.find(({ unit }) => unit.key === key)!.unit.workKey).toBe(identity);
+    }
+    // …and a section holding «اجرای تمرین تک ریز» — a performed EXERCISE — is no work.
+    expect(units.find(({ unit }) => unit.key === 's031')!.unit.workKey).toBeUndefined();
+
+    // Titles that fold equal under ZWNJ/space removal are NOT an identity: the
+    // app resolves by declared key only. Two entries with one folded title
+    // stay two unless the table joined them.
+    const fold = (s: string) => s.replace(/[\u200c\s]/g, '');
+    const all = [
+      ...units.map(({ group, unit }) => ({ stage: stageOf(group.key), key: unit.key, title: unit.workTitle ?? unit.title, id: unit.workKey })),
+      ...rows.map(({ group, work }) => ({ stage: stageOf(group.key), key: work.key, title: work.title, id: work.workKey ?? work.key })),
+    ];
+    let pairs = 0;
+    for (const a of all) {
+      for (const b of all) {
+        if (a === b || fold(a.title) !== fold(b.title) || (a.id && a.id === b.id)) continue;
+        pairs++;
+        const first = add([], a.stage, a.key);
+        expect(add(first.items, b.stage, b.key).created).toBe(true);
+      }
+    }
+    expect(pairs).toBeGreaterThan(0);
+  });
+
+  it('keeps two distinct works that share a title apart', () => {
+    // Ma'rufi's چهارمضراب ماهور (section 26) and the radif's (95–104).
+    const marufi = add([], stageOf('s024-s028'), 'w138');
+    expect(marufi.item.title).toBe('چهارمضراب ماهور از موسی معروفی');
+    const radif = add(marufi.items, stageOf('s093-s106'), 's095');
+    expect(radif.created).toBe(true);
+    expect(radif.item.id).not.toBe(marufi.item.id);
+    expect(carriedCourseWorkItem(stageOf('s093-s106'), 's095', marufi.items)).toBeUndefined();
+    const a = courseFilesFor(stageOf('s024-s028'), 'w138').map((f) => f.path);
+    const b = courseFilesFor(stageOf('s093-s106'), 's095').map((f) => f.path);
+    expect(lessonsOf(courseFilesFor(stageOf('s024-s028'), 'w138'))).toEqual([138, 139]);
+    expect(a.filter((p) => b.includes(p))).toEqual([]);
+    // And section 85 is a third.
+    const third = add(radif.items, stageOf('s075-s092'), 's085');
+    expect(third.created).toBe(true);
+    expect(new Set([marufi.item.id, radif.item.id, third.item.id]).size).toBe(3);
+
+    // Identical authored titles still give distinct identities: three کرشمه,
+    // two رنگ شور.
+    const kereshmeh = add([], stageOf('s024-s028'), 'w135');
+    const kereshmeh59 = add(kereshmeh.items, stageOf('s046-s059'), 's059');
+    expect(kereshmeh.item.title).toBe(kereshmeh59.item.title);
+    expect(kereshmeh59.created).toBe(true);
+    const shur = add([], stageOf('s029-s035'), 's030');
+    const shur32 = add(shur.items, stageOf('s029-s035'), 'w153');
+    expect(shur32.created).toBe(true);
+    expect(courseFilesFor(stageOf('s029-s035'), 'w153').some((f) => lessonOf(f) === 148)).toBe(false);
+  });
+
+  it('a Khonyagar work never reuses an item from another course or instrument', () => {
+    const honarestan = stageIdFor('tar-honarestan', 'chahar-mezrab');
+    const setarMahur = stageIdFor('setar-radif', 'mahur');
+    const others: PracticeItem[] = [
+      // A Guitar item that somehow holds a Khonyagar-shaped key.
+      createItem({ instrumentId: 'g', title: 'چهارمضراب ماهور', stageId: 'cgs-2c', catalogKey: 'w246' }, NOW),
+      // The owner's Setar piece of the same name, in a Setar stage and outside any stage.
+      createItem({ instrumentId: 's', title: 'چهارمضراب ماهور', stageId: setarMahur, catalogKey: 'w246' }, NOW),
+      createItem({ instrumentId: 's', title: 'گوشه زنگوله', catalogKey: 'w259' }, NOW),
+      // The Honarestān pathway's own Tar item.
+      createItem({ instrumentId: 't', title: 'چهارمضراب ماهور', stageId: honarestan, catalogKey: 's095' }, NOW),
+    ];
+    for (const [stageId, key] of [
+      [stageOf('s093-s106'), 's095'],
+      [stageOf('s093-s106'), 's106'],
+      [stageOf('s006-s013'), 'w063'],
+    ]) {
+      expect(carriedCourseWorkItem(stageId, key, others)).toBeUndefined();
+      const plan = planCatalogAddition({ items: others, materials: [] }, stageId, key, catalogForStage(stageId).find((e) => e.key === key), 't', NOW);
+      expect(plan.created).toBe(true);
+      expect(others.map((i) => i.id)).not.toContain(plan.itemId);
+    }
+    // And the other way round: a Khonyagar item is never a Guitar work.
+    const tar = add([], stageOf('s093-s106'), 's095').items;
+    const cgs = CGS_COURSE.groups.find((g) => g.works.length > 0)!;
+    const cgsStage = courseStageId(CGS_COURSE, cgs.key);
+    expect(carriedCourseWorkItem(cgsStage, cgs.works[0].key, tar)).toBeUndefined();
+  });
+
+  it('a Khonyagar stage builds no routine while every Guitar level still builds its own', () => {
+    for (const g of K.groups) {
+      expect(g.routine).toEqual([]);
+      // Even with every section and work of the stage added.
+      let items: PracticeItem[] = [];
+      for (const e of catalogForStage(stageOf(g.key))) items = add(items, stageOf(g.key), e.key).items;
+      expect(stageUnits(stageRecord(g.key), items).every((u) => !!u.item)).toBe(true);
+      expect(buildLevelRoutine(K, g.key, items)).toEqual([]);
+      expect(buildPositionRoutine(K, g.key, items)).toEqual([]);
+    }
+    for (const g of CGS_COURSE.groups) {
+      expect(g.routine.length).toBeGreaterThan(0);
+      expect(buildLevelRoutine(CGS_COURSE, g.key, []).length).toBe(g.routine.length);
+    }
+    // And the pathway seeds no routine for the course.
+    expect(seedPathways(IDS, NOW).pathwayRoutines.filter((r) => r.pathwayId === K.pathwayId)).toEqual([]);
+  });
+
+  it('a Khonyagar work carries its own guidance and never the Guitar packet note', () => {
+    const packet = /practice packet/;
+    const guide = new Set(Object.values(KHONYAGAR_LESSON_TYPES));
+    expect(guide.size).toBe(5);
+    const radif = KHONYAGAR_LESSON_TYPES.radif;
+    expect(radif.startsWith('**Radif / gusheh / āvāz:**')).toBe(true);
+    for (const g of K.groups) {
+      for (const e of catalogForStage(stageOf(g.key))) {
+        expect(guide.has(e.notes ?? '')).toBe(true);
+        expect(e.notes).not.toMatch(packet);
+        const item = add([], stageOf(g.key), e.key).item;
+        expect(item.notes).toBe(e.notes);
+        if (item.itemType === 'gusheh') expect(item.notes).toBe(radif);
+      }
+    }
+    // A work row in particular — the entries that used to take the packet note.
+    expect(catalogForStage(stageOf('s014-s023')).find((e) => e.key === 'w124')?.notes).toBe(KHONYAGAR_LESSON_TYPES.composed);
+    expect(catalogForStage(stageOf('s024-s028')).find((e) => e.key === 'w135')?.notes).toBe(radif);
+    // Guitar works keep their sentence.
+    const cgsWorks = CGS_COURSE.groups.flatMap((g) => g.works.map((w) => ({ g, w })));
+    expect(cgsWorks.length).toBeGreaterThan(0);
+    for (const { g, w } of cgsWorks) {
+      const entry = catalogForStage(courseStageId(CGS_COURSE, g.key)).find((e) => e.key === w.key)!;
+      expect(entry.notes).toBe(
+        `Optional repertoire from the Level ${g.code} practice packet. Learn it when it appeals — nothing here is a deadline.`,
+      );
+    }
+  });
+});
+
+describe('Khonyagar and My repertoire', () => {
+  // My repertoire (Repertoire.tsx) sends a Persian-family instrument's works
+  // through groupByDastgah; the page itself cannot render in this Node suite,
+  // so this asserts that function and the instrument family that routes to it.
+  it('an uncurated Khonyagar item stays out of My repertoire until the owner gives it a form or dastgah', () => {
+    let db = createSeedDB(NOW);
+    const tar = db.instruments.find((i) => i.name === 'Tar')!;
+    expect(tar.family).toBe('Persian');
+
+    const created: PracticeItem[] = [];
+    for (const group of K.groups) {
+      const stageId = stageOf(group.key);
+      for (const entry of catalogForStage(stageId)) {
+        expect(entry.persian).toBeUndefined();
+        const plan = planCatalogAddition(db, stageId, entry.key, entry, tar.id, NOW);
+        db = { ...db, items: plan.items, materials: plan.materials };
+        if (plan.created) created.push(plan.items.find((i) => i.id === plan.itemId)!);
+      }
+    }
+    // Not vacuous: every section and work row was added, and works are among them.
+    expect(created.length).toBeGreaterThan(106);
+    expect(created.some(isWork)).toBe(true);
+    // Nothing is inferred from a title: no item arrives with Persian metadata,
+    // so none reaches My repertoire on its own.
+    for (const item of created) expect(item.persian).toBeUndefined();
+    expect(groupByDastgah(created)).toEqual([]);
+
+    // Curated by the owner, it groups exactly like any other Persian item.
+    const [work] = created.filter(isWork);
+    const withForm = { ...work, persian: { form: 'چهارمضراب' } };
+    expect(groupByDastgah([withForm])).toEqual([{ dastgah: UNCLASSIFIED_DASTGAH, items: [withForm] }]);
+    const withDastgah = { ...work, persian: { dastgahAvaz: 'ماهور' } };
+    expect(groupByDastgah([withDastgah])).toEqual([{ dastgah: 'ماهور', items: [withDastgah] }]);
+  });
+});
+```
 
 ## Check against the contract
 
@@ -565,7 +4353,7 @@ The stages offer no generated routine. For a timed session, choose "Plan this se
 - [ ] **ac-3** — The generated data accounts for the whole source, with the counts written as literals. There are exactly 106 sections, `s001`–`s106`. The lesson numbers read from the section video paths are exactly 1–259, each exactly once, contiguous and in order within each section. Exactly the four score books appear and each is referenced at least once. Every work's files are a subset of the sections' files. Dropping, duplicating or misplacing one lesson fails. _(proof: accounts for all 106 sections, each of the 259 lessons exactly once and all four score books)_
 - [ ] **ac-4** — Work identity is anchored and permanent, checked against a literal ledger written in the test and never derived from the data. Every shipped work-row key (the key an item holds as its `catalogKey`) still exists. Every ledgered work key `wNNN` that still resolves names a work whose lessons include lesson NNN. Reordering the table changes nothing. Removing a shipped work row, or re-pointing any key at a work without its anchor lesson, fails. Joining a work that is a section into another identity is still allowed. _(proof: every shipped Khonyagar work row still exists and every shipped work key keeps its anchor lesson)_
 - [ ] **ac-5** — Every (stage id, section key) pair in a literal ledger of shipped pairs is still present, so a later boundary change cannot orphan an item's material. _(proof: every shipped Khonyagar section stays in the stage it shipped in)_
-- [ ] **ac-6** — A work taught across several sections is one repertoire item, titled with the work's own name whichever of its sections is added first (a part or a performance included). It carries every section's files, each distinct file exactly once. _(proof: a work spanning several sections is one item titled with the work carrying every section's files once)_
+- [ ] **ac-6** — A work taught across several sections is one practice item, titled with the work's own name whichever of its sections is added first (a part or a performance included). It carries every section's files, each distinct file exactly once. _(proof: a work spanning several sections is one item titled with the work carrying every section's files once)_
 - [ ] **ac-7** — Two distinct files are both kept when their titles match, and one file referenced from two entries appears once. Deduplication is by path, never by title. _(proof: keeps two distinct files whose titles match and never repeats one path)_
 - [ ] **ac-8** — A mixed section yields each work it teaches as that work's own row, and the section itself is no work. Section 17 yields two works, from lessons 109 and 110. پیش‌درآمد ابوعطا is one row carrying exactly lessons 124 and 125, although they sit in sections 21 and 22, and neither of those sections is a work. _(proof: a mixed section yields each work it teaches as its own row and becomes no work itself)_
 - [ ] **ac-9** — No Khonyagar section carries a repertoire strand (`piece`, `repertoire` or `radif`) unless it carries a work identity, so a section title never reaches My repertoire as a fake piece. _(proof: no Khonyagar section carries a repertoire strand unless it is a work)_
@@ -579,11 +4367,12 @@ The stages offer no generated routine. For a timed session, choose "Plan this se
 - [ ] **ac-17** — On the owner's own Mac and iPhone:
 - the Khonyagar pathway appears after restoring default pathways;
 - a section's lesson videos and its band's score book open from a practice item over both the LAN and Tailscale routes;
-- the radif's چهارمضراب ماهور appears once in My repertoire, under its own name and carrying all seven sections' videos, while Ma'rufi's stays a separate suggestion and the Setar item of that name is untouched;
+- adding any section of the radif's چهارمضراب ماهور creates ONE practice item, under the work's own name and carrying all seven sections' videos, while Ma'rufi's stays a separate suggestion and the Setar item of that name is untouched. That item does NOT appear in My repertoire. After the owner edits it, picks "Composed piece" and gives it a form, it appears there once, under "No dastgāh yet"; with a dastgāh too, under that dastgāh;
 - پیش‌درآمد ابوعطا is its own row beside the exercise sections that contain it;
 - Khonyagar stages show no routine buttons and no routine caption;
 - a 30-minute Tar session from "Plan this session" is built only from Tar items, with a warm-up first and a cool-down last only when an item qualifies, and due reviews and current work in between by priority. It is not expected to follow the guide's block order, and nothing on screen claims it does;
 - the Honarestan pathway and all Setar and Guitar data are visibly unchanged. _(proof: manual:OWNER)_
+- [ ] **ac-18** — No Khonyagar entry, and no item created from one, carries any Persian identity (form, dastgāh, composer or gusheh), so an uncurated Khonyagar item (Tar is Persian-family) is left out of My repertoire by the existing dastgāh grouping. Once the owner gives the same item a form it groups under "No dastgāh yet", and with a dastgāh it groups under that dastgāh, exactly as any curated Persian item does today. _(proof: an uncurated Khonyagar item stays out of My repertoire until the owner gives it a form or dastgah)_
 
 ## Flow impact — detected vs reported
 
@@ -613,10 +4402,6 @@ Mapped implementation touched: touchpoint(s) src/pages/StageDetail.tsx, src/doma
 
 scheduling.ts, SchedulingParams and Settings are untouched; Khonyagar items arrive status new with no review state, exactly as every catalogue item does.
 
-## browse-my-repertoire — unchanged
-
-repertoire.ts and Repertoire.tsx are unchanged; Khonyagar works are ordinary full_piece/gusheh items that group under their study source through the existing lens, with no new mechanics.
-
 ## capture-a-practice-item — unchanged
 
 Quick add and the full item form are untouched; the only creation change is a catalogue addition titling a multi-section work with its workTitle, which is the work-a-pathway-stage flow.
@@ -644,6 +4429,10 @@ plan.ts and SessionPlan.tsx are forbidden and unchanged; the plan builds from Kh
 ## see-practice-patterns — unchanged
 
 Insights and practice totals are unchanged; no block is written by this change.
+
+## browse-my-repertoire — unchanged
+
+repertoire.ts, persian.ts and Repertoire.tsx are unchanged. Khonyagar items carry no form, dastgāh or composer, so on Tar (Persian-family) the existing dastgāh grouping leaves them out of My repertoire until the owner curates that metadata by hand. They then group exactly as any curated Persian item does. No new mechanics.
 
 
 **Gaps between detected and reported:**
@@ -674,10 +4463,22 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
+If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
 
-`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260922-bring-the-khonyagar-tar-course-into-its--56be/findings.json`
+**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
 
-with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
+```bash
+cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260922-bring-the-khonyagar-tar-course-into-its--56be/findings.json'
+```
+
+**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
+
+**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+
+```bash
+prismatica seal '20260922-bring-the-khonyagar-tar-course-into-its--56be' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260922-bring-the-khonyagar-tar-course-into-its--56be/findings.json'
+```
+
+You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260922-bring-the-khonyagar-tar-course-into-its--56be/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory.
