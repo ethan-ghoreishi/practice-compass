@@ -1,4 +1,4 @@
-import { seedPathways } from './pathwaySeed';
+import { seedInstrumentIds, seedPathways } from './pathwaySeed';
 import { retirePracticeText } from './practiceInformation';
 import {
   SCHEMA_VERSION,
@@ -36,12 +36,7 @@ function migrateToV3(db: PracticeDB): PracticeDB {
   // now also runs directly on raw, untrusted import data (not just already-
   // valid persisted state) — guard the one field it reads before validation.
   const instruments = db.instruments ?? [];
-  const ids = {
-    guitar: instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
-    setar: instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
-    tar:
-      instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
-  };
+  const ids = seedInstrumentIds(instruments);
   const seeded = seedPathways(ids);
   const next: PracticeDB & { curriculum?: unknown } = { ...db, ...seeded };
   delete next.curriculum;

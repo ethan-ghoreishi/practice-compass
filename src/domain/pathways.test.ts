@@ -22,7 +22,9 @@ import {
 } from './pathways';
 import { createItem } from './factories';
 import { validateDB } from './io';
+import { migrateToCurrent } from './migrations';
 import { detachRoutinesFromPathway } from './routines';
+import { pathwaysForInstrumentFilter } from './selectors';
 import { createSeedDB } from './seed';
 import type { PracticeDB, PracticeItem } from './types';
 
@@ -451,5 +453,66 @@ describe('adding a missing shipped default pathway to an existing database', () 
     const both = planDefaultPathways(db, [SEED_PATHWAY_IDS.guitar, KHONYAGAR], LATER);
     expect(both.pathways.slice(db.pathways.length).map((p) => p.id)).toEqual([KHONYAGAR]);
     expect(both.pathways.every((p) => p.instrumentId !== '')).toBe(true);
+  });
+
+  // Persian names, escaped so a lost ZWNJ cannot silently weaken the test.
+  const SETAR_FA = '\u0633\u0647\u200c\u062a\u0627\u0631'; // سه‌تار
+  const SETAR_FA_SPACED = '\u0633\u0647 \u062a\u0627\u0631'; // سه تار
+  const TAR_FA = '\u062a\u0627\u0631'; // تار
+
+  it('never mistakes a Persian-named Setar for Tar when offering a default pathway', () => {
+    const lived = existingDb();
+    // The seed's own instruments renamed in place: ids kept, Setar still first.
+    const named = (setarName: string): PracticeDB => ({
+      ...lived,
+      instruments: lived.instruments.map((i) =>
+        i.name === 'Setar' ? { ...i, name: setarName } : i.name === 'Tar' ? { ...i, name: TAR_FA } : i,
+      ),
+    });
+    const db = named(SETAR_FA);
+    const setarId = db.instruments.find((i) => i.name === SETAR_FA)!.id;
+    const tarId = db.instruments.find((i) => i.name === TAR_FA)!.id;
+    expect(db.instruments[0].id).toBe(setarId);
+
+    for (const spelling of [SETAR_FA, SETAR_FA_SPACED]) {
+      const ids = seedInstrumentIds(named(spelling).instruments);
+      expect([ids.setar, ids.tar]).toEqual([setarId, tarId]);
+    }
+
+    const offered = offeredDefaultPathways(db, LATER);
+    expect(offered.map((p) => [p.id, p.instrumentId])).toEqual([[KHONYAGAR, tarId]]);
+    expect(pathwaysForInstrumentFilter(offered, setarId)).toEqual([]);
+    expect(pathwaysForInstrumentFilter(offered, tarId).map((p) => p.id)).toEqual([KHONYAGAR]);
+
+    // No Tar at all: the Tar course is not offered on the Setar, and cannot be planned.
+    const noTar: PracticeDB = { ...db, instruments: db.instruments.filter((i) => i.id !== tarId) };
+    expect(seedInstrumentIds(noTar.instruments).tar).toBe('');
+    expect(offeredDefaultPathways(noTar, LATER)).toEqual([]);
+    const noop = planDefaultPathways(noTar, [KHONYAGAR], LATER);
+    expect(noop.pathways).toBe(noTar.pathways);
+    expect(noop.pathwayStages).toBe(noTar.pathwayStages);
+    expect(noop.pathwayRoutines).toBe(noTar.pathwayRoutines);
+  });
+
+  it("seeds a pre-v3 database's Tar pathways on the real Tar, never a Persian-named Setar", () => {
+    const ts = '2025-01-01T00:00:00.000Z';
+    // A raw pre-v3 database: no `pathways` key at all, and the old `curriculum`.
+    const raw = {
+      schemaVersion: 2,
+      instruments: [
+        { id: 'i-setar', name: SETAR_FA, family: 'Persian', active: true, createdAt: ts, updatedAt: ts },
+        { id: 'i-tar', name: TAR_FA, family: 'Persian', active: true, createdAt: ts, updatedAt: ts },
+      ],
+      materials: [],
+      items: [],
+      blocks: [],
+      reviews: [],
+      curriculum: {},
+    } as unknown as PracticeDB;
+    const out = migrateToCurrent(raw, 2);
+    const on = (id: string) => out.pathways.find((p) => p.id === id)?.instrumentId;
+    expect(on(SEED_PATHWAY_IDS.setar)).toBe('i-setar');
+    expect(on(SEED_PATHWAY_IDS.tar)).toBe('i-tar');
+    expect(on(KHONYAGAR)).toBe('i-tar');
   });
 });

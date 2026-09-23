@@ -2647,8 +2647,10 @@ demo reset. A default the owner DELETED is absent in exactly the same way as one
 never shipped, so the answer is the levels one, not a bulk restore:
 `offeredDefaultPathways` (`pathwaySeed.ts`, tested) lists each shipped default whose
 deterministic id is absent AND whose instrument resolves on this device
-(`seedInstrumentIds`, the store's old name rule moved beside the seed; `migrateToV3`
-keeps its own copy), and Repertoire renders one "Add default pathway: <name>" button
+(`seedInstrumentIds`, the store's old name rule moved beside the seed and now the ONE
+rule `migrateToV3` resolves through too — with one correction: «سه‌تار» contains «تار»,
+so a name containing «سه» is never Tar, and a Persian-named Setar can no longer be
+offered, or seeded, a Tar course), and Repertoire renders one "Add default pathway: <name>" button
 per offered default that passes the view's own `pathwaysForInstrumentFilter`, so what
 is shown is exactly what can be added. `planDefaultPathways` adds only the CHOSEN
 ones: every existing pathway, stage and routine kept by reference as the prefix, a

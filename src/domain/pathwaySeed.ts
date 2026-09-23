@@ -732,16 +732,19 @@ export function seedPathways(
 // already exists.
 
 /**
- * Which of this device's instruments each seed belongs to, by name. The rule
- * the store has always used; `migrateToV3` keeps its own copy. An instrument
- * that matches nothing yields '' — see `offeredDefaultPathways`.
+ * Which of this device's instruments each seed belongs to, by name — the ONE
+ * rule, shared by `migrateToV3`. «سه‌تار» contains «تار», so a name that reads
+ * as Setar (containing «سه») is never Tar. An instrument that matches nothing
+ * yields '' — see `offeredDefaultPathways`.
  */
 export function seedInstrumentIds(instruments: Instrument[]): { guitar: ID; setar: ID; tar: ID } {
   return {
     guitar: instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
     setar: instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
     tar:
-      instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
+      instruments.find(
+        (i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name) && !i.name.includes('سه'),
+      )?.id ?? '',
   };
 }
 
