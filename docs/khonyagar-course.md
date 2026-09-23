@@ -221,10 +221,14 @@ The type decides three things:
 ## 5. What the app does with it
 
 - **The pathway.** `tar-khonyagar` is appended to the seeded pathways beside
-  `tar-honarestan`, which is left exactly as it was. `reseedDefaultPathways`
-  adds a pathway that does not yet exist, so "restore default pathways" on
-  Repertoire brings it into an existing database. A fresh install or a demo
-  reset gets it from the same seed.
+  `tar-honarestan`, which is left exactly as it was. A fresh install or a demo
+  reset gets it from the same seed. An existing database gets it from
+  Repertoire → Pathways, which offers "Add default pathway: تار – آزاد میرزاپور
+  (خنیاگر)" under All and under Tar whenever the pathway is absent and a Tar
+  instrument exists (`offeredDefaultPathways`). Tapping it adds that pathway
+  and its stages (`planDefaultPathways`) and touches nothing else. Until this
+  was fixed the only button showed on an EMPTY pathway list, so no real install
+  could reach the course.
 - **The pathway note.** The note quotes the guide's daily template and Quick
   Win. The template's table is flattened to one line per block, in its own
   words, because the note renders as plain text.

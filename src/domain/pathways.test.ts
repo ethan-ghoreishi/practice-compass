@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { itemFromCatalogEntry } from './factories';
-import { catalogForStage, SEED_PATHWAY_IDS, seedPathways, stageIdFor } from './pathwaySeed';
+import {
+  catalogForStage,
+  offeredDefaultPathways,
+  planDefaultPathways,
+  SEED_PATHWAY_IDS,
+  seedInstrumentIds,
+  seedPathways,
+  stageIdFor,
+} from './pathwaySeed';
 import {
   currentStage,
   groupStages,
@@ -13,7 +21,10 @@ import {
   stageUnits,
 } from './pathways';
 import { createItem } from './factories';
-import type { PracticeItem } from './types';
+import { validateDB } from './io';
+import { detachRoutinesFromPathway } from './routines';
+import { createSeedDB } from './seed';
+import type { PracticeDB, PracticeItem } from './types';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 const seed = seedPathways({ guitar: 'g', setar: 's', tar: 't' }, NOW);
@@ -272,5 +283,173 @@ describe('the CGS course import and what existing data may reference', () => {
         CGS_KEYS_BEFORE_THE_COURSE_IMPORT[code].length,
       );
     }
+  });
+});
+
+describe('adding a missing shipped default pathway to an existing database', () => {
+  // A real install from before the Khonyagar course shipped: the demo seed's
+  // own Setar / Tar / Classical Guitar instruments and seeded pathways, then
+  // lived in — an owner pathway, a renamed seeded pathway with a pinned stage,
+  // an owner stage inside it and an owner routine.
+  const LATER = new Date('2026-09-23T12:00:00.000Z');
+  const KHONYAGAR = 'tar-khonyagar';
+
+  function existingDb(missing: string[] = [KHONYAGAR]): PracticeDB {
+    const shipped = createSeedDB(NOW);
+    const tar = shipped.instruments.find((i) => i.name === 'Tar')!;
+    const ts = NOW.toISOString();
+    return {
+      ...shipped,
+      pathways: [
+        ...shipped.pathways
+          .filter((p) => !missing.includes(p.id))
+          .map((p) => (p.id === SEED_PATHWAY_IDS.setar ? { ...p, name: 'My Setar radif', currentStageId: AFSHARI } : p)),
+        { id: 'owner-path', instrumentId: tar.id, name: 'Tar · my teacher', order: 9, createdAt: ts, updatedAt: ts },
+      ],
+      pathwayStages: [
+        ...shipped.pathwayStages.filter((s) => !missing.includes(s.pathwayId)),
+        { id: 'owner-stage', pathwayId: SEED_PATHWAY_IDS.setar, code: 'Mine', title: 'Teacher extras', order: 99, createdAt: ts, updatedAt: ts },
+      ],
+      pathwayRoutines: [
+        ...shipped.pathwayRoutines.filter((r) => !r.pathwayId || !missing.includes(r.pathwayId)),
+        { id: 'owner-routine', instrumentId: tar.id, name: 'My Tar warm-up', segments: [{ label: 'Scales', minutes: 5 }], order: 0, createdAt: ts, updatedAt: ts },
+      ],
+    };
+  }
+  const instrumentIds = (db: PracticeDB) => seedInstrumentIds(db.instruments);
+  const expectPrefix = <T,>(next: T[], prev: T[]) => prev.forEach((x, i) => expect(next[i]).toBe(x));
+
+  it('offers only the shipped default pathway an existing database is missing', () => {
+    const db = existingDb();
+    const tar = db.instruments.find((i) => i.name === 'Tar')!;
+    const offered = offeredDefaultPathways(db, LATER);
+    expect(offered.map((p) => p.id)).toEqual([KHONYAGAR]);
+    expect(offered[0].instrumentId).toBe(tar.id);
+    // The renamed seeded pathway is present by id, so it is never offered again.
+    expect(offered.map((p) => p.id)).not.toContain(SEED_PATHWAY_IDS.setar);
+  });
+
+  it('adds the chosen missing pathway with its stages and leaves every existing pathway, stage and routine untouched', () => {
+    const db = existingDb();
+    const next = planDefaultPathways(db, [KHONYAGAR], LATER);
+    const expected = seedPathways(instrumentIds(db), LATER);
+
+    // Only the pathway collections come back — nothing else is the plan's to touch.
+    expect(Object.keys(next).sort()).toEqual(['pathwayRoutines', 'pathwayStages', 'pathways']);
+
+    expect(next.pathways).toHaveLength(db.pathways.length + 1);
+    expectPrefix(next.pathways, db.pathways);
+    expect(next.pathways.at(-1)).toEqual(expected.pathways.find((p) => p.id === KHONYAGAR));
+    const renamed = next.pathways.find((p) => p.id === SEED_PATHWAY_IDS.setar)!;
+    expect([renamed.name, renamed.currentStageId]).toEqual(['My Setar radif', AFSHARI]);
+
+    const khonyagarStages = expected.pathwayStages.filter((s) => s.pathwayId === KHONYAGAR);
+    expect(khonyagarStages.length).toBeGreaterThan(0);
+    expect(next.pathwayStages).toHaveLength(db.pathwayStages.length + khonyagarStages.length);
+    expectPrefix(next.pathwayStages, db.pathwayStages);
+    expect(next.pathwayStages.slice(db.pathwayStages.length)).toEqual(khonyagarStages);
+
+    // The course ships no routine, so the routines array is not even copied.
+    expect(next.pathwayRoutines).toBe(db.pathwayRoutines);
+
+    // What the store would install is accepted at every inbound door.
+    expect(() => validateDB({ ...db, ...next })).not.toThrow();
+    expect(offeredDefaultPathways({ ...db, ...next }, LATER)).toEqual([]);
+  });
+
+  it('offers nothing and returns the same collections when every default pathway is present', () => {
+    const db = existingDb([]);
+    expect(offeredDefaultPathways(db, LATER)).toEqual([]);
+    for (const ids of [[], [KHONYAGAR], seedPathways(instrumentIds(db), LATER).pathways.map((p) => p.id)]) {
+      const next = planDefaultPathways(db, ids, LATER);
+      // Identity is the store's no-op signal: no set(), no rev bump, no sync.
+      expect(next.pathways).toBe(db.pathways);
+      expect(next.pathwayStages).toBe(db.pathwayStages);
+      expect(next.pathwayRoutines).toBe(db.pathwayRoutines);
+    }
+  });
+
+  it('adds only the pathway chosen and ignores an id that is present or was never shipped', () => {
+    const db = existingDb([KHONYAGAR, SEED_PATHWAY_IDS.guitar]);
+    expect(offeredDefaultPathways(db, LATER).map((p) => p.id)).toEqual([SEED_PATHWAY_IDS.guitar, KHONYAGAR]);
+
+    const next = planDefaultPathways(db, [SEED_PATHWAY_IDS.guitar], LATER);
+    const expected = seedPathways(instrumentIds(db), LATER);
+    expect(next.pathways.slice(db.pathways.length).map((p) => p.id)).toEqual([SEED_PATHWAY_IDS.guitar]);
+    expect(next.pathwayStages.slice(db.pathwayStages.length)).toEqual(
+      expected.pathwayStages.filter((s) => s.pathwayId === SEED_PATHWAY_IDS.guitar),
+    );
+    const cgsRoutines = expected.pathwayRoutines.filter((r) => r.pathwayId === SEED_PATHWAY_IDS.guitar);
+    expect(cgsRoutines.length).toBeGreaterThan(0);
+    expect(next.pathwayRoutines.slice(db.pathwayRoutines.length)).toEqual(cgsRoutines);
+    expectPrefix(next.pathways, db.pathways);
+    expectPrefix(next.pathwayStages, db.pathwayStages);
+    expectPrefix(next.pathwayRoutines, db.pathwayRoutines);
+    // Khonyagar was offered too, and not chosen.
+    expect(next.pathways.some((p) => p.id === KHONYAGAR)).toBe(false);
+
+    for (const ids of [[SEED_PATHWAY_IDS.setar], ['never-shipped'], [SEED_PATHWAY_IDS.tar, 'never-shipped']]) {
+      const noop = planDefaultPathways(db, ids, LATER);
+      expect(noop.pathways).toBe(db.pathways);
+      expect(noop.pathwayStages).toBe(db.pathwayStages);
+      expect(noop.pathwayRoutines).toBe(db.pathwayRoutines);
+    }
+  });
+
+  it('never duplicates or re-places a routine the owner kept after deleting a default pathway', () => {
+    // The owner deleted Classical Guitar Shed the way `deletePathway` does: its
+    // stages go, and its routines are DETACHED by the real helper, not deleted.
+    const lived = existingDb([]);
+    const cgs = SEED_PATHWAY_IDS.guitar;
+    const db: PracticeDB = {
+      ...lived,
+      pathways: lived.pathways.filter((p) => p.id !== cgs),
+      pathwayStages: lived.pathwayStages.filter((s) => s.pathwayId !== cgs),
+      pathwayRoutines: detachRoutinesFromPathway(lived.pathwayRoutines, cgs, NOW),
+    };
+    const kept = db.pathwayRoutines.filter((r) => r.id.startsWith(`${cgs}-routine-`));
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept.every((r) => r.pathwayId === undefined && r.stageId === undefined)).toBe(true);
+
+    expect(offeredDefaultPathways(db, LATER).map((p) => p.id)).toEqual([cgs]);
+    const next = planDefaultPathways(db, [cgs], LATER);
+    const expected = seedPathways(instrumentIds(db), LATER);
+
+    expect(next.pathways.at(-1)?.id).toBe(cgs);
+    expect(next.pathwayStages.slice(db.pathwayStages.length)).toEqual(
+      expected.pathwayStages.filter((s) => s.pathwayId === cgs),
+    );
+    // Every seeded routine id is already held, detached — none is added again,
+    // and each kept routine is the very same object, still unplaced.
+    expect(next.pathwayRoutines).toBe(db.pathwayRoutines);
+    const ids = next.pathwayRoutines.map((r) => r.id);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    // A seeded routine the owner deleted outright is not held, so it returns
+    // placed — skipping is by id, not a blanket "no routines".
+    const [gone, ...stillKept] = kept;
+    const pruned = { ...db, pathwayRoutines: db.pathwayRoutines.filter((r) => r.id !== gone.id) };
+    const replanned = planDefaultPathways(pruned, [cgs], LATER);
+    expect(replanned.pathwayRoutines.slice(pruned.pathwayRoutines.length)).toEqual([
+      expected.pathwayRoutines.find((r) => r.id === gone.id),
+    ]);
+    stillKept.forEach((r) => expect(replanned.pathwayRoutines.find((x) => x.id === r.id)).toBe(r));
+  });
+
+  it('does not offer a default pathway whose instrument this device does not have', () => {
+    const lived = existingDb([KHONYAGAR, SEED_PATHWAY_IDS.guitar]);
+    const db: PracticeDB = { ...lived, instruments: lived.instruments.filter((i) => !/guitar/i.test(i.name)) };
+    expect(seedInstrumentIds(db.instruments).guitar).toBe('');
+
+    expect(offeredDefaultPathways(db, LATER).map((p) => p.id)).toEqual([KHONYAGAR]);
+    const noop = planDefaultPathways(db, [SEED_PATHWAY_IDS.guitar], LATER);
+    expect(noop.pathways).toBe(db.pathways);
+    expect(noop.pathwayStages).toBe(db.pathwayStages);
+    expect(noop.pathwayRoutines).toBe(db.pathwayRoutines);
+    // Asked for both, only the one this device can play arrives — never an
+    // unscoped ('' instrument) Guitar pathway.
+    const both = planDefaultPathways(db, [SEED_PATHWAY_IDS.guitar, KHONYAGAR], LATER);
+    expect(both.pathways.slice(db.pathways.length).map((p) => p.id)).toEqual([KHONYAGAR]);
+    expect(both.pathways.every((p) => p.instrumentId !== '')).toBe(true);
   });
 });

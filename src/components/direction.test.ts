@@ -210,6 +210,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
   { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
   { file: "pages/Repertoire.tsx", tagName: "link", classValue: "row between small card-link" },
+  // The offered default pathway's name, after the fixed "Add default pathway: " label.
+  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
   { file: "pages/Repertoire.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "row between" },
@@ -595,6 +597,7 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.composer}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: 'Add default pathway: <span dir="auto">{p.name}</span>' },
   {
     file: 'components/ClassQuestions.tsx',
     snippet: '<div className="tiny faint" dir="auto">\n                      {renderFreeText(q.lastObservation.text)}',
