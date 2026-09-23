@@ -2,15 +2,18 @@ import type {
   CatalogEntry,
   GuitarFields,
   ID,
+  Instrument,
   Pathway,
   PathwayRoutine,
   PathwayStage,
   PersianFields,
+  PracticeDB,
   RoutineSegment,
   StepKind,
   StepStrand,
 } from './types';
 import { CGS_COURSE } from './courseData';
+import { normalizePersian } from './farsi';
 import { courseStageSeeds, type CourseStageSeed } from './courseSeed';
 import { KHONYAGAR_COURSE, KHONYAGAR_PATHWAY } from './khonyagarData';
 import { nowISO } from './util';
@@ -717,6 +720,79 @@ export function seedPathways(
     pathways: parts.flatMap((p) => p.pathways),
     pathwayStages: parts.flatMap((p) => p.pathwayStages),
     pathwayRoutines: parts.flatMap((p) => p.pathwayRoutines),
+  };
+}
+
+// --- Adding a missing default pathway to an existing database ----------------
+//
+// A default pathway shipped after a database was created (the Khonyagar course)
+// is absent in exactly the same way as one the owner deliberately DELETED, so
+// neither is ever added on its own: each is OFFERED by name and only the one
+// tapped is added — the `offeredCourseLevels`/`planCourseLevels` shape, one
+// level up. Whole pathways only: nothing here adds a stage to a pathway that
+// already exists.
+
+// One classification. «سه‌تار» and «گیتار» both contain «تار», so a name the
+// Setar or Guitar rule recognises is never Tar. «گیتار» is matched after
+// `normalizePersian`, so a legacy keyboard's Arabic yeh («گيتار») is Guitar too.
+const isGuitar = (name: string) => /guitar/i.test(name) || normalizePersian(name).includes('گیتار');
+const isSetar = (name: string) => /setar/i.test(name) || name.includes('سه');
+const isTar = (name: string) =>
+  (/^tar$/i.test(name.trim()) || name.includes('تار')) && !isSetar(name) && !isGuitar(name);
+
+/**
+ * Which of this device's instruments each seed belongs to, by name — the ONE
+ * rule, shared by `migrateToV3`. An instrument that matches nothing yields ''
+ * — see `offeredDefaultPathways`.
+ */
+export function seedInstrumentIds(instruments: Instrument[]): { guitar: ID; setar: ID; tar: ID } {
+  const idOf = (is: (name: string) => boolean) => instruments.find((i) => is(i.name))?.id ?? '';
+  return { guitar: idOf(isGuitar), setar: idOf(isSetar), tar: idOf(isTar) };
+}
+
+type PathwayCollections = Pick<PracticeDB, 'pathways' | 'pathwayStages' | 'pathwayRoutines'>;
+
+function missingDefaults(db: Pick<PracticeDB, 'instruments' | 'pathways'>, now: Date) {
+  const seeded = seedPathways(seedInstrumentIds(db.instruments), now);
+  const have = new Set(db.pathways.map((p) => p.id));
+  // A default whose instrument this device does not have is not offered: it
+  // would arrive as an unscoped pathway nothing on this device plays.
+  const offered = seeded.pathways.filter((p) => p.instrumentId && !have.has(p.id));
+  return { seeded, offered };
+}
+
+/** The shipped default pathways this database lacks, on instruments it has. */
+export function offeredDefaultPathways(db: Pick<PracticeDB, 'instruments' | 'pathways'>, now: Date): Pathway[] {
+  return missingDefaults(db, now).offered;
+}
+
+/**
+ * The pathway collections after adding the CHOSEN offered defaults with their
+ * seeded stages and placed routines. Every existing element is kept, by
+ * reference, as the prefix; a seeded stage or routine whose id already exists
+ * is skipped (a routine the owner kept after deleting that pathway still holds
+ * its id, detached, and is never duplicated or re-placed). An id that is not
+ * offered — present, never shipped, or on an instrument this device lacks —
+ * adds nothing, and a collection that gains nothing is returned as the SAME
+ * array, so a no-op plan is detectable by identity.
+ */
+export function planDefaultPathways(
+  db: Pick<PracticeDB, 'instruments'> & PathwayCollections,
+  pathwayIds: string[],
+  now: Date,
+): PathwayCollections {
+  const { seeded, offered } = missingDefaults(db, now);
+  const chosen = new Set(offered.filter((p) => pathwayIds.includes(p.id)).map((p) => p.id));
+  const stageIds = new Set(db.pathwayStages.map((s) => s.id));
+  const routineIds = new Set(db.pathwayRoutines.map((r) => r.id));
+  const stages = seeded.pathwayStages.filter((s) => chosen.has(s.pathwayId) && !stageIds.has(s.id));
+  const routines = seeded.pathwayRoutines.filter(
+    (r) => !!r.pathwayId && chosen.has(r.pathwayId) && !routineIds.has(r.id),
+  );
+  return {
+    pathways: chosen.size ? [...db.pathways, ...offered.filter((p) => chosen.has(p.id))] : db.pathways,
+    pathwayStages: stages.length ? [...db.pathwayStages, ...stages] : db.pathwayStages,
+    pathwayRoutines: routines.length ? [...db.pathwayRoutines, ...routines] : db.pathwayRoutines,
   };
 }
 

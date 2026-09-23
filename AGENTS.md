@@ -2629,15 +2629,43 @@ nothing else widens with it.
 **BUYING LEVELS 4A-5F LATER IS A DATA CHANGE, AND THE ACTION THAT ADDS THEM ADDS
 NOTHING ON ITS OWN.** Re-run the scanner, ship the regenerated data, and use the
 course-scoped "Add new levels from this course" on the pathway.
-`reseedDefaultPathways` AND ITS REPERTOIRE BUTTON ARE NOT CHANGED: they keep adding
-stages only for pathways that do not yet exist. Making that shipped button additive
+`reseedDefaultPathways` STILL NEVER ADDS A STAGE TO A PATHWAY THAT EXISTS: it adds
+only WHOLE default pathways that are absent (next paragraph). Making it additive
 would change what it does to every existing pathway and would SILENTLY RESURRECT a
 stage the owner deliberately deleted, because a deleted stage's deterministic id is
-absent in precisely the same way a never-seeded one is. The new action cannot do
+absent in precisely the same way a never-seeded one is. The levels action cannot do
 that: `offeredCourseLevels` OFFERS the levels absent from the pathway — keyed by the
 stage's deterministic id, never by its title, so a level the owner RENAMED is never
 offered again — and `planCourseLevels` adds only the ones explicitly selected. A
 deleted stage therefore reappears in a LIST, never in the pathway.
+
+**A DEFAULT PATHWAY SHIPPED AFTER A DATABASE EXISTED IS OFFERED BY NAME, ONE LEVEL UP
+FROM THE SAME RULE.** Repertoire → Pathways used to offer "Restore default pathways"
+only when the (filtered) list was EMPTY, so no real install could ever reach a newly
+shipped default — the Khonyagar course was unreachable short of a data-destroying
+demo reset. A default the owner DELETED is absent in exactly the same way as one that
+never shipped, so the answer is the levels one, not a bulk restore:
+`offeredDefaultPathways` (`pathwaySeed.ts`, tested) lists each shipped default whose
+deterministic id is absent AND whose instrument resolves on this device
+(`seedInstrumentIds`, the store's old name rule moved beside the seed and now the ONE
+rule `migrateToV3` resolves through too — as ONE classification: «سه‌تار» and «گیتار»
+both contain «تار», so «گیتار» is recognised as Guitar and a name recognised as Setar or
+Guitar is never Tar, and a Persian-named Setar or Guitar can no longer be offered, or
+seeded, a Tar course), and Repertoire renders one "Add default pathway: <name>" button
+per offered default that passes the view's own `pathwaysForInstrumentFilter`, so what
+is shown is exactly what can be added. `planDefaultPathways` adds only the CHOSEN
+ones: every existing pathway, stage and routine kept by reference as the prefix, a
+seeded stage or routine whose id is already held skipped — `deletePathway` keeps the
+owner's routines DETACHED under their seeded ids, and appending the seed's copy would
+put two routines behind one id that `validateDB` does not refuse — and the SAME
+arrays returned when nothing is added, so `reseedDefaultPathways(pathwayIds)` returns
+without a `set()` and a stale tap moves no revision and schedules no sync. A default
+whose instrument this device lacks is not offered at all rather than arriving as an
+unscoped pathway nothing here plays. Nothing is added on load, hydration, import or
+sync, no dismissal is persisted (so a deleted default stays in the list), and no
+schema moves. It is the same shape as the two course decisions below — a pure
+decision proven in `pathways.test.ts`, applied as one `set()` whose shape protects
+the wiring — and it is not a course decision: it covers every shipped default.
 
 **THE TWO STORE-APPLIED DECISIONS ARE PURE FUNCTIONS APPLIED AS ONE `set()`.** The
 Node test environment cannot import `useStore.ts` (it pulls in Dexie via `./idb`),

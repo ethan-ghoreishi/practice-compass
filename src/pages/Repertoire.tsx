@@ -13,6 +13,7 @@ import {
   ITEM_STATUS_ORDER,
   ITEM_TYPE_LABELS,
   neglectedScore,
+  offeredDefaultPathways,
   overworkedItems,
   pathwayProgress,
   pathwaysForInstrumentFilter,
@@ -356,6 +357,18 @@ function PathwaysView() {
     () => pathwaysForInstrumentFilter(db.pathways, filterInstrumentId).slice().sort((a, b) => a.order - b.order),
     [db.pathways, filterInstrumentId],
   );
+  // Each shipped default this install lacks, as its own named choice — a
+  // default the owner deleted is absent in the same way as a newly shipped
+  // one, so nothing is added without a tap naming it. Filtered by the SAME
+  // selector as the cards, so what is shown is exactly what can be added.
+  const offeredDefaults = useMemo(
+    () =>
+      pathwaysForInstrumentFilter(
+        offeredDefaultPathways({ instruments: db.instruments, pathways: db.pathways }, new Date()),
+        filterInstrumentId,
+      ),
+    [db.instruments, db.pathways, filterInstrumentId],
+  );
 
   function create() {
     if (!name.trim()) return;
@@ -426,11 +439,11 @@ function PathwaysView() {
           <button className="btn btn-sm" onClick={() => setCreating(true)}>
             <PlusIcon /> New pathway
           </button>
-          {pathways.length === 0 && (
-            <button className="btn btn-sm" onClick={reseedDefaultPathways}>
-              Restore default pathways
+          {offeredDefaults.map((p) => (
+            <button key={p.id} className="btn btn-sm" onClick={() => reseedDefaultPathways([p.id])}>
+              Add default pathway: <span dir="auto">{p.name}</span>
             </button>
-          )}
+          ))}
         </div>
       )}
     </div>

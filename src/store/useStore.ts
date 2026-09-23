@@ -76,7 +76,7 @@ import {
   type ReconcileDecision,
   type SourceIndex,
   SCHEMA_VERSION,
-  seedPathways,
+  planDefaultPathways,
   validateDB,
   SchemaTooNewError,
   type BlockMode,
@@ -434,7 +434,7 @@ interface StoreState {
   /**
    * Add the SELECTED course levels a pathway does not have. Adds nothing on its
    * own — see `offeredCourseLevels`. Deliberately separate from
-   * `reseedDefaultPathways`, which is unchanged.
+   * `reseedDefaultPathways`, which adds only whole missing pathways.
    */
   addCourseLevels: (pathwayId: ID, groupKeys: string[]) => void;
   /** Begin a session on an existing item (with smart defaults). */
@@ -473,7 +473,12 @@ interface StoreState {
   addPathway: (input: { name: string; instrumentId?: ID; source?: string; description?: string; note?: string }) => ID;
   updatePathway: (id: ID, patch: Partial<Pick<Pathway, 'name' | 'instrumentId' | 'source' | 'description' | 'note' | 'archived' | 'currentStageId'>>) => void;
   deletePathway: (id: ID) => void;
-  reseedDefaultPathways: () => void;
+  /**
+   * Add the SELECTED shipped default pathways this database lacks — whole
+   * pathways only, never stages into one that exists. Adds nothing on its own:
+   * see `offeredDefaultPathways`.
+   */
+  reseedDefaultPathways: (pathwayIds: string[]) => void;
 
   addStage: (pathwayId: ID, input: { code: string; title: string; group?: string; intro?: string }) => ID;
   updateStage: (id: ID, patch: Partial<Pick<PathwayStage, 'code' | 'title' | 'group' | 'intro'>>) => void;
@@ -1659,27 +1664,13 @@ export const useStore = create<StoreState>()(
         });
       },
 
-      reseedDefaultPathways: () => {
-        const now = new Date();
+      reseedDefaultPathways: (pathwayIds) => {
         const { db } = get();
-        const ids = {
-          guitar: db.instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
-          setar: db.instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
-          tar:
-            db.instruments.find((i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name))?.id ?? '',
-        };
-        const seeded = seedPathways(ids, now);
-        const have = new Set(db.pathways.map((p) => p.id));
-        const newP = seeded.pathways.filter((p) => !have.has(p.id));
-        const newIds = new Set(newP.map((p) => p.id));
-        set((s) => ({
-          db: {
-            ...s.db,
-            pathways: [...s.db.pathways, ...newP],
-            pathwayStages: [...s.db.pathwayStages, ...seeded.pathwayStages.filter((x) => newIds.has(x.pathwayId))],
-            pathwayRoutines: [...s.db.pathwayRoutines, ...seeded.pathwayRoutines.filter((x) => !!x.pathwayId && newIds.has(x.pathwayId))],
-          },
-        }));
+        // One pure decision, one set() — and NO set() when it adds nothing, so
+        // a tap on a stale button bumps no revision and schedules no sync.
+        const next = planDefaultPathways(db, pathwayIds, new Date());
+        if (next.pathways === db.pathways) return;
+        set((s) => ({ db: { ...s.db, ...next } }));
       },
 
       addStage: (pathwayId, input) => {
