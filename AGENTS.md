@@ -2648,9 +2648,10 @@ never shipped, so the answer is the levels one, not a bulk restore:
 `offeredDefaultPathways` (`pathwaySeed.ts`, tested) lists each shipped default whose
 deterministic id is absent AND whose instrument resolves on this device
 (`seedInstrumentIds`, the store's old name rule moved beside the seed and now the ONE
-rule `migrateToV3` resolves through too — with one correction: «سه‌تار» contains «تار»,
-so a name containing «سه» is never Tar, and a Persian-named Setar can no longer be
-offered, or seeded, a Tar course), and Repertoire renders one "Add default pathway: <name>" button
+rule `migrateToV3` resolves through too — as ONE classification: «سه‌تار» and «گیتار»
+both contain «تار», so «گیتار» is recognised as Guitar and a name recognised as Setar or
+Guitar is never Tar, and a Persian-named Setar or Guitar can no longer be offered, or
+seeded, a Tar course), and Repertoire renders one "Add default pathway: <name>" button
 per offered default that passes the view's own `pathwaysForInstrumentFilter`, so what
 is shown is exactly what can be added. `planDefaultPathways` adds only the CHOSEN
 ones: every existing pathway, stage and routine kept by reference as the prefix, a

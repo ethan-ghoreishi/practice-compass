@@ -515,4 +515,61 @@ describe('adding a missing shipped default pathway to an existing database', () 
     expect(on(SEED_PATHWAY_IDS.tar)).toBe('i-tar');
     expect(on(KHONYAGAR)).toBe('i-tar');
   });
+
+  it('never mistakes a Persian-named Guitar for Tar when offering or seeding a default pathway', () => {
+    const GUITAR_FA = '\u06af\u06cc\u062a\u0627\u0631'; // گیتار
+    const GUITAR_FA_ARABIC_YEH = '\u06af\u064a\u062a\u0627\u0631'; // گيتار
+    const lived = existingDb([KHONYAGAR, SEED_PATHWAY_IDS.tar]);
+    const tarId = lived.instruments.find((i) => i.name === 'Tar')!.id;
+    // Setar and Guitar renamed to Persian in place, ids kept; no Tar at all.
+    const named = (guitarName: string): PracticeDB => ({
+      ...lived,
+      instruments: lived.instruments
+        .filter((i) => i.id !== tarId)
+        .map((i) => (i.name === 'Setar' ? { ...i, name: SETAR_FA } : /guitar/i.test(i.name) ? { ...i, name: guitarName } : i)),
+    });
+    const db = named(GUITAR_FA);
+    const setarId = db.instruments.find((i) => i.name === SETAR_FA)!.id;
+    const guitarId = db.instruments.find((i) => i.name === GUITAR_FA)!.id;
+
+    for (const spelling of [GUITAR_FA, GUITAR_FA_ARABIC_YEH]) {
+      expect(seedInstrumentIds(named(spelling).instruments)).toEqual({ guitar: guitarId, setar: setarId, tar: '' });
+    }
+    expect(offeredDefaultPathways(db, LATER)).toEqual([]);
+    const noop = planDefaultPathways(db, [KHONYAGAR, SEED_PATHWAY_IDS.tar], LATER);
+    expect(noop.pathways).toBe(db.pathways);
+    expect(noop.pathwayStages).toBe(db.pathwayStages);
+    expect(noop.pathwayRoutines).toBe(db.pathwayRoutines);
+
+    // A real Tar arrives: both Tar courses are offered on it, and only on it.
+    const ts = NOW.toISOString();
+    const withTar: PracticeDB = {
+      ...db,
+      instruments: [...db.instruments, { id: 'i-tar-fa', name: TAR_FA, family: 'Persian', active: true, createdAt: ts, updatedAt: ts }],
+    };
+    expect(offeredDefaultPathways(withTar, LATER).map((p) => [p.id, p.instrumentId])).toEqual([
+      [SEED_PATHWAY_IDS.tar, 'i-tar-fa'],
+      [KHONYAGAR, 'i-tar-fa'],
+    ]);
+
+    // A pre-v3 database seeds the same way through migrateToV3.
+    const raw = {
+      schemaVersion: 2,
+      instruments: [
+        { id: 'i-setar', name: SETAR_FA, family: 'Persian', active: true, createdAt: ts, updatedAt: ts },
+        { id: 'i-guitar', name: GUITAR_FA, family: 'Western', active: true, createdAt: ts, updatedAt: ts },
+        { id: 'i-tar', name: TAR_FA, family: 'Persian', active: true, createdAt: ts, updatedAt: ts },
+      ],
+      materials: [],
+      items: [],
+      blocks: [],
+      reviews: [],
+      curriculum: {},
+    } as unknown as PracticeDB;
+    const out = migrateToCurrent(raw, 2);
+    const on = (id: string) => out.pathways.find((p) => p.id === id)?.instrumentId;
+    expect(on(SEED_PATHWAY_IDS.guitar)).toBe('i-guitar');
+    expect(on(SEED_PATHWAY_IDS.tar)).toBe('i-tar');
+    expect(on(KHONYAGAR)).toBe('i-tar');
+  });
 });

@@ -1,8 +1,8 @@
 ---
 id: 20260923-let-an-existing-install-add-a-missing-sh-7e4b
 contractId: 20260923-let-an-existing-install-add-a-missing-sh-7e4b
-contractHash: b05a8e4e419548d7ea2be64798a6b0d714e32f1af9d30776e81646c3f0d3fce1
-createdAt: 2026-09-23T18:08:22.728Z
+contractHash: 4c3c3d123ffae5f03783fec39ddcaaa2b4a181c3789a4840ba3f22ab06f551bc
+createdAt: 2026-09-23T18:37:34.045Z
 skills:
   - ui-work
   - build
@@ -19,11 +19,15 @@ skills:
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
 - **Work in the lane:** /Users/Ehsan/workspace/active/practice-compass-lanes/20260923-let-an-existing-install-add-a-missing-sh-7e4b
 
-## Intent revision — supersedes the original request only where it conflicts
+## Intent revisions — supersedes the original request only where it conflicts
 
 - **2026-09-23T18:08:01.468Z** _(Sealed review finding (family: default-pathway-instrument-resolution): the reused Tar name rule reads a Persian-named Setar («سه‌تار») as Tar, so Khonyagar and Honarestān are offered and added on the Setar instrument. migrateToV3 carries the same rule for pre-v3 databases. The fix makes a name containing «سه» never Tar, in the one shared rule that both callers use. Scope widens by migrations.ts only.)_
 
   Resolving a default pathway's instrument must never read a Persian-named Setar («سه‌تار» or «سه تار») as Tar. seedInstrumentIds excludes any name containing «سه» from Tar, and migrateToV3 resolves through that same shared rule instead of its own copy. Everything else in the approved plan stands.
+
+- **2026-09-23T18:36:28.837Z** _(Sibling of the sealed finding (family: default-pathway-instrument-resolution): Persian «گیتار» also contains «تار», and the Guitar rule does not recognise it, so with [«سه‌تار», «گیتار»] and no Tar the Tar courses are offered, added and pre-v3-seeded on the Guitar instrument. The fix is in the one shared classification rule: «گیتار» is recognised as Guitar, and a name recognised as Setar or Guitar is never Tar. No scope change.)_
+
+  Resolving a default pathway's instrument must never read a Persian-named Setar («سه‌تار», «سه تار») or Guitar («گیتار») as Tar. seedInstrumentIds is one classification: «گیتار» is recognised as Guitar, and a name recognised as Setar or Guitar is never Tar. migrateToV3 resolves through that same shared rule instead of its own copy. Everything else in the approved plan stands.
 
 ## The plan the owner approved
 
@@ -821,7 +825,7 @@ Never touch:
 - No change to how seeded routines are shaped (no instrumentId backfill) and no general duplicate-id sweep in validateDB.
 - migrateToV3 changes in one way only: it resolves instrument ids through the shared seedInstrumentIds instead of its own copy. Nothing else in migrations.ts changes.
 - No browser journey; the Repertoire wiring is checked by the owner.
-- The instrument-name rule changes in exactly one way: a name containing «سه» is never Tar. Guitar and Setar resolve exactly as before, and so does Tar for every name without «سه». ArchiveRefresh's own Setar filter is not touched.
+- The instrument-name rule changes in exactly two ways: a Persian «گیتار» (Persian or Arabic yeh) is recognised as Guitar, and a name recognised as Setar or Guitar is never Tar. Setar resolves exactly as before, and Guitar and Tar resolve exactly as before for every other name. ArchiveRefresh's own Setar filter is not touched.
 
 ## Definition of done
 
@@ -834,6 +838,7 @@ Never touch:
 - **ac-7** — On a real existing install, Repertoire → Pathways shows 'Add default pathway: تار – آزاد میرزاپور (خنیاگر)' under All and under Tar but not under Setar or Guitar; tapping it adds the pathway, the button disappears, the Farsi name reads right-to-left, and every existing pathway is unchanged. → proven by `manual:OWNER`
 - **ac-8** — Instruments are «سه‌تار» (listed first, as the seed lists Setar), «تار» and Classical Guitar. seedInstrumentIds resolves setar to «سه‌تار» and tar to «تار», and the spaced spelling «سه تار» resolves the same way. On a database missing tar-khonyagar, it is offered only on «تار»'s id, and pathwaysForInstrumentFilter under «سه‌تار»'s id leaves nothing offered. With «سه‌تار» and no Tar instrument, tar-khonyagar is not offered and planDefaultPathways adds nothing. The test lives in src/domain/pathways.test.ts. → proven by `never mistakes a Persian-named Setar for Tar when offering a default pathway`
 - **ac-9** — migrateToCurrent runs over a pre-v3 database (no pathways key) whose instruments are «سه‌تار» then «تار». It places setar-radif on «سه‌تار», and tar-honarestan and tar-khonyagar on «تار», because migrateToV3 resolves through the same seedInstrumentIds rule. The test lives in src/domain/pathways.test.ts. → proven by `seeds a pre-v3 database's Tar pathways on the real Tar, never a Persian-named Setar`
+- **ac-10** — Instruments are «سه‌تار» and «گیتار», with no Tar. seedInstrumentIds resolves setar to «سه‌تار», guitar to «گیتار» and tar to '', and the Arabic-yeh spelling «گيتار» resolves the same way. No Tar course is offered and planDefaultPathways adds none; once «تار» is added, both Tar courses are offered on «تار»'s id only. migrateToCurrent over a pre-v3 database with «سه‌تار», «گیتار» and «تار» places cgs on «گیتار» and both Tar pathways on «تار». The test lives in src/domain/pathways.test.ts. → proven by `never mistakes a Persian-named Guitar for Tar when offering or seeding a default pathway`
 
 ## Docs to update as part of this change
 

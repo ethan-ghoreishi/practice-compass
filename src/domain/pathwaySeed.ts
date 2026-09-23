@@ -13,6 +13,7 @@ import type {
   StepStrand,
 } from './types';
 import { CGS_COURSE } from './courseData';
+import { normalizePersian } from './farsi';
 import { courseStageSeeds, type CourseStageSeed } from './courseSeed';
 import { KHONYAGAR_COURSE, KHONYAGAR_PATHWAY } from './khonyagarData';
 import { nowISO } from './util';
@@ -731,21 +732,22 @@ export function seedPathways(
 // level up. Whole pathways only: nothing here adds a stage to a pathway that
 // already exists.
 
+// One classification. «سه‌تار» and «گیتار» both contain «تار», so a name the
+// Setar or Guitar rule recognises is never Tar. «گیتار» is matched after
+// `normalizePersian`, so a legacy keyboard's Arabic yeh («گيتار») is Guitar too.
+const isGuitar = (name: string) => /guitar/i.test(name) || normalizePersian(name).includes('گیتار');
+const isSetar = (name: string) => /setar/i.test(name) || name.includes('سه');
+const isTar = (name: string) =>
+  (/^tar$/i.test(name.trim()) || name.includes('تار')) && !isSetar(name) && !isGuitar(name);
+
 /**
  * Which of this device's instruments each seed belongs to, by name — the ONE
- * rule, shared by `migrateToV3`. «سه‌تار» contains «تار», so a name that reads
- * as Setar (containing «سه») is never Tar. An instrument that matches nothing
- * yields '' — see `offeredDefaultPathways`.
+ * rule, shared by `migrateToV3`. An instrument that matches nothing yields ''
+ * — see `offeredDefaultPathways`.
  */
 export function seedInstrumentIds(instruments: Instrument[]): { guitar: ID; setar: ID; tar: ID } {
-  return {
-    guitar: instruments.find((i) => /guitar/i.test(i.name))?.id ?? '',
-    setar: instruments.find((i) => /setar/i.test(i.name) || i.name.includes('سه'))?.id ?? '',
-    tar:
-      instruments.find(
-        (i) => (/^tar$/i.test(i.name.trim()) || i.name.includes('تار')) && !/setar/i.test(i.name) && !i.name.includes('سه'),
-      )?.id ?? '',
-  };
+  const idOf = (is: (name: string) => boolean) => instruments.find((i) => is(i.name))?.id ?? '';
+  return { guitar: idOf(isGuitar), setar: idOf(isSetar), tar: idOf(isTar) };
 }
 
 type PathwayCollections = Pick<PracticeDB, 'pathways' | 'pathwayStages' | 'pathwayRoutines'>;
