@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-22T19:01:43.997Z
-        commit: d4f50b5c91f400263816c4238b125f5e5fd799e1
+        at: 2026-09-23T20:21:11.348Z
+        commit: df34145cba3f9ea1e7387a707365a96736ebfab4
     - actor: Practice Compass
       action: Scores every item of that instrument and shows the best one with a
         one-sentence reason.
@@ -31,8 +31,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-22T19:01:43.997Z
-        commit: d4f50b5c91f400263816c4238b125f5e5fd799e1
+        at: 2026-09-23T20:21:11.348Z
+        commit: df34145cba3f9ea1e7387a707365a96736ebfab4
     - actor: The musician
       action: Taps 'Start · 10 min'.
       shows: "The active block screen: item title, mode and focus chips, a running
@@ -42,8 +42,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-22T19:01:43.997Z
-        commit: d4f50b5c91f400263816c4238b125f5e5fd799e1
+        at: 2026-09-23T20:21:11.348Z
+        commit: df34145cba3f9ea1e7387a707365a96736ebfab4
     - actor: The musician
       action: Practises, optionally opening 'About this piece' or jotting a passing
         note; pauses and resumes as needed.
@@ -57,8 +57,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-22T19:01:43.997Z
-        commit: d4f50b5c91f400263816c4238b125f5e5fd799e1
+        at: 2026-09-23T20:21:11.348Z
+        commit: df34145cba3f9ea1e7387a707365a96736ebfab4
     - actor: The musician
       action: Taps 'Finish'.
       shows: The close screen, with the minutes already filled in.
@@ -66,8 +66,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-22T19:01:43.997Z
-        commit: d4f50b5c91f400263816c4238b125f5e5fd799e1
+        at: 2026-09-23T20:21:11.348Z
+        commit: df34145cba3f9ea1e7387a707365a96736ebfab4
     - actor: The musician
       action: Picks one of the six results, optionally adds an observation, a next
         action, a body note or a teacher question, and accepts or declines the
@@ -77,8 +77,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-22T19:01:43.997Z
-        commit: d4f50b5c91f400263816c4238b125f5e5fd799e1
+        at: 2026-09-23T20:21:11.348Z
+        commit: df34145cba3f9ea1e7387a707365a96736ebfab4
     - actor: The musician
       action: Taps 'Save block'.
       shows: Back to Today (or to the running plan), with the item's stats and status
@@ -89,8 +89,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-22T19:01:43.997Z
-        commit: d4f50b5c91f400263816c4238b125f5e5fd799e1
+        at: 2026-09-23T20:21:11.348Z
+        commit: df34145cba3f9ea1e7387a707365a96736ebfab4
   endsWith: "The session is recorded honestly: one block, one result, one next
     action — and the item knows when it should come back."
   variations:
