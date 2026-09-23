@@ -18,7 +18,9 @@ import { hasPersianScript } from './farsi';
 import { KHONYAGAR_COURSE, KHONYAGAR_LESSON_TYPES, KHONYAGAR_PATHWAY } from './khonyagarData';
 import { catalogForStage, seedPathways, stageIdFor } from './pathwaySeed';
 import { stageUnits } from './pathways';
+import { UNCLASSIFIED_DASTGAH, groupByDastgah } from './persian';
 import { isWork } from './repertoire';
+import { createSeedDB } from './seed';
 import type { PathwayStage, PracticeItem } from './types';
 
 const NOW = new Date('2026-09-22T09:00:00.000Z');
@@ -549,5 +551,41 @@ describe('Khonyagar work identity', () => {
         `Optional repertoire from the Level ${g.code} practice packet. Learn it when it appeals — nothing here is a deadline.`,
       );
     }
+  });
+});
+
+describe('Khonyagar and My repertoire', () => {
+  // My repertoire (Repertoire.tsx) sends a Persian-family instrument's works
+  // through groupByDastgah; the page itself cannot render in this Node suite,
+  // so this asserts that function and the instrument family that routes to it.
+  it('an uncurated Khonyagar item stays out of My repertoire until the owner gives it a form or dastgah', () => {
+    let db = createSeedDB(NOW);
+    const tar = db.instruments.find((i) => i.name === 'Tar')!;
+    expect(tar.family).toBe('Persian');
+
+    const created: PracticeItem[] = [];
+    for (const group of K.groups) {
+      const stageId = stageOf(group.key);
+      for (const entry of catalogForStage(stageId)) {
+        expect(entry.persian).toBeUndefined();
+        const plan = planCatalogAddition(db, stageId, entry.key, entry, tar.id, NOW);
+        db = { ...db, items: plan.items, materials: plan.materials };
+        if (plan.created) created.push(plan.items.find((i) => i.id === plan.itemId)!);
+      }
+    }
+    // Not vacuous: every section and work row was added, and works are among them.
+    expect(created.length).toBeGreaterThan(106);
+    expect(created.some(isWork)).toBe(true);
+    // Nothing is inferred from a title: no item arrives with Persian metadata,
+    // so none reaches My repertoire on its own.
+    for (const item of created) expect(item.persian).toBeUndefined();
+    expect(groupByDastgah(created)).toEqual([]);
+
+    // Curated by the owner, it groups exactly like any other Persian item.
+    const [work] = created.filter(isWork);
+    const withForm = { ...work, persian: { form: 'چهارمضراب' } };
+    expect(groupByDastgah([withForm])).toEqual([{ dastgah: UNCLASSIFIED_DASTGAH, items: [withForm] }]);
+    const withDastgah = { ...work, persian: { dastgahAvaz: 'ماهور' } };
+    expect(groupByDastgah([withDastgah])).toEqual([{ dastgah: 'ماهور', items: [withDastgah] }]);
   });
 });

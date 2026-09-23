@@ -5,7 +5,7 @@ title: Bring the Khonyagar Tar course into its own Tar pathway with stable work
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/34
 intent: 20260922-bring-the-khonyagar-tar-course-into-its--56be
 tier: heavy
-stage: build
+stage: review
 baseline:
   commit: 116040163e60d5d3c622e7eece04ee4595950ca0
   branch: main
@@ -142,9 +142,14 @@ nonGoals:
     exact title (Ma'rufi's and the radif's چهارمضراب ماهور, the two رنگ شور
     sections, the three کرشمه sections). Ambiguous pairs are recorded as
     diagnostics for the owner.
-  - No dastgāh, form or composer identity fields on Khonyagar entries in this
-    lane. Its works group under their study source in My repertoire, and dastgāh
-    grouping would be a later data change.
+  - 'No Persian identity (form, dastgāh, composer or gusheh) on Khonyagar
+    entries, and none inferred from a Khonyagar title: many course pieces are
+    simplified practice versions, not repertoire. A Khonyagar item is a practice
+    item first. Because Tar is Persian-family, it stays out of My repertoire
+    until the owner curates that metadata by hand (typically a form and/or
+    dastgāh), and it then groups exactly as any curated Persian item does (under
+    "No dastgāh yet" with no dastgāh). Repertoire routing (`Repertoire.tsx`,
+    `repertoire.ts`, `persian.ts`) is unchanged.'
   - "No automatic creation of items, works, routines or stages: every one is
     created by an explicit owner action."
   - No change to `reseedDefaultPathways`, the recommendation engine, the Session
@@ -207,9 +212,9 @@ acceptanceChecks:
       material.
     test: every shipped Khonyagar section stays in the stage it shipped in
   - id: ac-6
-    description: A work taught across several sections is one repertoire item,
-      titled with the work's own name whichever of its sections is added first
-      (a part or a performance included). It carries every section's files, each
+    description: A work taught across several sections is one practice item, titled
+      with the work's own name whichever of its sections is added first (a part
+      or a performance included). It carries every section's files, each
       distinct file exactly once.
     test: a work spanning several sections is one item titled with the work carrying
       every section's files once
@@ -281,6 +286,113 @@ acceptanceChecks:
       - a section's lesson videos and its band's score book open from a practice
       item over both the LAN and Tailscale routes;
 
+      - adding any section of the radif's چهارمضراب ماهور creates ONE practice
+      item, under the work's own name and carrying all seven sections' videos,
+      while Ma'rufi's stays a separate suggestion and the Setar item of that
+      name is untouched. That item does NOT appear in My repertoire. After the
+      owner edits it, picks "Composed piece" and gives it a form, it appears
+      there once, under "No dastgāh yet"; with a dastgāh too, under that
+      dastgāh;
+
+      - پیش‌درآمد ابوعطا is its own row beside the exercise sections that
+      contain it;
+
+      - Khonyagar stages show no routine buttons and no routine caption;
+
+      - a 30-minute Tar session from "Plan this session" is built only from Tar
+      items, with a warm-up first and a cool-down last only when an item
+      qualifies, and due reviews and current work in between by priority. It is
+      not expected to follow the guide's block order, and nothing on screen
+      claims it does;
+
+      - the Honarestan pathway and all Setar and Guitar data are visibly
+      unchanged.
+    test: manual:OWNER
+  - id: ac-18
+    description: No Khonyagar entry, and no item created from one, carries any
+      Persian identity (form, dastgāh, composer or gusheh), so an uncurated
+      Khonyagar item (Tar is Persian-family) is left out of My repertoire by the
+      existing dastgāh grouping. Once the owner gives the same item a form it
+      groups under "No dastgāh yet", and with a dastgāh it groups under that
+      dastgāh, exactly as any curated Persian item does today.
+    test: an uncurated Khonyagar item stays out of My repertoire until the owner
+      gives it a form or dastgah
+docsDelta:
+  - AGENTS.md
+  - docs/khonyagar-course.md
+createdAt: 2026-09-22T21:24:44.625Z
+amendments:
+  - at: 2026-09-23T00:15:55.296Z
+    reason: "The owner's manual test settled the intended behaviour: Khonyagar
+      entries are practice items first, not automatically curated repertoire.
+      The sealed review found that no Khonyagar work appears in My repertoire.
+      That is correct behaviour, and the contract wrongly promised the opposite.
+      This removes that promise, pins the intended behaviour with a test
+      (ac-18), and leaves Repertoire routing and all application behaviour
+      unchanged."
+    description: >-
+      non-goals: +No Persian identity (form, dastgāh, composer or gusheh) on
+      Khonyagar entries, and none inferred from a Khonyagar title: many course
+      pieces are simplified practice versions, not repertoire. A Khonyagar item
+      is a practice item first. Because Tar is Persian-family, it stays out of
+      My repertoire until the owner curates that metadata by hand (typically a
+      form and/or dastgāh), and it then groups exactly as any curated Persian
+      item does (under "No dastgāh yet" with no dastgāh). Repertoire routing
+      (`Repertoire.tsx`, `repertoire.ts`, `persian.ts`) is unchanged. -No
+      dastgāh, form or composer identity fields on Khonyagar entries in this
+      lane. Its works group under their study source in My repertoire, and
+      dastgāh grouping would be a later data change.; checks: +ac-6|A work
+      taught across several sections is one practice item, titled with the
+      work's own name whichever of its sections is added first (a part or a
+      performance included). It carries every section's files, each distinct
+      file exactly once.|a work spanning several sections is one item titled
+      with the work carrying every section's files once, ac-17|On the owner's
+      own Mac and iPhone:
+
+      - the Khonyagar pathway appears after restoring default pathways;
+
+      - a section's lesson videos and its band's score book open from a practice
+      item over both the LAN and Tailscale routes;
+
+      - adding any section of the radif's چهارمضراب ماهور creates ONE practice
+      item, under the work's own name and carrying all seven sections' videos,
+      while Ma'rufi's stays a separate suggestion and the Setar item of that
+      name is untouched. That item does NOT appear in My repertoire. After the
+      owner edits it, picks "Composed piece" and gives it a form, it appears
+      there once, under "No dastgāh yet"; with a dastgāh too, under that
+      dastgāh;
+
+      - پیش‌درآمد ابوعطا is its own row beside the exercise sections that
+      contain it;
+
+      - Khonyagar stages show no routine buttons and no routine caption;
+
+      - a 30-minute Tar session from "Plan this session" is built only from Tar
+      items, with a warm-up first and a cool-down last only when an item
+      qualifies, and due reviews and current work in between by priority. It is
+      not expected to follow the guide's block order, and nothing on screen
+      claims it does;
+
+      - the Honarestan pathway and all Setar and Guitar data are visibly
+      unchanged.|manual:OWNER, ac-18|No Khonyagar entry, and no item created
+      from one, carries any Persian identity (form, dastgāh, composer or
+      gusheh), so an uncurated Khonyagar item (Tar is Persian-family) is left
+      out of My repertoire by the existing dastgāh grouping. Once the owner
+      gives the same item a form it groups under "No dastgāh yet", and with a
+      dastgāh it groups under that dastgāh, exactly as any curated Persian item
+      does today.|an uncurated Khonyagar item stays out of My repertoire until
+      the owner gives it a form or dastgah -ac-6|A work taught across several
+      sections is one repertoire item, titled with the work's own name whichever
+      of its sections is added first (a part or a performance included). It
+      carries every section's files, each distinct file exactly once.|a work
+      spanning several sections is one item titled with the work carrying every
+      section's files once, ac-17|On the owner's own Mac and iPhone:
+
+      - the Khonyagar pathway appears after restoring default pathways;
+
+      - a section's lesson videos and its band's score book open from a practice
+      item over both the LAN and Tailscale routes;
+
       - the radif's چهارمضراب ماهور appears once in My repertoire, under its own
       name and carrying all seven sections' videos, while Ma'rufi's stays a
       separate suggestion and the Setar item of that name is untouched;
@@ -297,13 +409,19 @@ acceptanceChecks:
       claims it does;
 
       - the Honarestan pathway and all Setar and Guitar data are visibly
-      unchanged.
-    test: manual:OWNER
-docsDelta:
-  - AGENTS.md
-  - docs/khonyagar-course.md
-createdAt: 2026-09-22T21:24:44.625Z
-amendments: []
+      unchanged.|manual:OWNER; intent revised
+    intentRevision: Khonyagar course entries are practice items, not automatically
+      curated repertoire. This supersedes the desired-behaviour bullet "Every
+      work the authored table names reaches My repertoire once, grouped under a
+      «خنیاگر» study source" and the matching Show-me step. A work is still ONE
+      item under the work's own name, carrying every section's material, and it
+      is still linked to the «خنیاگر» study source. But no Persian identity
+      (form, dastgāh, composer or gusheh) is set or inferred from a title, and
+      because Tar is Persian-family, My repertoire leaves an item without one
+      out. The owner curates that metadata by hand as they progress, typically a
+      form and/or dastgāh. A curated item then appears exactly as any curated
+      Persian item does (under "No dastgāh yet" when it has no dastgāh).
+      Repertoire routing is not changed.
 ---
 
 # Bring the Khonyagar Tar course into its own Tar pathway with stable work identity and its complete material
@@ -312,6 +430,12 @@ amendments: []
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
 - **Baseline:** 116040163e60d5d3c622e7eece04ee4595950ca0 on main _(never re-baselined)_
 - **Intent:** 20260922-bring-the-khonyagar-tar-course-into-its--56be
+
+## Intent revision — supersedes the original request only where it conflicts
+
+- **2026-09-23T00:15:55.296Z** _(The owner's manual test settled the intended behaviour: Khonyagar entries are practice items first, not automatically curated repertoire. The sealed review found that no Khonyagar work appears in My repertoire. That is correct behaviour, and the contract wrongly promised the opposite. This removes that promise, pins the intended behaviour with a test (ac-18), and leaves Repertoire routing and all application behaviour unchanged.)_
+
+  Khonyagar course entries are practice items, not automatically curated repertoire. This supersedes the desired-behaviour bullet "Every work the authored table names reaches My repertoire once, grouped under a «خنیاگر» study source" and the matching Show-me step. A work is still ONE item under the work's own name, carrying every section's material, and it is still linked to the «خنیاگر» study source. But no Persian identity (form, dastgāh, composer or gusheh) is set or inferred from a title, and because Tar is Persian-family, My repertoire leaves an item without one out. The owner curates that metadata by hand as they progress, typically a form and/or dastgāh. A curated item then appears exactly as any curated Persian item does (under "No dastgāh yet" when it has no dastgāh). Repertoire routing is not changed.
 
 ## You may only change
 
@@ -386,7 +510,7 @@ amendments: []
 - No fabricated essential flags, per-section minutes or practice history. No translated or paraphrased guide text: it is quoted as written.
 - No transliteration of Farsi titles into keys, no positional work numbering, and no runtime title parsing. The grammar stays in the scanner and its conclusions are recorded.
 - No merge of two works on title similarity, including works that share an exact title (Ma'rufi's and the radif's چهارمضراب ماهور, the two رنگ شور sections, the three کرشمه sections). Ambiguous pairs are recorded as diagnostics for the owner.
-- No dastgāh, form or composer identity fields on Khonyagar entries in this lane. Its works group under their study source in My repertoire, and dastgāh grouping would be a later data change.
+- No Persian identity (form, dastgāh, composer or gusheh) on Khonyagar entries, and none inferred from a Khonyagar title: many course pieces are simplified practice versions, not repertoire. A Khonyagar item is a practice item first. Because Tar is Persian-family, it stays out of My repertoire until the owner curates that metadata by hand (typically a form and/or dastgāh), and it then groups exactly as any curated Persian item does (under "No dastgāh yet" with no dastgāh). Repertoire routing (`Repertoire.tsx`, `repertoire.ts`, `persian.ts`) is unchanged.
 - No automatic creation of items, works, routines or stages: every one is created by an explicit owner action.
 - No change to `reseedDefaultPathways`, the recommendation engine, the Session Plan, review scheduling or SM-2.
 - Desired rule (not yet truth): A course's work identity is explicit, recorded and permanent. Only an authored entry may join two sections or lessons into one work. Once shipped, no key an item holds is ever renamed or removed, and no work key is ever re-pointed at a different work; a later merge is an alias.
@@ -402,7 +526,7 @@ amendments: []
 - [ ] **ac-3** — The generated data accounts for the whole source, with the counts written as literals. There are exactly 106 sections, `s001`–`s106`. The lesson numbers read from the section video paths are exactly 1–259, each exactly once, contiguous and in order within each section. Exactly the four score books appear and each is referenced at least once. Every work's files are a subset of the sections' files. Dropping, duplicating or misplacing one lesson fails. _(proof: accounts for all 106 sections, each of the 259 lessons exactly once and all four score books)_
 - [ ] **ac-4** — Work identity is anchored and permanent, checked against a literal ledger written in the test and never derived from the data. Every shipped work-row key (the key an item holds as its `catalogKey`) still exists. Every ledgered work key `wNNN` that still resolves names a work whose lessons include lesson NNN. Reordering the table changes nothing. Removing a shipped work row, or re-pointing any key at a work without its anchor lesson, fails. Joining a work that is a section into another identity is still allowed. _(proof: every shipped Khonyagar work row still exists and every shipped work key keeps its anchor lesson)_
 - [ ] **ac-5** — Every (stage id, section key) pair in a literal ledger of shipped pairs is still present, so a later boundary change cannot orphan an item's material. _(proof: every shipped Khonyagar section stays in the stage it shipped in)_
-- [ ] **ac-6** — A work taught across several sections is one repertoire item, titled with the work's own name whichever of its sections is added first (a part or a performance included). It carries every section's files, each distinct file exactly once. _(proof: a work spanning several sections is one item titled with the work carrying every section's files once)_
+- [ ] **ac-6** — A work taught across several sections is one practice item, titled with the work's own name whichever of its sections is added first (a part or a performance included). It carries every section's files, each distinct file exactly once. _(proof: a work spanning several sections is one item titled with the work carrying every section's files once)_
 - [ ] **ac-7** — Two distinct files are both kept when their titles match, and one file referenced from two entries appears once. Deduplication is by path, never by title. _(proof: keeps two distinct files whose titles match and never repeats one path)_
 - [ ] **ac-8** — A mixed section yields each work it teaches as that work's own row, and the section itself is no work. Section 17 yields two works, from lessons 109 and 110. پیش‌درآمد ابوعطا is one row carrying exactly lessons 124 and 125, although they sit in sections 21 and 22, and neither of those sections is a work. _(proof: a mixed section yields each work it teaches as its own row and becomes no work itself)_
 - [ ] **ac-9** — No Khonyagar section carries a repertoire strand (`piece`, `repertoire` or `radif`) unless it carries a work identity, so a section title never reaches My repertoire as a fake piece. _(proof: no Khonyagar section carries a repertoire strand unless it is a work)_
@@ -416,11 +540,12 @@ amendments: []
 - [ ] **ac-17** — On the owner's own Mac and iPhone:
 - the Khonyagar pathway appears after restoring default pathways;
 - a section's lesson videos and its band's score book open from a practice item over both the LAN and Tailscale routes;
-- the radif's چهارمضراب ماهور appears once in My repertoire, under its own name and carrying all seven sections' videos, while Ma'rufi's stays a separate suggestion and the Setar item of that name is untouched;
+- adding any section of the radif's چهارمضراب ماهور creates ONE practice item, under the work's own name and carrying all seven sections' videos, while Ma'rufi's stays a separate suggestion and the Setar item of that name is untouched. That item does NOT appear in My repertoire. After the owner edits it, picks "Composed piece" and gives it a form, it appears there once, under "No dastgāh yet"; with a dastgāh too, under that dastgāh;
 - پیش‌درآمد ابوعطا is its own row beside the exercise sections that contain it;
 - Khonyagar stages show no routine buttons and no routine caption;
 - a 30-minute Tar session from "Plan this session" is built only from Tar items, with a warm-up first and a cool-down last only when an item qualifies, and due reviews and current work in between by priority. It is not expected to follow the guide's block order, and nothing on screen claims it does;
 - the Honarestan pathway and all Setar and Guitar data are visibly unchanged. _(proof: manual:OWNER)_
+- [ ] **ac-18** — No Khonyagar entry, and no item created from one, carries any Persian identity (form, dastgāh, composer or gusheh), so an uncurated Khonyagar item (Tar is Persian-family) is left out of My repertoire by the existing dastgāh grouping. Once the owner gives the same item a form it groups under "No dastgāh yet", and with a dastgāh it groups under that dastgāh, exactly as any curated Persian item does today. _(proof: an uncurated Khonyagar item stays out of My repertoire until the owner gives it a form or dastgah)_
 
 ## Docs to update
 
@@ -429,5 +554,19 @@ amendments: []
 
 ## Amendments
 
-_none_
+- 2026-09-23T00:15:55.296Z — The owner's manual test settled the intended behaviour: Khonyagar entries are practice items first, not automatically curated repertoire. The sealed review found that no Khonyagar work appears in My repertoire. That is correct behaviour, and the contract wrongly promised the opposite. This removes that promise, pins the intended behaviour with a test (ac-18), and leaves Repertoire routing and all application behaviour unchanged.: non-goals: +No Persian identity (form, dastgāh, composer or gusheh) on Khonyagar entries, and none inferred from a Khonyagar title: many course pieces are simplified practice versions, not repertoire. A Khonyagar item is a practice item first. Because Tar is Persian-family, it stays out of My repertoire until the owner curates that metadata by hand (typically a form and/or dastgāh), and it then groups exactly as any curated Persian item does (under "No dastgāh yet" with no dastgāh). Repertoire routing (`Repertoire.tsx`, `repertoire.ts`, `persian.ts`) is unchanged. -No dastgāh, form or composer identity fields on Khonyagar entries in this lane. Its works group under their study source in My repertoire, and dastgāh grouping would be a later data change.; checks: +ac-6|A work taught across several sections is one practice item, titled with the work's own name whichever of its sections is added first (a part or a performance included). It carries every section's files, each distinct file exactly once.|a work spanning several sections is one item titled with the work carrying every section's files once, ac-17|On the owner's own Mac and iPhone:
+- the Khonyagar pathway appears after restoring default pathways;
+- a section's lesson videos and its band's score book open from a practice item over both the LAN and Tailscale routes;
+- adding any section of the radif's چهارمضراب ماهور creates ONE practice item, under the work's own name and carrying all seven sections' videos, while Ma'rufi's stays a separate suggestion and the Setar item of that name is untouched. That item does NOT appear in My repertoire. After the owner edits it, picks "Composed piece" and gives it a form, it appears there once, under "No dastgāh yet"; with a dastgāh too, under that dastgāh;
+- پیش‌درآمد ابوعطا is its own row beside the exercise sections that contain it;
+- Khonyagar stages show no routine buttons and no routine caption;
+- a 30-minute Tar session from "Plan this session" is built only from Tar items, with a warm-up first and a cool-down last only when an item qualifies, and due reviews and current work in between by priority. It is not expected to follow the guide's block order, and nothing on screen claims it does;
+- the Honarestan pathway and all Setar and Guitar data are visibly unchanged.|manual:OWNER, ac-18|No Khonyagar entry, and no item created from one, carries any Persian identity (form, dastgāh, composer or gusheh), so an uncurated Khonyagar item (Tar is Persian-family) is left out of My repertoire by the existing dastgāh grouping. Once the owner gives the same item a form it groups under "No dastgāh yet", and with a dastgāh it groups under that dastgāh, exactly as any curated Persian item does today.|an uncurated Khonyagar item stays out of My repertoire until the owner gives it a form or dastgah -ac-6|A work taught across several sections is one repertoire item, titled with the work's own name whichever of its sections is added first (a part or a performance included). It carries every section's files, each distinct file exactly once.|a work spanning several sections is one item titled with the work carrying every section's files once, ac-17|On the owner's own Mac and iPhone:
+- the Khonyagar pathway appears after restoring default pathways;
+- a section's lesson videos and its band's score book open from a practice item over both the LAN and Tailscale routes;
+- the radif's چهارمضراب ماهور appears once in My repertoire, under its own name and carrying all seven sections' videos, while Ma'rufi's stays a separate suggestion and the Setar item of that name is untouched;
+- پیش‌درآمد ابوعطا is its own row beside the exercise sections that contain it;
+- Khonyagar stages show no routine buttons and no routine caption;
+- a 30-minute Tar session from "Plan this session" is built only from Tar items, with a warm-up first and a cool-down last only when an item qualifies, and due reviews and current work in between by priority. It is not expected to follow the guide's block order, and nothing on screen claims it does;
+- the Honarestan pathway and all Setar and Guitar data are visibly unchanged.|manual:OWNER; intent revised
 

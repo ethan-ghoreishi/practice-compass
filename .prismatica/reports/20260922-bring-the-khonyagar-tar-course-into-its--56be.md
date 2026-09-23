@@ -1,7 +1,7 @@
 ---
 contractId: 20260922-bring-the-khonyagar-tar-course-into-its--56be
-at: 2026-09-22T21:48:47.010Z
-by: agent
+at: 2026-09-23T00:09:41.180Z
+by: owner
 none: false
 entries:
   - flowId: work-a-pathway-stage
@@ -22,14 +22,6 @@ entries:
     steps: []
     reverify: []
     truthHash: afa1699c9add3be9b8e2ffd3927383c32b80b5fde17abce91620b3c39edfa74f
-  - flowId: browse-my-repertoire
-    status: unchanged
-    reason: repertoire.ts and Repertoire.tsx are unchanged; Khonyagar works are
-      ordinary full_piece/gusheh items that group under their study source
-      through the existing lens, with no new mechanics.
-    steps: []
-    reverify: []
-    truthHash: cb9d8394744e5713b7d083e940a3f3756ceac2bcb59990e1782be80083cf8b8c
   - flowId: capture-a-practice-item
     status: unchanged
     reason: Quick add and the full item form are untouched; the only creation change
@@ -81,6 +73,16 @@ entries:
     steps: []
     reverify: []
     truthHash: d1952a7f00f8a54077b28d8a52507c21f54c07712aed4e99bc01e4d17d9c9946
+  - flowId: browse-my-repertoire
+    status: unchanged
+    reason: repertoire.ts, persian.ts and Repertoire.tsx are unchanged. Khonyagar
+      items carry no form, dastgāh or composer, so on Tar (Persian-family) the
+      existing dastgāh grouping leaves them out of My repertoire until the owner
+      curates that metadata by hand. They then group exactly as any curated
+      Persian item does. No new mechanics.
+    steps: []
+    reverify: []
+    truthHash: cb9d8394744e5713b7d083e940a3f3756ceac2bcb59990e1782be80083cf8b8c
 ---
 
 ## work-a-pathway-stage — mechanics-updated
@@ -90,10 +92,6 @@ Mapped implementation touched: touchpoint(s) src/pages/StageDetail.tsx, src/doma
 ## adjust-how-scheduling-works — unchanged
 
 scheduling.ts, SchedulingParams and Settings are untouched; Khonyagar items arrive status new with no review state, exactly as every catalogue item does.
-
-## browse-my-repertoire — unchanged
-
-repertoire.ts and Repertoire.tsx are unchanged; Khonyagar works are ordinary full_piece/gusheh items that group under their study source through the existing lens, with no new mechanics.
 
 ## capture-a-practice-item — unchanged
 
@@ -122,4 +120,8 @@ plan.ts and SessionPlan.tsx are forbidden and unchanged; the plan builds from Kh
 ## see-practice-patterns — unchanged
 
 Insights and practice totals are unchanged; no block is written by this change.
+
+## browse-my-repertoire — unchanged
+
+repertoire.ts, persian.ts and Repertoire.tsx are unchanged. Khonyagar items carry no form, dastgāh or composer, so on Tar (Persian-family) the existing dastgāh grouping leaves them out of My repertoire until the owner curates that metadata by hand. They then group exactly as any curated Persian item does. No new mechanics.
 

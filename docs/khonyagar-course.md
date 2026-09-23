@@ -242,8 +242,16 @@ The type decides three things:
 - **Course-scoped identity.** Work reuse (`carriedCourseWorkItem`) only ever
   matches items in this course's own stages. A Setar or Guitar item of the same
   name is never reused, renamed or absorbed.
-- **The study source.** Items group under a «خنیاگر» study source in My
-  repertoire, created on first use.
+- **The study source.** Every item created from the course is linked to a
+  «خنیاگر» study source, created on first use.
+- **Practice items first, not repertoire.** No entry carries any Persian
+  identity (form, dastgāh, composer or gusheh), and none is inferred from a
+  title: many course pieces are simplified practice versions. Tar is a
+  Persian-family instrument, so My repertoire groups its works by dastgāh and
+  leaves an item with no Persian identity out. It enters My repertoire only
+  when the owner curates that by hand (edit the item, pick "Composed piece",
+  give it a form and/or dastgāh), and then groups like any curated Persian
+  item: under its dastgāh, or under "No dastgāh yet" without one.
 - **Where work rows sit.** A work row renders after the stage's sections, not
   physically between the sections that teach it: `courseStageSeeds` emits units
   then works for every course, and reordering it would change the Guitar
@@ -309,8 +317,9 @@ change the plan for every instrument; that is a separate decision for the owner.
   imported: the owner has normalised them, and each teacher's instrument is
   confirmed. They then belong to the class-logging flow and the archive
   pipeline, not to this course.
-- No dastgāh, form or composer fields on Khonyagar entries yet. Works group
-  under their study source; dastgāh grouping would be a later data change.
+- No Persian identity (form, dastgāh, composer or gusheh) on Khonyagar
+  entries, and none inferred from a title. The owner curates that metadata
+  by hand, and My repertoire's routing is unchanged.
 - No generated routine, and no change to the routine machinery or the Session
   Plan.
 

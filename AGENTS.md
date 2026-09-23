@@ -2699,6 +2699,16 @@ never enters My repertoire under its own label; `stageUnits` already shows the i
 title on every row of that work. This is the one creation-time change, and CGS sets
 no `workTitle`.
 
+**A KHONYAGAR ITEM IS A PRACTICE ITEM FIRST, AND REACHES MY REPERTOIRE ONLY BY THE
+OWNER'S HAND.** No entry carries any Persian identity (form, dastgāh, composer or
+gusheh), and none may be inferred from a title: many course pieces are simplified
+practice versions the owner would not call repertoire. Tar is Persian-family, so My
+repertoire groups its works through `groupByDastgah`, which leaves an item with no
+Persian identity out — deliberately. The owner curates form and/or dastgāh as they
+progress, and a curated item then groups exactly as any other Persian item does ("No
+dastgāh yet" without a dastgāh). Repertoire routing is unchanged;
+`khonyagarCourse.test.ts` pins both halves.
+
 **THE FOUR OPTIONAL FIELDS ARE ABSENT FROM EVERY CGS ENTRY.** `CourseWork.files`,
 `CourseWork.guidance`, `CourseWork.strand` and `CourseUnit.workTitle` default to
 exactly what CGS did before — a single packet PDF, the English practice-packet
