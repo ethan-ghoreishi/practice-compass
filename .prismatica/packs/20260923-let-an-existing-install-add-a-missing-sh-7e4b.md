@@ -1,8 +1,8 @@
 ---
 id: 20260923-let-an-existing-install-add-a-missing-sh-7e4b
 contractId: 20260923-let-an-existing-install-add-a-missing-sh-7e4b
-contractHash: 33a97d41ea3b0b4b86ec06b44178d3a19f7552fe388319e057a68f3915a64897
-createdAt: 2026-09-23T16:50:05.871Z
+contractHash: b05a8e4e419548d7ea2be64798a6b0d714e32f1af9d30776e81646c3f0d3fce1
+createdAt: 2026-09-23T18:08:22.728Z
 skills:
   - ui-work
   - build
@@ -18,6 +18,12 @@ skills:
 - **Linked issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/36
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
 - **Work in the lane:** /Users/Ehsan/workspace/active/practice-compass-lanes/20260923-let-an-existing-install-add-a-missing-sh-7e4b
+
+## Intent revision — supersedes the original request only where it conflicts
+
+- **2026-09-23T18:08:01.468Z** _(Sealed review finding (family: default-pathway-instrument-resolution): the reused Tar name rule reads a Persian-named Setar («سه‌تار») as Tar, so Khonyagar and Honarestān are offered and added on the Setar instrument. migrateToV3 carries the same rule for pre-v3 databases. The fix makes a name containing «سه» never Tar, in the one shared rule that both callers use. Scope widens by migrations.ts only.)_
+
+  Resolving a default pathway's instrument must never read a Persian-named Setar («سه‌تار» or «سه تار») as Tar. seedInstrumentIds excludes any name containing «سه» from Tar, and migrateToV3 resolves through that same shared rule instead of its own copy. Everything else in the approved plan stands.
 
 ## The plan the owner approved
 
@@ -791,10 +797,10 @@ Let an existing install add a missing shipped default pathway, such as the Khony
 - src/components/direction.test.ts
 - AGENTS.md
 - docs/khonyagar-course.md
+- src/domain/migrations.ts
 
 Never touch:
 
-- src/domain/migrations.ts
 - src/domain/io.ts
 - src/domain/types.ts
 - src/domain/seed.ts
@@ -807,14 +813,15 @@ Never touch:
 - No existing pathway, stage or routine is overwritten, re-ordered, re-placed or touched — including renamed seeded pathways, a pinned currentStageId, owner-added stages and detached routines.
 - No item, block, review, lesson, agenda entry, attachment or setting is changed by adding a default pathway.
 - Pathways are never added without an explicit tap naming that pathway; nothing is added on load, hydration, import or sync.
-- No schema change: SCHEMA_VERSION stays 14, PracticeDB gains no field, no migration is added, and migrateToV3 keeps its own instrument-id resolution untouched.
+- No schema change: SCHEMA_VERSION stays 14, PracticeDB gains no field, and no migration step is added, removed or reordered.
 - The seeded pathway/stage/routine ids, names, order values and catalogue keys produced by seedPathways are unchanged, and a fresh install or demo reset seeds exactly as before.
 - addCourseLevels / offeredCourseLevels / planCourseLevels are unchanged: stages are never added into an existing pathway by this action.
 - The 'New pathway' create flow and PathwayCard rendering are unchanged.
 - No persisted 'dismissed default pathway' record and no schema bump.
 - No change to how seeded routines are shaped (no instrumentId backfill) and no general duplicate-id sweep in validateDB.
-- No change to migrateToV3's own copy of the instrument-id resolution.
+- migrateToV3 changes in one way only: it resolves instrument ids through the shared seedInstrumentIds instead of its own copy. Nothing else in migrations.ts changes.
 - No browser journey; the Repertoire wiring is checked by the owner.
+- The instrument-name rule changes in exactly one way: a name containing «سه» is never Tar. Guitar and Setar resolve exactly as before, and so does Tar for every name without «سه». ArchiveRefresh's own Setar filter is not touched.
 
 ## Definition of done
 
@@ -825,6 +832,8 @@ Never touch:
 - **ac-5** — Re-adding a default the owner deleted appends its pathway and stages but never a second routine with an id the owner's detached routine already holds, and that routine is left exactly as it was. The fixture detaches the deleted pathway's routines with the real detachRoutinesFromPathway (routines.ts), never a hand-built shape. → proven by `never duplicates or re-places a routine the owner kept after deleting a default pathway`
 - **ac-6** — A default whose instrument does not resolve on this device (no Classical Guitar instrument) is not offered and cannot be planned. → proven by `does not offer a default pathway whose instrument this device does not have`
 - **ac-7** — On a real existing install, Repertoire → Pathways shows 'Add default pathway: تار – آزاد میرزاپور (خنیاگر)' under All and under Tar but not under Setar or Guitar; tapping it adds the pathway, the button disappears, the Farsi name reads right-to-left, and every existing pathway is unchanged. → proven by `manual:OWNER`
+- **ac-8** — Instruments are «سه‌تار» (listed first, as the seed lists Setar), «تار» and Classical Guitar. seedInstrumentIds resolves setar to «سه‌تار» and tar to «تار», and the spaced spelling «سه تار» resolves the same way. On a database missing tar-khonyagar, it is offered only on «تار»'s id, and pathwaysForInstrumentFilter under «سه‌تار»'s id leaves nothing offered. With «سه‌تار» and no Tar instrument, tar-khonyagar is not offered and planDefaultPathways adds nothing. The test lives in src/domain/pathways.test.ts. → proven by `never mistakes a Persian-named Setar for Tar when offering a default pathway`
+- **ac-9** — migrateToCurrent runs over a pre-v3 database (no pathways key) whose instruments are «سه‌تار» then «تار». It places setar-radif on «سه‌تار», and tar-honarestan and tar-khonyagar on «تار», because migrateToV3 resolves through the same seedInstrumentIds rule. The test lives in src/domain/pathways.test.ts. → proven by `seeds a pre-v3 database's Tar pathways on the real Tar, never a Persian-named Setar`
 
 ## Docs to update as part of this change
 
@@ -839,7 +848,7 @@ Never touch:
 
 ## Current progress
 
-Not started — no checks have run yet. Default state is "not ready".
+Last checks passed (2026-09-23T17:35:59.707Z). Rework loops so far: 0.
 
 ## Before you finish
 
