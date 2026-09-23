@@ -22,8 +22,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:41:37.765Z
-        commit: 8f876e57d2e74e0d93f1b5164e0c30f169080fce
+        at: 2026-09-23T20:20:26.335Z
+        commit: 620518b3afb528e8ddd189d7264feeab33cbc15e
     - actor: Practice Compass
       action: Folds dastgāh spelling variants together, labels each group with the
         user's own majority spelling, and keeps parts nested under their parent
@@ -33,16 +33,16 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:41:37.765Z
-        commit: 8f876e57d2e74e0d93f1b5164e0c30f169080fce
+        at: 2026-09-23T20:20:26.335Z
+        commit: 620518b3afb528e8ddd189d7264feeab33cbc15e
     - actor: The musician
       action: Optionally filters by form, or narrows to one instrument.
       shows: Form chips built from what is actually present.
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:41:37.765Z
-        commit: 8f876e57d2e74e0d93f1b5164e0c30f169080fce
+        at: 2026-09-23T20:20:26.335Z
+        commit: 620518b3afb528e8ddd189d7264feeab33cbc15e
     - actor: The musician
       action: Or chooses 'Practice list' and filters by search, instrument, status,
         type, or a quick chip (due today, for class, fragile, neglected,
@@ -51,8 +51,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:41:37.765Z
-        commit: 8f876e57d2e74e0d93f1b5164e0c30f169080fce
+        at: 2026-09-23T20:20:26.335Z
+        commit: 620518b3afb528e8ddd189d7264feeab33cbc15e
     - actor: The musician
       action: Opens an item.
       shows: "Its page: status, connections, stats, result trend, recent blocks,
@@ -61,8 +61,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-19T10:41:37.765Z
-        commit: 8f876e57d2e74e0d93f1b5164e0c30f169080fce
+        at: 2026-09-23T20:20:26.335Z
+        commit: 620518b3afb528e8ddd189d7264feeab33cbc15e
   endsWith: The right piece is found and opened in a couple of taps, from
     whichever way of thinking about it came first.
   variations:
