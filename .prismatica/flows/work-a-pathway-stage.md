@@ -88,6 +88,17 @@ truth:
       differs: Anything quick-added inside the stage appears in the same list and in
         recommendations.
       status: works
+    - name: A default pathway this install lacks
+      differs: "Before step 1, Repertoire → Pathways offers each shipped default
+        pathway this install does not have — one newly shipped since the
+        database was made, such as the Khonyagar Tar course, or one the owner
+        deleted — as its own 'Add default pathway: <name>' button beside 'New
+        pathway', only when this device has that pathway's instrument and only
+        within the current instrument filter. Tapping one adds exactly that
+        pathway with its seeded stages and any seeded routine whose id is not
+        already held; nothing that exists is changed, nothing is added without
+        that tap, and the button then disappears."
+      status: works
   rules:
     - The item is the only unit of work — a pathway is a view over items, never
       a parallel to-do list.
@@ -112,6 +123,7 @@ mechanics:
     - src/components/useScreenAwake.ts
     - src/components/screenAwake.ts
     - src/store/useStore.ts
+    - src/pages/Repertoire.tsx
   routes:
     - /repertoire
     - /pathway/:pathwayId
@@ -144,10 +156,10 @@ mechanics:
       steps:
         - 4
 approval:
-  hash: 57dc3293be5068d38c9b0f5f06702b222f63e92f850f9f078a9c2efbbe01d874
-  at: 2026-08-31T22:05:33.178Z
+  hash: 2005d4b0c587c51d754ba660dc070d3582c121a64a8e9a475a21db7314d9ce52
+  at: 2026-09-23T20:19:46.232Z
   by: owner
-  signature: S2VdV6tq1iBCWAXpz9nGJ0+KiwGrL0istCHY4nyBA/NrLRuQCE3AVxchozFGgGDvDFpijySQRsncL7KVR/39BQ==
+  signature: WIuicPDKHHQA9UdTWAv/TIQBgjVu1gKg5T2V7S7tJQYQCwpNAfP9yT39Xs1Jl8ZwK9f1RjKbURyYJtzTZVrcBw==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -156,7 +168,7 @@ approval:
 
 # Work through a pathway stage
 
-_Works now · approved 2026-08-31T22:05:33.178Z by owner (signed)_
+_Works now · approved 2026-09-23T20:19:46.232Z by owner (signed)_
 
 ## Goal
 
@@ -200,6 +212,7 @@ The next piece of the route is now a real practice item with real practice behin
 - **Teacher jumps around** — A pinned current stage always beats 'first incomplete stage', because teacher-led work does not go in order. _(Works now)_
 - **Guided routine** — A stage routine runs as a segmented warm-up countdown. A segment bound to a real item creates an honest PracticeBlock when the run finishes (result stays 'not_logged', so no review completes and no spaced-repetition state advances — the practice itself IS recorded); a segment with no bound item is pure warm-up and logs nothing at all. While the run is genuinely active and its screen is visible, the app keeps the display awake, and arriving at a new segment is visibly announced — once, and staying perceptible for a few seconds, never a single-render flash. _(Works now)_
 - **Off-catalogue items** — Anything quick-added inside the stage appears in the same list and in recommendations. _(Works now)_
+- **A default pathway this install lacks** — Before step 1, Repertoire → Pathways offers each shipped default pathway this install does not have — one newly shipped since the database was made, such as the Khonyagar Tar course, or one the owner deleted — as its own 'Add default pathway: <name>' button beside 'New pathway', only when this device has that pathway's instrument and only within the current instrument filter. Tapping one adds exactly that pathway with its seeded stages and any seeded routine whose id is not already held; nothing that exists is changed, nothing is added without that tap, and the button then disappears. _(Works now)_
 
 ## Rules
 
@@ -212,3 +225,4 @@ The next piece of the route is now a real practice item with real practice behin
 
 - The musician
 - The pathway catalogue
+
