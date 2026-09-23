@@ -1,0 +1,11 @@
+{
+  "id": "20260923-let-an-existing-install-add-a-missing-sh-7e4b",
+  "contractId": "20260923-let-an-existing-install-add-a-missing-sh-7e4b",
+  "patchId": "5edf34f8456becbd37662293b5879c9e0c08102f",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-09-23T18:53:41.805Z",
+  "algorithm": "ed25519",
+  "signature": "GYa33F8KVRJ8wSrueqQ1lDNOuoRsRyl8CkeMh3UjPr38LSaiehOqX5BKja1fNI/Dc2pUBM0Rtr0AMkwPdw/aCw==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}

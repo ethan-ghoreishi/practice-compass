@@ -5,7 +5,7 @@ title: Let an existing install add a missing shipped default pathway, such as
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/36
 intent: 20260923-let-an-existing-install-add-a-missing-sh-7e4b
 tier: heavy
-stage: review
+stage: accept
 baseline:
   commit: e49d248c663aeab2dfd86a5ee97b03815027375e
   branch: main
