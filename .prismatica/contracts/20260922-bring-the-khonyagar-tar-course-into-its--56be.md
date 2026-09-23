@@ -5,7 +5,7 @@ title: Bring the Khonyagar Tar course into its own Tar pathway with stable work
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/34
 intent: 20260922-bring-the-khonyagar-tar-course-into-its--56be
 tier: heavy
-stage: review
+stage: accept
 baseline:
   commit: 116040163e60d5d3c622e7eece04ee4595950ca0
   branch: main
