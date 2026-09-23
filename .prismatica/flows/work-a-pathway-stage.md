@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-23T00:58:32.995Z
-        commit: 425e241303f91df2e0f8bbced58c83d2fa399fbd
+        at: 2026-09-23T20:22:04.930Z
+        commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
     - actor: The musician
       action: Taps + on a suggestion.
       shows: The row becomes a real item, honestly marked 'Not practised yet', with a
@@ -32,8 +32,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-23T00:58:32.995Z
-        commit: 425e241303f91df2e0f8bbced58c83d2fa399fbd
+        at: 2026-09-23T20:22:04.930Z
+        commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
     - actor: The musician
       action: Undoes it, or removes it later from the row's − button, if it was added
         by mistake.
@@ -44,8 +44,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-23T00:58:32.995Z
-        commit: 425e241303f91df2e0f8bbced58c83d2fa399fbd
+        at: 2026-09-23T20:22:04.930Z
+        commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
     - actor: The musician
       action: Taps ▶ on a row to practise it.
       shows: The ordinary active block.
@@ -53,8 +53,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-23T00:58:32.995Z
-        commit: 425e241303f91df2e0f8bbced58c83d2fa399fbd
+        at: 2026-09-23T20:22:04.930Z
+        commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
     - actor: The musician
       action: Optionally pins the stage as the current one, or edits its code, title
         and intro.
@@ -64,8 +64,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-23T00:58:32.995Z
-        commit: 425e241303f91df2e0f8bbced58c83d2fa399fbd
+        at: 2026-09-23T20:22:04.930Z
+        commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
   endsWith: The next piece of the route is now a real practice item with real
     practice behind it, and the stage's progress reflects it honestly.
   variations:
@@ -225,4 +225,3 @@ The next piece of the route is now a real practice item with real practice behin
 
 - The musician
 - The pathway catalogue
-
