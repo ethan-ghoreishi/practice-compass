@@ -1,3 +1,222 @@
+---
+id: 20260922-bring-the-khonyagar-tar-course-into-its--56be
+contractId: 20260922-bring-the-khonyagar-tar-course-into-its--56be
+patchId: f87ddc5b91e7cf036e65b0bd3b26fa5a9814dbbf
+reviewer: codex
+state: sealed
+verdict: approve
+createdAt: 2026-09-23T00:20:43.208Z
+sealedAt: 2026-09-23T00:26:12.170Z
+---
+
+# Review: Bring the Khonyagar Tar course into its own Tar pathway with stable work identity and its complete material
+
+> A fresh-eyes review, bound to one exact diff. If the code changes after this,
+> the seal breaks and the review must be redone — the maths checks, not the chat.
+> A Fresh Reviewer is a NEW session that did not build this diff.
+> The same provider is fine — what must not be reused is the session that wrote
+> the code, because it already believes the diff is right.
+
+- **Contract:** 20260922-bring-the-khonyagar-tar-course-into-its--56be
+- **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/34
+- **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
+- **Diff patch-id:** `f87ddc5b91e7cf036e65b0bd3b26fa5a9814dbbf`
+
+## Intent revision — supersedes the original request only where it conflicts
+
+- **2026-09-23T00:15:55.296Z** _(The owner's manual test settled the intended behaviour: Khonyagar entries are practice items first, not automatically curated repertoire. The sealed review found that no Khonyagar work appears in My repertoire. That is correct behaviour, and the contract wrongly promised the opposite. This removes that promise, pins the intended behaviour with a test (ac-18), and leaves Repertoire routing and all application behaviour unchanged.)_
+
+  Khonyagar course entries are practice items, not automatically curated repertoire. This supersedes the desired-behaviour bullet "Every work the authored table names reaches My repertoire once, grouped under a «خنیاگر» study source" and the matching Show-me step. A work is still ONE item under the work's own name, carrying every section's material, and it is still linked to the «خنیاگر» study source. But no Persian identity (form, dastgāh, composer or gusheh) is set or inferred from a title, and because Tar is Persian-family, My repertoire leaves an item without one out. The owner curates that metadata by hand as they progress, typically a form and/or dastgāh. A curated item then appears exactly as any curated Persian item does (under "No dastgāh yet" when it has no dastgāh). Repertoire routing is not changed.
+
+## The Delta this change was framed from
+
+# Khonyagar is a second entry in `COURSES`. A new `tar-khonyagar` pathway presents the course's 106 sections across ten stages, under its own three band headings, in Farsi, with pure-ascii keys anchored in the course's numbering. It reaches the owner's existing database through the "restore default pathways" button that already exists, and `tar-honarestan` is left untouched beside it. Adding a section brings its lesson videos and its band's score book with it automatically, with no link typed and no new device setting; every path is stored in the NFC form the NAS actually serves. Every work the course teaches reaches My repertoire once, under the work's own name:
+- a work taught across seven sections is ONE item carrying all seven sections' files;
+- a work taught inside an exercise section is its own row carrying exactly its own lessons, and the section is none;
+- two works that share a title stay two.
+Work keys are anchored to a lesson and never change after they ship. The data accounts for every section, every lesson exactly once and every score book, and the scanner refuses to write if the disk and the index disagree. The stages generate no routine, because the course's own guide asks for block-shaped days around the current lesson, not a tour of every section. For a timed session, the existing Session Plan builds from these items as it does for any instrument: warm-up first and cool-down last when an item qualifies, due reviews and the most urgent work in between, by priority rather than in the guide's block order. The guide reaches the owner as text: its daily template on the pathway, and its advice for each kind of lesson in every item's Working notes. The dated teacher folders are not imported, and the reasons are recorded.
+
+_approved · about "work-a-pathway-stage"_
+
+## Today
+
+Tar has a placeholder pathway and nothing else. `tar-honarestan` offers ten hand-authored stages of generic steps, and its own seed note says it is a framework to fill in as you go. The owner's complete Khonyagar course — 259 lesson videos (~16h28m), 106 sections and four score books — is invisible to the app. Not one video or score is reachable from a practice item, and the only way to attach one is to type NAS links by hand. Its repertoire is absent too: the Mahur radif gushehs, پیش‌درآمد ماهور درویش‌خان, تصنیف ز من نگارم, two different چهارمضراب ماهور, and works taught inside other lessons such as پیش‌درآمد ابوعطا cannot be practised, scheduled or reviewed. Works taught across several sections have no way to be one work. The course's own daily practice guide is nowhere in the app. `COURSES` holds exactly one entry, so the course machinery the Guitar lane built is available to Guitar alone.
+
+## Instead
+
+Khonyagar is a second entry in `COURSES`. A new `tar-khonyagar` pathway presents the course's 106 sections across ten stages, under its own three band headings, in Farsi, with pure-ascii keys anchored in the course's numbering. It reaches the owner's existing database through the "restore default pathways" button that already exists, and `tar-honarestan` is left untouched beside it. Adding a section brings its lesson videos and its band's score book with it automatically, with no link typed and no new device setting; every path is stored in the NFC form the NAS actually serves. Every work the course teaches reaches My repertoire once, under the work's own name:
+- a work taught across seven sections is ONE item carrying all seven sections' files;
+- a work taught inside an exercise section is its own row carrying exactly its own lessons, and the section is none;
+- two works that share a title stay two.
+Work keys are anchored to a lesson and never change after they ship. The data accounts for every section, every lesson exactly once and every score book, and the scanner refuses to write if the disk and the index disagree. The stages generate no routine, because the course's own guide asks for block-shaped days around the current lesson, not a tour of every section. For a timed session, the existing Session Plan builds from these items as it does for any instrument: warm-up first and cool-down last when an item qualifies, due reviews and the most urgent work in between, by priority rather than in the guide's block order. The guide reaches the owner as text: its daily template on the pathway, and its advice for each kind of lesson in every item's Working notes. The dated teacher folders are not imported, and the reasons are recorded.
+
+## Keep
+
+- `tar-honarestan` keeps every stage, code, title and catalogue key it has today, and any item already placed in it keeps its suggestion.
+- The Setar class archive and the Classical Guitar Shed course are untouched: data, scanners, publisher, stages, keys, works, work notes, routines and routine names alike.
+- Seeing where you are in a stage stays derived from item status: `stageUnits` and `itemStageState` are unchanged, and a suggestion you have not taken stays a suggestion.
+- Taking a suggestion stays one tap, arrives honestly as "Not practised yet" with zero statistics, and stays losslessly removable until you practise it. An Undo still reaches only an item the tap created.
+- Routines and the Session Plan are unchanged: the same runner, the same duration control, the same plan builder. Any Tar routine the owner writes by hand works exactly as it does today.
+- The archive base and the derived media root keep their values and meaning, so no device needs reconfiguring and every existing reference resolves identically.
+- `reseedDefaultPathways` and its button are unchanged, so a stage deliberately deleted from an existing pathway is still never resurrected.
+- A Setar piece sharing a Khonyagar work's name stays a separate item on a separate instrument.
+- No file bytes enter the app, sync or a backup, and no item, work, routine or stage is created without an explicit owner action.
+
+## New assumptions
+
+- The NAS serves NFC while the local disk is NFD. This was verified directly, and re-probed in this pass: 404 on the decomposed form, 206 video/mp4 on the composed one. Every stored path is therefore the real filename NFC-normalised.
+- Stage boundaries, work membership (by lesson number) and lesson types are authored decisions, recorded in `docs/khonyagar-course.md`. The source states none of them mechanically, and a crude grammar demonstrably mis-groups this data. A work's key is `w` plus its anchor lesson, written literally, so a reorder, a correction or a newly recognised work cannot move an existing identity.
+- The Session Plan stays unchanged and is not presented as the guide's template. It shares the guide's frame (warm-up first, spaced review, cool-down last), but it orders the middle by priority and splits minutes by its own weights. Making it follow the guide's blocks would change every instrument's plan, and is left to a separate decision.
+
+## Show me
+
+Press "restore default pathways" on Repertoire. A new Tar pathway, «تار – آزاد میرزاپور (خنیاگر)», appears beside the Honarestān one, which is unchanged. Its note carries the course's daily practice template.
+
+Open it: ten stages under تار مقدماتی, متوسطه and تار ۳, each listing the course's own sections in its own words.
+
+In the first stage, add «به دست گرفتن مضراب تار و نواختن سیم‌ها». Its three lesson videos and نت ۱ are already under Material with no link typed, and tapping one plays it from the NAS. Its Working notes carry the guide's advice for a technique lesson.
+
+In the third stage, sections 21 and 22 are exercise sessions, and پیش‌درآمد ابوعطا sits beside them as its own row. Add it, and exactly its two lessons come with it.
+
+In the last stage, add «چهارمضراب ماهور - بخش دوم». My repertoire gains ONE item, named for the radif's چهارمضراب ماهور rather than for part two, carrying the videos of all seven sections that teach it, and each of those seven rows now reads as added. Musa Ma'rufi's چهارمضراب ماهور in stage four is still a separate suggestion, and your Setar item of the same name is untouched.
+
+The stages offer no generated routine. For a timed session, choose "Plan this session" on Today for 30 minutes of Tar. In your first week, with a few new sections added, it splits the time across them, about 10 minutes each. Once some items are familiar and one is due, it looks more like: a 4-minute warm-up, the due review, the section you are learning, and a short cool-down on something settled. It orders the middle by priority, not by the guide's technique → lesson → review blocks. The guide's own order lives in the template on the pathway.
+
+
+
+## Re-review after a rejection — scoped to the rework
+
+The last review of this contract asked for changes. This is NOT the whole plan
+restated: it is what changed since the previously reviewed head, plus the
+findings that review recorded, plus the full current text of every file the
+rework touched — the same Check already bound to this head is not to be
+rerun wholesale.
+
+**Findings from the previous review:**
+
+- **repertoire-lens: a course work must actually render in My repertoire on its own instrument, not merely satisfy isWork()** — No Khonyagar work ever appears in My repertoire. Tar is a Persian-family instrument, and MyRepertoireView (Repertoire.tsx) routes Persian-family works only through groupByDastgah (persian.ts), which omits any item with no `persian` identity; the study-source groups exclude Persian-family instruments. Khonyagar entries deliberately carry no `persian` field, so every Khonyagar work is isWork() === true yet is rendered in neither branch. This contradicts the approved desiredBehaviour ('reaches My repertoire once, grouped under a «خنیاگر» study source'), the non-goal's premise ('Its works group under their study source in My repertoire'), ac-17, Show me, the new AGENTS.md section and the flow report. The named tests for ac-6/ac-9 assert only isWork(), which is necessary, not sufficient. Fixing it needs an owner decision (bring Repertoire.tsx into scope, or give entries a persian identity against the current non-goal) plus a named test over the rendered grouping.
+  _counterexample:_ createSeedDB() (Tar instrument family 'Persian'); planCatalogAddition(db, 'tar-khonyagar-s093-s106', 's096', entry, tarId) creates «چهارمضراب ماهور», itemType full_piece, persian undefined. With MyRepertoireView's own split scoped to Tar: repertoireWorks includes it (isWork true), persianWorks includes it, groupByDastgah(persianWorks) returns [] (skipped at `if (!p) continue`), otherWorks excludes it. My repertoire renders no Khonyagar work, and the ac-17 owner step 'the radif's چهارمضراب ماهور appears once in My repertoire' cannot pass.
+
+**What changed since the previously reviewed head:**
+
+```diff
+diff --git a/AGENTS.md b/AGENTS.md
+index fb1f804e5be86a42aadee2ce98c64e142eb63cd2..9d2c941e304d39d299593f13c819aa65cb1e50bc 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -2699,6 +2699,16 @@ never enters My repertoire under its own label; `stageUnits` already shows the i
+ title on every row of that work. This is the one creation-time change, and CGS sets
+ no `workTitle`.
+ 
++**A KHONYAGAR ITEM IS A PRACTICE ITEM FIRST, AND REACHES MY REPERTOIRE ONLY BY THE
++OWNER'S HAND.** No entry carries any Persian identity (form, dastgāh, composer or
++gusheh), and none may be inferred from a title: many course pieces are simplified
++practice versions the owner would not call repertoire. Tar is Persian-family, so My
++repertoire groups its works through `groupByDastgah`, which leaves an item with no
++Persian identity out — deliberately. The owner curates form and/or dastgāh as they
++progress, and a curated item then groups exactly as any other Persian item does ("No
++dastgāh yet" without a dastgāh). Repertoire routing is unchanged;
++`khonyagarCourse.test.ts` pins both halves.
++
+ **THE FOUR OPTIONAL FIELDS ARE ABSENT FROM EVERY CGS ENTRY.** `CourseWork.files`,
+ `CourseWork.guidance`, `CourseWork.strand` and `CourseUnit.workTitle` default to
+ exactly what CGS did before — a single packet PDF, the English practice-packet
+diff --git a/docs/khonyagar-course.md b/docs/khonyagar-course.md
+index c3501b1da1d2f7e0cd9a32b6ea95eaba4ca01d46..18596a153a94f24df22fcb7d0e2b17d88cba96c6 100644
+--- a/docs/khonyagar-course.md
++++ b/docs/khonyagar-course.md
+@@ -242,8 +242,16 @@ The type decides three things:
+ - **Course-scoped identity.** Work reuse (`carriedCourseWorkItem`) only ever
+   matches items in this course's own stages. A Setar or Guitar item of the same
+   name is never reused, renamed or absorbed.
+-- **The study source.** Items group under a «خنیاگر» study source in My
+-  repertoire, created on first use.
++- **The study source.** Every item created from the course is linked to a
++  «خنیاگر» study source, created on first use.
++- **Practice items first, not repertoire.** No entry carries any Persian
++  identity (form, dastgāh, composer or gusheh), and none is inferred from a
++  title: many course pieces are simplified practice versions. Tar is a
++  Persian-family instrument, so My repertoire groups its works by dastgāh and
++  leaves an item with no Persian identity out. It enters My repertoire only
++  when the owner curates that by hand (edit the item, pick "Composed piece",
++  give it a form and/or dastgāh), and then groups like any curated Persian
++  item: under its dastgāh, or under "No dastgāh yet" without one.
+ - **Where work rows sit.** A work row renders after the stage's sections, not
+   physically between the sections that teach it: `courseStageSeeds` emits units
+   then works for every course, and reordering it would change the Guitar
+@@ -309,8 +317,9 @@ change the plan for every instrument; that is a separate decision for the owner.
+   imported: the owner has normalised them, and each teacher's instrument is
+   confirmed. They then belong to the class-logging flow and the archive
+   pipeline, not to this course.
+-- No dastgāh, form or composer fields on Khonyagar entries yet. Works group
+-  under their study source; dastgāh grouping would be a later data change.
++- No Persian identity (form, dastgāh, composer or gusheh) on Khonyagar
++  entries, and none inferred from a title. The owner curates that metadata
++  by hand, and My repertoire's routing is unchanged.
+ - No generated routine, and no change to the routine machinery or the Session
+   Plan.
+ 
+diff --git a/src/domain/khonyagarCourse.test.ts b/src/domain/khonyagarCourse.test.ts
+index 4cdd9df79c70f599f1463044434f706d06861260..08ad0ee79072accde1feba59b1bbd5f045c6d106 100644
+--- a/src/domain/khonyagarCourse.test.ts
++++ b/src/domain/khonyagarCourse.test.ts
+@@ -18,7 +18,9 @@ import { hasPersianScript } from './farsi';
+ import { KHONYAGAR_COURSE, KHONYAGAR_LESSON_TYPES, KHONYAGAR_PATHWAY } from './khonyagarData';
+ import { catalogForStage, seedPathways, stageIdFor } from './pathwaySeed';
+ import { stageUnits } from './pathways';
++import { UNCLASSIFIED_DASTGAH, groupByDastgah } from './persian';
+ import { isWork } from './repertoire';
++import { createSeedDB } from './seed';
+ import type { PathwayStage, PracticeItem } from './types';
+ 
+ const NOW = new Date('2026-09-22T09:00:00.000Z');
+@@ -551,3 +553,39 @@ describe('Khonyagar work identity', () => {
+     }
+   });
+ });
++
++describe('Khonyagar and My repertoire', () => {
++  // My repertoire (Repertoire.tsx) sends a Persian-family instrument's works
++  // through groupByDastgah; the page itself cannot render in this Node suite,
++  // so this asserts that function and the instrument family that routes to it.
++  it('an uncurated Khonyagar item stays out of My repertoire until the owner gives it a form or dastgah', () => {
++    let db = createSeedDB(NOW);
++    const tar = db.instruments.find((i) => i.name === 'Tar')!;
++    expect(tar.family).toBe('Persian');
++
++    const created: PracticeItem[] = [];
++    for (const group of K.groups) {
++      const stageId = stageOf(group.key);
++      for (const entry of catalogForStage(stageId)) {
++        expect(entry.persian).toBeUndefined();
++        const plan = planCatalogAddition(db, stageId, entry.key, entry, tar.id, NOW);
++        db = { ...db, items: plan.items, materials: plan.materials };
++        if (plan.created) created.push(plan.items.find((i) => i.id === plan.itemId)!);
++      }
++    }
++    // Not vacuous: every section and work row was added, and works are among them.
++    expect(created.length).toBeGreaterThan(106);
++    expect(created.some(isWork)).toBe(true);
++    // Nothing is inferred from a title: no item arrives with Persian metadata,
++    // so none reaches My repertoire on its own.
++    for (const item of created) expect(item.persian).toBeUndefined();
++    expect(groupByDastgah(created)).toEqual([]);
++
++    // Curated by the owner, it groups exactly like any other Persian item.
++    const [work] = created.filter(isWork);
++    const withForm = { ...work, persian: { form: 'چهارمضراب' } };
++    expect(groupByDastgah([withForm])).toEqual([{ dastgah: UNCLASSIFIED_DASTGAH, items: [withForm] }]);
++    const withDastgah = { ...work, persian: { dastgahAvaz: 'ماهور' } };
++    expect(groupByDastgah([withDastgah])).toEqual([{ dastgah: 'ماهور', items: [withDastgah] }]);
++  });
++});
+```
+
+**Full current text of every file the rework touched:**
+
+### AGENTS.md
+
+```
 # AGENTS.md — development rules for Practice Compass
 
 This file is the contract for anyone (human or AI) extending this app. Read it before
@@ -3186,3 +3405,1080 @@ Audio recording attachment, PWA offline install, CSV export, calendar reminders,
 simple audio note per block, teacher‑sharing PDF. These extend the tool without breaking
 the philosophy. Anything that contradicts the "do nots" above needs an explicit decision
 from the user, recorded here.
+```
+
+### docs/khonyagar-course.md
+
+```
+# The Khonyagar Tar course: scanner, data and what the app does with it
+
+The owner practises Tar from an offline copy of the complete Khonyagar course
+(«تار – آزاد میرزاپور (خنیاگر)»): 259 lesson videos (~16h28m), a 106-section
+index and four score books. This file is the operator runbook for bringing that
+course into the app. It records what the scanner reads, every authored decision
+the source does not make for itself, and the corpus baseline.
+
+It is the second entry in `COURSES`, beside the Classical Guitar Shed
+(`docs/cgs-course.md`). It uses the same machinery, and for the same reason it
+is **not** the Setar archive (`docs/setar-archive.md`). A downloaded course is a
+fixed tree that does not grow, gets no renames and has no identity to reconcile.
+So it is reference data in code, with **no persisted graph, no new validation
+door, no schema change and no migration**. It is not `Lesson` data either: it is
+a course the owner follows, not a record of classes they attended.
+
+---
+
+## 1. The shape of it
+
+    /Volumes/Sandisk/video-courses/            ← the shared MEDIA ROOT
+      setar-classes/                           ← the Setar archive (unchanged)
+      classical-guitar/…                       ← the CGS course (unchanged)
+      tar-classes/
+        khonyagar-mirzapour/                   ← this course, one flat folder
+          _فهرست — Index.md                    ← 106 sections, 259 lessons, 4 books
+          _راهنمای تمرین روزانه — Daily Practice Guide.md
+          001 - اجزای ساز.mp4 … 259 - گوشه زنگوله.mp4
+          نت ۱ … نت ۴ ….pdf                    ← the four score books
+        afshin-alavi/ amir-sharifi/ behrooz-hemati/ ghasem-rahimzadeh/   ← NOT imported, §7
+
+Baseline, measured when this lane was built: the index declares ۲۵۹ گفتار and
+lists 259 lessons, 001–259, with no gaps, under 106 contiguous sections. Each
+section's lessons are contiguous and in order. The folder holds exactly 259
+mp4 files, the four listed books and the two `.md` files, and nothing else.
+
+## 2. The scanner
+
+    node scripts/scan-khonyagar-course.mjs            # DRY RUN — reports only
+    node scripts/scan-khonyagar-course.mjs --write    # writes src/domain/khonyagarData.ts
+
+Node stdlib only, **dry-run by default**, build-time only. Nothing in `src/`
+imports it. `--root`, `--media-path` and `--out` point it elsewhere.
+
+**A scan that cannot reconcile the disk, the index and its own tables writes
+nothing.** It throws, before any output, unless every one of these holds:
+
+- the index's declared total (۲۵۹), the lessons it lists and the `NNN - *.mp4`
+  files on disk agree;
+- the sections are 1–106 in order, each lesson is listed once under one section,
+  and each section's lessons are contiguous;
+- the folder holds exactly those videos, the four books the index lists and the
+  two `.md` files (dotfiles and `@eaDir` ignored);
+- every filename matches its index title after NFC and whitespace collapse;
+- every work key is `w` plus a lesson that work teaches, every lesson named in
+  the work table exists, and no lesson belongs to two works;
+- the stage table partitions 1–106 into contiguous runs, each key naming its own
+  run, and no multi-section work crosses a stage boundary;
+- every work row's files are files some section already carries.
+
+### Two facts about the real source decide every path and title
+
+**The NAS serves NFC; the local disk is NFD.** 78 of the 259 filenames are
+decomposed on `/Volumes/Sandisk`. Probed on lesson 148, the decomposed name
+returns 404 text/html from the NAS and the composed one returns 206 video/mp4.
+A decomposed path looks right in the repository and opens nothing. So the
+stored path is the **real filename, NFC-normalised**. `khonyagarCourse.test.ts`
+holds every committed path to that.
+
+**The index is the title; the disk is the path.** Three index titles carry
+stray whitespace: `030` has a leading space, and `077` and `148` a double space.
+The displayed title is the index title with whitespace collapsed. After NFC and
+that collapse, every filename matches its title exactly. That is also why
+lessons 148 and 149 are two different files with the same displayed title.
+
+### What is authored, and where
+
+The scanner holds three literal tables, because the source does not state these
+things mechanically, and a crude title grammar demonstrably mis-groups this
+data:
+
+1. **Stages** — ten runs of consecutive sections (§3).
+2. **Works** — each work's anchored key, title, lesson type and the LESSON
+   numbers that teach it (§4).
+3. **Section type overrides** — corrections to the type grammar's proposal. It
+   is empty today.
+
+Everything else is derived mechanically from those tables and the index.
+
+## 3. Stages
+
+| Stage key (id `tar-khonyagar-<key>`) | Band (`group`) | Sections | Evidence |
+|---|---|---|---|
+| `s001-s005` | تار مقدماتی | 1–5 | instrument, mezrab, note values, 2/4 and 4/4, tuning |
+| `s006-s013` | تار مقدماتی | 6–13 | frets, fingering, positions one to six |
+| `s014-s023` | تار مقدماتی | 14–23 | 6/8, first pieces, pish-daramad and reng; ends on lesson 129 «توصیه‌های پایانی» |
+| `s024-s028` | تار متوسطه | 24–28 | Mahur |
+| `s029-s035` | تار متوسطه | 29–35 | Shur |
+| `s036-s045` | تار متوسطه | 36–45 | Afshari, Segah, Isfahan, Dashti |
+| `s046-s059` | تار ۳ | 46–59 | the Mahur radif from زیرافکن to کرشمه |
+| `s060-s074` | تار ۳ | 60–74 | ز من نگارم to دلکش |
+| `s075-s092` | تار ۳ | 75–92 | رنگ قهر و آشتی to رنگ کوراغلی |
+| `s093-s106` | تار ۳ | 93–106 | نیشابورک to زنگوله, and the radif's چهارمضراب |
+
+The three band names are the course's own: the score books state them in their
+titles. The مقدماتی/متوسطه boundary follows the course's own closing lesson
+(129). The متوسطه/تار ۳ boundary is where the index changes shape, from topical
+multi-lesson sessions to one-gusheh and one-part sections of the Mahur radif and
+its pieces. Ten stages rather than three keep stage progress meaningful: a
+single 61-section تار ۳ stage would read "3 of 61" for months. They also keep
+each catalogue short enough to browse on a phone.
+
+Stage codes are Farsi («جلسه ۱–۵»). Stage ids and every catalogue key are pure
+ascii and anchored in the index's own numbering. Section keys are `s001`–`s106`.
+
+## 4. Works — identity lives at the lesson
+
+Works are taught INSIDE sections that are about something else:
+
+- پیش‌درآمد ابوعطا is lessons 124 and 125, in exercise sections 21 and 22;
+- سرای امید is lessons 063 and 074, in sections 9 and 11;
+- section 17 teaches two works, in lessons 109 and 110.
+
+So each work is recorded by the lessons that teach it:
+
+- A section **all** of whose lessons teach one work IS that work. It keeps its
+  section key `sNNN`, and carries the work's identity (`workKey`) and its name
+  (`workTitle`).
+- A work taught in lessons of a **mixed** section is its own catalogue row
+  (`CourseWork`), keyed by its work key. It sits in the stage of its first
+  lesson and carries exactly those lessons' videos plus the band book.
+- A mixed section is itself **no work**. It carries a practice strand
+  (`technique` or `exercise`), never `piece`, `repertoire` or `radif`.
+
+**The membership rule.** A lesson belongs to a work only when its OWN index
+title names that piece or gusheh, whether it teaches it, continues it or
+performs it. Context and technique lessons in the same session stay section
+material: an introduction to the dastgāh, a mezrab pattern, an unnamed
+Honarestān درس. Named Honarestān lessons are works, for example
+«درس ۵۷ (پیش درآمد ماهور)» and «درس ۶۲ (زرد ملیجه)».
+
+Counts today: 72 works. 71 sections are wholly one work, 30 works are rows
+taught inside mixed sections, and 35 sections are practice material.
+
+### A work's key never changes after it ships
+
+A work key is `w` plus its **anchor lesson**, the lowest lesson that taught it
+at first shipping. Examples are `w197` for پیش‌درآمد ماهور درویش‌خان and `w246`
+for the radif's چهارمضراب ماهور. The key is written as a literal in the table
+and never computed, so reordering the table cannot move it, and a newly
+recognised work gets its own anchor. A correction may ADD lessons to a work; it
+may never remove the anchor.
+
+What an item persists decides what must never disappear:
+
+- **A work ROW's key IS the item's `catalogKey`.** A shipped row is never
+  removed. A later merge keeps the row and gives it the other identity as an
+  alias (`CourseWork.workKey`).
+- **A work that is a section** is held by the item as `sNNN`, and its work key
+  lives only in the section's `workKey`. A later merge may point the section at
+  the other identity; the item keeps resolving.
+- **A section never moves stage**, because items persist `stageId` together
+  with `catalogKey`.
+
+`khonyagarCourse.test.ts` holds all three against literal ledgers written in
+the test at first shipping, never derived from the data. Every shipped
+(stage, work row) pair still exists. Every shipped work key that still resolves
+names a work that includes its anchor lesson. Every shipped (stage, section)
+pair is still present.
+
+### Same title is not same work
+
+Nothing is joined on title similarity, ZWNJ or spacing. Sections 52–55
+(«پیش درآمد…») and 56 («پیش‌درآمد…») are one work only because the table lists
+their lessons under `w197`. The scanner reports these open questions for the
+owner as `diagnostics` in the generated data, rather than deciding them
+silently:
+
+- **Three چهارمضراب:** w138 (Ma'rufi's, section 26), w246 (the radif's,
+  sections 95–97 and 101–104) and w235 (section 85, «چهارمضراب از ردیف ماهور»).
+- **Two رنگ شور:** w148 (Ma'rufi's, section 30) and w153 (unattributed,
+  section 32).
+- **Three گوشه کرشمه:** w135 (section 25), w205 (section 59) and w236
+  (sections 86–87, «کرشمه و تحریر»).
+- **Lesson 087:** «آموزش نوایی» is recorded as a named piece, w087. It could
+  instead be the Navā gusheh.
+- **Section 20:** it says «دو قطعه» but names only one piece, w121; درس ۶۵
+  stays section material.
+- **Lesson 141:** «درس ۲۴ از کتاب دوم هنرستان» names no piece.
+- **The radif's چهارمضراب books:** w235 and w246 carry the rhythmic-pieces book
+  by the band rule, but their score may be in the radif book.
+
+A false split costs a visible duplicate, which a later alias can join. A false
+merge destroys a record. So the table always splits when in doubt.
+
+### Lesson types, strands and books
+
+The course guide names five lesson types. The scanner's grammar proposes one
+for every entry:
+
+- A work's type comes from the work table: radif (a gusheh), rhythmic
+  (chahārmezrāb / reng) or composed (pish-daramad / tasnif / a named piece).
+- A section that is not wholly one work is **etude** when most of its own
+  non-work lessons are Honarestān درس‌ها, and **technique** otherwise.
+- A section whose every lesson teaches a work, but not ONE work (section 43
+  teaches two), takes its first work's type. It is still no work itself.
+
+The type decides three things:
+
+- **The strand.** radif → `radif` (a gusheh work); rhythmic and composed →
+  `repertoire`; etude → `exercise`; technique → `technique`. Only a work may
+  carry a repertoire strand.
+- **The book.** Stages 1–3 carry نت ۱ and stages 4–6 carry نت ۲. In تار ۳, radif
+  entries carry نت ۳ (ردیف ماهور), and rhythmic and composed entries carry نت ۴
+  (قطعات ضربی).
+- **The guidance.** Every section and work carries the guide's own paragraph
+  for its type, quoted in its own English as written. The paragraph lands in
+  the item's Working notes when the item is created. It is never the Guitar
+  course's practice-packet sentence.
+
+## 5. What the app does with it
+
+- **The pathway.** `tar-khonyagar` is appended to the seeded pathways beside
+  `tar-honarestan`, which is left exactly as it was. `reseedDefaultPathways`
+  adds a pathway that does not yet exist, so "restore default pathways" on
+  Repertoire brings it into an existing database. A fresh install or a demo
+  reset gets it from the same seed.
+- **The pathway note.** The note quotes the guide's daily template and Quick
+  Win. The template's table is flattened to one line per block, in its own
+  words, because the note renders as plain text.
+- **Material.** Adding a section or work composes its lesson videos and its
+  band book live from the catalogue (`itemFiles` → `courseFilesFor`), with no
+  link typed. `tar-classes` is a known source folder because the course
+  declares its `mediaPath`, so the media root the device already derives
+  resolves it on the LAN and Tailscale routes alike.
+- **One work, one item.** Adding any section of a multi-section work, a part or
+  a performance included, creates ONE item titled with the work's own name
+  (`workTitle`). The item carries every section's files, deduplicated by path.
+  Every one of its section rows then reads as added under that name.
+  Deduplication is by path, never by title: lessons 148 and 149 share a title
+  and both stay.
+- **Course-scoped identity.** Work reuse (`carriedCourseWorkItem`) only ever
+  matches items in this course's own stages. A Setar or Guitar item of the same
+  name is never reused, renamed or absorbed.
+- **The study source.** Every item created from the course is linked to a
+  «خنیاگر» study source, created on first use.
+- **Practice items first, not repertoire.** No entry carries any Persian
+  identity (form, dastgāh, composer or gusheh), and none is inferred from a
+  title: many course pieces are simplified practice versions. Tar is a
+  Persian-family instrument, so My repertoire groups its works by dastgāh and
+  leaves an item with no Persian identity out. It enters My repertoire only
+  when the owner curates that by hand (edit the item, pick "Composed piece",
+  give it a form and/or dastgāh), and then groups like any curated Persian
+  item: under its dastgāh, or under "No dastgāh yet" without one.
+- **Where work rows sit.** A work row renders after the stage's sections, not
+  physically between the sections that teach it: `courseStageSeeds` emits units
+  then works for every course, and reordering it would change the Guitar
+  course. So in stage 3, پیش‌درآمد ابوعطا sits in the same stage list as
+  sections 21 and 22, at its end.
+
+## 6. Routines, and what the Session Plan really does
+
+**Every Khonyagar stage ships `routine: []`.** StageDetail therefore shows
+neither "Use this level's routine", "Build one for where I am" nor their
+caption. The owner can still write any Tar routine by hand, binding segments to
+these items. There are four reasons, and all of them come from the course's own
+guide:
+
+1. **The guide is shaped by blocks, not sections.** Its 30-minute day is
+   warm-up & tuning 4, technique/etude 7, today's lesson 10, review 6 and
+   cool-down 3, and it says to keep that order and those proportions. It also
+   says "2–3 loops max per session".
+2. **Khonyagar's sections are sequential lessons.** The guide's Block 3 is the
+   one current گفتار. A CGS level's sections are concurrent strands practised
+   daily for weeks.
+3. **A section-per-segment routine inverts the guide's minimum day.** A
+   30-minute run over a stage of 5–18 sections gives about 1.5–6 minutes per
+   section. With nothing essential, `fitRoutineToMinutes` drops the LATEST
+   segments first, cutting the frontier and keeping the oldest material. The
+   guide's Quick Win (blocks 1 → 3 → 6) is the opposite.
+4. **One run marks a whole stage practised.** `applyRoutineRun` writes a block
+   per bound item, so one run would mark every section practised today and
+   empty the Session Plan's candidate pool for the day.
+
+**The Session Plan is the nearest existing tool, not the guide's template.** It
+is unchanged, and it builds from the Tar items the owner has added, as it does
+for any instrument:
+
+- The warm-up comes first, at a pinned 12% share, but only when a familiar,
+  not-too-hard item qualifies.
+- Due reviews come from the spacing schedule.
+- The cool-down comes last, but only with a settled item and at least 20
+  minutes.
+- The middle is ordered by **priority**, not by the guide's technique → lesson
+  → review blocks, so a due review often comes before the new work.
+- There is no separate technique block and no ear/radif block.
+- Minutes follow the app's own weights, not the guide's 30/60 columns.
+- Its "lesson" bucket means preparing for a class, never the course's current
+  گفتار.
+
+In week one, with only new sections added, it splits the time evenly across at
+most three or four of them. Making it follow the guide's block order would
+change the plan for every instrument; that is a separate decision for the owner.
+
+## 7. What is NOT here
+
+- **The dated teacher folders** (`afshin-alavi`, `amir-sharifi`,
+  `behrooz-hemati`, `ghasem-rahimzadeh`) are not imported, and no `Lesson`
+  record is created. They are four teachers and 28 sub-folders (26 session
+  folders, plus `radif-mirza-hoesingholi` and `to-be-organised`), 207 files and
+  about 4.8 GB. The filenames name nothing. One folder is misspelled
+  (`seission-6-…`), several are named with a date range, one range has a
+  self-contradictory year (`session-2-02-12-2024-23-12-2025`), and
+  `session-18-02-2026` and `session-9` cannot be placed without guessing.
+  `behrooz-hemati` sits under `tar-classes/` but carries a SETAR primer
+  («دستور سه‌تار ابتدایی»). Two things must be true before they can be
+  imported: the owner has normalised them, and each teacher's instrument is
+  confirmed. They then belong to the class-logging flow and the archive
+  pipeline, not to this course.
+- No Persian identity (form, dastgāh, composer or gusheh) on Khonyagar
+  entries, and none inferred from a title. The owner curates that metadata
+  by hand, and My repertoire's routing is unchanged.
+- No generated routine, and no change to the routine machinery or the Session
+  Plan.
+
+## 8. Changing it later
+
+A correction is a data change: edit the scanner's tables, re-run it with
+`--write`, and commit the regenerated `khonyagarData.ts`. The rules:
+
+- Keys are only ever added.
+- A shipped work row stays; a later merge is an alias on it.
+- A section never moves stage.
+- A work never loses its anchor lesson.
+
+The ledgers in `khonyagarCourse.test.ts` fail if any of these is broken. A new
+work, or a newly recognised one, gets its own anchored key and is added to the
+ledgers.
+```
+
+### src/domain/khonyagarCourse.test.ts
+
+```
+import { createHash } from 'node:crypto';
+import { describe, expect, it } from 'vitest';
+import { canonicalStringify } from './canonical';
+import { CGS_COURSE } from './courseData';
+import {
+  COURSE_LEGACY_KEYS,
+  buildLevelRoutine,
+  buildPositionRoutine,
+  carriedCourseWorkItem,
+  courseFilesFor,
+  courseRoutineName,
+  courseStageId,
+  planCatalogAddition,
+  type CourseFile,
+} from './courseSeed';
+import { createItem } from './factories';
+import { hasPersianScript } from './farsi';
+import { KHONYAGAR_COURSE, KHONYAGAR_LESSON_TYPES, KHONYAGAR_PATHWAY } from './khonyagarData';
+import { catalogForStage, seedPathways, stageIdFor } from './pathwaySeed';
+import { stageUnits } from './pathways';
+import { UNCLASSIFIED_DASTGAH, groupByDastgah } from './persian';
+import { isWork } from './repertoire';
+import { createSeedDB } from './seed';
+import type { PathwayStage, PracticeItem } from './types';
+
+const NOW = new Date('2026-09-22T09:00:00.000Z');
+const IDS = { guitar: 'g', setar: 's', tar: 't' };
+
+/**
+ * Everything the Honarestān pathway and the Guitar course present today, as
+ * one canonical value: stages, catalogue, routines, the routine each level
+ * builds, the title and material every entry is created with. Hashed so the
+ * ledger is a literal captured BEFORE this lane changed anything.
+ */
+function untouchedFingerprint(): string {
+  const seeded = seedPathways(IDS, NOW);
+  const keep = (pathwayId: string) => pathwayId === 'tar-honarestan' || pathwayId === 'cgs';
+  const stages = seeded.pathwayStages.filter((s) => keep(s.pathwayId));
+  const value = {
+    pathways: seeded.pathways.filter((p) => keep(p.id)),
+    stages,
+    routines: seeded.pathwayRoutines.filter((r) => !!r.pathwayId && keep(r.pathwayId)),
+    catalogue: stages.map((s) => ({ stage: s.id, entries: catalogForStage(s.id) })),
+    legacy: COURSE_LEGACY_KEYS,
+    levels: CGS_COURSE.groups.map((g) => ({
+      key: g.key,
+      level: buildLevelRoutine(CGS_COURSE, g.key, []),
+      position: buildPositionRoutine(CGS_COURSE, g.key, []),
+      names: [courseRoutineName(g, 'level'), courseRoutineName(g, 'position')],
+    })),
+    created: stages
+      .filter((s) => s.pathwayId === 'cgs')
+      .flatMap((s) =>
+        catalogForStage(s.id).map((e) => {
+          const add = planCatalogAddition({ items: [], materials: [] }, s.id, e.key, e, 'g', NOW);
+          const item = add.items.find((i) => i.id === add.itemId)!;
+          return {
+            stage: s.id,
+            key: e.key,
+            title: item.title,
+            type: item.itemType,
+            notes: item.notes,
+            files: courseFilesFor(s.id, e.key),
+          };
+        }),
+      ),
+  };
+  return createHash('sha256').update(canonicalStringify(value)).digest('hex');
+}
+
+describe('the pathways this lane must not touch', () => {
+  it('leaves the Honarestan pathway and the Guitar course entirely unchanged', () => {
+    expect(courseStageId(CGS_COURSE, '1b')).toBe('cgs-1b');
+    expect(untouchedFingerprint()).toBe('905de18c315c545aa8c020b9310ef9d05b02c151bdcb7a982d573e41ccbe34af');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The Khonyagar course, read as reference data. Every check runs against the
+// REAL generated `khonyagarData.ts` — the owner's own 259 lessons — and every
+// ledger below is a LITERAL written at first shipping, never derived from the
+// data it guards.
+// ---------------------------------------------------------------------------
+
+const K = KHONYAGAR_COURSE;
+const stageOf = (groupKey: string) => courseStageId(K, groupKey);
+const REPERTOIRE_STRANDS = new Set(['piece', 'repertoire', 'radif']);
+
+/** The lesson number a video path names, read from the path — never from a title. */
+function lessonOf(f: CourseFile): number | undefined {
+  const m = f.kind === 'video' ? f.path.match(/\/(\d{3}) - [^/]+\.mp4$/) : null;
+  return m ? Number(m[1]) : undefined;
+}
+const lessonsOf = (files: CourseFile[]) => files.map(lessonOf).filter((n): n is number => n !== undefined);
+
+const units = K.groups.flatMap((g) => g.units.map((u) => ({ group: g, unit: u })));
+const rows = K.groups.flatMap((g) => g.works.map((w) => ({ group: g, work: w })));
+
+/** Every catalogue entry naming one identity: `[stageId, catalogKey]`. */
+function entriesOf(identity: string): [string, string][] {
+  return [
+    ...units.filter(({ unit }) => unit.workKey === identity).map(({ group, unit }) => [stageOf(group.key), unit.key] as [string, string]),
+    ...rows.filter(({ work }) => (work.workKey ?? work.key) === identity).map(({ group, work }) => [stageOf(group.key), work.key] as [string, string]),
+  ];
+}
+function identityFiles(identity: string): CourseFile[] {
+  return [
+    ...units.filter(({ unit }) => unit.workKey === identity).flatMap(({ unit }) => unit.files),
+    ...rows.filter(({ work }) => (work.workKey ?? work.key) === identity).flatMap(({ work }) => work.files ?? []),
+  ];
+}
+
+function stageRecord(groupKey: string): PathwayStage {
+  const s = seedPathways(IDS, NOW).pathwayStages.find((x) => x.id === stageOf(groupKey));
+  if (!s) throw new Error(`no seeded stage ${groupKey}`);
+  return s;
+}
+
+/** Add one catalogue entry the way the store does, returning the new state and item. */
+function add(items: PracticeItem[], stageId: string, key: string) {
+  const entry = catalogForStage(stageId).find((e) => e.key === key);
+  if (!entry) throw new Error(`no catalogue entry ${stageId}/${key}`);
+  const plan = planCatalogAddition({ items, materials: [] }, stageId, key, entry, 't', NOW);
+  return { items: plan.items, item: plan.items.find((i) => i.id === plan.itemId)!, created: plan.created };
+}
+
+// --- literal ledgers, written when these keys first shipped -----------------
+
+/** Every (stage, work row) an item may hold as `stageId` + `catalogKey`. */
+const SHIPPED_WORK_ROWS: [string, string][] = [
+  ['s006-s013', 'w036'], ['s006-s013', 'w043'], ['s006-s013', 'w044'], ['s006-s013', 'w048'], ['s006-s013', 'w063'],
+  ['s006-s013', 'w080'], ['s006-s013', 'w087'], ['s014-s023', 'w093'], ['s014-s023', 'w101'], ['s014-s023', 'w104'],
+  ['s014-s023', 'w109'], ['s014-s023', 'w110'], ['s014-s023', 'w113'], ['s014-s023', 'w118'], ['s014-s023', 'w121'],
+  ['s014-s023', 'w124'], ['s014-s023', 'w128'], ['s024-s028', 'w135'], ['s024-s028', 'w136'], ['s024-s028', 'w138'],
+  ['s024-s028', 'w140'], ['s029-s035', 'w146'], ['s029-s035', 'w153'], ['s036-s045', 'w163'], ['s036-s045', 'w165'],
+  ['s036-s045', 'w167'], ['s036-s045', 'w174'], ['s036-s045', 'w177'], ['s036-s045', 'w181'], ['s036-s045', 'w184'],
+];
+
+/** Every work key that shipped. Its number is its ANCHOR lesson. */
+const SHIPPED_WORK_KEYS = [
+  'w036', 'w043', 'w044', 'w048', 'w063', 'w080', 'w087', 'w093', 'w101', 'w104', 'w109', 'w110', 'w113', 'w118',
+  'w121', 'w124', 'w128', 'w135', 'w136', 'w138', 'w140', 'w142', 'w146', 'w148', 'w153', 'w155', 'w157', 'w159',
+  'w163', 'w165', 'w167', 'w169', 'w171', 'w174', 'w177', 'w179', 'w181', 'w184', 'w186', 'w188', 'w190', 'w191',
+  'w192', 'w197', 'w204', 'w205', 'w206', 'w211', 'w212', 'w213', 'w214', 'w219', 'w220', 'w221', 'w222', 'w223',
+  'w227', 'w229', 'w230', 'w231', 'w235', 'w236', 'w238', 'w242', 'w244', 'w245', 'w246', 'w250', 'w251', 'w252',
+  'w258', 'w259',
+];
+
+/** Every (stage, section) pair that shipped. */
+const SHIPPED_SECTIONS: Record<string, string[]> = {
+  's001-s005': ['s001', 's002', 's003', 's004', 's005'],
+  's006-s013': ['s006', 's007', 's008', 's009', 's010', 's011', 's012', 's013'],
+  's014-s023': ['s014', 's015', 's016', 's017', 's018', 's019', 's020', 's021', 's022', 's023'],
+  's024-s028': ['s024', 's025', 's026', 's027', 's028'],
+  's029-s035': ['s029', 's030', 's031', 's032', 's033', 's034', 's035'],
+  's036-s045': ['s036', 's037', 's038', 's039', 's040', 's041', 's042', 's043', 's044', 's045'],
+  's046-s059': ['s046', 's047', 's048', 's049', 's050', 's051', 's052', 's053', 's054', 's055', 's056', 's057', 's058', 's059'],
+  's060-s074': ['s060', 's061', 's062', 's063', 's064', 's065', 's066', 's067', 's068', 's069', 's070', 's071', 's072', 's073', 's074'],
+  's075-s092': ['s075', 's076', 's077', 's078', 's079', 's080', 's081', 's082', 's083', 's084', 's085', 's086', 's087', 's088', 's089', 's090', 's091', 's092'],
+  's093-s106': ['s093', 's094', 's095', 's096', 's097', 's098', 's099', 's100', 's101', 's102', 's103', 's104', 's105', 's106'],
+};
+
+describe('the Khonyagar course as data', () => {
+  it('every Khonyagar media path is NFC-normalised and inside the course folder', () => {
+    const paths = [
+      ...K.groups.flatMap((g) => g.units.flatMap((u) => u.files.map((f) => f.path))),
+      ...K.groups.flatMap((g) => g.works.flatMap((w) => (w.files ?? []).map((f) => f.path))),
+    ];
+    const folders = [K.mediaPath, ...K.groups.map((g) => g.mediaPath), ...units.map(({ unit }) => unit.mediaPath)];
+    expect(paths.length).toBeGreaterThan(259);
+    for (const p of [...paths, ...folders]) {
+      expect(p).toBe(p.normalize('NFC'));
+      expect(p === K.mediaPath || p.startsWith(`${K.mediaPath}/`)).toBe(true);
+      expect(p.split('/')).not.toContain('..');
+      expect(p.split('/')).not.toContain('.');
+      expect(p.startsWith('/')).toBe(false);
+    }
+    // Not vacuous: these paths DO carry characters a decomposing filesystem
+    // would store differently — exactly the ones that 404 in NFD.
+    expect(paths.filter((p) => p.normalize('NFD') !== p).length).toBeGreaterThan(50);
+    // Lesson 148's real name has one space where its index title has two; the
+    // path is the FILE's name, and the title is the index's, collapsed.
+    const l148 = units.flatMap(({ unit }) => unit.files).find((f) => lessonOf(f) === 148)!;
+    expect(l148.path).toBe(`${K.mediaPath}/148 - آموزش رنگ شور از موسی معروفی.mp4`.normalize('NFC'));
+    expect(l148.title).toBe('آموزش رنگ شور از موسی معروفی');
+  });
+
+  it('Khonyagar keys and stage ids are pure ascii while its titles are Farsi', () => {
+    const ascii = /^[\x20-\x7e]+$/;
+    const stageIds = K.groups.map((g) => stageOf(g.key));
+    for (const id of stageIds) {
+      expect(id).toMatch(/^tar-khonyagar-s\d{3}-s\d{3}$/);
+      // Byte-identical to the id the pathway seed gives the same stage.
+      expect(stageIdFor(K.pathwayId, id.slice(K.pathwayId.length + 1))).toBe(id);
+      expect(hasPersianScript(id)).toBe(false);
+      for (const e of catalogForStage(id)) {
+        expect(e.key).toMatch(/^[sw]\d{3}$/);
+        expect(ascii.test(e.key) && !hasPersianScript(e.key)).toBe(true);
+        expect(hasPersianScript(e.title)).toBe(true);
+      }
+    }
+    for (const { unit } of units) if (unit.workKey) expect(unit.workKey).toMatch(/^w\d{3}$/);
+    for (const { work } of rows) expect((work.workKey ?? work.key)).toMatch(/^w\d{3}$/);
+
+    for (const g of K.groups) {
+      expect(hasPersianScript(g.code)).toBe(true);
+      expect(hasPersianScript(g.title)).toBe(true);
+      expect(hasPersianScript(g.group)).toBe(true);
+    }
+    for (const { unit } of units) {
+      expect(hasPersianScript(unit.title)).toBe(true);
+      if (unit.workTitle) expect(hasPersianScript(unit.workTitle)).toBe(true);
+    }
+    for (const { work } of rows) expect(hasPersianScript(work.title)).toBe(true);
+    expect(hasPersianScript(KHONYAGAR_PATHWAY.name)).toBe(true);
+    expect(hasPersianScript(K.sourceName)).toBe(true);
+    expect(new Set(K.groups.map((g) => g.group))).toEqual(new Set(['تار مقدماتی', 'تار متوسطه', 'تار ۳']));
+  });
+
+  it('accounts for all 106 sections, each of the 259 lessons exactly once and all four score books', () => {
+    // 106 sections, s001–s106, in the index's own order.
+    expect(units).toHaveLength(106);
+    expect(units.map(({ unit }) => unit.key)).toEqual(
+      Array.from({ length: 106 }, (_, i) => `s${String(i + 1).padStart(3, '0')}`),
+    );
+    // Lessons read from the video PATHS: 1–259, each once, contiguous and in
+    // order within each section — dropping, duplicating or misplacing one
+    // lesson breaks the one sequence below.
+    const perSection = units.map(({ unit }) => lessonsOf(unit.files));
+    for (const ls of perSection) {
+      expect(ls.length).toBeGreaterThan(0);
+      ls.forEach((n, i) => i > 0 && expect(n).toBe(ls[i - 1] + 1));
+    }
+    expect(perSection.flat()).toEqual(Array.from({ length: 259 }, (_, i) => i + 1));
+    // Nothing but lesson videos and score books.
+    const all = units.flatMap(({ unit }) => unit.files);
+    expect(all.filter((f) => f.kind === 'video')).toHaveLength(259);
+    expect(all.every((f) => f.kind === 'video' || f.kind === 'pdf')).toBe(true);
+    // Exactly the four score books, each referenced at least once.
+    const books = new Set(all.filter((f) => f.kind === 'pdf').map((f) => f.path));
+    expect([...books].sort()).toEqual(
+      [
+        'نت ۱ - دروس تکمیلی تار مقدماتی.pdf',
+        'نت ۲ - تکمیلی تار متوسطه.pdf',
+        'نت ۳ - تار ۳ ردیف (ماهور).pdf',
+        'نت ۴ - تار ۳ قطعات ضربی.pdf',
+      ].map((b) => `${K.mediaPath}/${b}`).sort(),
+    );
+    // Every section carries exactly one book.
+    for (const { unit } of units) expect(unit.files.filter((f) => f.kind === 'pdf')).toHaveLength(1);
+    // Every work's files are files the sections already carry.
+    const sectionPaths = new Set(all.map((f) => f.path));
+    for (const { work } of rows) {
+      expect(work.files?.length).toBeGreaterThan(0);
+      for (const f of work.files ?? []) expect(sectionPaths.has(f.path)).toBe(true);
+    }
+  });
+});
+
+describe('Khonyagar work identity', () => {
+  it('every shipped Khonyagar work row still exists and every shipped work key keeps its anchor lesson', () => {
+    for (const [groupKey, key] of SHIPPED_WORK_ROWS) {
+      expect(K.groups.find((g) => g.key === groupKey)?.works.some((w) => w.key === key)).toBe(true);
+      expect(catalogForStage(stageOf(groupKey)).some((e) => e.key === key)).toBe(true);
+    }
+    for (const key of SHIPPED_WORK_KEYS) {
+      const files = identityFiles(key);
+      // A key may stop resolving only because a section joined another
+      // identity; if it resolves, it still names the work its anchor taught.
+      if (files.length === 0) continue;
+      expect(lessonsOf(files)).toContain(Number(key.slice(1)));
+    }
+    // Every shipped row is one of the shipped keys. A key held only by sections
+    // may stop resolving (a later join is allowed), but not vacuously: today
+    // every shipped key resolves.
+    for (const [, key] of SHIPPED_WORK_ROWS) expect(SHIPPED_WORK_KEYS).toContain(key);
+    expect(SHIPPED_WORK_KEYS.filter((key) => entriesOf(key).length > 0).length).toBeGreaterThan(60);
+  });
+
+  it('every shipped Khonyagar section stays in the stage it shipped in', () => {
+    for (const [groupKey, keys] of Object.entries(SHIPPED_SECTIONS)) {
+      const catalogue = catalogForStage(stageOf(groupKey)).map((e) => e.key);
+      for (const key of keys) expect(catalogue).toContain(key);
+    }
+    expect(Object.values(SHIPPED_SECTIONS).flat()).toHaveLength(106);
+  });
+
+  it('a work spanning several sections is one item titled with the work carrying every section\'s files once', () => {
+    const multi = [...new Set(units.map(({ unit }) => unit.workKey).filter((k): k is string => !!k))].filter(
+      (k) => entriesOf(k).length > 1,
+    );
+    // Not vacuous, and the two the owner named are among them.
+    expect(multi).toEqual(expect.arrayContaining(['w192', 'w197', 'w206', 'w214', 'w246']));
+
+    for (const identity of multi) {
+      const entries = entriesOf(identity);
+      const title = units.find(({ unit }) => unit.workKey === identity)!.unit.workTitle!;
+      const expected = [...new Set(identityFiles(identity).map((f) => f.path))];
+      for (const [firstStage, firstKey] of entries) {
+        let state = add([], firstStage, firstKey);
+        const item = state.item;
+        expect(state.created).toBe(true);
+        expect(item.title).toBe(title);
+        expect(isWork(item)).toBe(true);
+        for (const [stageId, key] of entries) {
+          const again = add(state.items, stageId, key);
+          expect(again.created).toBe(false);
+          expect(again.item.id).toBe(item.id);
+          state = { ...again, item };
+        }
+        expect(state.items).toHaveLength(1);
+        const files = courseFilesFor(item.stageId!, item.catalogKey!).map((f) => f.path);
+        expect(new Set(files).size).toBe(files.length);
+        expect(files.sort()).toEqual([...expected].sort());
+      }
+    }
+
+    // The radif's چهارمضراب ماهور, concretely: seven sections, nine lessons,
+    // one book — added from part two, it is the WORK, and all seven rows read so.
+    expect(entriesOf('w246').map(([, k]) => k)).toEqual(['s095', 's096', 's097', 's101', 's102', 's103', 's104']);
+    const { items, item } = add([], stageOf('s093-s106'), 's096');
+    expect(item.title).toBe('چهارمضراب ماهور');
+    const files = courseFilesFor(item.stageId!, item.catalogKey!);
+    expect(lessonsOf(files)).toEqual([246, 247, 248, 249, 253, 254, 255, 256, 257]);
+    expect(files.filter((f) => f.kind === 'pdf')).toHaveLength(1);
+    const rowsNow = stageUnits(stageRecord('s093-s106'), items).filter((u) => u.item?.id === item.id);
+    expect(rowsNow.map((u) => u.key)).toEqual(['s095', 's096', 's097', 's101', 's102', 's103', 's104']);
+    expect(rowsNow.every((u) => u.title === 'چهارمضراب ماهور')).toBe(true);
+    // A performance section added first is the work too, never «اجرای …».
+    expect(add([], stageOf('s046-s059'), 's057').item.title).toBe('پیش‌درآمد ماهور درویش‌خان');
+    expect(add([], stageOf('s046-s059'), 's048').item.title).toBe('رنگ دوم ماهور از درویش‌خان');
+  });
+
+  it('keeps two distinct files whose titles match and never repeats one path', () => {
+    // Lessons 148 and 149 are two different videos whose index titles match
+    // once whitespace is collapsed. Assert the pair exists before relying on it.
+    const w148 = courseFilesFor(stageOf('s029-s035'), 's030');
+    const videos = w148.filter((f) => f.kind === 'video');
+    expect(videos).toHaveLength(2);
+    expect(videos[0].title).toBe(videos[1].title);
+    expect(videos[0].path).not.toBe(videos[1].path);
+    expect(lessonsOf(videos)).toEqual([148, 149]);
+
+    // One file referenced from several entries appears once: the band book
+    // every part of the radif's چهارمضراب carries.
+    const w246 = courseFilesFor(stageOf('s093-s106'), 's101');
+    const book = `${K.mediaPath}/نت ۴ - تار ۳ قطعات ضربی.pdf`;
+    expect(entriesOf('w246').length).toBe(7);
+    expect(w246.filter((f) => f.path === book)).toHaveLength(1);
+
+    // And across EVERY identity: nothing dropped, nothing repeated — the list
+    // is exactly the distinct paths of every entry, whatever their titles.
+    for (const key of SHIPPED_WORK_KEYS) {
+      const [stageId, entryKey] = entriesOf(key)[0];
+      const got = courseFilesFor(stageId, entryKey).map((f) => f.path);
+      expect(new Set(got).size).toBe(got.length);
+      expect([...got].sort()).toEqual([...new Set(identityFiles(key).map((f) => f.path))].sort());
+    }
+  });
+
+  it('a mixed section yields each work it teaches as its own row and becomes no work itself', () => {
+    const stage3 = K.groups.find((g) => g.key === 's014-s023')!;
+    const unit = (key: string) => units.find(({ unit: u }) => u.key === key)!.unit;
+
+    // Section 17 teaches two works, in lessons 109 and 110; it is neither.
+    expect(unit('s017').workKey).toBeUndefined();
+    expect(REPERTOIRE_STRANDS.has(unit('s017').strand)).toBe(false);
+    expect(lessonsOf(unit('s017').files)).toEqual([107, 108, 109, 110]);
+    const taught = stage3.works.filter((w) => lessonsOf(w.files ?? []).some((n) => n === 109 || n === 110));
+    expect(taught.map((w) => w.key)).toEqual(['w109', 'w110']);
+    expect(lessonsOf(taught[0].files ?? [])).toEqual([109]);
+    expect(lessonsOf(taught[1].files ?? [])).toEqual([110]);
+
+    // پیش‌درآمد ابوعطا is ONE row carrying exactly lessons 124 and 125, although
+    // they sit in sections 21 and 22 — neither of which is a work.
+    const abuAta = stage3.works.find((w) => w.key === 'w124')!;
+    expect(abuAta.title).toBe('پیش‌درآمد ابوعطا');
+    expect(lessonsOf(abuAta.files ?? [])).toEqual([124, 125]);
+    expect(stage3.works.filter((w) => lessonsOf(w.files ?? []).some((n) => n === 124 || n === 125))).toHaveLength(1);
+    for (const key of ['s021', 's022']) {
+      expect(unit(key).workKey).toBeUndefined();
+      expect(REPERTOIRE_STRANDS.has(unit(key).strand)).toBe(false);
+    }
+    const added = add([], stageOf('s014-s023'), 'w124');
+    expect(added.item.title).toBe('پیش‌درآمد ابوعطا');
+    expect(isWork(added.item)).toBe(true);
+    expect(lessonsOf(courseFilesFor(added.item.stageId!, added.item.catalogKey!))).toEqual([124, 125]);
+    // Adding the section beside it is practice material, never a second work.
+    const section = add(added.items, stageOf('s014-s023'), 's021');
+    expect(section.created).toBe(true);
+    expect(isWork(section.item)).toBe(false);
+    expect(section.item.title).toBe('قطعه‌نوازی ۱');
+  });
+
+  it('no Khonyagar section carries a repertoire strand unless it is a work', () => {
+    for (const { group, unit } of units) {
+      expect(REPERTOIRE_STRANDS.has(unit.strand)).toBe(!!unit.workKey);
+      expect(!!unit.workTitle).toBe(!!unit.workKey);
+      const entry = catalogForStage(stageOf(group.key)).find((e) => e.key === unit.key)!;
+      expect(isWork(add([], stageOf(group.key), entry.key).item)).toBe(!!unit.workKey);
+    }
+    for (const { work } of rows) expect(REPERTOIRE_STRANDS.has(work.strand ?? 'piece')).toBe(true);
+    // Not vacuous: both kinds exist in the real data.
+    expect(units.filter(({ unit }) => !unit.workKey).length).toBeGreaterThan(20);
+    expect(units.filter(({ unit }) => unit.workKey).length).toBeGreaterThan(20);
+  });
+
+  it('joins a performance section only where the work table says so and never merges on a ZWNJ difference', () => {
+    const sectionsOf = (identity: string) => units.filter(({ unit }) => unit.workKey === identity).map(({ unit }) => unit.key);
+    expect(sectionsOf('w197')).toEqual(['s052', 's053', 's054', 's055', 's056', 's057']);
+    expect(sectionsOf('w192')).toEqual(['s048', 's049', 's050', 's051']);
+
+    // The titles are kept exactly as the index writes them: parts one to four
+    // with a space, part five with a ZWNJ. Nothing folds them — the join is the
+    // work table's, and the same composer's رنگ is a different work.
+    const title = (key: string) => units.find(({ unit }) => unit.key === key)!.unit.title;
+    for (const key of ['s052', 's053', 's054', 's055']) expect(title(key).startsWith('پیش درآمد ماهور')).toBe(true);
+    expect(title('s056').startsWith('پیش\u200cدرآمد ماهور')).toBe(true);
+    const stem = (key: string) => title(key).split(' - ')[0];
+    expect(stem('s056')).not.toBe(stem('s052'));
+    expect(stem('s056').replace(/[\u200c\s]/g, '')).toBe(stem('s052').replace(/[\u200c\s]/g, ''));
+
+    // Performances («اجرای …») join exactly the work the table names…
+    for (const [key, identity] of [['s048', 'w192'], ['s057', 'w197'], ['s063', 'w206'], ['s104', 'w246']] as const) {
+      expect(title(key).startsWith('اجرای')).toBe(true);
+      expect(units.find(({ unit }) => unit.key === key)!.unit.workKey).toBe(identity);
+    }
+    // …and a section holding «اجرای تمرین تک ریز» — a performed EXERCISE — is no work.
+    expect(units.find(({ unit }) => unit.key === 's031')!.unit.workKey).toBeUndefined();
+
+    // Titles that fold equal under ZWNJ/space removal are NOT an identity: the
+    // app resolves by declared key only. Two entries with one folded title
+    // stay two unless the table joined them.
+    const fold = (s: string) => s.replace(/[\u200c\s]/g, '');
+    const all = [
+      ...units.map(({ group, unit }) => ({ stage: stageOf(group.key), key: unit.key, title: unit.workTitle ?? unit.title, id: unit.workKey })),
+      ...rows.map(({ group, work }) => ({ stage: stageOf(group.key), key: work.key, title: work.title, id: work.workKey ?? work.key })),
+    ];
+    let pairs = 0;
+    for (const a of all) {
+      for (const b of all) {
+        if (a === b || fold(a.title) !== fold(b.title) || (a.id && a.id === b.id)) continue;
+        pairs++;
+        const first = add([], a.stage, a.key);
+        expect(add(first.items, b.stage, b.key).created).toBe(true);
+      }
+    }
+    expect(pairs).toBeGreaterThan(0);
+  });
+
+  it('keeps two distinct works that share a title apart', () => {
+    // Ma'rufi's چهارمضراب ماهور (section 26) and the radif's (95–104).
+    const marufi = add([], stageOf('s024-s028'), 'w138');
+    expect(marufi.item.title).toBe('چهارمضراب ماهور از موسی معروفی');
+    const radif = add(marufi.items, stageOf('s093-s106'), 's095');
+    expect(radif.created).toBe(true);
+    expect(radif.item.id).not.toBe(marufi.item.id);
+    expect(carriedCourseWorkItem(stageOf('s093-s106'), 's095', marufi.items)).toBeUndefined();
+    const a = courseFilesFor(stageOf('s024-s028'), 'w138').map((f) => f.path);
+    const b = courseFilesFor(stageOf('s093-s106'), 's095').map((f) => f.path);
+    expect(lessonsOf(courseFilesFor(stageOf('s024-s028'), 'w138'))).toEqual([138, 139]);
+    expect(a.filter((p) => b.includes(p))).toEqual([]);
+    // And section 85 is a third.
+    const third = add(radif.items, stageOf('s075-s092'), 's085');
+    expect(third.created).toBe(true);
+    expect(new Set([marufi.item.id, radif.item.id, third.item.id]).size).toBe(3);
+
+    // Identical authored titles still give distinct identities: three کرشمه,
+    // two رنگ شور.
+    const kereshmeh = add([], stageOf('s024-s028'), 'w135');
+    const kereshmeh59 = add(kereshmeh.items, stageOf('s046-s059'), 's059');
+    expect(kereshmeh.item.title).toBe(kereshmeh59.item.title);
+    expect(kereshmeh59.created).toBe(true);
+    const shur = add([], stageOf('s029-s035'), 's030');
+    const shur32 = add(shur.items, stageOf('s029-s035'), 'w153');
+    expect(shur32.created).toBe(true);
+    expect(courseFilesFor(stageOf('s029-s035'), 'w153').some((f) => lessonOf(f) === 148)).toBe(false);
+  });
+
+  it('a Khonyagar work never reuses an item from another course or instrument', () => {
+    const honarestan = stageIdFor('tar-honarestan', 'chahar-mezrab');
+    const setarMahur = stageIdFor('setar-radif', 'mahur');
+    const others: PracticeItem[] = [
+      // A Guitar item that somehow holds a Khonyagar-shaped key.
+      createItem({ instrumentId: 'g', title: 'چهارمضراب ماهور', stageId: 'cgs-2c', catalogKey: 'w246' }, NOW),
+      // The owner's Setar piece of the same name, in a Setar stage and outside any stage.
+      createItem({ instrumentId: 's', title: 'چهارمضراب ماهور', stageId: setarMahur, catalogKey: 'w246' }, NOW),
+      createItem({ instrumentId: 's', title: 'گوشه زنگوله', catalogKey: 'w259' }, NOW),
+      // The Honarestān pathway's own Tar item.
+      createItem({ instrumentId: 't', title: 'چهارمضراب ماهور', stageId: honarestan, catalogKey: 's095' }, NOW),
+    ];
+    for (const [stageId, key] of [
+      [stageOf('s093-s106'), 's095'],
+      [stageOf('s093-s106'), 's106'],
+      [stageOf('s006-s013'), 'w063'],
+    ]) {
+      expect(carriedCourseWorkItem(stageId, key, others)).toBeUndefined();
+      const plan = planCatalogAddition({ items: others, materials: [] }, stageId, key, catalogForStage(stageId).find((e) => e.key === key), 't', NOW);
+      expect(plan.created).toBe(true);
+      expect(others.map((i) => i.id)).not.toContain(plan.itemId);
+    }
+    // And the other way round: a Khonyagar item is never a Guitar work.
+    const tar = add([], stageOf('s093-s106'), 's095').items;
+    const cgs = CGS_COURSE.groups.find((g) => g.works.length > 0)!;
+    const cgsStage = courseStageId(CGS_COURSE, cgs.key);
+    expect(carriedCourseWorkItem(cgsStage, cgs.works[0].key, tar)).toBeUndefined();
+  });
+
+  it('a Khonyagar stage builds no routine while every Guitar level still builds its own', () => {
+    for (const g of K.groups) {
+      expect(g.routine).toEqual([]);
+      // Even with every section and work of the stage added.
+      let items: PracticeItem[] = [];
+      for (const e of catalogForStage(stageOf(g.key))) items = add(items, stageOf(g.key), e.key).items;
+      expect(stageUnits(stageRecord(g.key), items).every((u) => !!u.item)).toBe(true);
+      expect(buildLevelRoutine(K, g.key, items)).toEqual([]);
+      expect(buildPositionRoutine(K, g.key, items)).toEqual([]);
+    }
+    for (const g of CGS_COURSE.groups) {
+      expect(g.routine.length).toBeGreaterThan(0);
+      expect(buildLevelRoutine(CGS_COURSE, g.key, []).length).toBe(g.routine.length);
+    }
+    // And the pathway seeds no routine for the course.
+    expect(seedPathways(IDS, NOW).pathwayRoutines.filter((r) => r.pathwayId === K.pathwayId)).toEqual([]);
+  });
+
+  it('a Khonyagar work carries its own guidance and never the Guitar packet note', () => {
+    const packet = /practice packet/;
+    const guide = new Set(Object.values(KHONYAGAR_LESSON_TYPES));
+    expect(guide.size).toBe(5);
+    const radif = KHONYAGAR_LESSON_TYPES.radif;
+    expect(radif.startsWith('**Radif / gusheh / āvāz:**')).toBe(true);
+    for (const g of K.groups) {
+      for (const e of catalogForStage(stageOf(g.key))) {
+        expect(guide.has(e.notes ?? '')).toBe(true);
+        expect(e.notes).not.toMatch(packet);
+        const item = add([], stageOf(g.key), e.key).item;
+        expect(item.notes).toBe(e.notes);
+        if (item.itemType === 'gusheh') expect(item.notes).toBe(radif);
+      }
+    }
+    // A work row in particular — the entries that used to take the packet note.
+    expect(catalogForStage(stageOf('s014-s023')).find((e) => e.key === 'w124')?.notes).toBe(KHONYAGAR_LESSON_TYPES.composed);
+    expect(catalogForStage(stageOf('s024-s028')).find((e) => e.key === 'w135')?.notes).toBe(radif);
+    // Guitar works keep their sentence.
+    const cgsWorks = CGS_COURSE.groups.flatMap((g) => g.works.map((w) => ({ g, w })));
+    expect(cgsWorks.length).toBeGreaterThan(0);
+    for (const { g, w } of cgsWorks) {
+      const entry = catalogForStage(courseStageId(CGS_COURSE, g.key)).find((e) => e.key === w.key)!;
+      expect(entry.notes).toBe(
+        `Optional repertoire from the Level ${g.code} practice packet. Learn it when it appeals — nothing here is a deadline.`,
+      );
+    }
+  });
+});
+
+describe('Khonyagar and My repertoire', () => {
+  // My repertoire (Repertoire.tsx) sends a Persian-family instrument's works
+  // through groupByDastgah; the page itself cannot render in this Node suite,
+  // so this asserts that function and the instrument family that routes to it.
+  it('an uncurated Khonyagar item stays out of My repertoire until the owner gives it a form or dastgah', () => {
+    let db = createSeedDB(NOW);
+    const tar = db.instruments.find((i) => i.name === 'Tar')!;
+    expect(tar.family).toBe('Persian');
+
+    const created: PracticeItem[] = [];
+    for (const group of K.groups) {
+      const stageId = stageOf(group.key);
+      for (const entry of catalogForStage(stageId)) {
+        expect(entry.persian).toBeUndefined();
+        const plan = planCatalogAddition(db, stageId, entry.key, entry, tar.id, NOW);
+        db = { ...db, items: plan.items, materials: plan.materials };
+        if (plan.created) created.push(plan.items.find((i) => i.id === plan.itemId)!);
+      }
+    }
+    // Not vacuous: every section and work row was added, and works are among them.
+    expect(created.length).toBeGreaterThan(106);
+    expect(created.some(isWork)).toBe(true);
+    // Nothing is inferred from a title: no item arrives with Persian metadata,
+    // so none reaches My repertoire on its own.
+    for (const item of created) expect(item.persian).toBeUndefined();
+    expect(groupByDastgah(created)).toEqual([]);
+
+    // Curated by the owner, it groups exactly like any other Persian item.
+    const [work] = created.filter(isWork);
+    const withForm = { ...work, persian: { form: 'چهارمضراب' } };
+    expect(groupByDastgah([withForm])).toEqual([{ dastgah: UNCLASSIFIED_DASTGAH, items: [withForm] }]);
+    const withDastgah = { ...work, persian: { dastgahAvaz: 'ماهور' } };
+    expect(groupByDastgah([withDastgah])).toEqual([{ dastgah: 'ماهور', items: [withDastgah] }]);
+  });
+});
+```
+
+## Check against the contract
+
+- [ ] **ac-1** — Every media path in the generated Khonyagar data is NFC-normalised, which is the form the NAS serves, and lies inside the course's own folder with no `..` segment. A decomposed path would 404 while looking correct in the repository. _(proof: every Khonyagar media path is NFC-normalised and inside the course folder)_
+- [ ] **ac-2** — Every Khonyagar catalogue key, work key and stage id is pure ascii, while its stage codes, titles and names are Farsi. The existing ascii invariant holds and the display stays in the course's own language. _(proof: Khonyagar keys and stage ids are pure ascii while its titles are Farsi)_
+- [ ] **ac-3** — The generated data accounts for the whole source, with the counts written as literals. There are exactly 106 sections, `s001`–`s106`. The lesson numbers read from the section video paths are exactly 1–259, each exactly once, contiguous and in order within each section. Exactly the four score books appear and each is referenced at least once. Every work's files are a subset of the sections' files. Dropping, duplicating or misplacing one lesson fails. _(proof: accounts for all 106 sections, each of the 259 lessons exactly once and all four score books)_
+- [ ] **ac-4** — Work identity is anchored and permanent, checked against a literal ledger written in the test and never derived from the data. Every shipped work-row key (the key an item holds as its `catalogKey`) still exists. Every ledgered work key `wNNN` that still resolves names a work whose lessons include lesson NNN. Reordering the table changes nothing. Removing a shipped work row, or re-pointing any key at a work without its anchor lesson, fails. Joining a work that is a section into another identity is still allowed. _(proof: every shipped Khonyagar work row still exists and every shipped work key keeps its anchor lesson)_
+- [ ] **ac-5** — Every (stage id, section key) pair in a literal ledger of shipped pairs is still present, so a later boundary change cannot orphan an item's material. _(proof: every shipped Khonyagar section stays in the stage it shipped in)_
+- [ ] **ac-6** — A work taught across several sections is one practice item, titled with the work's own name whichever of its sections is added first (a part or a performance included). It carries every section's files, each distinct file exactly once. _(proof: a work spanning several sections is one item titled with the work carrying every section's files once)_
+- [ ] **ac-7** — Two distinct files are both kept when their titles match, and one file referenced from two entries appears once. Deduplication is by path, never by title. _(proof: keeps two distinct files whose titles match and never repeats one path)_
+- [ ] **ac-8** — A mixed section yields each work it teaches as that work's own row, and the section itself is no work. Section 17 yields two works, from lessons 109 and 110. پیش‌درآمد ابوعطا is one row carrying exactly lessons 124 and 125, although they sit in sections 21 and 22, and neither of those sections is a work. _(proof: a mixed section yields each work it teaches as its own row and becomes no work itself)_
+- [ ] **ac-9** — No Khonyagar section carries a repertoire strand (`piece`, `repertoire` or `radif`) unless it carries a work identity, so a section title never reaches My repertoire as a fake piece. _(proof: no Khonyagar section carries a repertoire strand unless it is a work)_
+- [ ] **ac-10** — A performance or continuation section joins only the work an explicit table entry names. Two titles differing solely by ZWNJ or spacing (sections 52–55 and 56) are not merged unless an entry says so. _(proof: joins a performance section only where the work table says so and never merges on a ZWNJ difference)_
+- [ ] **ac-11** — Two works that share a title stay separate items. Ma'rufi's چهارمضراب ماهور (section 26) and the radif's (sections 95–104) resolve to different identities, and adding one never reuses or lists the other's material. _(proof: keeps two distinct works that share a title apart)_
+- [ ] **ac-12** — A Khonyagar work never reuses an item belonging to another course or to the Setar archive, even when the titles are identical, because work reuse is scoped to the course. _(proof: a Khonyagar work never reuses an item from another course or instrument)_
+- [ ] **ac-13** — Every Khonyagar stage builds an empty level routine and an empty position routine, even with every one of its sections added, so the stage offers neither routine action. Every Guitar level still builds its own non-empty routine exactly as before. _(proof: a Khonyagar stage builds no routine while every Guitar level still builds its own)_
+- [ ] **ac-14** — Every Khonyagar work's catalogue notes are its own lesson-type guidance from the course's guide, and never the Guitar course's English practice-packet sentence. Guitar works keep that sentence. _(proof: a Khonyagar work carries its own guidance and never the Guitar packet note)_
+- [ ] **ac-15** — The existing Tar Honarestan pathway keeps every stage id, code, title and catalogue key it has today. The Classical Guitar Shed course keeps every stage, key, work, work note, routine, routine name and item-creation title it has today. _(proof: leaves the Honarestan pathway and the Guitar course entirely unchanged)_
+- [ ] **ac-16** — The Khonyagar course declares its own media folder, so `tar-classes` is a known source folder derived from `COURSES`, with no new device setting and no change to the archive base. _(proof: registers tar-classes as a known source folder without changing the archive base)_
+- [ ] **ac-17** — On the owner's own Mac and iPhone:
+- the Khonyagar pathway appears after restoring default pathways;
+- a section's lesson videos and its band's score book open from a practice item over both the LAN and Tailscale routes;
+- adding any section of the radif's چهارمضراب ماهور creates ONE practice item, under the work's own name and carrying all seven sections' videos, while Ma'rufi's stays a separate suggestion and the Setar item of that name is untouched. That item does NOT appear in My repertoire. After the owner edits it, picks "Composed piece" and gives it a form, it appears there once, under "No dastgāh yet"; with a dastgāh too, under that dastgāh;
+- پیش‌درآمد ابوعطا is its own row beside the exercise sections that contain it;
+- Khonyagar stages show no routine buttons and no routine caption;
+- a 30-minute Tar session from "Plan this session" is built only from Tar items, with a warm-up first and a cool-down last only when an item qualifies, and due reviews and current work in between by priority. It is not expected to follow the guide's block order, and nothing on screen claims it does;
+- the Honarestan pathway and all Setar and Guitar data are visibly unchanged. _(proof: manual:OWNER)_
+- [ ] **ac-18** — No Khonyagar entry, and no item created from one, carries any Persian identity (form, dastgāh, composer or gusheh), so an uncurated Khonyagar item (Tar is Persian-family) is left out of My repertoire by the existing dastgāh grouping. Once the owner gives the same item a form it groups under "No dastgāh yet", and with a dastgāh it groups under that dastgāh, exactly as any curated Persian item does today. _(proof: an uncurated Khonyagar item stays out of My repertoire until the owner gives it a form or dastgah)_
+
+## Flow impact — detected vs reported
+
+**Detected from the diff:**
+
+- **work-a-pathway-stage** — touched via src/pages/StageDetail.tsx, src/domain/pathwaySeed.ts
+
+**Possibly affected (shares a mechanic with a detected flow):**
+
+- **adjust-how-scheduling-works** — shares entity "PracticeItem" with "work-a-pathway-stage"
+- **browse-my-repertoire** — shares entity "PracticeItem" with "work-a-pathway-stage"
+- **capture-a-practice-item** — shares entity "PracticeItem" with "work-a-pathway-stage"
+- **clear-a-due-review** — shares entity "PracticeItem" with "work-a-pathway-stage"
+- **log-a-class** — shares entity "PracticeItem" with "work-a-pathway-stage"
+- **practise-todays-recommendation** — shares entity "PracticeItem" with "work-a-pathway-stage"
+- **prepare-for-the-next-class** — shares entity "PracticeItem" with "work-a-pathway-stage"
+- **run-a-session-plan** — shares entity "PracticeItem" with "work-a-pathway-stage"
+- **see-practice-patterns** — shares entity "PracticeItem" with "work-a-pathway-stage"
+
+**What the agent reported:**
+
+## work-a-pathway-stage — mechanics-updated
+
+Mapped implementation touched: touchpoint(s) src/pages/StageDetail.tsx, src/domain/pathwaySeed.ts matched changed file(s) src/domain/pathwaySeed.ts, src/pages/StageDetail.tsx. Derived from the diff alone — this says nothing about whether any test ran or whether behaviour changed.
+
+## adjust-how-scheduling-works — unchanged
+
+scheduling.ts, SchedulingParams and Settings are untouched; Khonyagar items arrive status new with no review state, exactly as every catalogue item does.
+
+## capture-a-practice-item — unchanged
+
+Quick add and the full item form are untouched; the only creation change is a catalogue addition titling a multi-section work with its workTitle, which is the work-a-pathway-stage flow.
+
+## clear-a-due-review — unchanged
+
+Review completion, Not now and snooze are untouched; nothing here writes a block, a result or a review row.
+
+## log-a-class — unchanged
+
+No Lesson record is created and the dated teacher folders are not imported; lessons, recordings and the Setar archive are unchanged.
+
+## practise-todays-recommendation — unchanged
+
+The recommendation engine and Today are unchanged; Khonyagar items are ordinary Tar items scored by the same formula once the owner adds them.
+
+## prepare-for-the-next-class — unchanged
+
+lessonAgenda and class preparation are untouched; no commitment or question is created.
+
+## run-a-session-plan — unchanged
+
+plan.ts and SessionPlan.tsx are forbidden and unchanged; the plan builds from Khonyagar items exactly as for any instrument, and no copy claims it follows the course guide.
+
+## see-practice-patterns — unchanged
+
+Insights and practice totals are unchanged; no block is written by this change.
+
+## browse-my-repertoire — unchanged
+
+repertoire.ts, persian.ts and Repertoire.tsx are unchanged. Khonyagar items carry no form, dastgāh or composer, so on Tar (Persian-family) the existing dastgāh grouping leaves them out of My repertoire until the owner curates that metadata by hand. They then group exactly as any curated Persian item does. No new mechanics.
+
+
+**Gaps between detected and reported:**
+
+_None — the report matches what was detected._
+
+## Flow truth this change touches
+
+### work-a-pathway-stage — Works now
+
+Touchpoints: src/pages/PathwayDetail.tsx, src/pages/StageDetail.tsx, src/pages/RoutineRunner.tsx, src/domain/pathways.ts, src/domain/pathwaySeed.ts, src/domain/routines.ts, src/domain/practiceSignal.ts, src/components/useScreenAwake.ts, src/components/screenAwake.ts, src/store/useStore.ts
+
+Evidence: 5 steps: 5 manually verified
+
+## Also look for
+
+- Anything outside the contract's scope or non-goals.
+- Silent failures, swallowed errors, missing edge cases.
+- Secrets, unsafe defaults, and anything risky for the tier.
+
+## How to finish
+
+Review only — change no files, run no fixes, write no records. Judge the diff
+itself: the builder's summary, an earlier review and a green test run are all
+claims about the code, not evidence about it.
+
+End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
+final line, and say why. That is a recommendation to the owner, who records
+the outcome — sealing is never the reviewer's to do.
+
+If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
+
+**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+
+```bash
+cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260922-bring-the-khonyagar-tar-course-into-its--56be/findings.json'
+```
+
+**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
+
+**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+
+```bash
+prismatica seal '20260922-bring-the-khonyagar-tar-course-into-its--56be' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260922-bring-the-khonyagar-tar-course-into-its--56be/findings.json'
+```
+
+You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20260922-bring-the-khonyagar-tar-course-into-its--56be/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
+
+Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory.

@@ -223,7 +223,7 @@ export default function StageDetail() {
             </button>
           </div>
         )}
-        {course && (
+        {course && course.group.routine.length > 0 && (
           <div className="tiny faint" style={{ textAlign: 'start' }}>
             {/* Fixed English page copy, never user text — inline LTR isolate. */}
             <span dir="ltr">

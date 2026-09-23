@@ -11,7 +11,8 @@ import type {
   StepStrand,
 } from './types';
 import { CGS_COURSE } from './courseData';
-import { courseStageSeeds } from './courseSeed';
+import { courseStageSeeds, type CourseStageSeed } from './courseSeed';
+import { KHONYAGAR_COURSE, KHONYAGAR_PATHWAY } from './khonyagarData';
 import { nowISO } from './util';
 
 // ---------------------------------------------------------------------------
@@ -23,7 +24,9 @@ import { nowISO } from './util';
 //              own tree — see `courseSeed.ts`).
 //  • Setar   → a flexible radif/repertoire map (dastgāh → āvāz → gusheh), since
 //              setar lessons are teacher-driven and change with need.
-//  • Tar     → the Honarestān two-book method (as taught on Khonyagar.com).
+//  • Tar     → the Honarestān two-book method (as taught on Khonyagar.com),
+//              and beside it the Khonyagar course itself, read straight out of
+//              its own folder — see `khonyagarData.ts`.
 //
 // The Persian paths are honest, well-grounded *starting points* for inspiration,
 // explicitly meant to be edited — not a fixed syllabus.
@@ -122,7 +125,8 @@ const DEFAULT_KIND: Record<StepStrand, StepKind> = {
 // Level 1A keeps its fourteen hand-authored steps exactly as they are.
 const CGS_HAND_AUTHORED_LEVELS = ['1a'];
 
-const cgsCourseStages: StageSeed[] = courseStageSeeds(CGS_COURSE, CGS_HAND_AUTHORED_LEVELS).map((s) => ({
+/** A course's generated stage seeds, in the shape this file expands. */
+const fromCourse = (seeds: CourseStageSeed[]): StageSeed[] => seeds.map((s) => ({
   code: s.code,
   slug: s.slug,
   title: s.title,
@@ -138,6 +142,8 @@ const cgsCourseStages: StageSeed[] = courseStageSeeds(CGS_COURSE, CGS_HAND_AUTHO
     bpm: st.bpm,
   })),
 }));
+
+const cgsCourseStages: StageSeed[] = fromCourse(courseStageSeeds(CGS_COURSE, CGS_HAND_AUTHORED_LEVELS));
 
 const CGS: PathSeed = {
   id: 'cgs',
@@ -620,6 +626,26 @@ const TAR: PathSeed = {
   ],
 };
 
+// ===========================================================================
+// Tar · Khonyagar (آزاد میرزاپور) — the course itself
+// ===========================================================================
+//
+// A second Tar pathway BESIDE `tar-honarestan`, which stays exactly as it is.
+// Every stage, section and work comes from the course's own folder
+// (`scripts/scan-khonyagar-course.mjs`); the note carries the course's own
+// daily template and Quick Win, quoted as written. It ships no routine: the
+// guide asks for block-shaped days around the current lesson, not a tour of a
+// stage's sections.
+const KHONYAGAR: PathSeed = {
+  id: KHONYAGAR_COURSE.pathwayId,
+  instrumentKey: 'tar',
+  name: KHONYAGAR_PATHWAY.name,
+  source: KHONYAGAR_COURSE.sourceName,
+  description: KHONYAGAR_PATHWAY.description,
+  note: KHONYAGAR_PATHWAY.note,
+  stages: fromCourse(courseStageSeeds(KHONYAGAR_COURSE)),
+};
+
 // --- Expansion --------------------------------------------------------------
 //
 // Pathways/stages/routines are seeded as editable DATA. The per-stage entries
@@ -636,6 +662,8 @@ const ALL_SEEDS: { seed: PathSeed; key: 'guitar' | 'setar' | 'tar'; order: numbe
   { seed: SETAR, key: 'setar', order: 0 },
   { seed: TAR, key: 'tar', order: 1 },
   { seed: CGS, key: 'guitar', order: 2 },
+  // Appended, so no existing pathway's order moves.
+  { seed: KHONYAGAR, key: 'tar', order: 3 },
 ];
 
 export function stageIdFor(pathwayId: string, code: string): string {
