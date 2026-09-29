@@ -779,8 +779,9 @@ own pace, on a route they trust. Protect that:
   stay literal and group by their own text; transliteration is search only
   (`searchAliasTable`). Picking a term's NAME stores the reference. More → Musical terms
   renames (id kept, old name kept as a spelling), refuses a spelling another term claims or
-  an item still depends on, archives (still readable, no longer offered) and deletes only
-  unused custom terms; "Saved." waits for IndexedDB. Gusheh titles are NOT terms. Term and
+  any edit that would change what an unedited item's value means (`reclassifiedItems` —
+  ambiguous text collapsing onto the remaining claimant included), archives (still
+  readable, no longer offered) and deletes only custom terms no value depends on; "Saved." waits for IndexedDB. Gusheh titles are NOT terms. Term and
   source editors share `useAcknowledgedSaves` (`ui.tsx`): Saved speaks only for the draft it
   carried (newer text is re-written), outcomes are keyed by record so a moved or deleted row
   keeps its failure and Try again, nothing closes before acknowledgement, and Done resets.
@@ -790,7 +791,9 @@ own pace, on a route they trust. Protect that:
   stored and selectable on its own source, and the compact editor patches only what it
   shows. A new source starts on the browsed/session instrument. A shipped course's own source
   carries `sourceKey` (v15) so a rename never mints a copy; only a uniquely proven origin (the
-  course's title AND kind) is keyed, an unproven same-titled source is ASKED about. Never
+  course's title AND kind) is keyed, an unproven same-titled source is ASKED about — and
+  that question is DERIVED from saved data (`courseSourceQuestions`), so Play, a cancelled
+  prompt or a reload never loses it; the answer goes only to the items it named. Never
   deduplicate arbitrary sources by title or share them across instruments. One keyed source
   per course per instrument: a second is refused, never silently un-keyed.
 - **Seeds are honest starting points, never fabricated authority.** Guitar = CGS. Setar =

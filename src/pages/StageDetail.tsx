@@ -9,9 +9,10 @@ import {
   stageUnits,
   ITEM_STATUS_LABELS,
   STRAND_LABELS,
-  type Material,
+  type CourseSourceQuestion,
   type PathwayRoutine,
   type StageUnit,
+  courseSourceQuestions,
   courseStage,
   itemsPreparedForLesson,
   pathwaysReturnPath,
@@ -72,13 +73,21 @@ export default function StageDetail() {
   // An explicit choice in progress: which item a suggestion is, or which
   // study source a course is.
   const [choosing, setChoosing] = useState<{ unit: StageUnit; mode: 'link' | 'ambiguous' } | null>(null);
-  const [sourceChoice, setSourceChoice] = useState<{ itemId: string; materials: Material[] } | null>(null);
-  // Choosing the course's source is a saved decision: the choice stays on
+  // Which study source the course is: a question DERIVED from saved data
+  // (`courseSourceQuestions`), so Play, a cancelled prompt, leaving the page
+  // or a reload never loses it. "Decide later" only quiets it for this visit.
+  const [sourceDeferred, setSourceDeferred] = useState(false);
+  // Choosing is a saved decision: the question the owner answered stays on
   // screen until IndexedDB acknowledged it, and a failure offers Try again.
+  const [heldQuestion, setHeldQuestion] = useState<CourseSourceQuestion | null>(null);
   const saves = useAcknowledgedSaves();
   // A stage this course owns can write two routines from the course's own
   // syllabus. Both become ORDINARY EDITABLE routines — neither is a live view.
   const course = stageId ? courseStage(stageId) : undefined;
+  const openQuestion = course
+    ? courseSourceQuestions(db, course.course).find((q) => !ctx.instrumentId || q.instrumentId === ctx.instrumentId)
+    : undefined;
+  const sourceQuestion = heldQuestion ?? (sourceDeferred ? undefined : openQuestion);
 
   if (!stage) {
     return (
@@ -123,7 +132,9 @@ export default function StageDetail() {
       return;
     }
     setNotice(result.created ? `Added “${unit.title}” to your items — not practised yet.` : `“${unit.title}” is already one of your items.`);
-    if (result.sourceCandidates) setSourceChoice({ itemId: result.id, materials: result.sourceCandidates });
+    // The tap asked about this suggestion's course source: show the question
+    // again even if it was put off earlier in this visit.
+    if (result.sourceCandidates) setSourceDeferred(false);
   }
 
   function practise(unit: StageUnit) {
@@ -134,6 +145,8 @@ export default function StageDetail() {
       navigate(`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`);
       return;
     }
+    // Practice starts at once. A study-source question this raises is not
+    // asked here — it is derived from saved data and waits on this stage.
     const added = unit.item ? null : addFromCatalog(stage!.id, unit.key);
     if (added?.refusal) {
       setRefusal(added.refusal);
@@ -291,26 +304,34 @@ export default function StageDetail() {
             {refusal}
           </p>
         )}
-        {sourceChoice && course && (
+        {sourceQuestion && (
           <SourceChoice
-            courseName={course.course.sourceName}
-            materials={sourceChoice.materials}
+            courseName={sourceQuestion.course.sourceName}
+            materials={sourceQuestion.candidates}
+            items={sourceQuestion.items}
             ack={saves.states.source}
             onChoose={(materialId) => {
-              const { itemId } = sourceChoice;
-              saves.run('source', materialId, () => chooseCourseSource(itemId, materialId, course.course.id), {
-                current: () => materialId,
-                again: () => undefined,
-                saved: () => {
-                  saves.reset('source');
-                  setSourceChoice(null);
-                  setNotice('Study source chosen — Saved.');
+              const q = sourceQuestion;
+              setHeldQuestion(q);
+              saves.run(
+                'source',
+                materialId,
+                () => chooseCourseSource(q.items.map((i) => i.id), materialId, q.course.id),
+                {
+                  current: () => materialId,
+                  again: () => undefined,
+                  saved: () => {
+                    saves.reset('source');
+                    setHeldQuestion(null);
+                    setNotice('Study source chosen — Saved.');
+                  },
                 },
-              });
+              );
             }}
             onCancel={() => {
               saves.reset('source');
-              setSourceChoice(null);
+              setHeldQuestion(null);
+              setSourceDeferred(true);
             }}
           />
         )}

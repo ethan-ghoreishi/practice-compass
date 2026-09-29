@@ -66,12 +66,15 @@ export function ItemChoice({
 export function SourceChoice({
   courseName,
   materials,
+  items,
   ack,
   onChoose,
   onCancel,
 }: {
   courseName: string;
   materials: Material[];
+  /** The items the answer is given to — named, because only those are. */
+  items: PracticeItem[];
   /** The saved outcome of the last choice: it stays on screen until acknowledged. */
   ack?: Ack;
   onChoose: (materialId: string) => void;
@@ -84,6 +87,16 @@ export function SourceChoice({
       </div>
       <p className="tiny dim" style={{ margin: 0 }}>
         More than one of your sources could be this course. Choose the one to keep using — nothing is merged or renamed.
+      </p>
+      <p className="tiny dim" style={{ margin: 0 }}>
+        Your choice is given to{' '}
+        {items.map((i, n) => (
+          <span key={i.id}>
+            {n > 0 && ', '}
+            <span dir="auto">{i.title}</span>
+          </span>
+        ))}
+        .
       </p>
       {materials.map((m) => (
         <button

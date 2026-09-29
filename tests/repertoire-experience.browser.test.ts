@@ -33,6 +33,21 @@ function stateOnly(text: string): string {
   return JSON.stringify(raw);
 }
 
+/**
+ * The current fixture plus a COLLISION an inbound file may legitimately carry:
+ * a custom composer term sharing the spelling «Darvish Khan» with the built-in
+ * درویش‌خان, and a piece written in exactly that spelling — which therefore
+ * reads as ambiguous, literal text.
+ */
+function withCollision(text: string): string {
+  const raw = JSON.parse(text);
+  const at = '2026-09-20T10:00:00.000Z';
+  raw.data.musicTerms.push({ id: 'term-my-darvish', kind: 'composer', name: 'درویش من', aliases: ['Darvish Khan'], createdAt: at, updatedAt: at });
+  const base = raw.data.items.find((i: { id: string }) => i.id === 'it-khatai');
+  raw.data.items.push({ ...base, id: 'it-ambiguous', title: 'رنگ قدیمی', timesPractised: 0, totalMinutes: 0, persian: { composer: 'Darvish Khan' } });
+  return JSON.stringify(raw);
+}
+
 const db = async (app: PracticeApp) => (await persistedDb(app)) as unknown as Db;
 const until = <T,>(app: PracticeApp, read: (d: Db) => T, ok: (v: T) => boolean) =>
   persistedUntil(app, (s) => read((s.state as { db: Db }).db), ok, 20_000);
@@ -93,9 +108,20 @@ describe('musical terms, managed', () => {
     const { page } = app;
     const term = async (id: string) => (await db(app)).musicTerms.find((t) => t.id === id);
     try {
-      await importBackup(app, 'repertoire-current-v15.json', stateOnly(CURRENT_TEXT));
+      await importBackup(app, 'repertoire-current-v15.json', withCollision(stateOnly(CURRENT_TEXT)));
       expect(await importOutcome(app)).toContain('Imported');
       await goTo(app, '/terms');
+
+      // AMBIGUOUS TEXT IS HELD BY EVERY CLAIMANT: the custom term the piece's
+      // «Darvish Khan» could mean counts it, cannot be deleted (that would hand
+      // the piece to the built-in درویش‌خان), and is not stuck — it archives.
+      await page.getByRole('button', { name: 'Composer / maestro' }).click();
+      const mine = page.locator('.list-row', { hasText: 'درویش من' });
+      expect(await mine.innerText()).toContain('1 piece');
+      expect(await page.getByRole('button', { name: 'Delete درویش من' }).isDisabled()).toBe(true);
+      await page.getByRole('button', { name: 'Archive درویش من' }).click();
+      await until(app, (d) => d.musicTerms.find((t) => t.id === 'term-my-darvish')?.archived, (a) => a === true);
+      await page.getByRole('button', { name: 'Dastgāh / Āvāz' }).click();
 
       // RENAME A BUILT-IN: same id, former name kept as a spelling.
       await page.getByRole('button', { name: 'Edit دستگاه شور' }).click();
@@ -180,6 +206,9 @@ describe('musical terms, managed', () => {
       expect(after.musicTerms.find((t) => t.id === 'dastgah:shur')!.name).toBe('شورِ من');
       expect(after.musicTerms.find((t) => t.id === 'term-khatai')!.archived).toBe(true);
       expect(after.items.find((i) => i.id === 'it-khatai')!.persian!.form).toEqual({ termId: 'term-khatai' });
+      // …and the ambiguous piece still reads exactly as written, its term kept.
+      expect(after.items.find((i) => i.id === 'it-ambiguous')!.persian!.composer).toBe('Darvish Khan');
+      expect(after.musicTerms.find((t) => t.id === 'term-my-darvish')!.aliases).toEqual(['Darvish Khan']);
 
       // A FAILED WRITE never says Saved: the draft stays, and Try again writes
       // what is on screen NOW.
@@ -273,9 +302,33 @@ describe('musical terms, managed', () => {
       await page.getByRole('button', { name: /Add default pathway: .*خنیاگر/ }).click();
       await page.getByRole('button', { name: /آزاد میرزاپور/ }).first().click();
       await page.getByRole('link', { name: 'Continue this stage' }).click();
+      const tarItems = async () => (await db(app)).items.filter((i) => i.instrumentId === 'inst-tar').map((i) => i.id);
+      const preexisting = new Set(await tarItems());
       await page.locator('button[title="Add to your items"]').first().click();
       const choice = page.getByRole('region', { name: 'Choose the study source' });
       await choice.waitFor({ timeout: 10_000 });
+      // THE QUESTION IS SAVED DATA, NOT THIS SCREEN'S MEMORY: put off, then
+      // Play (practice starts at once, nothing blocks it), then come back —
+      // and reload — and it is still asked.
+      await expect.poll(async () => (await tarItems()).filter((id) => !preexisting.has(id)).length).toBe(1);
+      const firstId = (await tarItems()).filter((id) => !preexisting.has(id));
+      expect((await db(app)).items.find((i) => i.id === firstId[0])!.materialId).toBeUndefined();
+      const stageUrl = page.url();
+      await choice.getByRole('button', { name: 'Decide later' }).click();
+      await expect.poll(() => choice.count()).toBe(0);
+      await page.locator('button[aria-label^="Practise "]').first().click();
+      await page.waitForURL(/#\/active/, { timeout: 10_000 });
+      await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 10_000 });
+      await page.goto(stageUrl);
+      await choice.waitFor({ timeout: 10_000 });
+      await reload(app);
+      await choice.waitFor({ timeout: 10_000 });
+      // A second Add while it is open joins the SAME question, which names both.
+      await page.locator('button[title="Add to your items"]').first().click();
+      await expect.poll(async () => (await tarItems()).filter((id) => !preexisting.has(id)).length).toBe(2);
+      const waiting = (await tarItems()).filter((id) => !preexisting.has(id));
+      const titles = (await db(app)).items.filter((i) => waiting.includes(i.id)).map((i) => i.title);
+      for (const t of titles) expect(await choice.innerText()).toContain(t);
       await breakStorage(page);
       await choice.getByRole('button', { name: 'خنیاگر' }).first().click();
       await choice.getByText(/Not saved/).waitFor({ timeout: 10_000 });
@@ -288,6 +341,9 @@ describe('musical terms, managed', () => {
         (d) => d.materials.filter((m) => m.instrumentId === 'inst-tar' && m.sourceKey).map((m) => m.id),
         (ids) => ids.length === 1 && khon.includes(ids[0]),
       );
+      // …and the answer reached exactly the items it named.
+      const keyed = (await db(app)).materials.find((m) => m.instrumentId === 'inst-tar' && m.sourceKey)!.id;
+      expect((await db(app)).items.filter((i) => waiting.includes(i.id)).map((i) => i.materialId)).toEqual([keyed, keyed]);
       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
     } finally {
       await app.close();

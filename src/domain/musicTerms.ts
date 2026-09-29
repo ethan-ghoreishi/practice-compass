@@ -373,7 +373,12 @@ export function parseAliases(text: string): string[] {
   return [...new Set(text.split(/[\n,،]/).map((a) => a.trim()).filter(Boolean))];
 }
 
-/** Items whose stored value currently MEANS this term, by reference or by alias. */
+/**
+ * Items whose stored value DEPENDS on this term: a reference to it, text that
+ * means it uniquely, or text it is one of several claimants of (ambiguous
+ * text is kept literal only because more than one term answers to it, so
+ * every claimant is holding that reading in place).
+ */
 export function itemsUsingTerm(items: PracticeItem[], termId: ID, vocab: Vocabulary): PracticeItem[] {
   const term = vocab.byId.get(termId);
   if (!term) return [];
@@ -381,16 +386,53 @@ export function itemsUsingTerm(items: PracticeItem[], termId: ID, vocab: Vocabul
     TERM_FIELDS.some((field) => {
       if (TERM_FIELD_KIND[field] !== term.kind) return false;
       const r = resolveValue(item.persian?.[field], term.kind, vocab);
-      return r.status === 'term' && r.term.id === termId;
+      if (r.status === 'term') return r.term.id === termId;
+      return r.status === 'ambiguous' && r.candidates.some((t) => t.id === termId);
     }),
   );
 }
 
-/** Which keys of `candidate` another term of the same kind already claims. */
-function collisions(candidate: Pick<MusicTerm, 'id' | 'kind' | 'name' | 'aliases'>, vocab: Vocabulary): string[] {
+/** What a value MEANS, as one comparable word: a term's id, or how it reads without one. */
+function meaning(value: MusicalValue | null | undefined, kind: MusicTermKind, vocab: Vocabulary): string {
+  const r = resolveValue(value, kind, vocab);
+  return r.status === 'term' ? `term:${r.term.id}` : r.status;
+}
+
+/**
+ * THE ONE CHECK a vocabulary edit passes before it is applied: the items whose
+ * stored text or reference would MEAN something different under `after` than
+ * under `before`, with nothing about the item itself edited. The only change
+ * allowed is literal text becoming a term — a spelling the owner has just
+ * given a term, which is what adding that spelling is for. Everything else —
+ * a term's text turning literal, one term becoming another, a reference left
+ * dangling, or AMBIGUOUS text collapsing onto whichever claimant is left — is
+ * reclassifying the owner's piece behind their back. Still-ambiguous text is
+ * no change: it reads literally either way.
+ */
+export function reclassifiedItems(items: PracticeItem[], kind: MusicTermKind, before: Vocabulary, after: Vocabulary): PracticeItem[] {
+  return items.filter((item) =>
+    TERM_FIELDS.some((field) => {
+      if (TERM_FIELD_KIND[field] !== kind) return false;
+      const was = meaning(item.persian?.[field], kind, before);
+      const now = meaning(item.persian?.[field], kind, after);
+      return was !== now && !(was === 'literal' && now.startsWith('term:'));
+    }),
+  );
+}
+
+/**
+ * Which keys of `candidate` another term of the same kind already claims —
+ * only the keys this edit ADDS. A collision the term already carried (an
+ * imported file may hold one; resolution keeps that text literal) is not the
+ * edit's doing, and refusing on it would leave the term impossible to archive
+ * or rename at all.
+ */
+function collisions(candidate: Pick<MusicTerm, 'id' | 'kind' | 'name' | 'aliases'>, vocab: Vocabulary, had: string[] = []): string[] {
   const own = vocab.keys.get(candidate.kind)!;
+  const held = new Set(had);
   const out: string[] = [];
   for (const text of [candidate.name, ...candidate.aliases]) {
+    if (held.has(termKey(text))) continue;
     const claimants = (own.get(termKey(text)) ?? []).filter((t) => t.id !== candidate.id);
     if (claimants.length) out.push(`“${text}” already means ${claimants.map((t) => `“${t.name}”`).join(', ')}`);
   }
@@ -445,29 +487,25 @@ export function planUpdateTerm(
   const next: MusicTerm = { ...current, name, aliases, updatedAt: nowISO(now) };
   if (archived) next.archived = true;
   else delete next.archived;
-  const clash = collisions(next, vocab);
+  const clash = collisions(next, vocab, termKeys(current));
   if (clash.length) return { ok: false, reason: `Not saved: ${clash.join('; ')}. One spelling cannot mean two terms.` };
-  const keptKeys = new Set(termKeys(next));
-  const dependents = items.filter((item) =>
-    TERM_FIELDS.some((field) => {
-      if (TERM_FIELD_KIND[field] !== current.kind) return false;
-      const value = item.persian?.[field];
-      if (typeof value !== 'string') return false;
-      const r = resolveValue(value, current.kind, vocab);
-      return r.status === 'term' && r.term.id === id && !keptKeys.has(termKey(value));
-    }),
-  );
-  if (dependents.length) {
-    const n = dependents.length;
+  const terms = withStored(stored, next);
+  const changed = reclassifiedItems(items, current.kind, vocab, vocabulary(terms));
+  if (changed.length) {
+    const n = changed.length;
     return {
       ok: false,
-      reason: `Not saved: ${n} item${n === 1 ? ' is' : 's are'} written with a spelling you removed. Keep it as an alias, or change ${n === 1 ? 'that item' : 'those items'} first.`,
+      reason: `Not saved: ${n} item${n === 1 ? ' is' : 's are'} written with a spelling you removed, and would quietly change what ${n === 1 ? 'it means' : 'they mean'}. Keep it as an alias, or change ${n === 1 ? 'that item' : 'those items'} first.`,
     };
   }
-  return { ok: true, terms: withStored(stored, next) };
+  return { ok: true, terms };
 }
 
-/** Delete: custom terms only, and only while nothing means them. */
+/**
+ * Delete: custom terms only, and only while no item's value depends on it —
+ * including text it is one of several claimants of, whose other claimant it
+ * would otherwise silently hand the item to.
+ */
 export function planDeleteTerm(stored: MusicTerm[], items: PracticeItem[], id: ID): TermPlan {
   if (isBuiltInTerm(id)) return { ok: false, reason: 'A built-in term cannot be deleted. Archive it to stop offering it.' };
   const vocab = vocabulary(stored);

@@ -6,6 +6,7 @@ import {
   MUSIC_TERM_KIND_LABELS,
   MUSIC_TERM_KINDS,
   parseAliases,
+  planDeleteTerm,
   vocabulary,
   type MusicTerm,
   type MusicTermKind,
@@ -49,8 +50,16 @@ export default function MusicTerms() {
     setDeleted((d) => ({ ...d, [term.id]: term.name }));
     saves.run(term.id, 'delete', () => deleteTerm(term.id));
   };
+  // Delete is offered exactly when the planner the store applies would allow it.
   const row = (t: MusicTerm) => (
-    <TermRow key={t.id} term={t} users={itemsUsingTerm(db.items, t.id, vocab).length} saves={saves} onDelete={() => remove(t)} />
+    <TermRow
+      key={t.id}
+      term={t}
+      users={itemsUsingTerm(db.items, t.id, vocab).length}
+      deletable={planDeleteTerm(db.musicTerms, db.items, t.id).ok}
+      saves={saves}
+      onDelete={() => remove(t)}
+    />
   );
 
   return (
@@ -180,7 +189,19 @@ function AddTerm({ kind, saves }: { kind: MusicTermKind; saves: AckSaves }) {
   );
 }
 
-function TermRow({ term, users, saves, onDelete }: { term: MusicTerm; users: number; saves: AckSaves; onDelete: () => void }) {
+function TermRow({
+  term,
+  users,
+  deletable,
+  saves,
+  onDelete,
+}: {
+  term: MusicTerm;
+  users: number;
+  deletable: boolean;
+  saves: AckSaves;
+  onDelete: () => void;
+}) {
   const updateTerm = useStore((s) => s.updateTerm);
   const [editing, setEditing] = useState(false);
   const [name, setNameState] = useState(term.name);
@@ -258,8 +279,8 @@ function TermRow({ term, users, saves, onDelete }: { term: MusicTerm; users: num
           <button
             className="btn btn-ghost btn-sm btn-danger"
             aria-label={`Delete ${term.name}`}
-            disabled={users > 0}
-            title={users > 0 ? 'Used by pieces — archive it instead' : undefined}
+            disabled={!deletable}
+            title={deletable ? undefined : 'Used by pieces — archive it instead'}
             onClick={() => {
               if (confirm(`Delete the term “${term.name}”? No piece uses it.`)) onDelete();
             }}

@@ -7,7 +7,14 @@ import {
   sourceKindOptions,
   withCourseSourceKey,
 } from './studySources';
-import { courseStageId, COURSES, planCatalogAddition, resolveCourseSource } from './courseSeed';
+import {
+  courseSourceQuestions,
+  courseStageId,
+  COURSES,
+  planCatalogAddition,
+  planChooseCourseSource,
+  resolveCourseSource,
+} from './courseSeed';
 import { catalogForStage } from './pathwaySeed';
 import { CGS_COURSE } from './courseData';
 import { KHONYAGAR_COURSE } from './khonyagarData';
@@ -85,6 +92,46 @@ describe('study sources', () => {
     expect(asked.items.find((i) => i.id === asked.itemId)!.materialId).toBeUndefined();
     expect(asked.sourceCandidates!.map((m) => m.id)).toEqual(['mat-khon-1', 'mat-khon-2']);
     expect(asked.materials).toBe(db.materials);
+    // 6. THE QUESTION IS SAVED DATA, NOT A SCREEN'S MEMORY. Whatever the tap
+    //    (Play adds exactly as Add does), the new item is left waiting, and the
+    //    question is derived from the database: it survives an export/reload,
+    //    and a REPEAT Add of the now-bound suggestion asks it again while
+    //    writing nothing.
+    const afterFirst = { ...db, items: asked.items, materials: asked.materials };
+    const reloaded = validateDB(JSON.parse(serializeExport(afterFirst, NOW)));
+    const questionOf = (d: Pick<typeof db, 'items' | 'materials'>) => courseSourceQuestions(d, KHONYAGAR_COURSE);
+    expect(questionOf(reloaded).map((q) => [q.instrumentId, q.candidates.map((m) => m.id), q.items.map((i) => i.id)])).toEqual([
+      ['inst-tar', ['mat-khon-1', 'mat-khon-2'], [asked.itemId]],
+    ]);
+    const again = planCatalogAddition(reloaded, kStage, kEntry.key, kEntry, 'inst-tar', NOW);
+    expect([again.created, again.itemId, again.items, again.materials]).toEqual([false, asked.itemId, reloaded.items, reloaded.materials]);
+    expect(again.items).toBe(reloaded.items);
+    expect(again.sourceCandidates!.map((m) => m.id)).toEqual(['mat-khon-1', 'mat-khon-2']);
+    // Moved out of its stage, it is still asked: the course is read from the
+    // references it answers, never from where it sits.
+    const moved = reloaded.items.map((i) => (i.id === asked.itemId ? { ...i, stageId: undefined } : i));
+    expect(questionOf({ ...reloaded, items: moved })[0].items.map((i) => i.id)).toEqual([asked.itemId]);
+    // A second suggestion added while it is still open joins the SAME question.
+    const kEntry2 = catalogForStage(kStage)[1];
+    const second = planCatalogAddition(reloaded, kStage, kEntry2.key, kEntry2, 'inst-tar', NOW);
+    const both = { ...reloaded, items: second.items, materials: second.materials };
+    expect(questionOf(both)[0].items.map((i) => i.id)).toEqual([asked.itemId, second.itemId]);
+    // 7. THE ANSWER goes to exactly the items the question named — both here —
+    //    keys the chosen source, and ends the question. Choosing again (a
+    //    retry) restates it and changes nothing further.
+    const answered = planChooseCourseSource(both, KHONYAGAR_COURSE, 'mat-khon-2', [asked.itemId, second.itemId], NOW);
+    if (!answered.ok) throw new Error(answered.reason);
+    expect(answered.items.filter((i) => i.materialId === 'mat-khon-2').map((i) => i.id)).toEqual([asked.itemId, second.itemId]);
+    expect(questionOf(answered)).toEqual([]);
+    const retried = planChooseCourseSource(answered, KHONYAGAR_COURSE, 'mat-khon-2', [asked.itemId, second.itemId], NOW);
+    expect(retried.ok && [retried.items, retried.materials]).toEqual([answered.items, answered.materials]);
+    // …and ONLY to those: a course item it did not name keeps no source —
+    // one without a source looks exactly like one the owner cleared.
+    const onlyFirst = planChooseCourseSource(both, KHONYAGAR_COURSE, 'mat-khon-2', [asked.itemId], NOW);
+    expect(onlyFirst.ok && onlyFirst.items.find((i) => i.id === second.itemId)!.materialId).toBeUndefined();
+    // A source on another instrument is refused, never half-applied.
+    expect(planChooseCourseSource(both, KHONYAGAR_COURSE, 'mat-cgs', [asked.itemId], NOW)).toMatchObject({ ok: false });
+
     // The owner's answer keys exactly the one chosen.
     const chosen = withCourseSourceKey(db.materials, 'mat-khon-2', KHONYAGAR_COURSE);
     expect(chosen.filter((m) => m.sourceKey).map((m) => [m.id, m.sourceKey])).toEqual([

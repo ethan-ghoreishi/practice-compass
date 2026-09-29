@@ -476,7 +476,7 @@ describe('Family A — administration is organisation, never practice evidence',
     run('delete unused custom', () => expect(store().deleteTerm(added)).toBeNull());
     // SOURCE administration.
     run('edit a source', () => store().updateMaterial('mat-song', { title: 'Songbook', sourceType: 'song' }));
-    run('choose a course source', () => store().chooseCourseSource('it-cgs-chords', 'mat-cgs', 'cgs'));
+    run('choose a course source', () => store().chooseCourseSource(['it-cgs-chords'], 'mat-cgs', 'cgs'));
     // REFERENCE and PATHWAY administration.
     run('link', () => expect(store().linkReference(SEED_PATHWAY_IDS.setar, catalogReferenceId('setar-radif-shur', 'daramad-e-shur'), 'it-daramad-a')).toBeNull());
     run('unlink', () => store().unlinkReference('it-daramad-a', catalogReferenceId('setar-radif-shur', 'daramad-e-shur')));
@@ -546,7 +546,7 @@ describe('Family A — administration is organisation, never practice evidence',
     // source, or moving the keyed one onto an instrument that already holds
     // the key, is refused — the other source is never silently un-keyed.
     const copy = store().addMaterial({ instrumentId: 'inst-guitar', title: 'CGS notes', sourceType: 'course' });
-    unchanged('a second source for a keyed course', () => store().chooseCourseSource('it-cgs-chords', copy, 'cgs'), /already this course's study source/);
+    unchanged('a second source for a keyed course', () => store().chooseCourseSource(['it-cgs-chords'], copy, 'cgs'), /already this course's study source/);
     // (Adding from the pathway while it sat on Setar minted Setar's own keyed source.)
     expect(store().db.materials.filter((m) => m.sourceKey === 'course:cgs').map((m) => m.instrumentId).sort()).toEqual(['inst-guitar', 'inst-setar']);
     unchanged('keyed source moved onto a holder', () => store().updateMaterial('mat-cgs', { instrumentId: 'inst-setar' }), /already this course's study source/);

@@ -174,6 +174,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },

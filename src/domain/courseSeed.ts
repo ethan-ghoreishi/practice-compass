@@ -668,7 +668,16 @@ export function planCatalogAddition(
   const ref = catalogReferenceId(stageId, entryKey);
   const resolved = resolveCatalogReference(ref, instrumentId, db.items);
   if (resolved.status === 'bound') {
-    return { items: db.items, materials: db.materials, itemId: resolved.item.id, created: false };
+    // Reuse writes nothing — but a source question the item is still waiting
+    // on is asked again, so no tap, cancel or page left behind can lose it.
+    const asked = pendingSourceCandidates(db, resolved.item);
+    return {
+      items: db.items,
+      materials: db.materials,
+      itemId: resolved.item.id,
+      created: false,
+      ...(asked ? { sourceCandidates: asked } : {}),
+    };
   }
   if (resolved.status === 'ambiguous') {
     return { items: db.items, materials: db.materials, itemId: '', created: false, candidates: resolved.candidates };
@@ -687,13 +696,85 @@ export function planCatalogAddition(
 
   const source = resolveCourseSource(db.materials, found.course, instrumentId, now);
   const item = source.materialId ? { ...base, materialId: source.materialId } : base;
-  return {
-    items: [...db.items, item],
-    materials: source.materials,
-    itemId: item.id,
-    created: true,
-    ...(source.candidates ? { sourceCandidates: source.candidates } : {}),
-  };
+  const next = { items: [...db.items, item], materials: source.materials };
+  const asked = pendingSourceCandidates(next, item);
+  return { ...next, itemId: item.id, created: true, ...(asked ? { sourceCandidates: asked } : {}) };
+}
+
+// --- the course's study source, when the owner must say which it is ----------
+
+/** The course a reference belongs to: a course work, or a section of a course stage. */
+export function courseOfReference(refId: string): CourseData | undefined {
+  const work = /^course:([^:]+):work:/.exec(refId);
+  if (work) return courseById(work[1]);
+  if (!refId.startsWith('stage:')) return undefined;
+  const rest = refId.slice('stage:'.length);
+  const cut = rest.lastIndexOf(':');
+  return cut > 0 ? courseStage(rest.slice(0, cut))?.course : undefined;
+}
+
+export interface CourseSourceQuestion {
+  course: CourseData;
+  instrumentId: ID;
+  /** The owner's sources that could each be this course's. */
+  candidates: Material[];
+  /** Every item waiting on the answer — named on screen, and the only ones it is written to. */
+  items: PracticeItem[];
+}
+
+/**
+ * WHICH STUDY SOURCE IS THIS COURSE — DERIVED FROM SAVED DATA, NEVER HELD BY A
+ * SCREEN. The question stands, per instrument, while the course's source is
+ * ambiguous (`findCourseSource`) and some item of that course — by the
+ * references it answers, never its placement, so a moved or detached item is
+ * still asked — has no source. Nothing ephemeral carries it, so leaving the
+ * page, "Decide later", Play instead of Add and a reload all leave it exactly
+ * as answerable as before; it ends only when the owner answers it (or gives
+ * each item a source themselves).
+ */
+export function courseSourceQuestions(db: CatalogAdditionDB, course: CourseData): CourseSourceQuestion[] {
+  const out: CourseSourceQuestion[] = [];
+  const waiting = db.items.filter((i) => !i.materialId && itemReferences(i).some((r) => courseOfReference(r)?.id === course.id));
+  for (const instrumentId of [...new Set(waiting.map((i) => i.instrumentId))]) {
+    const found = findCourseSource(db.materials, course, instrumentId);
+    if (found.status !== 'ambiguous') continue;
+    out.push({ course, instrumentId, candidates: found.candidates, items: waiting.filter((i) => i.instrumentId === instrumentId) });
+  }
+  return out;
+}
+
+/** The candidates one item is still waiting on the owner to choose between, if any. */
+function pendingSourceCandidates(db: CatalogAdditionDB, item: PracticeItem): Material[] | undefined {
+  for (const ref of itemReferences(item)) {
+    const course = courseOfReference(ref);
+    const q = course && courseSourceQuestions(db, course).find((x) => x.items.some((i) => i.id === item.id));
+    if (q) return q.candidates;
+  }
+  return undefined;
+}
+
+/**
+ * The owner's answer: key the chosen source as the course's, and give it to
+ * exactly the items the question NAMED that still have none. A course item
+ * without a source is indistinguishable from one whose source the owner
+ * cleared, so nothing the question did not name is ever filled in. Choosing
+ * again (a retry) re-states the same answer and changes nothing further.
+ */
+export function planChooseCourseSource(
+  db: CatalogAdditionDB,
+  course: CourseData,
+  materialId: ID,
+  itemIds: ID[],
+  now: Date,
+): { ok: true; items: PracticeItem[]; materials: Material[] } | { ok: false; reason: string } {
+  const material = db.materials.find((m) => m.id === materialId);
+  const named = new Set(itemIds);
+  const targets = db.items.filter((i) => named.has(i.id));
+  if (!material || !targets.length) return { ok: false, reason: 'That item or study source no longer exists.' };
+  if (targets.some((i) => i.instrumentId !== material.instrumentId)) return { ok: false, reason: 'That study source belongs to another instrument.' };
+  const materials = withCourseSourceKey(db.materials, materialId, course);
+  const items = db.items.map((i) => (named.has(i.id) && !i.materialId ? { ...i, materialId, updatedAt: nowISO(now) } : i));
+  return { ok: true, items, materials };
 }
 
 /**

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   BUILT_IN_TERMS,
+  itemsUsingTerm,
   planAddTerm,
   planDeleteTerm,
   planUpdateTerm,
+  reclassifiedItems,
   resolveValue,
   searchAliasTable,
   searchMatch,
@@ -138,5 +140,53 @@ describe('the shared musical vocabulary', () => {
     expect(planDeleteTerm(terms, items, 'term-khatai')).toMatchObject({ ok: false });
     expect(planDeleteTerm(terms, [item('y', { form: { termId: 'term-khatai' } })], 'term-khatai')).toMatchObject({ ok: false });
     expect(planDeleteTerm(terms, [], 'term-khatai')).toEqual({ ok: true, terms: [] });
+
+    // AMBIGUOUS TEXT IS HELD IN PLACE BY EVERY CLAIMANT. An imported custom
+    // term sharing a spelling with another (validation admits it; resolution
+    // keeps that text literal) may neither be deleted nor lose the spelling,
+    // for each field — against a built-in claimant and against a custom one —
+    // because either hands the item to whichever claimant is left.
+    const cases: { field: 'dastgahAvaz' | 'form' | 'composer'; kind: MusicTerm['kind']; spelling: string; other?: MusicTerm }[] = [
+      { field: 'dastgahAvaz', kind: 'dastgah', spelling: 'Shur' },
+      { field: 'form', kind: 'form', spelling: 'Reng' },
+      { field: 'composer', kind: 'composer', spelling: 'Darvish Khan' },
+      { field: 'form', kind: 'form', spelling: 'Naghmeh', other: term('term-other', 'form', 'Other naghmeh', ['Naghmeh']) },
+    ];
+    for (const c of cases) {
+      const mine = term('term-mine', c.kind, `My ${c.spelling}`, [c.spelling]);
+      const stored = [mine, ...(c.other ? [c.other] : [])];
+      const piece = item('amb', { [c.field]: c.spelling });
+      const label = `${c.field} ${c.spelling}${c.other ? ' (custom claimant)' : ''}`;
+      expect(resolveValue(c.spelling, c.kind, vocabulary(stored)).status, label).toBe('ambiguous');
+      // Neither term may be deleted out from under it, and the count says why.
+      expect(itemsUsingTerm([piece], 'term-mine', vocabulary(stored)).map((i) => i.id), label).toEqual(['amb']);
+      expect(planDeleteTerm(stored, [piece], 'term-mine').ok, label).toBe(false);
+      if (c.other) expect(planDeleteTerm(stored, [piece], 'term-other').ok, label).toBe(false);
+      // Removing the shared spelling is the same collapse, said as an edit.
+      const dropped = planUpdateTerm(stored, [piece], 'term-mine', { aliases: [] }, NOW);
+      expect(dropped.ok, label).toBe(false);
+      expect(!dropped.ok && dropped.reason, label).toMatch(/quietly change what it means/);
+      // …but the term is not stuck: the collision it arrived with is not this
+      // edit's doing, so archiving it and renaming it (spelling kept) still work,
+      // and the piece still reads as the owner wrote it.
+      const archived = planUpdateTerm(stored, [piece], 'term-mine', { archived: true }, NOW);
+      expect(archived.ok, label).toBe(true);
+      const renamed = planUpdateTerm(archived.ok ? archived.terms : stored, [piece], 'term-mine', { name: `Mine ${c.spelling}` }, NOW);
+      expect(renamed.ok, label).toBe(true);
+      expect(resolveValue(c.spelling, c.kind, vocabulary(renamed.ok ? renamed.terms : [])).status, label).toBe('ambiguous');
+      expect(reclassifiedItems([piece], c.kind, vocabulary(stored), vocabulary(renamed.ok ? renamed.terms : [])), label).toEqual([]);
+      // With nothing written in that spelling, both edits are free.
+      expect(planDeleteTerm(stored, [], 'term-mine').ok, label).toBe(true);
+      expect(planUpdateTerm(stored, [], 'term-mine', { aliases: [] }, NOW).ok, label).toBe(true);
+    }
+    // Text that STAYS ambiguous reads literally either way: three claimants of
+    // «Zarbi», one of them dropping it, reclassify nothing.
+    const three = [term('term-a', 'form', 'Zarbi A', ['Zarbi']), term('term-b', 'form', 'Zarbi B', ['Zarbi'])];
+    expect(planUpdateTerm(three, [item('z', { form: 'Zarbi' })], 'term-a', { aliases: [] }, NOW).ok).toBe(true);
+    // Giving LITERAL text a term is what adding a spelling is for — allowed.
+    const plain = item('plain', { form: 'Chaharpareh' });
+    const claimed = planUpdateTerm(terms, [plain], 'term-khatai', { aliases: ['Khatai', 'Chaharpareh'] }, NOW);
+    expect(claimed.ok).toBe(true);
+    expect(resolveValue('Chaharpareh', 'form', vocabulary(claimed.ok ? claimed.terms : [])).status).toBe('term');
   });
 });

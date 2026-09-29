@@ -49,6 +49,7 @@ import {
   courseRoutine,
   courseStage,
   planCatalogAddition,
+  planChooseCourseSource,
   planCourseLevels,
   itemOwnedAttachments,
   retargetRoutineInstrument,
@@ -85,7 +86,6 @@ import {
   planUnlinkReference,
   planUpdateTerm,
   courseById,
-  withCourseSourceKey,
   isBuiltInTerm,
   settleLegacyEvidence,
   legacyClaimRefusal,
@@ -402,8 +402,8 @@ interface StoreState {
   removeFromPathway: (itemId: ID, pathwayId: ID) => string | null;
   /** Hide or restore one suggestion in one pathway. Visibility only. */
   setReferenceHidden: (pathwayId: ID, refId: string, hidden: boolean) => void;
-  /** Answer "which study source is this course?" when two candidates exist. */
-  chooseCourseSource: (itemId: ID, materialId: ID, courseId: string) => string | null;
+  /** Answer "which study source is this course?" for the items the question named (`courseSourceQuestions`). */
+  chooseCourseSource: (itemIds: ID[], materialId: ID, courseId: string) => string | null;
 
   // --- Shared musical terms (each returns the refusal, or null) --------------
   /** Returns the new term's id, or the refusal. */
@@ -1088,19 +1088,17 @@ export const useStore = create<StoreState>()(
         if (plan.ok && plan.pathways !== db.pathways) set((s) => ({ db: { ...s.db, pathways: plan.pathways } }));
       },
 
-      chooseCourseSource: (itemId, materialId, courseId) => {
+      chooseCourseSource: (itemIds, materialId, courseId) => {
         const course = courseById(courseId);
         const { db } = get();
-        const material = db.materials.find((m) => m.id === materialId);
-        const item = db.items.find((i) => i.id === itemId);
-        if (!course || !material || !item) return 'That item or study source no longer exists.';
-        if (material.instrumentId !== item.instrumentId) return 'That study source belongs to another instrument.';
-        const now = new Date();
-        const materials = withCourseSourceKey(db.materials, materialId, course);
-        const items = db.items.map((i) => (i.id === itemId ? touch({ ...i, materialId }, now) : i));
-        const refusal = identityRefusal({ ...db, materials, items });
+        if (!course) return 'That item or study source no longer exists.';
+        const plan = planChooseCourseSource(db, course, materialId, itemIds, new Date());
+        if (!plan.ok) return plan.reason;
+        const refusal = identityRefusal({ ...db, materials: plan.materials, items: plan.items });
         if (refusal) return refusal;
-        set((s) => ({ db: { ...s.db, materials, items } }));
+        // Always a write, even when a retry re-states an answer already in
+        // memory: the save it is retrying never reached IndexedDB.
+        set((s) => ({ db: { ...s.db, materials: plan.materials, items: plan.items } }));
         return null;
       },
 
