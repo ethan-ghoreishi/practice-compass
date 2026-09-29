@@ -526,6 +526,26 @@ describe('the whole repertoire experience, in both engines', () => {
           await until(app, (d) => d.pathways.find((p) => p.id === 'setar-radif-mirza')!.hiddenRefs ?? [], (h) => h.length === 0);
           expect((await db(app)).items.length, where).toBe(itemsBefore);
 
+          // PLACING an owned item beside a suggestion is not linking it — and
+          // Add never mints a silent second copy: it asks, and Link answers.
+          await goTo(app, '/items/it-title-only');
+          await page.getByRole('combobox', { name: 'Pathway stage this item belongs to' }).selectOption('setar-radif-mirza-abu-ata');
+          await until(app, (d) => d.items.find((i) => i.id === 'it-title-only')!.stageId, (x) => x === 'setar-radif-mirza-abu-ata');
+          await goTo(app, '/pathway/setar-radif-mirza/setar-radif-mirza-abu-ata');
+          expect(await page.locator('.stage-unit', { hasText: 'Untitled tasnif' }).innerText(), where).toContain('answers no suggestion');
+          await page.getByRole('button', { name: 'Add سیخی to your items' }).click();
+          const asked = page.getByRole('region', { name: 'Is “سیخی” already in this stage?' });
+          await asked.getByRole('button', { name: /Untitled tasnif/ }).click();
+          const linkedPlaced = await until(
+            app,
+            (d) => d.items.find((i) => i.id === 'it-title-only')!.catalogRefs,
+            (r) => !!r?.includes('radif:mirza-abdollah:abu-ata:sayakhi'),
+          );
+          expect(linkedPlaced, where).toEqual(['radif:mirza-abdollah:abu-ata:sayakhi']);
+          expect((await db(app)).items.length, where).toBe(itemsBefore);
+          await page.getByRole('button', { name: 'Practise Untitled tasnif' }).waitFor();
+          expect(await page.locator('.stage-unit', { hasText: 'Untitled tasnif' }).count(), where).toBe(1);
+
           // TAR shares the definition, never the practice.
           await goTo(app, '/repertoire?view=paths&inst=inst-tar');
           await page.getByRole('button', { name: /Add default pathway: تار · ردیف میرزا عبدالله/ }).click();

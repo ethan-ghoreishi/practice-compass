@@ -626,11 +626,17 @@ export interface CatalogAddition {
    * one explicitly.
    */
   candidates?: PracticeItem[];
+  /**
+   * Set by `planStageAddition` (`pathways.ts`) when items placed in the stage
+   * answer no suggestion: nothing is created until the owner links one or asks
+   * for a new item.
+   */
+  placed?: PracticeItem[];
   /** Set when the course's own study source needs the owner's choice. */
   sourceCandidates?: Material[];
 }
 
-interface CatalogAdditionDB {
+export interface CatalogAdditionDB {
   items: PracticeItem[];
   materials: Material[];
 }

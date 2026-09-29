@@ -12,12 +12,19 @@
 // is back to the full layout height it is RESIDUAL displacement — the lifted
 // tab bar — and is put back to zero.
 //
+// The same holds for `body` and `#root`: `overflow: hidden` stops the OWNER
+// scrolling them, not the browser — a focus reveal may scroll every scroll
+// container above the field, and a box scrolled that way stays scrolled with
+// the document offset reading zero. Any offset on them is displacement too.
+//
 // Keyboard presence is read from GEOMETRY, never from focus: "Done" on the
 // iOS keyboard hides it and leaves the field focused, which is exactly the
 // case a focus-gated guard never corrected. There is no timer, no forced
 // blur, no zoom lock, and `<main>`'s own scroll position is never touched.
 // Browser fixtures prove this mechanism; they cannot prove the native iPhone
-// keyboard, which stays an owner-device check.
+// keyboard. The owner still reports a lifted bar there, so the native
+// mechanism is UNMEASURED: `useViewportGuard.ts` carries an opt-in trace
+// (More → Keyboard trace) for recording it on the device.
 // ---------------------------------------------------------------------------
 
 export interface ViewportGeometry {
@@ -29,6 +36,11 @@ export interface ViewportGeometry {
   scale: number;
   /** How far the DOCUMENT is scrolled (`window.scrollY`). */
   documentScroll: number;
+  /**
+   * The largest offset of the shell's own non-scrolling boxes (`body`,
+   * `#root`) — never `<main>`, the one box the owner scrolls. Absent reads 0.
+   */
+  shellScroll?: number;
 }
 
 /**
@@ -43,14 +55,14 @@ export type ViewportAction = 'none' | 'restore';
 /**
  * What to do about the document's scroll offset, from geometry alone.
  *
- *  - no offset             → nothing to correct
+ *  - no offset (document or shell) → nothing to correct
  *  - zoomed (scale ≠ 1)    → the owner's zoom; never fought
  *  - visual viewport short → the keyboard (or any panel) is still up; WebKit's
  *                            reveal is intentional, leave it
  *  - otherwise             → residual displacement: restore to zero
  */
 export function decideViewport(g: ViewportGeometry): ViewportAction {
-  if (!(g.documentScroll > 0)) return 'none';
+  if (!(g.documentScroll > 0) && !((g.shellScroll ?? 0) > 0)) return 'none';
   if (Math.abs(g.scale - 1) > 0.001) return 'none';
   if (g.visualHeight * g.scale < g.layoutHeight - ROUNDING_PX) return 'none';
   return 'restore';
@@ -66,7 +78,7 @@ export interface ViewportPort {
   /** Subscribe to the page becoming visible again; returns the unsubscribe. */
   onVisible(fn: () => void): () => void;
   geometry(): ViewportGeometry;
-  /** Put the DOCUMENT scroll back to zero. Never `<main>`. */
+  /** Put the document and the shell's non-scrolling boxes back to zero. Never `<main>`. */
   restoreDocument(): void;
 }
 

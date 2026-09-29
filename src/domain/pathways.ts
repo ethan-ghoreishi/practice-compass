@@ -9,7 +9,15 @@ import type {
   StepStrand,
 } from './types';
 import { catalogForStage, knownReference, pathwayReferenceIds } from './pathwaySeed';
-import { catalogReferenceId, itemReferences, legacyReferenceOf, resolveCatalogReference } from './courseSeed';
+import {
+  catalogReferenceId,
+  itemReferences,
+  legacyReferenceOf,
+  planCatalogAddition,
+  resolveCatalogReference,
+  type CatalogAddition,
+  type CatalogAdditionDB,
+} from './courseSeed';
 import { nowISO } from './util';
 
 // ---------------------------------------------------------------------------
@@ -50,6 +58,12 @@ export interface StageUnit {
    * owner links one explicitly.
    */
   candidates?: PracticeItem[];
+  /**
+   * An item PLACED in this stage that answers none of its suggestions
+   * (`unlinkedInStage`). Shown as its own row, said to be unlinked, with a way
+   * to link it — never merged into a suggestion on the strength of a title.
+   */
+  unlinked?: boolean;
   state: StageState;
 }
 
@@ -107,11 +121,62 @@ export function stageUnits(stage: PathwayStage, items: PracticeItem[], ctx: Stag
     if (unit.item) shown.add(unit.item.id);
     units.push(unit);
   }
+  const unlinked = new Set(unlinkedInStage(stage.id, items, ctx.instrumentId).map((i) => i.id));
   for (const it of itemsInStage(items, stage.id)) {
     if (shown.has(it.id)) continue;
-    units.push({ key: it.id, title: it.title, strand: it.strand, item: it, state: itemStageState(it) });
+    units.push({
+      key: it.id,
+      title: it.title,
+      strand: it.strand,
+      item: it,
+      ...(unlinked.has(it.id) ? { unlinked: true } : {}),
+      state: itemStageState(it),
+    });
   }
   return units;
+}
+
+/**
+ * The owner's items PLACED in a stage — on its pathway's instrument — that
+ * answer none of the stage's suggestions, hidden ones included. Placing an item
+ * is organisation and changes no identity, so such an item may well BE one of
+ * the suggestions beside it; only the owner can say. It is the ONE list both
+ * the stage rows (`unlinked`) and Add (`planStageAddition`) read, so a row can
+ * never look unrelated while Add quietly mints a second item beside it.
+ */
+export function unlinkedInStage(stageId: ID, items: PracticeItem[], instrumentId?: ID): PracticeItem[] {
+  const refs = new Set(catalogForStage(stageId).map((e) => catalogReferenceId(stageId, e.key)));
+  if (!refs.size) return [];
+  return items.filter(
+    (i) =>
+      i.stageId === stageId &&
+      (!instrumentId || i.instrumentId === instrumentId) &&
+      !itemReferences(i).some((r) => refs.has(r)),
+  );
+}
+
+/**
+ * ADD from a stage: `planCatalogAddition`, except that a suggestion nothing
+ * answers yet is NOT created while items the owner placed in that stage answer
+ * no suggestion — any of them may be this music, and a second item would be a
+ * silent duplicate. The plan returns them as `placed` and writes nothing; the
+ * owner links one (`planLinkReference`) or asks for a new item explicitly
+ * (`separate`). A bound or ambiguous suggestion is decided exactly as before.
+ */
+export function planStageAddition(
+  db: CatalogAdditionDB,
+  stageId: ID,
+  entryKey: string,
+  entry: CatalogEntry | undefined,
+  instrumentId: ID,
+  now: Date,
+  separate = false,
+): CatalogAddition {
+  if (!separate && resolveCatalogReference(catalogReferenceId(stageId, entryKey), instrumentId, db.items).status === 'absent') {
+    const placed = unlinkedInStage(stageId, db.items, instrumentId);
+    if (placed.length) return { items: db.items, materials: db.materials, itemId: '', created: false, placed };
+  }
+  return planCatalogAddition(db, stageId, entryKey, entry, instrumentId, now);
 }
 
 /** The suggestions this stage's pathway hides — listed so each can be restored. */

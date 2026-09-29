@@ -35,6 +35,18 @@ and the proof route.
   the named Setar pathway offer عراق as untaken after the owner tidied the old mixed pathway — Add
   there would mint a duplicate. Hiding in that one pathway keeps the owner's intent and the
   shared identity.
+- **Placing is not linking, and Add beside an unlinked placement asks.** Moving an owned item
+  into a stage changes `stageId` only, so the suggestion beside it stayed untaken and Add minted a
+  second copy of the same music. Merging the two rows on a matching title or gusheh was rejected:
+  it would make text act as identity (progress, Play and Add would all follow a guess). Instead
+  ONE list (`unlinkedInStage`) marks the placed row and holds Add (`planStageAddition`) until the
+  owner links an item or chooses Add as a new item. Until then the two rows are honestly two units.
+- **The native keyboard defect is measured on the device, not guessed at in the guard.** The owner
+  still saw a lifted bar after the geometry guard. The one source-level blind spot found — a
+  reveal scrolling `body`/`#root`, which `overflow: hidden` does not prevent — is now restored
+  under the same geometry rules, but it is a closed hypothesis, not a diagnosis. More → Keyboard
+  trace (memory only) records what the device reports so ac-24 can name the real mechanism;
+  adding timers or thresholds without that trace is exactly what the plan forbids.
 - **The Undo that deleted a "fresh" item is gone.** "Not practised yet" never proved an item was
   empty — notes, files, class links and commitments all arrive before a first block.
   `removeCatalogItem` stays only because an out-of-scope test calls it; it no longer deletes.

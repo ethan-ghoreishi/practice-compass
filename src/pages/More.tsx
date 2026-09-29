@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { isTracingViewport, startViewportTrace, stopViewportTrace, viewportTraceText } from '../components/useViewportGuard';
 import {
   ChevronRightIcon,
   FolderIcon,
@@ -37,9 +39,71 @@ export default function More() {
         ))}
       </div>
 
+      <KeyboardTrace />
+
       <p className="tiny faint" style={{ textAlign: 'center' }}>
         Practice Compass · local-first · one item, one focus.
       </p>
     </div>
+  );
+}
+
+/**
+ * The iPhone keyboard check (docs/repertoire-experience.md): record what the
+ * device reports while the keyboard opens and closes, then copy it. Memory
+ * only — nothing here is saved, synced or backed up.
+ */
+function KeyboardTrace() {
+  const [recording, setRecording] = useState(isTracingViewport);
+  const [text, setText] = useState('');
+  const [copied, setCopied] = useState<string | null>(null);
+  return (
+    <details className="card card-quiet">
+      <summary className="small">Keyboard trace</summary>
+      <div className="stack-sm" style={{ marginTop: 8 }}>
+        <p className="tiny dim" style={{ margin: 0 }}>
+          For checking the bottom bar after the keyboard closes. Start, use the app as usual — type, tap Done, rotate,
+          switch screens, leave and come back — then return here, stop and copy. Kept in memory only.
+        </p>
+        <div className="row" style={{ gap: 8 }}>
+          <button
+            className="btn btn-sm"
+            onClick={() => {
+              if (recording) {
+                stopViewportTrace();
+                setText(viewportTraceText());
+              } else {
+                startViewportTrace();
+                setText('');
+                setCopied(null);
+              }
+              setRecording(isTracingViewport());
+            }}
+          >
+            {recording ? 'Stop recording' : 'Start recording'}
+          </button>
+          {text && (
+            <button
+              className="btn btn-sm"
+              onClick={() =>
+                navigator.clipboard?.writeText(text).then(
+                  () => setCopied('Copied.'),
+                  () => setCopied('Copy was refused — select the text below instead.'),
+                ) ?? setCopied('Copy is unavailable — select the text below instead.')
+              }
+            >
+              Copy trace
+            </button>
+          )}
+        </div>
+        {recording && <p className="tiny" role="status">Recording…</p>}
+        {copied && (
+          <p className="tiny" role="status">
+            {copied}
+          </p>
+        )}
+        {text && <textarea className="textarea" readOnly aria-label="Keyboard trace" value={text} rows={6} />}
+      </div>
+    </details>
   );
 }

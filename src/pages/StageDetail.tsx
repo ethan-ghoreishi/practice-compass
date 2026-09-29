@@ -11,6 +11,7 @@ import {
   STRAND_LABELS,
   type CourseSourceQuestion,
   type PathwayRoutine,
+  type PracticeItem,
   type StageUnit,
   courseSourceQuestions,
   courseStage,
@@ -21,7 +22,7 @@ import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
 import RoutineDuration from '../components/RoutineDuration';
 import { Field, useAcknowledgedSaves } from '../components/ui';
-import { ItemChoice, SourceChoice } from '../components/ReferenceChoices';
+import { ItemChoice, SourceChoice, SuggestionChoice } from '../components/ReferenceChoices';
 import { ArrowLeftIcon, CheckIcon, PlayIcon, PlusIcon } from '../components/icons';
 
 export default function StageDetail() {
@@ -72,7 +73,16 @@ export default function StageDetail() {
   const [refusal, setRefusal] = useState<string | null>(null);
   // An explicit choice in progress: which item a suggestion is, or which
   // study source a course is.
-  const [choosing, setChoosing] = useState<{ unit: StageUnit; mode: 'link' | 'ambiguous' } | null>(null);
+  // `placed`: Add found items placed in this stage that answer no suggestion —
+  // the owner says whether one of them IS this music before anything is made.
+  const [choosing, setChoosing] = useState<{
+    unit: StageUnit;
+    mode: 'link' | 'ambiguous' | 'placed';
+    placed?: PracticeItem[];
+    then?: 'practise';
+  } | null>(null);
+  // An unlinked placed item, asked the other way round: which suggestion is it?
+  const [linkingItem, setLinkingItem] = useState<PracticeItem | null>(null);
   // Which study source the course is: a question DERIVED from saved data
   // (`courseSourceQuestions`), so Play, a cancelled prompt, leaving the page
   // or a reload never loses it. "Decide later" only quiets it for this visit.
@@ -121,8 +131,8 @@ export default function StageDetail() {
     setEditing(false);
   }
 
-  function addSuggestion(unit: StageUnit) {
-    const result = addFromCatalog(stage!.id, unit.key);
+  function addSuggestion(unit: StageUnit, separate = false) {
+    const result = addFromCatalog(stage!.id, unit.key, separate);
     setRefusal(result.refusal ?? null);
     if (result.refusal) return;
     // Two of the owner's items already answer this suggestion: nothing was
@@ -131,13 +141,23 @@ export default function StageDetail() {
       setChoosing({ unit, mode: 'ambiguous' });
       return;
     }
+    if (result.placed) {
+      setChoosing({ unit, mode: 'placed', placed: result.placed });
+      return;
+    }
+    setChoosing(null);
     setNotice(result.created ? `Added “${unit.title}” to your items — not practised yet.` : `“${unit.title}” is already one of your items.`);
     // The tap asked about this suggestion's course source: show the question
     // again even if it was put off earlier in this visit.
     if (result.sourceCandidates) setSourceDeferred(false);
   }
 
-  function practise(unit: StageUnit) {
+  function start(itemId: string) {
+    startItemSession(itemId);
+    navigate('/active');
+  }
+
+  function practise(unit: StageUnit, separate = false) {
     // A routine is running: resolve it there rather than trying to start a
     // block alongside it — startItemSession would just no-op and leave the
     // user on a dead "no block in progress" screen.
@@ -147,9 +167,13 @@ export default function StageDetail() {
     }
     // Practice starts at once. A study-source question this raises is not
     // asked here — it is derived from saved data and waits on this stage.
-    const added = unit.item ? null : addFromCatalog(stage!.id, unit.key);
+    const added = unit.item ? null : addFromCatalog(stage!.id, unit.key, separate);
     if (added?.refusal) {
       setRefusal(added.refusal);
+      return;
+    }
+    if (added?.placed) {
+      setChoosing({ unit, mode: 'placed', placed: added.placed, then: 'practise' });
       return;
     }
     const itemId = unit.item?.id ?? added?.id;
@@ -157,8 +181,7 @@ export default function StageDetail() {
       setChoosing({ unit, mode: 'ambiguous' });
       return;
     }
-    startItemSession(itemId);
-    navigate('/active');
+    start(itemId);
   }
 
   return (
@@ -340,23 +363,62 @@ export default function StageDetail() {
             choosing?.unit.key === u.key ? (
               <ItemChoice
                 key={u.key}
-                heading={choosing.mode === 'ambiguous' ? `Which item is “${u.title}”?` : `Link an existing item to “${u.title}”`}
+                heading={
+                  choosing.mode === 'ambiguous'
+                    ? `Which item is “${u.title}”?`
+                    : choosing.mode === 'placed'
+                      ? `Is “${u.title}” already in this stage?`
+                      : `Link an existing item to “${u.title}”`
+                }
                 explanation={
                   choosing.mode === 'ambiguous'
                     ? 'More than one of your items answers this suggestion. Choose the one it is — every item stays exactly as it is.'
-                    : 'Choose one of your items on this instrument. Nothing about it changes except that it now answers this suggestion.'
+                    : choosing.mode === 'placed'
+                      ? 'You placed these items in this stage, and none of them answers a suggestion yet. If one of them is this music, link it — nothing else about it changes. Otherwise add a new item.'
+                      : 'Choose one of your items on this instrument. Nothing about it changes except that it now answers this suggestion.'
                 }
-                items={choosing.mode === 'ambiguous' ? u.candidates ?? [] : linkCandidates(db.items, ctx.instrumentId, u.entry?.title ?? u.title)}
+                items={
+                  choosing.mode === 'ambiguous'
+                    ? u.candidates ?? []
+                    : choosing.mode === 'placed'
+                      ? choosing.placed ?? []
+                      : linkCandidates(db.items, ctx.instrumentId, u.entry?.title ?? u.title)
+                }
                 sameTitle={(i) => i.title.trim() === (u.entry?.title ?? u.title).trim()}
                 onChoose={(itemId) => {
                   const refusal = pathway && u.ref ? linkReference(pathway.id, u.ref, itemId) : 'This suggestion cannot be linked.';
                   if (!refusal) {
+                    const then = choosing.then;
                     setChoosing(null);
                     setNotice(`Linked — “${db.items.find((i) => i.id === itemId)?.title ?? ''}” now answers this suggestion.`);
+                    if (then === 'practise') start(itemId);
                   }
                   return refusal;
                 }}
+                alternative={
+                  choosing.mode === 'placed'
+                    ? {
+                        label: 'Add as a new item',
+                        run: () => (choosing.then === 'practise' ? practise(u, true) : addSuggestion(u, true)),
+                      }
+                    : undefined
+                }
                 onCancel={() => setChoosing(null)}
+              />
+            ) : linkingItem && u.item?.id === linkingItem.id ? (
+              <SuggestionChoice
+                key={u.key}
+                itemTitle={u.title}
+                suggestions={units.filter((x) => !x.item && !x.candidates && x.ref).map((x) => ({ ref: x.ref!, title: x.title }))}
+                onChoose={(ref) => {
+                  const refusal = pathway ? linkReference(pathway.id, ref, linkingItem.id) : 'This suggestion cannot be linked.';
+                  if (!refusal) {
+                    setLinkingItem(null);
+                    setNotice(`Linked — “${linkingItem.title}” now answers this suggestion.`);
+                  }
+                  return refusal;
+                }}
+                onCancel={() => setLinkingItem(null)}
               />
             ) : (
               <UnitRow
@@ -367,6 +429,7 @@ export default function StageDetail() {
                 onPractise={() => practise(u)}
                 onAdd={() => addSuggestion(u)}
                 onChoose={() => setChoosing({ unit: u, mode: u.candidates ? 'ambiguous' : 'link' })}
+                onLinkToSuggestion={u.unlinked && pathway ? () => setLinkingItem(u.item!) : undefined}
                 onHide={pathway && u.ref ? () => setReferenceHidden(pathway.id, u.ref!, true) : undefined}
                 onUnlink={u.item && u.ref ? () => unlinkReference(u.item!.id, u.ref!) : undefined}
                 onRemoveFromPathway={u.item && pathway ? () => setRefusal(removeFromPathway(u.item!.id, pathway.id)) : undefined}
@@ -426,6 +489,7 @@ function UnitRow({
   onHide,
   onUnlink,
   onRemoveFromPathway,
+  onLinkToSuggestion,
 }: {
   unit: StageUnit;
   returnTo: string;
@@ -437,6 +501,7 @@ function UnitRow({
   onHide?: () => void;
   onUnlink?: () => void;
   onRemoveFromPathway?: () => void;
+  onLinkToSuggestion?: () => void;
 }) {
   const navigate = useNavigate();
   const item = unit.item;
@@ -447,6 +512,7 @@ function UnitRow({
   // what the suggestion needs. The status lives here alone.
   const meta = [
     unit.strand ? STRAND_LABELS[unit.strand] : null,
+    unit.unlinked ? 'placed here · answers no suggestion' : null,
     item ? ITEM_STATUS_LABELS[item.status] : ambiguous ? `${unit.candidates!.length} of your items answer this — choose one` : 'suggestion',
     item && committedItemIds.has(item.id) ? 'for class' : null,
   ].filter(Boolean);
@@ -455,6 +521,7 @@ function UnitRow({
   const menu: { label: string; run: () => void }[] = [
     ...(!item && !ambiguous ? [{ label: 'Link an existing item…', run: onChoose }] : []),
     ...(!item && onHide ? [{ label: 'Hide this suggestion', run: onHide }] : []),
+    ...(item && onLinkToSuggestion ? [{ label: 'Link to a suggestion…', run: onLinkToSuggestion }] : []),
     ...(item && onUnlink ? [{ label: 'Unlink reference (keeps the item)', run: onUnlink }] : []),
     ...(item && onRemoveFromPathway ? [{ label: 'Remove from pathway (keeps the item)', run: onRemoveFromPathway }] : []),
   ];

@@ -172,6 +172,9 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/MusicalTermField.tsx", tagName: "span", classValue: "" },
   // Link existing / which item is it / which source: each candidate's own title.
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+  // SuggestionChoice: the item's title, then each suggestion's.
+  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },

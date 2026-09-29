@@ -15,6 +15,11 @@ const CASES: { name: string; g: ViewportGeometry; want: 'none' | 'restore' }[] =
   { name: 'zoomed with a full-height window', g: { layoutHeight: 844, scale: 1.5, visualHeight: 562.7, documentScroll: 120 }, want: 'none' },
   { name: 'hardware keyboard: no visual change, no displacement', g: { ...PHONE, visualHeight: 844, documentScroll: 0 }, want: 'none' },
   { name: 'rotated to landscape, displaced', g: { layoutHeight: 390, scale: 1, visualHeight: 390, documentScroll: 60 }, want: 'restore' },
+  // A reveal that scrolled a SHELL box (#root/body) leaves the document at 0.
+  { name: 'shell box scrolled, keyboard gone', g: { ...PHONE, visualHeight: 844, documentScroll: 0, shellScroll: 180 }, want: 'restore' },
+  { name: 'shell box scrolled, keyboard still up', g: { ...PHONE, visualHeight: 508, documentScroll: 0, shellScroll: 180 }, want: 'none' },
+  { name: 'shell box scrolled, pinch-zoomed', g: { layoutHeight: 844, scale: 2, visualHeight: 422, documentScroll: 0, shellScroll: 180 }, want: 'none' },
+  { name: 'shell at rest', g: { ...PHONE, visualHeight: 844, documentScroll: 0, shellScroll: 0 }, want: 'none' },
 ];
 
 describe('the layout viewport restore', () => {

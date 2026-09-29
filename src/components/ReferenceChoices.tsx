@@ -15,6 +15,7 @@ export function ItemChoice({
   sameTitle,
   onChoose,
   onCancel,
+  alternative,
 }: {
   heading: string;
   explanation: string;
@@ -23,6 +24,8 @@ export function ItemChoice({
   sameTitle?: (item: PracticeItem) => boolean;
   onChoose: (itemId: string) => string | null | void;
   onCancel: () => void;
+  /** A deliberate way out that is not one of the items (e.g. "Add as a new item"). */
+  alternative?: { label: string; run: () => string | null | void };
 }) {
   const [refusal, setRefusal] = useState<string | null>(null);
   return (
@@ -51,6 +54,55 @@ export function ItemChoice({
           </button>
         ))}
       </div>
+      {refusal && (
+        <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
+          {refusal}
+        </p>
+      )}
+      {alternative && (
+        <button className="btn btn-sm" style={{ width: 'fit-content' }} onClick={() => setRefusal(alternative.run() || null)}>
+          {alternative.label}
+        </button>
+      )}
+      <button className="btn btn-ghost btn-sm" style={{ width: 'fit-content' }} onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The same explicit choice from the ITEM's side: which suggestion an item the
+ * owner placed in a stage answers. Only suggestions nothing answers yet are
+ * offered; nothing happens until one is picked.
+ */
+export function SuggestionChoice({
+  itemTitle,
+  suggestions,
+  onChoose,
+  onCancel,
+}: {
+  itemTitle: string;
+  suggestions: { ref: string; title: string }[];
+  onChoose: (ref: string) => string | null | void;
+  onCancel: () => void;
+}) {
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const heading = `Which suggestion is “${itemTitle}”?`;
+  return (
+    <div className="card card-quiet stack-sm" role="region" aria-label={heading}>
+      <div className="small" style={{ fontWeight: 600 }}>
+        Which suggestion is <span dir="auto">“{itemTitle}”</span>?
+      </div>
+      <p className="tiny dim" style={{ margin: 0 }}>
+        Choose the suggestion this item is. Nothing about the item changes except that it now answers it.
+      </p>
+      {suggestions.length === 0 && <p className="tiny dim">Every suggestion here is already answered.</p>}
+      {suggestions.map((u) => (
+        <button key={u.ref} className="btn btn-block" style={{ textAlign: 'start' }} onClick={() => setRefusal(onChoose(u.ref) || null)}>
+          <span dir="auto">{u.title}</span>
+        </button>
+      ))}
       {refusal && (
         <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
           {refusal}

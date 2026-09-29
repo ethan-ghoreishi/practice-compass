@@ -630,7 +630,10 @@ own pace, on a route they trust. Protect that:
   suggestion, routine segment and course file, so a move, detach, deleted stage or reload
   changes nothing and Add is idempotent. Two items answering one suggestion are shown as
   candidates, never picked; **Link existing** is an explicit same-instrument choice that
-  changes only `catalogRefs`. **Unlink reference** drops one binding (the list stays PRESENT,
+  changes only `catalogRefs`. **Placing is not linking**: an item placed in a stage that answers
+  none of its suggestions is marked so on its row (with Link to a suggestion), and Add there
+  creates nothing until the owner links one or chooses Add as a new item (`unlinkedInStage`,
+  `planStageAddition`). **Unlink reference** drops one binding (the list stays PRESENT,
   even empty, so old placement never re-binds it). **Remove from pathway** clears placement
   and HIDES the item's suggestions in that pathway (`Pathway.hiddenRefs`) without unbinding —
   a radif reference is shared by the mixed and the named Setar pathways, and unbinding would
@@ -3031,13 +3034,17 @@ which stops above the home-indicator safe area, leaving the bar floating above t
 physical bottom with dead space beneath. With `100dvh` the shell reaches the true
 bottom and the bar's own `env(safe-area-inset-bottom)` padding lifts just its buttons
 clear. **The iOS software keyboard must not drift the shell:** the document never scrolls (only
-`<main>` does), so a non-zero document scroll is WebKit moving the layout viewport. `viewport.ts`
-decides from GEOMETRY alone — never focus — restoring it to 0 only once the visual viewport is
+`<main>` does), so a non-zero scroll on the document, `body` or `#root` is WebKit moving the
+shell (`overflow: hidden` stops the owner scrolling them, not a focus reveal). `viewport.ts`
+decides from GEOMETRY alone — never focus — restoring those to 0 only once the visual viewport is
 back to full height at scale 1 (keyboard dismissed, "Done" with focus retained included), never
 while it is short (intentional reveal) or zoomed, and never touching `<main>`'s scroll;
 `useViewportGuard` is the thin adapter (visual-viewport resize/scroll and visibility, no timers,
-full teardown, no-op without `visualViewport`). Browser fixtures prove the mechanism only; the
-native iPhone check is the owner's (ac-24). Five EQUAL nav tabs
+full teardown, no-op without `visualViewport`). **NATIVE RECOVERY IS UNVERIFIED:** the owner
+still sees a lifted bar on the iPhone after the fixture-proved fix, so the native mechanism is
+unmeasured. More → Keyboard trace records the device's geometry (memory only, never saved) for
+the ac-24 capture in Safari AND the installed PWA; diagnose from that trace, never by adding
+guesses to the guard. Five EQUAL nav tabs
 (no raised centre button — Today owns the primary Start
 action); route changes scroll `<main>` to top; per-route page widths (narrow for focused
 practice, wide ~1100px for browsing/notes on desktop); serif is for headings only,

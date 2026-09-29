@@ -143,6 +143,30 @@ describe('the iPhone keyboard, as geometry', () => {
         expect(await g.restores(), `${engine}: residual after scroll`).toBe(3);
         expect(await page.evaluate(() => document.querySelector('main')!.scrollTop), engine).toBe(mainBefore);
 
+        // SHELL BOXES: `overflow: hidden` stops the owner scrolling #root, not
+        // the browser — a reveal can scroll it, which LIFTS the bar while the
+        // document offset reads 0. A spacer makes #root scrollable so the
+        // lifted bar is real, not a number; it is removed afterwards.
+        const barBottom = () => page.evaluate(() => document.querySelector('.tabbar')!.getBoundingClientRect().bottom);
+        const rootScroll = () => page.evaluate(() => document.getElementById('root')!.scrollTop);
+        const restingBottom = await barBottom();
+        await page.evaluate(() => {
+          const spacer = document.createElement('div');
+          spacer.id = 'lift-spacer';
+          spacer.style.height = '2000px';
+          document.getElementById('root')!.append(spacer);
+          document.getElementById('root')!.scrollTop = 150;
+        });
+        expect(await barBottom(), `${engine}: bar lifted by #root`).toBe(restingBottom - 150);
+        await g.set(508, 1, 0);
+        await g.fire('resize');
+        expect([await g.restores(), await rootScroll()], `${engine}: shell, keyboard up`).toEqual([3, 150]);
+        await g.set(844, 1, 0);
+        await g.fire('resize');
+        expect([await g.restores(), await rootScroll(), await barBottom()], `${engine}: shell, keyboard gone`).toEqual([4, 0, restingBottom]);
+        expect(await page.evaluate(() => document.querySelector('main')!.scrollTop), engine).toBe(mainBefore);
+        await page.evaluate(() => document.getElementById('lift-spacer')!.remove());
+
         // ROUTE CHANGES tear nothing down twice and add nothing: still ONE guard.
         for (const route of ['/', '/lessons', '/repertoire?view=paths', '/terms', '/start']) {
           await goTo(app, route);
@@ -151,7 +175,24 @@ describe('the iPhone keyboard, as geometry', () => {
         // BACK FROM THE BACKGROUND with residual displacement: one restore.
         await g.set(844, 1, 70);
         await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
-        expect(await g.restores(), `${engine}: resume`).toBe(4);
+        expect(await g.restores(), `${engine}: resume`).toBe(5);
+
+        // THE OWNER'S TRACE (More → Keyboard trace) writes down what a device
+        // reports at each event, and changes nothing the guard does.
+        await goTo(app, '/more');
+        await page.locator('summary', { hasText: 'Keyboard trace' }).click();
+        await page.getByRole('button', { name: 'Start recording' }).click();
+        await g.set(508, 1, 120);
+        await g.fire('resize');
+        await g.set(844, 1, 120);
+        await g.fire('resize');
+        expect(await g.restores(), `${engine}: traced restore`).toBe(6);
+        await page.getByRole('button', { name: 'Stop recording' }).click();
+        const lines = (await page.getByRole('textbox', { name: 'Keyboard trace' }).inputValue()).split('\n').map((l) => JSON.parse(l));
+        expect(lines[0], engine).toHaveProperty('ua');
+        expect(lines.some((l) => l.ev === 'resize' && l.vvH === 508), `${engine}: keyboard-up sample`).toBe(true);
+        expect(lines.some((l) => l.ev === 'restore'), `${engine}: guard action recorded`).toBe(true);
+        expect(await g.listeners(), `${engine}: recorder torn down`).toBe(2);
         expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
       } finally {
         await app.close();

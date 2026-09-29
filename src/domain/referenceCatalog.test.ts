@@ -26,8 +26,10 @@ import {
   planLinkReference,
   planRemoveFromPathway,
   settleLegacyEvidence,
+  planStageAddition,
   stageProgress,
   stageUnits,
+  unlinkedInStage,
 } from './pathways';
 import { itemFiles } from './itemFiles';
 import { serializeExport, validateDB } from './io';
@@ -239,6 +241,80 @@ describe('catalogue identity', () => {
     expect(resolveCatalogReference('radif:mirza-abdollah:afshari:iraq', 'inst-tar', db.items).status).toBe('absent');
     // …and nothing on the stage page links by title on its own.
     expect(stageUnits(stage, db.items, { instrumentId: 'inst-setar' }).find((u) => u.key === 'kereshmeh')!.item).toBeUndefined();
+
+    // 7. PLACING AN OWNED ITEM IS NOT LINKING IT — and Add beside it never mints
+    //    a silent second copy. The ordinary journey: an item the owner already
+    //    has is given a stage from Item Detail (stageId only, through the same
+    //    settle step every placement write passes).
+    const every = everyPathway();
+    const abuAta = stageIdFor(SEED_PATHWAY_IDS.setar, 'abu-ata');
+    const sayakhi = catalogReferenceId(abuAta, 'sayakhi');
+    const owned: PracticeItem = {
+      ...db.items.find((i) => i.id === 'it-title-only')!,
+      id: 'it-sayakhi-owned',
+      instrumentId: 's',
+      title: 'سیخی-ابوعطا-ردیف-میرزاعبدالله',
+      notes: 'teacher: slower in the second phrase',
+      timesPractised: 3,
+      stageId: undefined,
+      catalogKey: undefined,
+      catalogRefs: undefined,
+    };
+    const before: PracticeDB = { ...every, items: [owned] };
+    const placedWrite = settleLegacyEvidence(before, [{ ...owned, stageId: abuAta }], NOW);
+    expect(placedWrite.ok).toBe(true);
+    const placedDb: PracticeDB = { ...before, items: placedWrite.ok ? placedWrite.items : [] };
+    const placedItem = placedDb.items[0];
+    expect(placedItem.catalogRefs).toBeUndefined(); // placement decided no identity
+    const abuStage = stageOf(placedDb, abuAta);
+    const setarCtx = pathwayStageContext(placedDb.pathways.find((p) => p.id === SEED_PATHWAY_IDS.setar));
+
+    // The stage says so: the suggestion is untaken, and the placed item's own
+    // row names it as answering no suggestion (one clear flag, never a merge).
+    expect(unlinkedInStage(abuAta, placedDb.items, 's').map((i) => i.id)).toEqual(['it-sayakhi-owned']);
+    const rows = stageUnits(abuStage, placedDb.items, setarCtx);
+    expect(rows.find((u) => u.key === 'sayakhi')!.item).toBeUndefined();
+    expect(rows.filter((u) => u.item?.id === 'it-sayakhi-owned').map((u) => u.unlinked)).toEqual([true]);
+    // …a Tar instance never counts a Setar item placed beside its stages.
+    expect(unlinkedInStage(abuAta, placedDb.items, 't')).toEqual([]);
+
+    // Add (and Play, which adds through the same planner) on ANY untaken
+    // suggestion of that stage creates NOTHING while the placed item is
+    // unlinked: it hands the item back to be chosen.
+    for (const key of ['sayakhi', 'hejaz']) {
+      const entry = catalogForStage(abuAta).find((e) => e.key === key);
+      const asked = planStageAddition(placedDb, abuAta, key, entry, 's', NOW);
+      expect([asked.created, asked.itemId, asked.items], key).toEqual([false, '', placedDb.items]);
+      expect(asked.placed!.map((i) => i.id), key).toEqual(['it-sayakhi-owned']);
+    }
+    const sayakhiEntry = catalogForStage(abuAta).find((e) => e.key === 'sayakhi');
+
+    // LINK is the owner's explicit answer: one item, every owner field kept,
+    // one row, and Add now reuses it.
+    const linkedPlaced = planLinkReference(placedDb, sayakhi, 'it-sayakhi-owned', 's', NOW);
+    expect(linkedPlaced.ok).toBe(true);
+    const linkedDb: PracticeDB = { ...placedDb, items: linkedPlaced.ok ? linkedPlaced.items : [] };
+    expect(linkedDb.items).toHaveLength(1);
+    expect(strip(linkedDb.items[0])).toEqual(strip(placedItem));
+    const linkedRows = stageUnits(abuStage, linkedDb.items, setarCtx);
+    expect(linkedRows.filter((u) => u.item?.id === 'it-sayakhi-owned').map((u) => [u.key, u.unlinked])).toEqual([['sayakhi', undefined]]);
+    const reAdd = planStageAddition(linkedDb, abuAta, 'sayakhi', sayakhiEntry, 's', NOW);
+    expect([reAdd.created, reAdd.itemId, reAdd.items, reAdd.placed]).toEqual([false, 'it-sayakhi-owned', linkedDb.items, undefined]);
+    // The stage's OTHER suggestions are no longer held: the placed item now
+    // answers one of them, so Add creates exactly what was asked for.
+    const hejaz = planStageAddition(linkedDb, abuAta, 'hejaz', catalogForStage(abuAta).find((e) => e.key === 'hejaz'), 's', NOW);
+    expect([hejaz.created, hejaz.items.length, hejaz.placed]).toEqual([true, 2, undefined]);
+
+    // "Add as a new item" is the other explicit answer: one new item, bound,
+    // the placed one untouched — and a second Add reuses the new one.
+    const separate = planStageAddition(placedDb, abuAta, 'sayakhi', sayakhiEntry, 's', NOW, true);
+    expect(separate.created).toBe(true);
+    expect(separate.items).toHaveLength(2);
+    expect(separate.items[0]).toBe(placedItem);
+    const separateDb: PracticeDB = { ...placedDb, items: separate.items, materials: separate.materials };
+    const again = planStageAddition(separateDb, abuAta, 'sayakhi', sayakhiEntry, 's', NOW);
+    expect([again.created, again.itemId, again.items]).toEqual([false, separate.itemId, separate.items]);
+    expect(() => validateDB({ ...separateDb })).not.toThrow();
   });
 
   it('Setar and Tar share reference definitions without sharing practice state', () => {

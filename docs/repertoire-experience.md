@@ -19,7 +19,7 @@ again after. Synthetic data only; the owner's database was never opened.
 | Repertoire | Opened on **Pathways**. Three views held separate state, each with its own instrument filter; a form chip row with no search; "Study sources" and a wrapping "Add practice item" crowded the header. | Opens on **My repertoire**. One instrument selector for all three peer views (My repertoire · Pathways · Practice list); view, instrument, query, facets and grouping live in the URL, so opening a work and coming back — or browser back/forward — restores them. One primary action (Add practice item, prefilled with the browsed instrument and form). |
 | My repertoire | Grouped by folded raw text («Shur» and «شور» apart); title-only full pieces silently missing; no search, no composer filter. | Search (title, gusheh, term names and spellings, source, archive aliases) + Dastgāh/Form/Composer facets from the owner's own works + group by dastgāh/form/composer/source. Every work exactly once; a matching part shows its parent; unclassified works under "No dastgāh yet"; "No works match" is announced and distinct from an empty library; Clear filters. |
 | Pathways | Card ignored the pinned stage; archived pathways invisible with no way back. | Card shows the pinned stage ("pinned"), same resolver as Today; archived pathways listed under "Archived pathways" with Restore; shipped defaults (incl. the two named radif pathways) offered by name. |
-| Stage | Every suggestion row carried the generic gusheh prompt (visually heavy); an Undo/"−" deleted a "fresh" item. | Calm rows; a 44×44 "⋯" menu per row: Link an existing item…, Hide this suggestion, Unlink reference, Remove from pathway — none deletes. Ambiguous legacy copies show "N of your items answer this — choose one". Hidden suggestions listed with Restore. |
+| Stage | Every suggestion row carried the generic gusheh prompt (visually heavy); an Undo/"−" deleted a "fresh" item. | Calm rows; a 44×44 "⋯" menu per row: Link an existing item…, Hide this suggestion, Unlink reference, Remove from pathway — none deletes. Ambiguous legacy copies show "N of your items answer this — choose one". An item placed in the stage that answers no suggestion says so ("placed here · answers no suggestion", menu: Link to a suggestion…), and Add beside it asks "Is “…” already in this stage?" — Link it, or Add as a new item — instead of minting a second copy. Hidden suggestions listed with Restore. |
 | Item form | Dastgāh/Form as free text with Latin-only datalists; composer free text. | The three fields read the shared vocabulary: picking a term links it ("Shared term"); an alias shows "Your spelling — grouped as …"; anything else stays the owner's text. |
 | Study sources | Twelve kinds mixing collections, pieces, activities and lessons; new sources defaulted to the first instrument. | Five kinds with an example each (Radif · Method book · Collection · Course · Other); an older kind stays selectable on its own source; new sources start on the browsed/session instrument. |
 | More | Insights, Teacher report, Settings. | + Musical terms (add, rename, spellings, archive/restore, delete unused custom) and Study sources. |
@@ -43,7 +43,7 @@ Reference ids: `stage:<stageId>:<key>` · `course:<courseId>:work:<identity>` ·
 | --- | --- | --- |
 | Term values on items | `ItemForm` (`MusicalTermField` → `valueFromInput`), `itemFromCatalogEntry` (radif entries carry `{termId}`), archive adoption (`sourceReconcile`, raw registry TEXT only), migration (never — legacy text is kept) | `resolveValue`/`valueLabel`/`valueGroup`/`valueSearchTexts` → `groupByDastgah`, `discoverRepertoire`, `repertoireSearchTexts` (Practice list, Start), `ItemDetail` details, `WorkRow`, `MusicalTermField`, archive suggestion comparison (`fieldAlreadySays`), `isWork`/`hasPersianIdentity`, `kindFromItem`, `validateMusicTerms` |
 | `musicTerms` | `addTerm`/`updateTerm`/`deleteTerm` (store, via `planAddTerm`/`planUpdateTerm`/`planDeleteTerm`; an update is refused when `reclassifiedItems` finds an unedited value whose meaning would change, a delete while `itemsUsingTerm` — ambiguous claimants included — is non-empty; MusicTerms' Delete reads `planDeleteTerm` itself), `migrateToV15` (empty list only) | `vocabulary()` everywhere above, `searchAliasTable`, MusicTerms page, `validateDB` |
-| `catalogRefs` | `planCatalogAddition` (Add), `planLinkReference`, `planUnlinkReference`, `planRemoveFromPathway`, and — through `settleLegacyEvidence` (unique legacy decided, ambiguous refused) — every placement writer: `updateItem` (stage/key/instrument), `placeItemInStage`, `deleteStage`, `deletePathway`; `bindLegacyReferences` (v15 migration, fitting evidence only). Every one passes `identityRefusal` before `set()`; a link or instrument move may not overrule another item's legacy answer (`legacyClaimRefusal`) | `resolveCatalogReference` → `stageUnits`/`hiddenUnits`/`stageProgress`/`currentStage`/`nextUnitInStage`/`pathwayProgress`, `planCatalogAddition` reuse, `carriedCourseWorkItem`, routine segment binding (`unitItem`), `itemReferences` → `itemFiles` course material, `validateReferences` |
+| `catalogRefs` | `planStageAddition` → `planCatalogAddition` (Add; creates nothing while `unlinkedInStage` lists items placed there that answer no suggestion, unless the owner chose Add as a new item), `planLinkReference`, `planUnlinkReference`, `planRemoveFromPathway`, and — through `settleLegacyEvidence` (unique legacy decided, ambiguous refused) — every placement writer: `updateItem` (stage/key/instrument), `placeItemInStage`, `deleteStage`, `deletePathway`; `bindLegacyReferences` (v15 migration, fitting evidence only). Every one passes `identityRefusal` before `set()`; a link or instrument move may not overrule another item's legacy answer (`legacyClaimRefusal`) | `resolveCatalogReference` → `stageUnits`/`hiddenUnits`/`stageProgress`/`currentStage`/`nextUnitInStage`/`pathwayProgress`, `planCatalogAddition` reuse, `carriedCourseWorkItem`, routine segment binding (`unitItem`), `itemReferences` → `itemFiles` course material, `validateReferences` |
 | `hiddenRefs` | `planSetReferenceHidden` (Hide/Restore), `planRemoveFromPathway` | `pathwayStageContext` → every stage consumer above; `validateReferences` (scope = the pathway's shipped definition) |
 | Pathway route | `updatePathway` (archived, pin), `deleteStage` (clears pin) | `visiblePathways`/`primaryPathway`/`pathwayPosition` → Today, SessionPlan (build + editor), Repertoire cards, PathwayDetail |
 | `sourceKey` | `resolveCourseSource` (mint/adopt), `chooseCourseSource` (via `planChooseCourseSource`, answering the derived `courseSourceQuestions` for exactly the items it names — StageDetail renders it; `planCatalogAddition` returns its candidates on first AND repeat Add) and `updateMaterial` (both refused by `sourceKeyClash` when the instrument already holds the key), `backfillCourseSourceKeys` (v15) | `findCourseSource`, `validateStudySources` |
@@ -77,11 +77,26 @@ and is driven in Chromium and WebKit through a scripted `visualViewport` whose g
 written by hand per state (keyboard up, Done with retained focus, blur, zoom, hardware keyboard,
 rotation-shaped heights, background/resume, absent `visualViewport`, route changes).
 
-**Not measured:** a native iPhone. No device trace was available to this lane, so the owner's
-reported lifted tab bar is **not claimed fixed**; ac-24 (Safari + installed PWA traces) remains
-outstanding. The old "scroll the focused field into view after 300 ms" behaviour was removed,
-not replaced: WebKit's own reveal is the accommodation, and the owner check will show whether
-anything more is needed.
+**Not measured:** a native iPhone. After the geometry guard shipped the owner **still sees the
+lifted bar** on the device, so the native mechanism is unknown and the defect is **not claimed
+fixed**; ac-24 (Safari + installed PWA traces) remains outstanding. One source-level blind spot
+was closed on the way: the guard read only the document's own offset, while `overflow: hidden`
+on `body`/`#root` stops the owner scrolling them, not a focus reveal — a reveal that scrolled
+`#root` lifts the bar with the document offset reading 0. Both are now restored under the same
+geometry rules (fixture-proved in both engines, with a real lifted bar). That is a hypothesis
+closed, not a diagnosis. The old "scroll the focused field into view after 300 ms" behaviour
+was removed, not replaced.
+
+**Capturing the trace (ac-24).** On the iPhone, once in Safari and once in the installed app:
+More → Keyboard trace → Start recording; then focus a field and type, tap Done (focus kept),
+dismiss by tapping away, repeat, scroll, rotate, switch tabs, background and resume, pinch-zoom
+and release; return to More → Stop recording → Copy trace. The first line names the device, iOS
+(user agent) and whether it ran standalone; each further line is one event with both viewports
+(`innerH`, `vvH`, `vvTop`, `scale`), every shell offset (`scrollY`, `html`, `body`, `root`,
+`main`), the bar's `barTop`/`barBottom`, the focused element, and — at each guard evaluation —
+its decision and any `restore`. A lifted bar shows as `barBottom` less than `innerH` with the
+keyboard gone (`vvH ≈ innerH`); which offset is non-zero at that moment names the mechanism.
+The trace lives in memory only and is never saved, synced or backed up.
 
 ## Proof
 

@@ -48,7 +48,7 @@ import {
   courseForPathway,
   courseRoutine,
   courseStage,
-  planCatalogAddition,
+  planStageAddition,
   planChooseCourseSource,
   planCourseLevels,
   itemOwnedAttachments,
@@ -469,7 +469,16 @@ interface StoreState {
   addFromCatalog: (
     stageId: ID,
     entryKey: string,
-  ) => { id: ID; created: boolean; candidates?: PracticeItem[]; sourceCandidates?: Material[]; refusal?: string };
+    /** The owner explicitly asked for a NEW item beside the unlinked ones placed in the stage. */
+    separate?: boolean,
+  ) => {
+    id: ID;
+    created: boolean;
+    candidates?: PracticeItem[];
+    placed?: PracticeItem[];
+    sourceCandidates?: Material[];
+    refusal?: string;
+  };
   /**
    * Write one of a course stage's own routines — the level's, or one built for
    * where the owner actually is — as an ordinary editable routine. Returns its
@@ -1400,7 +1409,7 @@ export const useStore = create<StoreState>()(
         set((s) => ({ db: { ...s.db, lessonAgenda: s.db.lessonAgenda.filter((e) => e.id !== id) } }));
       },
 
-      addFromCatalog: (stageId, entryKey) => {
+      addFromCatalog: (stageId, entryKey, separate = false) => {
         const { db } = get();
         const entry = catalogForStage(stageId).find((e) => e.key === entryKey);
         const stage = db.pathwayStages.find((s) => s.id === stageId);
@@ -1416,7 +1425,7 @@ export const useStore = create<StoreState>()(
         // test environment cannot import this file (Dexie, through ./idb), so
         // the decision is proved in courseSeed.test.ts and this SHAPE is what
         // protects the wiring.
-        const plan = planCatalogAddition(db, stageId, entryKey, entry, instrumentId, new Date());
+        const plan = planStageAddition(db, stageId, entryKey, entry, instrumentId, new Date(), separate);
         // Reuse and an ambiguous answer change nothing — no set(), no revision.
         // A write reload would refuse is never applied (a backstop: the plan
         // itself creates a binding only where nothing on that instrument holds it).
@@ -1430,6 +1439,7 @@ export const useStore = create<StoreState>()(
           id: plan.itemId,
           created: plan.created,
           ...(plan.candidates ? { candidates: plan.candidates } : {}),
+          ...(plan.placed ? { placed: plan.placed } : {}),
           ...(plan.sourceCandidates ? { sourceCandidates: plan.sourceCandidates } : {}),
         };
       },
