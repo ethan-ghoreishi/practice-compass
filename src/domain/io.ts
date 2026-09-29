@@ -6,6 +6,10 @@ import { validateLessonAgenda } from './lessonAgenda';
 import { validateSchedulingFields } from './scheduling';
 import { validatePracticeText } from './practiceInformation';
 import { validateArchiveSources } from './sourceArchive';
+import { validateMusicTerms } from './musicTerms';
+import { validateReferences } from './pathways';
+import { validateStudySources } from './studySources';
+import { COURSES } from './courseSeed';
 
 // ---------------------------------------------------------------------------
 // JSON export / import. Export wraps the full DB with app + schema metadata.
@@ -39,6 +43,7 @@ const ARRAY_KEYS = [
   'lessons',
   'lessonAgenda',
   'archiveSources',
+  'musicTerms',
 ] as const;
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -103,6 +108,9 @@ export function validateDB(input: unknown): PracticeDB {
     // left out of it is silently dropped on the way in — bindings, owner
     // suppressions and all.
     archiveSources: migrated.archiveSources ?? [],
+    // v15, reconstructed for the same reason: the owner's custom terms and
+    // their edits of built-ins.
+    musicTerms: migrated.musicTerms ?? [],
     // Optional scheduling knobs — a top-level object, not an array. Carry it
     // through so a user's adjusted params survive export/import round-trips.
     ...(isRecord(migrated.settings) ? { settings: migrated.settings as unknown as PracticeDB['settings'] } : {}),
@@ -157,6 +165,16 @@ export function validateDB(input: unknown): PracticeDB {
   // refused BEFORE anything is installed.
   const sourceProblem = validateArchiveSources(db);
   if (sourceProblem) throw new Error(sourceProblem);
+  // v15: the vocabulary and every field pointing into it, the catalogue
+  // bindings and hidden suggestions, and course-source keys. Literal text and
+  // undecided legacy evidence are always legitimate; a wrong type, a dangling
+  // or wrong-kind reference, a duplicate id and an out-of-scope hide are not.
+  const termProblem = validateMusicTerms(db);
+  if (termProblem) throw new Error(termProblem);
+  const referenceProblem = validateReferences(db);
+  if (referenceProblem) throw new Error(referenceProblem);
+  const studySourceProblem = validateStudySources(db, COURSES);
+  if (studySourceProblem) throw new Error(studySourceProblem);
 
   return db;
 }

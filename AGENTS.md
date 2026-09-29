@@ -608,26 +608,36 @@ own pace, on a route they trust. Protect that:
 
 - **The item is the only unit of work — pathways are a view over items.** There is no
   separate "step" object. A `PracticeItem` may carry a `stageId` (placing it inside a
-  pathway stage), a `strand`, and a `catalogKey`. Stage progress is *derived* from the
-  mastery status of the items in it (`itemStageState` in `pathways.ts`). Never reintroduce
-  a parallel to-do list next to items.
+  pathway stage), a `strand`, and a `catalogKey` (provenance). Which SUGGESTION it is lives
+  in its bindings (`catalogRefs`, v15), never in where it sits. Stage progress is *derived*
+  from the mastery status of the items in it (`itemStageState` in `pathways.ts`). Never
+  reintroduce a parallel to-do list next to items.
 - **The catalog is reference data in code, not persisted.** `pathwaySeed.ts` defines
   per-stage `CatalogEntry` suggestions (gushes, lesson areas) with `about` guidance for
   conscious practice — for the Classical Guitar Shed levels those entries are GENERATED
   from the course's own tree (`courseSeed.ts` / `courseData.ts`; see "A COURSE is
   reference data in code" below), which changes where they come from and nothing about
   what they are; `addFromCatalog` turns one into a real item with one tap. The new
-  item is honestly **"Not practised yet"** (status `new`, zero stats) with an immediate
-  Undo — adding is organisation, not progress. Label suggestions as reference aids, never
+  item is honestly **"Not practised yet"** (status `new`, zero stats) — adding is
+  organisation, not progress. Label suggestions as reference aids, never
   canonical. Improving the catalog needs no migration; keep entry keys stable per stage.
-- **Adding from the catalog is losslessly reversible.** The Undo is DURABLE (persists until
-  dismissed or the item is practised — no timeout), and a fresh catalog item shows a "Remove"
-  affordance on its row and in the item's "Connected to". `isLosslesslyRemovable`
-  (`pathways.ts`, tested) gates this: `catalogKey` set AND status `new` AND zero blocks AND
-  `timesPractised === 0`. The store's `removeCatalogItem` re-checks the predicate against
-  LIVE blocks before delegating to `deleteItem`; once anything is logged, only the ordinary
-  delete-with-confirm remains. This is the one place a stage row grows a second 44×44 action
-  (− beside ▶); it disappears the moment the item is practised.
+- **Reference suggestions bind by identity, and nothing reversible deletes.** Every entry
+  has a stable reference id — `stage:<stage>:<key>`, `course:<course>:work:<identity>` or
+  `radif:<recension>:<dastgāh>:<gusheh>` (`referenceCatalog.ts`, formed by
+  `catalogReferenceId`, never from a title or a placement). The item holds its bindings
+  (`catalogRefs`); ONE resolver (`resolveCatalogReference`: an explicit binding, else a UNIQUE
+  legacy `stageId`+`catalogKey`, per instrument) drives every row, Add/Start, progress, next
+  suggestion, routine segment and course file, so a move, detach, deleted stage or reload
+  changes nothing and Add is idempotent. Two items answering one suggestion are shown as
+  candidates, never picked; **Link existing** is an explicit same-instrument choice that
+  changes only `catalogRefs`. **Unlink reference** drops one binding (the list stays PRESENT,
+  even empty, so old placement never re-binds it). **Remove from pathway** clears placement
+  and HIDES the item's suggestions in that pathway (`Pathway.hiddenRefs`) without unbinding —
+  a radif reference is shared by the mixed and the named Setar pathways, and unbinding would
+  make the other offer a duplicate. **Hide/Restore** is visibility only: hidden suggestions
+  count for nothing, and an empty stage is never complete. The old lossless-Undo delete is
+  gone (`removeCatalogItem` survives only as a non-deleting alias); Delete practice item stays
+  the one destructive action.
 - **Structure, not gamification.** Show honest position (items solid / in progress /
   suggestions remaining). No streaks, scores, or fabricated mastery %.
 - **Pathways/stages stay editable data** (`pathways`, `pathwayStages`, `pathwayRoutines`)
@@ -730,30 +740,54 @@ own pace, on a route they trust. Protect that:
   early must never silently fabricate or silently lose practice. Today's Routines card is
   documented in its own bullet above.
 - **The current stage is the user's choice.** Teacher-led work jumps around:
-  `Pathway.currentStageId` (pin) always wins; "first incomplete stage" is only the
-  fallback. Never treat linear order as truth for Setar/Tar.
+  `Pathway.currentStageId` (pin) always wins while its stage exists; "first incomplete
+  stage" is only the fallback. Never treat linear order as truth for Setar/Tar. ONE route
+  selector (`visiblePathways`/`primaryPathway`/`pathwayPosition`, `pathways.ts`: not
+  archived, by `order` then id) is read by Today, BOTH Session Plan derivations, Repertoire
+  and the pathway page — never "the first pathway that matches".
 - **Pieces can have parts** (`parentItemId`): parts are ordinary items grouped under a
   piece/étude, with a deterministic "practise this part now" pick (`pickNextPart`) and a
   calm stall hint (`stallHint`) — smaller unit or new strategy, never quotas.
-- **"My repertoire" is a DERIVED lens, not new structure.** Repertoire has exactly
-  three views: **Pathways · My repertoire · Practice list**. A "work" is any top-level
-  item with Persian identity (dastgāh/form/composer/gusheh) or a full piece/gusheh type
-  (`isWork`/`repertoireWorks` in `src/domain/repertoire.ts`, tested). Persian works
-  group by dastgāh via `groupByDastgah` (`src/domain/persian.ts` — folds spelling
-  variants, labels with the user's own majority spelling, standard dastgāh order) with
-  radif gushehs and composed maestro pieces side by side; other instruments group by
-  study source. Parent works appear ONCE; parts stay nested (never standalone
-  duplicates). Form/composer are compact metadata + filter chips, never a deep
-  hierarchy. Dastgāh/form suggestions are datalists (reference aids), free text always
-  wins. Never invent a parallel "pieces" object or a guitar-specific model.
-- **Sources stay simple.** A Material is instrument + one clear name + kind + status +
-  note. Piece-level detail (dastgāh, gusheh, composer, teacher) belongs on items, never
-  on sources — the removed parent-title/section/teacher-source fields must not return.
-  Sources are reached from Repertoire (not More), and are creatable inline from the
-  item form.
+- **"My repertoire" is a DERIVED lens, not new structure.** Three peer views — **My
+  repertoire** (the default) · **Pathways** · **Practice list** — share ONE instrument
+  selector; view, instrument, query, facets and grouping live in the URL
+  (`readBrowseState`/`browseParams`, `selectors.ts`: unknown values are ignored, Clear
+  filters resets, browsing never writes `sessionInstrumentId`). A work is any top-level item
+  with Persian identity or a full-piece/gusheh type, title-only included (`isWork`).
+  `discoverRepertoire` (`repertoire.ts`) is the screen: combined search over title, gusheh,
+  term names/aliases, source and archive aliases; facets from the owner's own works only;
+  grouping by dastgāh (Persian) or source, or by form/composer/source; every work exactly
+  once, a matching part shows its parent, "No dastgāh yet" holds the unclassified, and "no
+  match" is distinct from "nothing here". Practice list and Start search the same texts
+  (`repertoireSearchTexts`) under their own eligibility. Never invent a parallel "pieces"
+  object or a guitar-specific model.
+- **Three classifying fields share ONE small vocabulary** (`musicTerms.ts`): Dastgāh/Āvāz,
+  Form, Composer/maestro, under namespaced ids never derived from a label. Built-ins live in
+  code; `PracticeDB.musicTerms` (v15) holds custom terms and edits of built-ins by the same
+  id, so empty means "untouched" and nothing reseeds. A field holds ONE value — a `{termId}`
+  reference or the owner's literal text — and legacy text is never rewritten. Identity is
+  EXACT (`resolveValue`: a reference, or text equal to exactly ONE term's name or curated
+  alias after `normalizePersian`); composites, substrings, unknown and ambiguous spellings
+  stay literal and group by their own text; transliteration is search only
+  (`searchAliasTable`). Picking a term's NAME stores the reference. More → Musical terms
+  renames (id kept, old name kept as a spelling), refuses a spelling another term claims or
+  an item still depends on, archives (still readable, no longer offered) and deletes only
+  unused custom terms; "Saved." waits for IndexedDB. Gusheh titles are NOT terms.
+- **A study source is the named book, collection/radif edition, course or teaching
+  material** a piece is studied FROM — not a person, a pathway or a lesson. New sources offer
+  Radif · Method book · Collection · Course · Other (`studySources.ts`); an older kind stays
+  stored and selectable on its own source, and the compact editor patches only what it
+  shows. A new source starts on the browsed/session instrument. A shipped course's own source
+  carries `sourceKey` (v15) so a rename never mints a copy; only a uniquely proven origin (the
+  course's title AND kind) is keyed, an unproven same-titled source is ASKED about. Never
+  deduplicate arbitrary sources by title or share them across instruments.
 - **Seeds are honest starting points, never fabricated authority.** Guitar = CGS. Setar =
-  a radif/dastgāh map (teacher-driven, explicitly "reorder me"). Tar = the Honarestān
-  method. Dastgāh intros use standard characterisations; per-gushe `about` text stays a
+  «سه‌تار · ردیف میرزا عبدالله» on a new install (an upgraded device keeps its mixed pathway;
+  the named one is OFFERED). Tar = the Honarestān method and Khonyagar, with «تار · ردیف میرزا
+  عبدالله» offered: ONE explicitly PARTIAL definition (`MIRZA_ABDOLLAH_RADIF`), references
+  scoped by recension and dastgāh, practice per instrument, each new gusheh item classified
+  with its dastgāh term. Forms is a lens in My repertoire, never a pathway of generic
+  «چهارمضراب» items. Dastgāh intros use standard characterisations; per-gushe `about` text stays a
   generic conscious-practice prompt (shāhed / ist / forud) — the teacher's account is the
   authority, never invent specifics as if canonical.
 - **Calm, self-paced copy.** "Move on when it feels right, not by a deadline" is the voice.
@@ -1313,7 +1347,7 @@ its piece-count fallback, `Today.tsx`'s "routine running" indicator (at the time
 `dir="ltr"` isolate covering the whole phrase — a sealed review later found that this
 wrongly pinned the instrument name inside it too; see below) and its cross-instrument
 Overview row (a fixed sentence embedding the next item's own possibly-Farsi title —
-isolated the same way `StageDetail`'s undo banner already does, whole sentence under one
+isolated the same way `StageDetail`'s (since-removed) undo banner did, whole sentence under one
 `dir="ltr"`), and `Insights.tsx`'s generated observation sentences (several of which also
 embed an item's own title mid-sentence). One further site needed the OTHER isolate —
 `dir="auto"` for a value authored independently of its neighbour, not `dir="ltr"` for
@@ -1553,109 +1587,15 @@ environment facts that are NOT app bugs: it cannot store a `Blob` in IndexedDB u
 automation driver (so that journey seeds state-only), and it reports
 `"Importing a module script failed"` for a `React.lazy` chunk whose navigation was aborted.
 
-A THIRD, of the same kind, AND IT IS A RACE THE HARNESS CREATES RATHER THAN A BUG TO
-EXCUSE. WebKit refuses a `fetch()` issued while the document is being destroyed and — on
-GitHub's LINUX WebKit — reports it as an uncaught page error reading `"Fetch API cannot load …
-due to access control checks"`, which reads exactly like a CORS problem and is not one. The
-failing case arrives with NO `request`, NO route hit and NO `requestfailed` at all. It cannot
-be reproduced on the Mac: macOS WebKit reports the same teardown as `requestfailed: cancelled`
-with no page error, and a torn-down CORS PREFLIGHT as nothing whatsoever (measured, both). What
-tears a document down is NOT every navigation: the app is hash-routed, and `page.goto` to a
-different `#/route` is a same-document navigation in BOTH engines (a `window` marker survives).
-Only a `goto` to the URL the page is ALREADY on differs — Chromium keeps it same-document
-(firing `popstate`, so the router re-renders), WebKit performs a full document load. A journey
-therefore never calls `goTo` for the route it is already on: ac-18 reaches Settings through
-`openSettings` (More → Settings, the owner's own tap) and only `reload` loads a document. Making
-`goTo` a no-op for that case was tried and REVERTED: Chromium's `popstate` navigation is slack
-another journey's route wait relies on after an in-app navigation, and removing it made that
-journey race under a full-suite run. The trap is documented on `goTo` itself.
-
-**THE ANSWER IS TO REMOVE THE RACE, AND THE HISTORY OF TRYING TO EXCUSE IT IS WHY.** Six
-versions of an excuse were built and every one of them could withhold a genuine failure:
-a permanent set of cancelled URLs; a consuming time window (an unconsumed cancellation stayed
-a live credit any later genuine failure to that URL could spend); a rule reading the page
-error's `message` alone, which never contains the diagnosis — Playwright splits a page error
-at its first colon, the URL's own scheme colon, so the wording lands in `name` and the excuse
-was dead code; a backwards-only search, while WebKit delivers the page error 74–359µs BEFORE
-the request's own `requestfailed` (six of six, measured); a nearest-wins ranking on host+path,
-which threw away the QUERY and rested safety on a proximity that reads as 0ms or 1ms at
-`Date.now()` granularity; and finally full-URL identity plus a veto on genuine evidence, which
-STILL dropped a genuine diagnosis carrying no `requestfailed` of its own — exactly the CI
-failure's own shape — whenever an earlier unconsumed cancellation to that URL was the only
-thing in the log. That is the sealed finding that ended the attempt.
-
-**THE PREMISE WAS NEVER OBSERVED, SO NO RULE COULD EVER PROVE IT — AND WHAT A CANCELLATION
-LOOKS LIKE IS NOT EVEN PORTABLE.** Five cancellation shapes driven through macOS WebKit —
-navigating away mid-flight, reloading mid-flight, `AbortController`, a same-tick
-`location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
-`errorText: 'cancelled'` and NO page error. GitHub's Linux WebKit reports the same teardown as
-the access-control page error with no `requestfailed`, and does not reliably emit `cancelled`
-for a fetch reloaded across at all: two harness tests that asserted the macOS shape as a WebKit
-invariant failed on every Linux run and were removed (the genuine-refusal measurement and the
-end-to-end "kept and annotated" wiring check stay; neither needs a cancellation). A `pageerror`
-hands a test an `Error` and no request identity. So there is no positive evidence available to
-bind a specific error to a specific cancellation at any window or resolution, on either port,
-and an unprovable correlation is resolved the only safe way: `openPracticeApp` KEEPS every page
-error.
-`excusedCancellation` is gone. What survives is `requestFailureEvidence`
-(`tests/practiceBrowser.ts`), which only ANNOTATES a kept error with the browser's own
-`errorText` for every tracked request to that resource and how far each sat from it — because
-one bare CORS-shaped message with nothing to distinguish a cancellation from a real refusal is
-what made the original CI-only failure unreadable. It consumes nothing and withholds nothing,
-its full-URL identity (host, path and query; the fragment ignored, since a fragment never
-reaches the network while the message keeps it verbatim) only decides whether a row is labelled
-as the resource the error named, and `FAILURE_EVIDENCE_MS` bounds a REPORT rather than a
-suppression.
-
-**THERE WERE TWO RACES, AND FIXING THE FIRST WAS MISREAD AS FIXING BOTH.** Vite's default
-`cacheDir` is `node_modules/.vite`, ten test files each start their own dev server on one
-checkout, and the rollback journeys' baseline worktree SYMLINKS that same `node_modules` — so
-every server ran the dependency optimizer against one directory and raced to commit it
-(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`). A loser cannot serve its
-modules, so its page never paints and the cold-start wait fires. Each server gets a PRIVATE
-`cacheDir` now, and that race is gone. It was recorded as the cause of the access-control
-diagnosis too, and GitHub disproved that: with the private cache in place ac-18 still failed on
-Linux WebKit naming `README.md`. THE SECOND RACE IS A SYNC LEFT IN FLIGHT BY THE HARNESS.
-Settings' `connectAndSync` stores the config — which renders "Sync now" at once — and only then
-awaits `syncNow()`, holding the button DISABLED until that sync resolves. `connectSync` waited
-for the button to APPEAR, so every journey drove on while the repo bootstrap
-(`PUT contents/README.md`, behind a CORS preflight) was still running; ac-18's very next step is
-`goTo('/settings')` from `#/settings`, which in WebKit alone was a full document load (above).
-README is the only request the journey ever had in flight at a document load, which is why the
-failure never named anything else. `connectSync` now waits for the ENABLED button — the sync's
-own completion, read through the real control — and ac-18 no longer `goTo`s a route it is on.
-A journey may only drive on from a document with nothing in flight; that is the rule, and it is
-enforced by ordering, never by hiding what a torn-down request reports.
-
-**A COLD-START TIMEOUT IS A QUESTION, NOT A NUMBER TO RAISE**, and this lane proved it: three
-full-suite failures landed on that wait, in three DIFFERENT tests, and raising 60s to 120s
-bought exactly one more run before the next. The ceiling is back at its original 60s.
-
-The fake GitHub repo also now retains the fact that `main` EXISTS after its own bootstrap.
-`initialize()` writes `PUT contents/README.md` through the Contents API and real GitHub then
-resolves `git/ref/heads/main`; the fake answered 404 there until a SNAPSHOT existed, so
-`getHead()` kept returning null and EVERY later sync re-entered `initialize()` and issued
-another README PUT — measured at one every one to three seconds for a whole journey. Gating
-that route on the REF alone fixes it without touching what `decideSync` sees: `manifest.json`
-and `state.json` still 404 until something publishes a snapshot, so `readRemoteMeta` still
-returns null, the decision is still `first-push`, and the pull/conflict journeys are unchanged.
-Making the fake REMEMBER THE PUSH is deliberately NOT done — it was built and reverted once
-because it changes `decideSync`'s input and `setarInbound`'s pull journey then reads "Already
-in sync" instead of pulling. ac-18 asserts the bootstrap happens exactly once. This is a
-correctness fix for the fake, and it removes a stream of needless writes; it is NOT what closed
-the flake, and it was measured not to: with the bootstrap loop gone and the shared cache still
-in place, the failure simply moved from `README.md` to `contents/manifest.json`.
-
-**AND A HELPER THAT WAITS FOR THE SYMPTOM WAS BUILT HERE, MEASURED, AND DELETED.** `goTo` and
-`reload` were given a `settleSync` that waited for the app's GitHub traffic to fall quiet before
-navigating. It could not be shown to do anything on the Mac — where, as above, the failure is
-unreproducible by construction — and it was dead in the two journeys that call `page.reload()`
-directly anyway. It is still not the answer: waiting for traffic to go quiet before EVERY
-navigation treats the symptom everywhere, where the cause was one helper returning mid-sync and
-one engine-specific hidden reload, each fixed at its own line. Keeping harness code whose effect
-cannot be measured, and a normative claim that it is what fixed this, is how the next reader
-inherits a false cause — which is exactly what the private-cache claim above became for one
-round. Six clean local runs are not evidence about a Linux-only report shape; the CI log is.
+A THIRD, and it is a race the HARNESS creates, never a bug to excuse: WebKit refuses a
+`fetch()` issued while its document is torn down and — on Linux WebKit only — reports it as a
+CORS-shaped page error with no `requestfailed`. The rules that keep it closed: `openPracticeApp`
+KEEPS every page error (`requestFailureEvidence` only annotates one); a journey never `goTo`s
+the route it is already on (WebKit performs a full document load there); `connectSync` waits for
+the ENABLED "Sync now" button — the first sync's completion; every dev server gets a PRIVATE
+Vite `cacheDir`; the fake GitHub remembers `main` after its bootstrap; a cold-start timeout is a
+question, never a number to raise (60s). The six excuses built and removed on the way, and why
+none could be proved, are in DECISIONS.md (2026-09-29) — read them before touching the harness.
 
 **WHAT `ClassQuestions` RENDERS NOW.** The narratives above are the history of one row, and
 the row changed: there is no `Problem:` line any more (`currentProblem` is retired — see the
@@ -2470,13 +2410,10 @@ answer on every surface. It is narrow by construction: only a key the CURRENT
 stage's own course declares as a WORK resolves, and only against an item in a
 stage of that SAME course.
 
-AND AN UNDO MAY ONLY EVER REACH AN ITEM THE TAP ACTUALLY CREATED. That authority
-is structural rather than contingent on the row happening to resolve:
-`planCatalogAddition` returns `created`, `addFromCatalog` carries it out, and
-`StageDetail` raises the undo banner only on a real creation. The row's own "−"
-follows the same rule — an item that lives in ANOTHER stage is not this row's to
-delete — and `removeCatalogItem` still re-checks `isLosslesslyRemovable` against
-live blocks underneath both.
+AND NOTHING ON A STAGE ROW DELETES. `planCatalogAddition` returns `created` so the
+row can say honestly whether the tap made an item; the old Undo/"−" delete is gone,
+replaced by Unlink reference and Remove from pathway (see "Reference suggestions
+bind by identity" above), neither of which deletes anything.
 
 **COURSE MATERIAL IS COMPOSED FROM THE CATALOGUE, NEVER STORED ON THE ITEM.** An
 item created from a course entry holds only its stage and its catalogue key;
@@ -2525,15 +2462,15 @@ key could tell them apart — and asserts that set is NON-EMPTY first, or a
 regenerated course with no such collision would pass while asserting nothing.
 The item's own provenance is
 NOT rewritten to make this work: `stageId`/`catalogKey` stay what the tap
-created them as, which is what keeps an Undo and the row's "−" bounded to the
-stage that actually created the item, and nothing new is persisted. Its TITLE
+created them as (provenance; identity is the item's `catalogRefs`), and nothing
+else is persisted. Its TITLE
 and its Working notes still come from the entry that created it, deliberately:
 a renamed item keeps its name on every row, and regeneration reaches an item's
 material and never the notebook. `courseSeed.test.ts` sweeps EVERY identity the
 course names from more than one entry — enumerated from the generated data, not
 a written list, so a regenerated course is swept too — in both addition orders,
 for identity, composed material, stage presentation, routine binding and the
-`created: false` that keeps Undo away from an item this tap did not make.
+`created: false` a reuse reports.
 
 **ONE MEDIA ROOT PER DEVICE, DERIVED — NOT A SECOND BASE AND NOT A RESOLVER
 FALLBACK.** The NAS serves one tree with `setar-classes/`, `classical-guitar/` and
@@ -2727,15 +2664,11 @@ never enters My repertoire under its own label; `stageUnits` already shows the i
 title on every row of that work. This is the one creation-time change, and CGS sets
 no `workTitle`.
 
-**A KHONYAGAR ITEM IS A PRACTICE ITEM FIRST, AND REACHES MY REPERTOIRE ONLY BY THE
-OWNER'S HAND.** No entry carries any Persian identity (form, dastgāh, composer or
-gusheh), and none may be inferred from a title: many course pieces are simplified
-practice versions the owner would not call repertoire. Tar is Persian-family, so My
-repertoire groups its works through `groupByDastgah`, which leaves an item with no
-Persian identity out — deliberately. The owner curates form and/or dastgāh as they
-progress, and a curated item then groups exactly as any other Persian item does ("No
-dastgāh yet" without a dastgāh). Repertoire routing is unchanged;
-`khonyagarCourse.test.ts` pins both halves.
+**A KHONYAGAR ITEM CARRIES NO INFERRED PERSIAN IDENTITY.** No entry carries a form,
+dastgāh, composer or gusheh, and none is inferred from a title: many course pieces are
+simplified practice versions. A work the owner ADDS appears in My repertoire under "No dastgāh
+yet" (`discoverRepertoire`) until they classify it; `groupByDastgah` still answers only for
+items with identity. `khonyagarCourse.test.ts` pins it.
 
 **THE FOUR OPTIONAL FIELDS ARE ABSENT FROM EVERY CGS ENTRY.** `CourseWork.files`,
 `CourseWork.guidance`, `CourseWork.strand` and `CourseUnit.workTitle` default to
@@ -3080,11 +3013,14 @@ installed iOS PWA with `viewport-fit=cover`, `100%` resolves to the layout viewp
 which stops above the home-indicator safe area, leaving the bar floating above the
 physical bottom with dead space beneath. With `100dvh` the shell reaches the true
 bottom and the bar's own `env(safe-area-inset-bottom)` padding lifts just its buttons
-clear. **The iOS software keyboard must not drift the shell:** `useViewportGuard`
-(`src/components/useViewportGuard.ts`, wired once in `Layout`) listens to `visualViewport`
-and, when no editable is focused, resets any layout-viewport displacement to 0; on focus it
-scrolls the field into `<main>` instead. It is a no-op without `visualViewport` and must
-stay pure glue — never restructure the shell to "fix" the keyboard. Five EQUAL nav tabs
+clear. **The iOS software keyboard must not drift the shell:** the document never scrolls (only
+`<main>` does), so a non-zero document scroll is WebKit moving the layout viewport. `viewport.ts`
+decides from GEOMETRY alone — never focus — restoring it to 0 only once the visual viewport is
+back to full height at scale 1 (keyboard dismissed, "Done" with focus retained included), never
+while it is short (intentional reveal) or zoomed, and never touching `<main>`'s scroll;
+`useViewportGuard` is the thin adapter (visual-viewport resize/scroll and visibility, no timers,
+full teardown, no-op without `visualViewport`). Browser fixtures prove the mechanism only; the
+native iPhone check is the owner's (ac-24). Five EQUAL nav tabs
 (no raised centre button — Today owns the primary Start
 action); route changes scroll `<main>` to top; per-route page widths (narrow for focused
 practice, wide ~1100px for browsing/notes on desktop); serif is for headings only,
@@ -3151,6 +3087,11 @@ is left untouched (all five `-soft` fills, `--text`, `--text-dim`, `--accent-dim
   (a sealed review reproduced exactly this — see the lesson-agenda section above for the
   legacy-field fix, and "THE HYDRATION BOUNDARY ENFORCES ALL OF THIS TOO" above for the
   validation/newer-schema fix and why re-running either a second time is safe). Schema
+  **v15** adds `musicTerms`, `PracticeItem.catalogRefs`, `Pathway.hiddenRefs` and
+  `Material.sourceKey` (`migrateToV15`: presence-aware, clock-free, binds only UNIQUE legacy
+  evidence, keys only uniquely proven course sources), validated by `validateMusicTerms`,
+  `validateReferences` and `validateStudySources`; `migrateToV3`'s legacy seed is stamped
+  `LEGACY_SEED_TIME`, never the clock. Schema
   **v13** retires the competing practice-text fields (`retirePracticeText`; see "One
   canonical home per kind of information" at the top of this file for the enumerated,
   one-way waiver) and adds `validatePracticeText`/`validateUnfinishedText` to the §C7
@@ -3195,7 +3136,8 @@ every retired field, and `practice-information-v13.json` is its `validateDB` out
 the retirement is asserted against real bytes rather than a hand-written expectation. The
 unit tests read the SAME bytes the journeys import, through Vite's `?raw`.
 
-**Six journeys now, not two**, all through the same harness — plus the rendered
+**Nine journeys now** — the repertoire three (`repertoire-experience`, `-inbound`,
+`-viewport`; run with `node scripts/check-repertoire-families.mjs`) plus six below — all through the same harness — plus the rendered
 cold-start recovery inside `src/domain/io.test.ts`, which drives the real `App` in the
 same way. The two named above, plus
 `practice-information.browser.test.ts`, `practice-information-inbound.browser.test.ts`,

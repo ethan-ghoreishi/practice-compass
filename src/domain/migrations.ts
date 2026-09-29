@@ -1,5 +1,8 @@
-import { seedInstrumentIds, seedPathways } from './pathwaySeed';
+import { LEGACY_SEED_TIME, seedInstrumentIds, seedPathways } from './pathwaySeed';
 import { retirePracticeText } from './practiceInformation';
+import { bindLegacyReferences } from './pathways';
+import { backfillCourseSourceKeys } from './studySources';
+import { COURSES } from './courseSeed';
 import {
   SCHEMA_VERSION,
   type AttachmentMeta,
@@ -37,7 +40,9 @@ function migrateToV3(db: PracticeDB): PracticeDB {
   // valid persisted state) — guard the one field it reads before validation.
   const instruments = db.instruments ?? [];
   const ids = seedInstrumentIds(instruments);
-  const seeded = seedPathways(ids);
+  // A FIXED timestamp, never the wall clock: two devices migrating the same
+  // pre-v3 file on different days must produce the same database.
+  const seeded = seedPathways(ids, LEGACY_SEED_TIME);
   const next: PracticeDB & { curriculum?: unknown } = { ...db, ...seeded };
   delete next.curriculum;
   return next;
@@ -281,6 +286,33 @@ function migrateToV14(db: PracticeDB): PracticeDB {
   return { ...db, archiveSources: [] };
 }
 
+/**
+ * v14 -> v15: the shared musical vocabulary, catalogue bindings and hidden
+ * suggestions. ADDITIVE and presence-aware, like v14:
+ *
+ *  - `musicTerms` starts EMPTY — the shipped vocabulary lives in code, so an
+ *    empty list means "untouched", and an existing list (even an empty one) is
+ *    never reseeded. No literal item text is converted: "Shur" stays "Shur",
+ *    and groups under its term only through the resolver.
+ *  - An item whose binding was never decided gets one only where its old
+ *    `stageId` + `catalogKey` UNIQUELY names a shipped suggestion on its
+ *    instrument (`bindLegacyReferences`); duplicates stay undecided and
+ *    visible, with every record intact.
+ *  - A study source is keyed to a shipped course only where it is the one
+ *    source PROVEN to be that course's (`backfillCourseSourceKeys`).
+ *
+ * Unconditional for the reason `migrateToV14` gives, reads no clock and no
+ * input order, touches no `updatedAt`, and is idempotent: a second run finds
+ * every decidable binding already decided.
+ */
+function migrateToV15(db: PracticeDB): PracticeDB {
+  const musicTerms = Array.isArray(db.musicTerms) ? db.musicTerms : [];
+  const items = bindLegacyReferences(db.items ?? []);
+  const materials = backfillCourseSourceKeys(db.materials ?? [], COURSES);
+  if (musicTerms === db.musicTerms && items === db.items && materials === db.materials) return db;
+  return { ...db, musicTerms, items, materials };
+}
+
 /** The agenda as it may arrive: possibly absent, possibly partially migrated. */
 type LegacyAgenda = { id?: string; kind?: string; itemId?: string } | undefined;
 
@@ -313,5 +345,8 @@ export function migrateToCurrent(db: PracticeDB, fromVersion: number): PracticeD
   // v13 -> v14: the archive source graph, empty. Unconditional for the reason
   // migrateToV14's own docstring gives.
   next = migrateToV14(next);
+  // v14 -> v15: vocabulary, bindings, keyed course sources. Unconditional for
+  // the reason migrateToV15's own docstring gives.
+  next = migrateToV15(next);
   return { ...next, schemaVersion: SCHEMA_VERSION };
 }

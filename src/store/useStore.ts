@@ -7,7 +7,6 @@ import {
   applyBlockStats,
   applyRoutineRun,
   catalogForStage,
-  isLosslesslyRemovable,
   completeOpenReviewsFor,
   computeReviewOutcome,
   installDatabase,
@@ -77,6 +76,16 @@ import {
   type SourceIndex,
   SCHEMA_VERSION,
   planDefaultPathways,
+  planAddTerm,
+  planDeleteTerm,
+  planLinkReference,
+  planRemoveFromPathway,
+  planSetReferenceHidden,
+  planUnlinkReference,
+  planUpdateTerm,
+  courseById,
+  withCourseSourceKey,
+  type MusicTermKind,
   validateDB,
   SchemaTooNewError,
   type BlockMode,
@@ -365,9 +374,31 @@ interface StoreState {
   updateItem: (id: ID, patch: ItemPatch) => string | null;
   setItemStatus: (id: ID, status: ItemStatus) => void;
   deleteItem: (id: ID) => void;
-  /** Delete a catalog item ONLY if lossless (fresh, never practised); returns whether it did. */
+  /**
+   * @deprecated The old catalogue "Undo" deleted a fresh item. It now only
+   * takes the item OUT of its stage's pathway (`removeFromPathway`) and never
+   * deletes anything; returns whether anything changed.
+   */
   removeCatalogItem: (id: ID) => boolean;
   placeItemInStage: (itemId: ID, stageId: ID | undefined) => void;
+
+  // --- Reference suggestions: reversible organisation, never deletion -------
+  /** Make an existing same-instrument item the answer to a suggestion. Returns the refusal, or null. */
+  linkReference: (pathwayId: ID, refId: string, itemId: ID) => string | null;
+  /** The item stops answering one suggestion; it keeps everything else. */
+  unlinkReference: (itemId: ID, refId: string) => void;
+  /** The item leaves this pathway's stages; its suggestions there are hidden. Nothing is unbound or deleted. */
+  removeFromPathway: (itemId: ID, pathwayId: ID) => void;
+  /** Hide or restore one suggestion in one pathway. Visibility only. */
+  setReferenceHidden: (pathwayId: ID, refId: string, hidden: boolean) => void;
+  /** Answer "which study source is this course?" when two candidates exist. */
+  chooseCourseSource: (itemId: ID, materialId: ID, courseId: string) => void;
+
+  // --- Shared musical terms (each returns the refusal, or null) --------------
+  /** Returns the new term's id, or the refusal. */
+  addTerm: (input: { kind: MusicTermKind; name: string; aliases: string[] }) => { id: ID } | { refusal: string };
+  updateTerm: (id: ID, patch: { name?: string; aliases?: string[]; archived?: boolean }) => string | null;
+  deleteTerm: (id: ID) => string | null;
 
   // --- The archive source graph -------------------------------------------
   /**
@@ -424,7 +455,10 @@ interface StoreState {
    * actually CREATED one: a work the course carries across levels resolves to
    * the item added at an earlier level, and an Undo may never reach that.
    */
-  addFromCatalog: (stageId: ID, entryKey: string) => { id: ID; created: boolean };
+  addFromCatalog: (
+    stageId: ID,
+    entryKey: string,
+  ) => { id: ID; created: boolean; candidates?: PracticeItem[]; sourceCandidates?: Material[] };
   /**
    * Write one of a course stage's own routines — the level's, or one built for
    * where the owner actually is — as an ordinary editable routine. Returns its
@@ -967,15 +1001,86 @@ export const useStore = create<StoreState>()(
       },
 
       removeCatalogItem: (id) => {
-        const s = get();
-        const item = s.db.items.find((i) => i.id === id);
-        if (!item) return false;
-        const itemBlocks = s.db.blocks.filter((b) => b.practiceItemId === id);
-        // Only proceed when the deletion is provably lossless — a fresh,
-        // never-practised catalog item reverting to a suggestion.
-        if (!isLosslesslyRemovable(item, itemBlocks)) return false;
-        get().deleteItem(id);
+        // NEVER a deletion any more: "not practised yet" says nothing about the
+        // notes, files, lessons and links a fresh item may already carry.
+        const { db } = get();
+        const item = db.items.find((i) => i.id === id);
+        const stage = item?.stageId ? db.pathwayStages.find((st) => st.id === item.stageId) : undefined;
+        if (!item || !stage) return false;
+        const plan = planRemoveFromPathway(db, id, stage.pathwayId, new Date());
+        if (!plan.ok || (plan.items === db.items && plan.pathways === db.pathways)) return false;
+        set((s) => ({ db: { ...s.db, items: plan.items, pathways: plan.pathways } }));
         return true;
+      },
+
+      linkReference: (pathwayId, refId, itemId) => {
+        const { db } = get();
+        const pathway = db.pathways.find((p) => p.id === pathwayId);
+        const plan = planLinkReference(db.items, refId, itemId, pathway?.instrumentId || undefined, new Date());
+        if (!plan.ok) return plan.reason;
+        if (plan.items !== db.items) set((s) => ({ db: { ...s.db, items: plan.items } }));
+        return null;
+      },
+
+      unlinkReference: (itemId, refId) => {
+        const { db } = get();
+        const plan = planUnlinkReference(db.items, itemId, refId, new Date());
+        if (plan.ok && plan.items !== db.items) set((s) => ({ db: { ...s.db, items: plan.items } }));
+      },
+
+      removeFromPathway: (itemId, pathwayId) => {
+        const { db } = get();
+        const plan = planRemoveFromPathway(db, itemId, pathwayId, new Date());
+        if (plan.ok && (plan.items !== db.items || plan.pathways !== db.pathways)) {
+          set((s) => ({ db: { ...s.db, items: plan.items, pathways: plan.pathways } }));
+        }
+      },
+
+      setReferenceHidden: (pathwayId, refId, hidden) => {
+        const { db } = get();
+        const plan = planSetReferenceHidden(db.pathways, pathwayId, refId, hidden, new Date());
+        if (plan.ok && plan.pathways !== db.pathways) set((s) => ({ db: { ...s.db, pathways: plan.pathways } }));
+      },
+
+      chooseCourseSource: (itemId, materialId, courseId) => {
+        const course = courseById(courseId);
+        const { db } = get();
+        const material = db.materials.find((m) => m.id === materialId);
+        const item = db.items.find((i) => i.id === itemId);
+        if (!course || !material || !item || material.instrumentId !== item.instrumentId) return;
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            materials: withCourseSourceKey(s.db.materials, materialId, course),
+            items: s.db.items.map((i) => (i.id === itemId ? touch({ ...i, materialId }, now) : i)),
+          },
+        }));
+      },
+
+      addTerm: (input) => {
+        const { db } = get();
+        const id = `term-${newId()}`;
+        const plan = planAddTerm(db.musicTerms, { ...input, id }, new Date());
+        if (!plan.ok) return { refusal: plan.reason };
+        set((s) => ({ db: { ...s.db, musicTerms: plan.terms } }));
+        return { id };
+      },
+
+      updateTerm: (id, patch) => {
+        const { db } = get();
+        const plan = planUpdateTerm(db.musicTerms, db.items, id, patch, new Date());
+        if (!plan.ok) return plan.reason;
+        set((s) => ({ db: { ...s.db, musicTerms: plan.terms } }));
+        return null;
+      },
+
+      deleteTerm: (id) => {
+        const { db } = get();
+        const plan = planDeleteTerm(db.musicTerms, db.items, id);
+        if (!plan.ok) return plan.reason;
+        set((s) => ({ db: { ...s.db, musicTerms: plan.terms } }));
+        return null;
       },
 
       placeItemInStage: (itemId, stageId) => {
@@ -1258,8 +1363,16 @@ export const useStore = create<StoreState>()(
         // the decision is proved in courseSeed.test.ts and this SHAPE is what
         // protects the wiring.
         const plan = planCatalogAddition(db, stageId, entryKey, entry, instrumentId, new Date());
-        set((s) => ({ db: { ...s.db, items: plan.items, materials: plan.materials } }));
-        return { id: plan.itemId, created: plan.created };
+        // Reuse and an ambiguous answer change nothing — no set(), no revision.
+        if (plan.items !== db.items || plan.materials !== db.materials) {
+          set((s) => ({ db: { ...s.db, items: plan.items, materials: plan.materials } }));
+        }
+        return {
+          id: plan.itemId,
+          created: plan.created,
+          ...(plan.candidates ? { candidates: plan.candidates } : {}),
+          ...(plan.sourceCandidates ? { sourceCandidates: plan.sourceCandidates } : {}),
+        };
       },
 
       addCourseRoutine: (stageId, kind) => {

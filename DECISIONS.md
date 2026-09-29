@@ -2,6 +2,167 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Repertoire v15: shared terms, reference identity, calmer browsing (2026-09-29)
+
+One lane, one end state: find music, understand it, take a suggestion into owned practice ONCE,
+and return to practising. The shared structural causes were text used as identity, catalogue
+identity coupled to editable placement, and browsing state held in three unrelated component
+states. `docs/repertoire-experience.md` holds the before/after screens, the reader/writer matrix
+and the proof route.
+
+- **Terms are an overlay, not a seeded table.** Built-in Dastgāh/Form/Composer terms live in code
+  under namespaced ids; `PracticeDB.musicTerms` holds only custom terms and edits of built-ins by
+  the same id. So an empty list means "the shipped vocabulary, untouched", nothing is ever
+  reseeded, and a shipped term added later simply appears. A field is ONE value — `{termId}` or
+  literal text — never a label beside an id. Legacy text is never converted: "Shur" stays
+  "Shur" and groups under شور through the resolver. The old `DASTGAH_RANK`, the form/dastgāh
+  suggestion arrays and the term half of the transliteration table were folded into it.
+- **Identity is exact; search is broad.** A curated alias is identity only when exactly ONE term
+  claims it. Composites ("دشتی/شور"), substrings ("درآمد شور") and ambiguous spellings stay
+  literal. `groupByDastgah` no longer strips an āvāz/dastgāh prefix or ranks by substring — that
+  was fuzzy assignment; the prefixed spellings are curated aliases instead.
+- **Reference ids are formed, not stored on entries.** The Guitar/Honarestān fingerprint
+  (`khonyagarCourse.test.ts`) serialises every `CatalogEntry`, so ids come from
+  `catalogReferenceId(stageId, key)`. The module order avoids a cycle: `referenceCatalog.ts`
+  (types only) ← `courseSeed.ts` ← `pathwaySeed.ts` ← `pathways.ts`; `courseSeed` must never import
+  `pathwaySeed`, whose top-level evaluation calls into it.
+- **The binding lives on the item** (`catalogRefs`), because it must survive the item leaving its
+  stage and a stage or pathway being deleted, and because several references may name one item.
+  PRESENT means decided (an empty list is a deliberate "no"); ABSENT means legacy, resolved only
+  from UNIQUE `stageId`+`catalogKey` evidence. The v15 migration persists exactly the unique ones,
+  so a later move cannot lose them.
+- **Remove from pathway hides; it never unbinds.** Built first as an unbind, it would have made
+  the named Setar pathway offer عراق as untaken after the owner tidied the old mixed pathway — Add
+  there would mint a duplicate. Hiding in that one pathway keeps the owner's intent and the
+  shared identity.
+- **The Undo that deleted a "fresh" item is gone.** "Not practised yet" never proved an item was
+  empty — notes, files, class links and commitments all arrive before a first block.
+  `removeCatalogItem` stays only because an out-of-scope test calls it; it no longer deletes.
+- **New installs start Setar on «سه‌تار · ردیف میرزا عبدالله»**; the old mixed pathway stays on
+  upgraded devices and is offered on new ones. `seedPathways` (the pre-v3 legacy seed) is
+  unchanged except for a fixed `LEGACY_SEED_TIME` — the migration chain may read no clock.
+- **The radif reference is partial and unaudited against a printed edition.** It carries the
+  Setar pathway's existing selections unchanged; entries the owner should confirm are listed in
+  docs/repertoire-experience.md. Nothing was added or reordered on a guess.
+- **Course sources are keyed only on proof.** A `course:<id>` key backfills only where exactly one
+  source has the course's title AND kind; an unproven same-titled source is asked about, never
+  adopted and never duplicated beside.
+- **The keyboard guard decides from geometry.** The old guard returned while any field was
+  focused, so "Done" with focus retained never restored the lifted shell, and it scrolled with
+  timers. `viewport.ts` restores the document scroll only once the visual viewport is full height
+  at scale 1, never touches `<main>`, and has no timers. It is proved against scripted geometry
+  in both engines; the native iPhone trace (ac-24) is outstanding until the owner records it.
+- **"Practice list" keeps its name.** The plan spoke of "All practice items"; three existing
+  journeys and AGENTS.md's canonical names use "Practice list", so the view kept it.
+
+## The WebKit teardown race: six excuses, and why none could be proved (history, moved from AGENTS.md 2026-09-29)
+
+AGENTS.md keeps the rules; this is the record of how they were found.
+
+A THIRD, of the same kind, AND IT IS A RACE THE HARNESS CREATES RATHER THAN A BUG TO
+EXCUSE. WebKit refuses a `fetch()` issued while the document is being destroyed and — on
+GitHub's LINUX WebKit — reports it as an uncaught page error reading `"Fetch API cannot load …
+due to access control checks"`, which reads exactly like a CORS problem and is not one. The
+failing case arrives with NO `request`, NO route hit and NO `requestfailed` at all. It cannot
+be reproduced on the Mac: macOS WebKit reports the same teardown as `requestfailed: cancelled`
+with no page error, and a torn-down CORS PREFLIGHT as nothing whatsoever (measured, both). What
+tears a document down is NOT every navigation: the app is hash-routed, and `page.goto` to a
+different `#/route` is a same-document navigation in BOTH engines (a `window` marker survives).
+Only a `goto` to the URL the page is ALREADY on differs — Chromium keeps it same-document
+(firing `popstate`, so the router re-renders), WebKit performs a full document load. A journey
+therefore never calls `goTo` for the route it is already on: ac-18 reaches Settings through
+`openSettings` (More → Settings, the owner's own tap) and only `reload` loads a document. Making
+`goTo` a no-op for that case was tried and REVERTED: Chromium's `popstate` navigation is slack
+another journey's route wait relies on after an in-app navigation, and removing it made that
+journey race under a full-suite run. The trap is documented on `goTo` itself.
+
+**THE ANSWER IS TO REMOVE THE RACE, AND THE HISTORY OF TRYING TO EXCUSE IT IS WHY.** Six
+versions of an excuse were built and every one of them could withhold a genuine failure:
+a permanent set of cancelled URLs; a consuming time window (an unconsumed cancellation stayed
+a live credit any later genuine failure to that URL could spend); a rule reading the page
+error's `message` alone, which never contains the diagnosis — Playwright splits a page error
+at its first colon, the URL's own scheme colon, so the wording lands in `name` and the excuse
+was dead code; a backwards-only search, while WebKit delivers the page error 74–359µs BEFORE
+the request's own `requestfailed` (six of six, measured); a nearest-wins ranking on host+path,
+which threw away the QUERY and rested safety on a proximity that reads as 0ms or 1ms at
+`Date.now()` granularity; and finally full-URL identity plus a veto on genuine evidence, which
+STILL dropped a genuine diagnosis carrying no `requestfailed` of its own — exactly the CI
+failure's own shape — whenever an earlier unconsumed cancellation to that URL was the only
+thing in the log. That is the sealed finding that ended the attempt.
+
+**THE PREMISE WAS NEVER OBSERVED, SO NO RULE COULD EVER PROVE IT — AND WHAT A CANCELLATION
+LOOKS LIKE IS NOT EVEN PORTABLE.** Five cancellation shapes driven through macOS WebKit —
+navigating away mid-flight, reloading mid-flight, `AbortController`, a same-tick
+`location.href`, a cancelled CORS preflight — each produced a `requestfailed` with
+`errorText: 'cancelled'` and NO page error. GitHub's Linux WebKit reports the same teardown as
+the access-control page error with no `requestfailed`, and does not reliably emit `cancelled`
+for a fetch reloaded across at all: two harness tests that asserted the macOS shape as a WebKit
+invariant failed on every Linux run and were removed (the genuine-refusal measurement and the
+end-to-end "kept and annotated" wiring check stay; neither needs a cancellation). A `pageerror`
+hands a test an `Error` and no request identity. So there is no positive evidence available to
+bind a specific error to a specific cancellation at any window or resolution, on either port,
+and an unprovable correlation is resolved the only safe way: `openPracticeApp` KEEPS every page
+error.
+`excusedCancellation` is gone. What survives is `requestFailureEvidence`
+(`tests/practiceBrowser.ts`), which only ANNOTATES a kept error with the browser's own
+`errorText` for every tracked request to that resource and how far each sat from it — because
+one bare CORS-shaped message with nothing to distinguish a cancellation from a real refusal is
+what made the original CI-only failure unreadable. It consumes nothing and withholds nothing,
+its full-URL identity (host, path and query; the fragment ignored, since a fragment never
+reaches the network while the message keeps it verbatim) only decides whether a row is labelled
+as the resource the error named, and `FAILURE_EVIDENCE_MS` bounds a REPORT rather than a
+suppression.
+
+**THERE WERE TWO RACES, AND FIXING THE FIRST WAS MISREAD AS FIXING BOTH.** Vite's default
+`cacheDir` is `node_modules/.vite`, ten test files each start their own dev server on one
+checkout, and the rollback journeys' baseline worktree SYMLINKS that same `node_modules` — so
+every server ran the dependency optimizer against one directory and raced to commit it
+(`ENOTEMPTY: rename '…/.vite/deps_temp_xxxx' -> '…/.vite/deps'`). A loser cannot serve its
+modules, so its page never paints and the cold-start wait fires. Each server gets a PRIVATE
+`cacheDir` now, and that race is gone. It was recorded as the cause of the access-control
+diagnosis too, and GitHub disproved that: with the private cache in place ac-18 still failed on
+Linux WebKit naming `README.md`. THE SECOND RACE IS A SYNC LEFT IN FLIGHT BY THE HARNESS.
+Settings' `connectAndSync` stores the config — which renders "Sync now" at once — and only then
+awaits `syncNow()`, holding the button DISABLED until that sync resolves. `connectSync` waited
+for the button to APPEAR, so every journey drove on while the repo bootstrap
+(`PUT contents/README.md`, behind a CORS preflight) was still running; ac-18's very next step is
+`goTo('/settings')` from `#/settings`, which in WebKit alone was a full document load (above).
+README is the only request the journey ever had in flight at a document load, which is why the
+failure never named anything else. `connectSync` now waits for the ENABLED button — the sync's
+own completion, read through the real control — and ac-18 no longer `goTo`s a route it is on.
+A journey may only drive on from a document with nothing in flight; that is the rule, and it is
+enforced by ordering, never by hiding what a torn-down request reports.
+
+**A COLD-START TIMEOUT IS A QUESTION, NOT A NUMBER TO RAISE**, and this lane proved it: three
+full-suite failures landed on that wait, in three DIFFERENT tests, and raising 60s to 120s
+bought exactly one more run before the next. The ceiling is back at its original 60s.
+
+The fake GitHub repo also now retains the fact that `main` EXISTS after its own bootstrap.
+`initialize()` writes `PUT contents/README.md` through the Contents API and real GitHub then
+resolves `git/ref/heads/main`; the fake answered 404 there until a SNAPSHOT existed, so
+`getHead()` kept returning null and EVERY later sync re-entered `initialize()` and issued
+another README PUT — measured at one every one to three seconds for a whole journey. Gating
+that route on the REF alone fixes it without touching what `decideSync` sees: `manifest.json`
+and `state.json` still 404 until something publishes a snapshot, so `readRemoteMeta` still
+returns null, the decision is still `first-push`, and the pull/conflict journeys are unchanged.
+Making the fake REMEMBER THE PUSH is deliberately NOT done — it was built and reverted once
+because it changes `decideSync`'s input and `setarInbound`'s pull journey then reads "Already
+in sync" instead of pulling. ac-18 asserts the bootstrap happens exactly once. This is a
+correctness fix for the fake, and it removes a stream of needless writes; it is NOT what closed
+the flake, and it was measured not to: with the bootstrap loop gone and the shared cache still
+in place, the failure simply moved from `README.md` to `contents/manifest.json`.
+
+**AND A HELPER THAT WAITS FOR THE SYMPTOM WAS BUILT HERE, MEASURED, AND DELETED.** `goTo` and
+`reload` were given a `settleSync` that waited for the app's GitHub traffic to fall quiet before
+navigating. It could not be shown to do anything on the Mac — where, as above, the failure is
+unreproducible by construction — and it was dead in the two journeys that call `page.reload()`
+directly anyway. It is still not the answer: waiting for traffic to go quiet before EVERY
+navigation treats the symptom everywhere, where the cause was one helper returning mid-sync and
+one engine-specific hidden reload, each fixed at its own line. Keeping harness code whose effect
+cannot be measured, and a normative claim that it is what fixed this, is how the next reader
+inherits a false cause — which is exactly what the private-cache claim above became for one
+round. Six clean local runs are not evidence about a Linux-only report shape; the CI log is.
+
 ## A raw NUL byte in a source file made the merge gate unpassable (2026-09-19)
 
 `suppressionKey` (`sourceReconcile.ts`) joined its parts with a LITERAL NUL byte typed into the

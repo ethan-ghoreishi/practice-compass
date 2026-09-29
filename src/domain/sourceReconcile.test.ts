@@ -1309,3 +1309,72 @@ describe('owner suppressions', () => {
     expect(twice[0]!.suppressions).toHaveLength(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ac-18 — the shared vocabulary reaches the archive boundary ONLY where it
+// decides "is there anything to offer". Registry text stays raw source
+// evidence; identity, location and refresh outcomes are unchanged.
+// ---------------------------------------------------------------------------
+import { decisionMatchesSuggestion } from './sourceReconcile';
+import { resolveValue, vocabulary } from './musicTerms';
+import { validateDB } from './io';
+
+describe('musical terms at the archive boundary', () => {
+  it('musical metadata integration preserves archive reconciliation boundaries', () => {
+    // 1. ARCHIVE OUTCOMES ARE UNCHANGED for the committed fixture: the same
+    //    94 pieces and 39 classes, the same deterministic ids, and every
+    //    seeded field is the registry's RAW text — never a term reference.
+    const first = plan(baseDB());
+    expect([first.newItems.length, first.newLessons.length, first.questions]).toEqual([94, 39, []]);
+    const after = applyArchiveImport(baseDB(), first);
+    expect(after.items.some((i) => i.id === sourceItemId('setar-classes', 'عراق'))).toBe(true);
+    for (const i of after.items) {
+      for (const v of Object.values(i.persian ?? {})) expect(typeof v, i.id).toBe('string');
+    }
+    const byKey = new Map(INDEX.pieces.map((p) => [p.key, p]));
+    for (const i of after.items) {
+      const piece = byKey.get(i.source!.pieceKey)!;
+      if (piece.dastgah) expect(i.persian?.dastgahAvaz).toBe(piece.dastgah);
+      if (piece.composer) expect(i.persian?.composer).toBe(piece.composer);
+    }
+    // Those raw strings still GROUP by the shared terms (read-only): «بیات-ترک»
+    // is Bayāt-e Tork, a composite stays literal.
+    const vocab = vocabulary();
+    const tork = after.items.find((i) => i.persian?.dastgahAvaz === 'بیات-ترک')!;
+    expect(resolveValue(tork.persian!.dastgahAvaz, 'dastgah', vocab)).toMatchObject({ status: 'term', term: { id: 'dastgah:bayat-tork' } });
+    const composite = after.items.find((i) => i.persian?.dastgahAvaz === 'دشتی/شور')!;
+    expect(resolveValue(composite.persian!.dastgahAvaz, 'dastgah', vocab).status).toBe('literal');
+    // Repeating the refresh still changes nothing, by identity.
+    expect(applyArchiveImport(after, plan(after))).toBe(after);
+
+    // 2. A TERM-BACKED owner field that already MEANS the registry's value is
+    //    not an "improvement": no suggestion. Literal text compares exactly,
+    //    as it always has.
+    const target = after.items.find((i) => i.persian?.composer === 'صبا')!;
+    const asTerm = { ...after, items: after.items.map((i) => (i.id === target.id ? { ...i, persian: { ...i.persian, composer: { termId: 'composer:saba' } } } : i)) };
+    expect(validateDB(asTerm).items.find((i) => i.id === target.id)!.persian!.composer).toEqual({ termId: 'composer:saba' });
+    expect(plan(asTerm).suggestions.filter((s) => s.itemId === target.id)).toEqual([]);
+    expect(plan(asTerm).summary.unchanged).toBe(true);
+
+    // 3. A term-backed field that means something ELSE is offered — shown by
+    //    the term's name, its PREMISE the term itself — and applying it writes
+    //    the registry's raw text, the owner's explicit choice.
+    const other = { ...after, items: after.items.map((i) => (i.id === target.id ? { ...i, persian: { ...i.persian, composer: { termId: 'composer:lotfi' } } } : i)) };
+    const offered = plan(other).suggestions.find((s) => s.itemId === target.id && s.field === 'composer')!;
+    expect(offered).toMatchObject({ from: 'محمدرضا لطفی', fromTermId: 'composer:lotfi', to: 'صبا' });
+    const decision = { kind: 'apply-field' as const, pieceKey: offered.pieceKey, itemId: target.id, field: 'composer' as const, from: { termId: 'composer:lotfi' } };
+    expect(decisionMatchesSuggestion(decision, offered)).toBe(true);
+    // The UI's own premise — the label it displayed — matches the same suggestion.
+    expect(decisionMatchesSuggestion({ ...decision, from: offered.from }, offered)).toBe(true);
+    const applied = applyArchiveImport(other, planArchiveImport({ db: other, index: INDEX, instrumentId: SETAR, decisions: [decision], now: NOW }), [decision]);
+    expect(applied.items.find((i) => i.id === target.id)!.persian!.composer).toBe('صبا');
+
+    // 4. STALE PREMISES STILL REFUSE: the owner changed the field (to a
+    //    different term) after choosing — the decision no longer applies and
+    //    is reported stale, never redirected.
+    const moved = { ...other, items: other.items.map((i) => (i.id === target.id ? { ...i, persian: { ...i.persian, composer: { termId: 'composer:alizadeh' } } } : i)) };
+    const rebased = planArchiveImport({ db: moved, index: INDEX, instrumentId: SETAR, decisions: [decision], now: NOW });
+    expect(rebased.staleDecisions).toContainEqual(decision);
+    expect(applyArchiveImport(moved, rebased, [decision]).items.find((i) => i.id === target.id)!.persian!.composer).toEqual({ termId: 'composer:alizadeh' });
+  });
+});

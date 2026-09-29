@@ -17,7 +17,7 @@ import { useStore } from '../store/useStore';
 import { materialLabel, materialsForInstrument } from '../store/lookups';
 import { Field, OptionPills, RatingInput } from './ui';
 import { recordToOptions } from './options';
-import { DASTGAH_SUGGESTIONS, FORM_SUGGESTIONS } from './itemFields';
+import MusicalTermField from './MusicalTermField';
 import { fieldsForKind, kindFromItem, kindsForFamily, kindToItemType, type ItemKind } from './itemKinds';
 import type { ItemFormValues } from './itemFormValues';
 
@@ -128,21 +128,13 @@ export default function ItemForm({
       {(fields.dastgah || fields.form || fields.composer || fields.gushehName) && (
         <div className="grid-2">
           {fields.dastgah && (
-            <Field label="Dastgāh / Āvāz">
-              <input
-                className="input"
-                dir="auto"
-                list="pc-dastgah-list"
-                placeholder="e.g. Afshāri"
-                value={v.persian.dastgahAvaz ?? ''}
-                onChange={(e) => set({ persian: { ...v.persian, dastgahAvaz: e.target.value } })}
-              />
-              <datalist id="pc-dastgah-list">
-                {DASTGAH_SUGGESTIONS.map((d) => (
-                  <option key={d} value={d} />
-                ))}
-              </datalist>
-            </Field>
+            <MusicalTermField
+              field="dastgahAvaz"
+              label="Dastgāh / Āvāz"
+              placeholder="e.g. افشاری"
+              value={v.persian.dastgahAvaz}
+              onChange={(dastgahAvaz) => set({ persian: { ...v.persian, dastgahAvaz } })}
+            />
           )}
           {fields.gushehName && (
             <Field label="Gusheh">
@@ -155,31 +147,22 @@ export default function ItemForm({
             </Field>
           )}
           {fields.form && (
-            <Field label="Form">
-              <input
-                className="input"
-                dir="auto"
-                list="pc-form-list"
-                placeholder="e.g. Chahārmezrāb"
-                value={v.persian.form ?? ''}
-                onChange={(e) => set({ persian: { ...v.persian, form: e.target.value } })}
-              />
-              <datalist id="pc-form-list">
-                {FORM_SUGGESTIONS.map((f) => (
-                  <option key={f} value={f} />
-                ))}
-              </datalist>
-            </Field>
+            <MusicalTermField
+              field="form"
+              label="Form"
+              placeholder="e.g. چهارمضراب"
+              value={v.persian.form}
+              onChange={(form) => set({ persian: { ...v.persian, form } })}
+            />
           )}
           {fields.composer && (
-            <Field label="Composer / maestro" hint="e.g. Sabā, Darvish Khān, Shahnāzi.">
-              <input
-                className="input"
-                dir="auto"
-                value={v.persian.composer ?? ''}
-                onChange={(e) => set({ persian: { ...v.persian, composer: e.target.value } })}
-              />
-            </Field>
+            <MusicalTermField
+              field="composer"
+              label="Composer / maestro"
+              placeholder="e.g. ابوالحسن صبا"
+              value={v.persian.composer}
+              onChange={(composer) => set({ persian: { ...v.persian, composer } })}
+            />
           )}
         </div>
       )}

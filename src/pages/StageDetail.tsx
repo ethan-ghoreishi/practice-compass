@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  isLosslesslyRemovable,
+  hiddenUnits,
+  linkCandidates,
+  pathwayStageContext,
   routinesOfStage,
   stageProgress,
   stageUnits,
   ITEM_STATUS_LABELS,
   STRAND_LABELS,
+  type Material,
   type PathwayRoutine,
   type StageUnit,
   courseStage,
@@ -16,7 +19,8 @@ import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
 import RoutineDuration from '../components/RoutineDuration';
 import { Field } from '../components/ui';
-import { ArrowLeftIcon, CheckIcon, MinusIcon, PlayIcon, PlusIcon, XIcon } from '../components/icons';
+import { ItemChoice, SourceChoice } from '../components/ReferenceChoices';
+import { ArrowLeftIcon, CheckIcon, PlayIcon, PlusIcon } from '../components/icons';
 
 export default function StageDetail() {
   const { pathwayId, stageId } = useParams();
@@ -26,16 +30,23 @@ export default function StageDetail() {
   const updatePathway = useStore((s) => s.updatePathway);
   const addFromCatalog = useStore((s) => s.addFromCatalog);
   const addCourseRoutine = useStore((s) => s.addCourseRoutine);
-  const removeCatalogItem = useStore((s) => s.removeCatalogItem);
+  const linkReference = useStore((s) => s.linkReference);
+  const unlinkReference = useStore((s) => s.unlinkReference);
+  const removeFromPathway = useStore((s) => s.removeFromPathway);
+  const setReferenceHidden = useStore((s) => s.setReferenceHidden);
+  const chooseCourseSource = useStore((s) => s.chooseCourseSource);
   const startItemSession = useStore((s) => s.startItemSession);
   const activeRoutine = useStore((s) => s.activeRoutine);
   const navigate = useNavigate();
 
   const stage = db.pathwayStages.find((s) => s.id === stageId);
   const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
-  const units = useMemo(() => (stage ? stageUnits(stage, db.items) : []), [stage, db.items]);
+  // The pathway's instrument and hidden suggestions: every row, the progress
+  // bar and the next suggestion read the SAME resolution.
+  const ctx = useMemo(() => pathwayStageContext(pathway), [pathway]);
+  const units = useMemo(() => (stage ? stageUnits(stage, db.items, ctx) : []), [stage, db.items, ctx]);
+  const hidden = useMemo(() => (stage ? hiddenUnits(stage, db.items, ctx) : []), [stage, db.items, ctx]);
   const routines = useMemo(() => (stage ? routinesOfStage(db.pathwayRoutines, stage.id) : []), [db.pathwayRoutines, stage]);
-  const blocksOf = (itemId: string) => db.blocks.filter((b) => b.practiceItemId === itemId);
   // "for class" is a commitment to a NAMED class in the lesson agenda, not a
   // rolling flag on the item.
   const committedItemIds = useMemo(
@@ -47,7 +58,12 @@ export default function StageDetail() {
   const [editCode, setEditCode] = useState('');
   const [editTitle, setEditTitle] = useState('');
   const [editIntro, setEditIntro] = useState('');
-  const [undo, setUndo] = useState<{ id: string; title: string } | null>(null);
+  // What the last tap did, said plainly — never an Undo that deletes.
+  const [notice, setNotice] = useState<string | null>(null);
+  // An explicit choice in progress: which item a suggestion is, or which
+  // study source a course is.
+  const [choosing, setChoosing] = useState<{ unit: StageUnit; mode: 'link' | 'ambiguous' } | null>(null);
+  const [sourceChoice, setSourceChoice] = useState<{ itemId: string; materials: Material[] } | null>(null);
   // A stage this course owns can write two routines from the course's own
   // syllabus. Both become ORDINARY EDITABLE routines — neither is a live view.
   const course = stageId ? courseStage(stageId) : undefined;
@@ -85,15 +101,15 @@ export default function StageDetail() {
   }
 
   function addSuggestion(unit: StageUnit) {
-    const { id, created } = addFromCatalog(stage!.id, unit.key);
-    // Adding is organisation, not commitment — the undo card lingers calmly
-    // until dismissed or you leave, rather than vanishing on a timer.
-    //
-    // AN UNDO MAY ONLY EVER REACH AN ITEM THIS TAP CREATED. A work the course
-    // carries across levels resolves to the one added at an earlier level, and
-    // offering to delete that — an item the owner made weeks ago somewhere
-    // else — is not an undo of anything that just happened.
-    setUndo(created ? { id, title: unit.title } : null);
+    const result = addFromCatalog(stage!.id, unit.key);
+    // Two of the owner's items already answer this suggestion: nothing was
+    // created or picked — the owner chooses.
+    if (result.candidates) {
+      setChoosing({ unit, mode: 'ambiguous' });
+      return;
+    }
+    setNotice(result.created ? `Added “${unit.title}” to your items — not practised yet.` : `“${unit.title}” is already one of your items.`);
+    if (result.sourceCandidates) setSourceChoice({ itemId: result.id, materials: result.sourceCandidates });
   }
 
   function practise(unit: StageUnit) {
@@ -105,6 +121,10 @@ export default function StageDetail() {
       return;
     }
     const itemId = unit.item?.id ?? addFromCatalog(stage!.id, unit.key).id;
+    if (!itemId) {
+      setChoosing({ unit, mode: 'ambiguous' });
+      return;
+    }
     startItemSession(itemId);
     navigate('/active');
   }
@@ -236,60 +256,86 @@ export default function StageDetail() {
 
       <section className="stack-sm">
         <div className="section-label">In this stage</div>
-        {undo && (
-          <div className="card card-quiet row between small" dir="auto" style={{ gap: 8 }}>
-            {/* Fixed English page copy with the item's own (possibly Farsi)
-                title embedded mid-sentence — its own dir="ltr" isolate fixes
-                the sentence's bidi base regardless of the embedded title. */}
-            <span className="truncate" dir="ltr">
-              Added “{undo.title}” — not practised yet.
-            </span>
-            <div className="row" style={{ gap: 6, flex: 'none' }}>
-              <button
-                className="btn btn-sm"
-                onClick={() => {
-                  // Re-checks live state (a block may have been logged since the
-                  // banner appeared) — never silently deletes practised work.
-                  removeCatalogItem(undo.id);
-                  setUndo(null);
-                }}
-              >
-                Undo
-              </button>
-              <button
-                className="btn btn-ghost btn-sm"
-                aria-label="Dismiss"
-                style={{ minHeight: 30, padding: '0 6px' }}
-                onClick={() => setUndo(null)}
-              >
-                <XIcon width={14} height={14} />
-              </button>
-            </div>
-          </div>
+        {notice && (
+          <p className="tiny dim" role="status" style={{ margin: 0 }}>
+            {notice}
+          </p>
+        )}
+        {sourceChoice && course && (
+          <SourceChoice
+            courseName={course.course.sourceName}
+            materials={sourceChoice.materials}
+            onChoose={(materialId) => {
+              chooseCourseSource(sourceChoice.itemId, materialId, course.course.id);
+              setSourceChoice(null);
+            }}
+            onCancel={() => setSourceChoice(null)}
+          />
         )}
         <div className="stack-sm">
-          {units.map((u) => (
-            <UnitRow
-              key={u.key}
-              unit={u}
-              returnTo={here}
-              // Removing reverts a suggestion this stage's owner took. An item
-              // that lives in ANOTHER stage — a carried-forward course work
-              // added at an earlier level — is not this row's to delete, the
-              // same rule the undo banner above follows.
-              removable={!!u.item && u.item.stageId === stage.id && isLosslesslyRemovable(u.item, blocksOf(u.item.id))}
-              committedItemIds={committedItemIds}
-              onPractise={() => practise(u)}
-              onAdd={() => addSuggestion(u)}
-              onRemove={() => {
-                if (u.item) removeCatalogItem(u.item.id);
-              }}
-            />
-          ))}
+          {units.map((u) =>
+            choosing?.unit.key === u.key ? (
+              <ItemChoice
+                key={u.key}
+                heading={choosing.mode === 'ambiguous' ? `Which item is “${u.title}”?` : `Link an existing item to “${u.title}”`}
+                explanation={
+                  choosing.mode === 'ambiguous'
+                    ? 'More than one of your items answers this suggestion. Choose the one it is — every item stays exactly as it is.'
+                    : 'Choose one of your items on this instrument. Nothing about it changes except that it now answers this suggestion.'
+                }
+                items={choosing.mode === 'ambiguous' ? u.candidates ?? [] : linkCandidates(db.items, ctx.instrumentId, u.entry?.title ?? u.title)}
+                sameTitle={(i) => i.title.trim() === (u.entry?.title ?? u.title).trim()}
+                onChoose={(itemId) => {
+                  const refusal = pathway && u.ref ? linkReference(pathway.id, u.ref, itemId) : 'This suggestion cannot be linked.';
+                  if (!refusal) {
+                    setChoosing(null);
+                    setNotice(`Linked — “${db.items.find((i) => i.id === itemId)?.title ?? ''}” now answers this suggestion.`);
+                  }
+                  return refusal;
+                }}
+                onCancel={() => setChoosing(null)}
+              />
+            ) : (
+              <UnitRow
+                key={u.key}
+                unit={u}
+                returnTo={here}
+                committedItemIds={committedItemIds}
+                onPractise={() => practise(u)}
+                onAdd={() => addSuggestion(u)}
+                onChoose={() => setChoosing({ unit: u, mode: u.candidates ? 'ambiguous' : 'link' })}
+                onHide={pathway && u.ref ? () => setReferenceHidden(pathway.id, u.ref!, true) : undefined}
+                onUnlink={u.item && u.ref ? () => unlinkReference(u.item!.id, u.ref!) : undefined}
+                onRemoveFromPathway={u.item && pathway ? () => removeFromPathway(u.item!.id, pathway.id) : undefined}
+              />
+            ),
+          )}
           {units.length === 0 && (
             <div className="card card-quiet small dim">Nothing here yet — add your first piece below.</div>
           )}
         </div>
+        {hidden.length > 0 && pathway && (
+          <details className="card card-quiet">
+            <summary className="small">Hidden suggestions ({hidden.length})</summary>
+            <p className="tiny dim">Hidden here only. Your own items stay in My repertoire and in this stage if you placed them.</p>
+            <div className="stack-sm">
+              {hidden.map((u) => (
+                <div key={u.key} className="row between" style={{ gap: 8 }}>
+                  <span className="small" dir="auto">
+                    {u.title}
+                  </span>
+                  <button
+                    className="btn btn-sm"
+                    aria-label={`Restore ${u.title}`}
+                    onClick={() => setReferenceHidden(pathway.id, u.ref!, false)}
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
         <QuickAdd stageId={stage.id} />
         <div className="tiny faint">
           Anything you add here is a normal practice item — it also appears under “All items” and in recommendations.
@@ -310,36 +356,48 @@ export default function StageDetail() {
 function UnitRow({
   unit,
   returnTo,
-  removable,
   committedItemIds,
   onPractise,
   onAdd,
-  onRemove,
+  onChoose,
+  onHide,
+  onUnlink,
+  onRemoveFromPathway,
 }: {
   unit: StageUnit;
   returnTo: string;
-  removable: boolean;
   /** Items with a live commitment to a specific class (the lesson agenda). */
   committedItemIds: Set<string>;
   onPractise: () => void;
   onAdd: () => void;
-  onRemove: () => void;
+  onChoose: () => void;
+  onHide?: () => void;
+  onUnlink?: () => void;
+  onRemoveFromPathway?: () => void;
 }) {
   const navigate = useNavigate();
   const item = unit.item;
+  const ambiguous = !item && !!unit.candidates;
 
   // One line of metadata, never duplicated: strand, then the item's status
   // (which is exactly "Not practised yet" for a freshly-added suggestion), or
-  // the reference hint before it is added. The status lives here alone — there
-  // is no separate status badge on the row.
+  // what the suggestion needs. The status lives here alone.
   const meta = [
     unit.strand ? STRAND_LABELS[unit.strand] : null,
-    item ? ITEM_STATUS_LABELS[item.status] : 'reference suggestion — tap to add',
+    item ? ITEM_STATUS_LABELS[item.status] : ambiguous ? `${unit.candidates!.length} of your items answer this — choose one` : 'suggestion',
     item && committedItemIds.has(item.id) ? 'for class' : null,
   ].filter(Boolean);
 
+  // Every secondary action keeps the owner's work: none of them deletes.
+  const menu: { label: string; run: () => void }[] = [
+    ...(!item && !ambiguous ? [{ label: 'Link an existing item…', run: onChoose }] : []),
+    ...(!item && onHide ? [{ label: 'Hide this suggestion', run: onHide }] : []),
+    ...(item && onUnlink ? [{ label: 'Unlink reference (keeps the item)', run: onUnlink }] : []),
+    ...(item && onRemoveFromPathway ? [{ label: 'Remove from pathway (keeps the item)', run: onRemoveFromPathway }] : []),
+  ];
+
   return (
-    <div className={`card stage-unit${removable ? ' stage-unit--removable' : ''}${unit.state === 'done' ? ' card-quiet' : ''}`}>
+    <div className={`card stage-unit${unit.state === 'done' ? ' card-quiet' : ''}`}>
       <span
         className="stage-badge"
         style={{
@@ -349,14 +407,15 @@ function UnitRow({
             unit.state === 'done' ? 'var(--tone-good-soft)' : unit.state === 'in_progress' ? 'var(--accent-soft)' : 'var(--surface-2)',
           color: unit.state === 'done' ? 'var(--tone-good)' : unit.state === 'in_progress' ? 'var(--accent)' : 'var(--text-faint)',
         }}
+        aria-hidden
       >
         {unit.state === 'done' ? <CheckIcon width={16} height={16} /> : unit.state === 'in_progress' ? '·' : ''}
       </span>
 
       <button
         className="stage-unit-text"
-        onClick={() => (item ? navigate(`/items/${item.id}`, { state: { from: returnTo } }) : onAdd())}
-        title={item ? 'Open item' : 'Add to your items'}
+        onClick={() => (item ? navigate(`/items/${item.id}`, { state: { from: returnTo } }) : ambiguous ? onChoose() : onAdd())}
+        title={item ? 'Open item' : ambiguous ? 'Choose which item this is' : 'Add to your items'}
         dir="auto"
       >
         <div className="stage-unit-title">
@@ -367,31 +426,31 @@ function UnitRow({
         <div className="tiny faint">
           <span dir="ltr">{meta.join(' · ')}</span>
         </div>
-        {unit.entry?.about && !item && (
-          <div className="tiny dim" style={{ marginTop: 3 }}>
-            {unit.entry.about}
-          </div>
-        )}
       </button>
 
-      {/* A freshly-added catalog item (no practice logged) keeps a lossless
-          Remove so undo stays reachable after the banner is gone — it reverts
-          the row to a suggestion. It disappears the moment practice begins. */}
-      {removable && (
-        <button
-          className="btn btn-ghost stage-unit-action"
-          onClick={onRemove}
-          aria-label={`Remove ${unit.title} — no practice logged`}
-          title="Remove (no practice logged)"
-        >
-          <MinusIcon />
-        </button>
+      {menu.length > 0 && (
+        <details className="stage-unit-menu">
+          <summary className="btn btn-ghost stage-unit-action" aria-label={`More actions for ${unit.title}`}>
+            ⋯
+          </summary>
+          <div className="stage-unit-menu-list card">
+            {menu.map((m) => (
+              <button key={m.label} className="btn btn-ghost btn-sm btn-block" style={{ justifyContent: 'flex-start' }} onClick={m.run}>
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </details>
       )}
 
       {/* Fixed-size trailing action: Play once added, Add before. */}
       {item ? (
         <button className="btn btn-primary stage-unit-action" onClick={onPractise} aria-label={`Practise ${unit.title}`}>
           <PlayIcon />
+        </button>
+      ) : ambiguous ? (
+        <button className="btn stage-unit-action" onClick={onChoose} aria-label={`Choose which item is ${unit.title}`}>
+          ?
         </button>
       ) : (
         <button className="btn stage-unit-action" onClick={onAdd} aria-label={`Add ${unit.title} to your items`}>

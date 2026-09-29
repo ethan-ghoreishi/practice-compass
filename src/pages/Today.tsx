@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  currentStage,
+  pathwayPosition,
+  primaryPathway,
   daysUntil,
   dueReviews,
   fragileItems,
@@ -519,14 +520,11 @@ function SessionView({
     [db.reviews, now, itemById, notNow],
   );
 
-  const pathway = useMemo(
-    () => db.pathways.find((p) => p.instrumentId === instrumentId),
-    [db.pathways, instrumentId],
-  );
-  const stage = pathway
-    ? currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId)
-    : null;
-  const stageSp = stage ? stageProgress(stageUnits(stage, db.items)) : null;
+  // The route this instrument follows — the SAME selector (visible, ordered,
+  // pinned) the Session Plan, Repertoire and the pathway page use.
+  const pathway = useMemo(() => primaryPathway(db.pathways, instrumentId), [db.pathways, instrumentId]);
+  const { stage, ctx: stageCtx } = pathwayPosition(db, pathway);
+  const stageSp = stage ? stageProgress(stageUnits(stage, db.items, stageCtx)) : null;
 
   const fragile = useMemo(() => fragileItems(items), [items]);
 

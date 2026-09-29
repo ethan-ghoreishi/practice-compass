@@ -122,6 +122,13 @@ export interface Material {
   instrumentId: ID;
   title: string;
   sourceType: MaterialSourceType;
+  /**
+   * The code-defined course this source IS (schema v15), e.g. `course:cgs`.
+   * Set only where a shipped course minted the source or its origin was
+   * uniquely proven, so renaming it never mints a second copy. Absent on every
+   * source the owner made — arbitrary sources are never matched by title.
+   */
+  sourceKey?: string;
   sourceName?: string;
   parentTitle?: string;
   section?: string;
@@ -170,18 +177,53 @@ export type ItemStatus =
 /** 1–5 rating. */
 export type Rating = 1 | 2 | 3 | 4 | 5;
 
+// --- Shared musical terms (schema v15) ---------------------------------------
+//
+// ONE small vocabulary for the three classifying fields. Built-in terms live in
+// code (`musicTerms.ts`) under stable namespaced ids; `PracticeDB.musicTerms`
+// holds only the owner's custom terms and their edits of built-ins, keyed by
+// the same id. Gusheh titles are deliberately NOT terms: a repeated name needs
+// its dastgāh and source to mean anything.
+
+export type MusicTermKind = 'dastgah' | 'form' | 'composer';
+
+export interface MusicTerm {
+  id: ID;
+  kind: MusicTermKind;
+  /** Display name. Built-in Persian names are Farsi. */
+  name: string;
+  /** Exact spellings that mean this term (search AND identity). */
+  aliases: string[];
+  /** Archived: still readable and filterable, never offered for new entry. */
+  archived?: boolean;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+}
+
+/** A pointer into the vocabulary — the only non-text value a field may hold. */
+export interface MusicTermRef {
+  termId: ID;
+}
+
+/**
+ * ONE authoritative value per field: a term reference, or the owner's literal
+ * text exactly as written (legacy and custom text are never rewritten).
+ */
+export type MusicalValue = string | MusicTermRef;
+
 /**
  * Persian-music specific IDENTITY metadata — what the piece IS. The working
  * detail that used to live here (shāhed, ist, forud, ornament/mezrāb notes…)
  * was retired at schema v13: its home is the item's own Working notes.
  */
 export interface PersianFields {
-  dastgahAvaz?: string;
+  dastgahAvaz?: MusicalValue;
+  /** Always literal: a gusheh name is only meaningful beside its dastgāh. */
   gusheh?: string;
   /** Musical form, e.g. pish-darāmad, chahār-mezrāb, tasnif, reng, qet‘e. */
-  form?: string;
+  form?: MusicalValue;
   /** Composer / maestro, e.g. Darvish Khān, Sabā. */
-  composer?: string;
+  composer?: MusicalValue;
 }
 
 /**
@@ -202,8 +244,16 @@ export interface PracticeItem {
   stageId?: ID;
   /** Optional pathway category (for grouping/labelling within a stage). */
   strand?: StepStrand;
-  /** Reference-catalog entry this item was created from (dedupes suggestions). */
+  /** Reference-catalog entry this item was created from — PROVENANCE only since v15. */
   catalogKey?: string;
+  /**
+   * The reference suggestions this item IS (schema v15), by stable reference
+   * id — independent of where the item is placed, so moving or detaching it
+   * never defeats reuse. PRESENT (even empty) means the binding is decided;
+   * ABSENT means legacy, resolved from `stageId` + `catalogKey` only where
+   * that evidence is unique. Several references may name one item.
+   */
+  catalogRefs?: string[];
   /**
    * Parent piece/étude when this item is one of its parts (a phrase, bars, a
    * section, a technical problem). Parts are ordinary items; this only groups
@@ -404,6 +454,11 @@ export interface Pathway {
    */
   currentStageId?: ID;
   archived?: boolean;
+  /**
+   * Reference suggestions the owner hid IN THIS PATHWAY (schema v15). Hiding
+   * is visibility only: it never hides, deletes or completes an owned item.
+   */
+  hiddenRefs?: string[];
   order: number;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
@@ -586,7 +641,7 @@ export interface SchedulingParams {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 14;
+export const SCHEMA_VERSION = 15;
 
 export interface PracticeDB {
   schemaVersion: number;
@@ -609,6 +664,8 @@ export interface PracticeDB {
    * only a key into this, so a resource is never copied per item.
    */
   archiveSources: ArchiveSource[];
+  /** Custom musical terms and edits of built-in ones (schema v15). */
+  musicTerms: MusicTerm[];
   /** Optional scheduling knobs; undefined ⇒ DEFAULT_SCHEDULING_PARAMS. */
   settings?: SchedulingParams;
 }

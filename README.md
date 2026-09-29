@@ -30,20 +30,25 @@ daily home is the **MacBook**, with the **iPhone** as companion.
   at your own pace, always seeing where you stand and what's ahead. No rush, no deadlines,
   no competition. Three are seeded and fully editable: **Classical Guitar Shed** (1A from
   the official syllabus with two guided routines; Levels 1–3 from the real course),
-  **Setar · Radif & Repertoire** (a dastgāh/āvāz/gusheh map, teacher-driven and reorderable),
-  and **Tar · Honarestān method** (the two-book conservatory curriculum, as taught on
-  Khonyagar.com). Create your own; rename/reorder sections and stages; pin the stage
-  you're actually in (teacher-led work doesn't move linearly).
+  **Setar · ردیف میرزا عبدالله** (a partial, dastgāh-scoped radif reference — an older
+  install keeps its mixed Setar pathway), and **Tar · Honarestān method** and the Khonyagar
+  course, with the same radif reference offered for Tar — shared suggestions, separate
+  practice. Create your own; rename/reorder sections and stages; pin the stage you're
+  actually in (teacher-led work doesn't move linearly); archive a pathway and restore it.
+  Taking a suggestion binds it to your item, so moving the item never offers it twice; Link
+  an existing item, Unlink, Remove from pathway and Hide never delete anything.
 - **Walks you through a session.** Guided routines run as a hands-free, segment-by-segment
   timer — clearly labelled as a warm-up, not logged practice.
 - **Tells you what to practise next.** A deterministic recommendation engine surfaces
   three explained cards: *Best Next Focus*, *Quick Win*, and *Maintenance*.
-- **Maps the whole repertoire.** Repertoire → *My repertoire* shows the works you
-  actually play: radif gushehs and composed maestro pieces (a chahārmezrāb of Sabā in
-  Afshāri, a pish-darāmad of Darvish Khān in Māhur) side by side under their dastgāh,
-  with form and composer on each row — and guitar pieces through the same lens, grouped
-  by study source. Parent works appear once; parts stay nested. Spelling variants fold
-  into one group; your own text is never rewritten.
+- **Maps the whole repertoire.** Repertoire opens on *My repertoire*: the works you
+  actually play — radif gushehs and composed maestro pieces side by side under their
+  dastgāh, guitar pieces by study source — with one search (title, gusheh, dastgāh, form,
+  maestro, source, in Farsi or Latin) and Dastgāh / Form / Composer filters. Parent works
+  appear once; a matching part shows its parent; unclassified works sit under "No dastgāh
+  yet". Your view, instrument and filters survive opening a piece and coming back. «Shur»
+  and «شور» are one dastgāh through a small shared vocabulary (More → Musical terms);
+  your own text is never rewritten.
 - **Creates items in one step.** Quick add stays title-only; "Add practice item" asks
   what you're adding first (gusheh, composed piece, passage, étude, technique…) and
   shows only the fields that kind needs, with study source (creatable inline), pathway
@@ -202,6 +207,13 @@ schema **v13** retired the older fields that competed with them (`currentProblem
 fourteen Persian/Guitar working-detail fields) — a one-way, owner-authorised exception
 recorded in [`DECISIONS.md`](DECISIONS.md). The identity fields that say what a piece *is*
 were kept.
+
+**Terms, references and hides (schema v15).** Dastgāh/Āvāz, Form and Composer/maestro
+share one small vocabulary (built-ins in code, your custom terms and edits in
+`musicTerms`); a field holds either a term reference or your own text. An item's
+`catalogRefs` say which pathway suggestions it answers, independent of where it is
+placed; a pathway's `hiddenRefs` hide suggestions there; a course's own study source
+carries a stable `sourceKey`. See [`docs/repertoire-experience.md`](docs/repertoire-experience.md).
 
 Everything is plain JSON and round‑trips cleanly through export/import. The persisted
 shape carries a `schemaVersion` for future migrations; a file from a NEWER build is

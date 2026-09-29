@@ -1,7 +1,9 @@
 import { Link } from 'react-router-dom';
 import {
   ChevronRightIcon,
+  FolderIcon,
   InsightsIcon,
+  ItemsIcon,
   ReportIcon,
   SettingsIcon,
 } from '../components/icons';
@@ -9,6 +11,8 @@ import {
 const LINKS = [
   { to: '/insights', label: 'Insights', desc: 'Calm patterns from your practice', icon: InsightsIcon },
   { to: '/report', label: 'Teacher report', desc: 'Copyable lesson summary', icon: ReportIcon },
+  { to: '/terms', label: 'Musical terms', desc: 'Dastgāh, forms and maestros your pieces share', icon: ItemsIcon },
+  { to: '/materials', label: 'Study sources', desc: 'Books, radif editions, collections and courses', icon: FolderIcon },
   { to: '/settings', label: 'Settings & backup', desc: 'Theme, instruments, export/import', icon: SettingsIcon },
 ];
 

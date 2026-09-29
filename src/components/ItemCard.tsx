@@ -12,7 +12,7 @@ import { Stars, StatusBadge } from './ui';
 import { ClockIcon, FlagIcon, PaperclipIcon } from './icons';
 import { formatMinutes, relativeDay, relativeFromDateTime } from './format';
 
-export default function ItemCard({ item, now = new Date() }: { item: PracticeItem; now?: Date }) {
+export default function ItemCard({ item, now = new Date(), from = '/repertoire' }: { item: PracticeItem; now?: Date; from?: string }) {
   const db = useStore((s) => s.db);
   const inst = instrumentName(db, item.instrumentId);
   // ownerId alone can collide with a lesson's id, so count only via the
@@ -23,7 +23,7 @@ export default function ItemCard({ item, now = new Date() }: { item: PracticeIte
   const openQuestionCount = db.lessonAgenda.filter((e) => isOpenQuestion(e) && e.itemId === item.id).length;
 
   return (
-    <Link to={`/items/${item.id}`} state={{ from: '/repertoire' }} className="card card-link">
+    <Link to={`/items/${item.id}`} state={{ from }} className="card card-link">
       <div className="row between" style={{ alignItems: 'flex-start' }}>
         <div className="grow" dir="auto">
           <div className="title-md">{item.title}</div>

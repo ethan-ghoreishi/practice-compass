@@ -84,6 +84,7 @@ export interface CreateItemInput {
   stageId?: ID;
   strand?: StepStrand;
   catalogKey?: string;
+  catalogRefs?: string[];
   parentItemId?: ID;
   status?: ItemStatus;
   importance?: Rating;
@@ -106,6 +107,7 @@ export function createItem(input: CreateItemInput, now: Date = new Date()): Prac
     stageId: input.stageId,
     strand: input.strand,
     catalogKey: input.catalogKey,
+    ...(input.catalogRefs ? { catalogRefs: input.catalogRefs } : {}),
     parentItemId: input.parentItemId,
     title: input.title.trim(),
     itemType: input.itemType ?? 'other',

@@ -57,6 +57,7 @@ function db(partial: Partial<PracticeDB>): PracticeDB {
     // PracticeDB now requires it.
     lessonAgenda: [],
     archiveSources: [],
+    musicTerms: [],
     ...partial,
   };
 }

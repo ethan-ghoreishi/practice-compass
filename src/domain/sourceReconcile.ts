@@ -1,4 +1,5 @@
-import type { ID, ISODate, Lesson, LessonRecording, PracticeDB, PracticeItem } from './types';
+import type { ID, ISODate, Lesson, LessonRecording, MusicalValue, PracticeDB, PracticeItem } from './types';
+import { isTermRef, resolveValue, TERM_FIELD_KIND, valueLabel, vocabulary, type Vocabulary } from './musicTerms';
 import { createItem, createLesson } from './factories';
 import { nowISO } from './util';
 import {
@@ -58,7 +59,7 @@ export type ReconcileDecision =
    * database where the piece is bound to item B instead, also with an empty
    * composer, and a choice made about A was written to B.
    */
-  | { kind: 'apply-field'; pieceKey: string; itemId: ID; field: MetadataField; from: string };
+  | { kind: 'apply-field'; pieceKey: string; itemId: ID; field: MetadataField; from: MusicalValue };
 
 export type MetadataField = 'dastgahAvaz' | 'gusheh' | 'form' | 'composer';
 
@@ -82,8 +83,27 @@ export interface MetadataSuggestion {
   pieceKey: string;
   itemId: ID;
   field: MetadataField;
+  /** The owner's current value AS IT READS — a term's name, or their own text. */
   from: string;
+  /** Set when that value is a term REFERENCE: the premise is the term itself. */
+  fromTermId?: ID;
   to: string;
+}
+
+/**
+ * Does the owner's field ALREADY say what the registry proposes? Literal text
+ * compares exactly, as it always has. A term-backed field says it when the
+ * registry's own spelling resolves to that same term — «Shur» in the registry
+ * is not an improvement on a field that already IS شور. The registry text is
+ * never rewritten; only the question "is there anything to offer" reads terms.
+ */
+function fieldAlreadySays(current: MusicalValue | undefined, proposed: string, field: MetadataField, vocab: Vocabulary): boolean {
+  if (!isTermRef(current)) return (current ?? '') === proposed;
+  if (field === 'gusheh') return false;
+  const kind = TERM_FIELD_KIND[field];
+  const mine = resolveValue(current, kind, vocab);
+  const theirs = resolveValue(proposed, kind, vocab);
+  return mine.status === 'term' && theirs.status === 'term' && mine.term.id === theirs.term.id;
 }
 
 /**
@@ -99,7 +119,8 @@ export function decisionMatchesSuggestion(d: ReconcileDecision, s: MetadataSugge
     // chosen against. Either one alone lets a rebase redirect the answer.
     d.itemId === s.itemId &&
     d.field === s.field &&
-    d.from === s.from
+    // A term-backed premise is the term; a text premise is what the owner read.
+    (isTermRef(d.from) ? d.from.termId === s.fromTermId : d.from === s.from)
   );
 }
 
@@ -433,6 +454,7 @@ export interface PlanInput {
  * one: everything weaker becomes a question with the candidates named.
  */
 export function planArchiveImport({ db, index, instrumentId, decisions = [], verifiedBase, now }: PlanInput): ImportPlan {
+  const vocab = vocabulary(db.musicTerms ?? []);
   const archiveId = index.archiveId;
   const existing = db.archiveSources?.find((s) => s.id === archiveId);
   const suppressions = existing?.suppressions ?? [];
@@ -574,9 +596,16 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       // decision — including when the owner's value is deliberately EMPTY.
       for (const field of ['dastgahAvaz', 'gusheh', 'form', 'composer'] as MetadataField[]) {
         const proposed = persianFromPiece(piece)[field] ?? '';
-        const current = bound.persian?.[field] ?? '';
-        if (proposed && proposed !== current) {
-          suggestions.push({ pieceKey: piece.key, itemId: bound.id, field, from: current, to: proposed });
+        const current = bound.persian?.[field];
+        if (proposed && !fieldAlreadySays(current, proposed, field, vocab)) {
+          suggestions.push({
+            pieceKey: piece.key,
+            itemId: bound.id,
+            field,
+            from: valueLabel(current, vocab),
+            ...(isTermRef(current) ? { fromTermId: current.termId } : {}),
+            to: proposed,
+          });
         }
       }
       continue;
@@ -742,7 +771,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
         const item = boundItems.get(d.pieceKey);
         if (!piece || !item || item.id !== d.itemId) return false;
         const proposed = persianFromPiece(piece)[d.field] ?? '';
-        return proposed !== '' && (item.persian?.[d.field] ?? '') === proposed;
+        return proposed !== '' && fieldAlreadySays(item.persian?.[d.field], proposed, d.field, vocab);
       }
     }
   };

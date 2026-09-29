@@ -100,6 +100,16 @@ never quietly disagrees with itself about what day it is.
   commitments to a NAMED class, not a single rolling flag meaning "the next one" and a
   single box holding one question. Only the first is a reason to practise; the second is
   a reason to write something down.
+- **A suggestion, a pathway, a source and a term are four different things, and none of
+  them is practice.** A reference suggestion is code-defined music a pathway proposes; the
+  owned practice item is the only thing practised. Which suggestion an item IS is a
+  binding on the item, so moving or detaching it never makes the pathway offer the same
+  music again, and taking a suggestion twice hands back the same item. A study source is
+  the book, radif edition, collection, course or handout a piece is studied from — not a
+  person, a pathway or a lesson. A musical term (Dastgāh/Āvāz, Form, Composer/maestro)
+  classifies a piece: «Shur» and «شور» are one dastgāh because the vocabulary says so
+  exactly, never because two strings look alike. Setar and Tar share one partial radif
+  reference and never share practice.
 
 ## What each word means (the definition table)
 
@@ -163,6 +173,24 @@ choose), Manual (you set each date yourself). Handing an item to Auto is an
 ADMINISTRATIVE transfer: it KEEPS the date you already had, records no practice and
 invents no result. The engine simply owns that date from then on.
 
+**Study source kind** — offered for a new source; an existing source keeps whatever kind it
+already has, labelled "(older kind)".
+
+| Shown | Stored | For |
+| ----- | ------ | --- |
+| Radif | `radif` | a radif edition, e.g. ردیف میرزا عبدالله |
+| Method book | `method_book` | a method, e.g. Honarestān Book 1 |
+| Collection | `repertoire` | a collection of pieces, e.g. a songbook |
+| Course | `course` | a course, e.g. Classical Guitar Shed |
+| Other | `other` | a teacher handout or other material |
+
+**Reference actions on a stage row** — none of them deletes anything. *Link an existing
+item* makes one of your items (same instrument) the answer to a suggestion. *Unlink
+reference* makes it stop answering; it keeps everything else. *Remove from pathway* takes it
+out of that pathway's stages and hides its suggestions there. *Hide this suggestion* is
+visibility only, restorable from "Hidden suggestions". *Delete practice item* on the item's
+own page is the only destructive action.
+
 ## A source archive describes; it never testifies
 
 The Setar class archive is the first SOURCE the app reads: a normalised folder tree the
@@ -203,6 +231,18 @@ because before, it answers "what now?", and after, it makes the 45 seconds of re
 feel worth it. Everything else is in service of that.
 
 ## Upgrading, and what a rollback can and cannot do
+
+### Schema v15 — shared terms, reference bindings, hidden suggestions
+
+v15 is additive. It adds an empty `musicTerms` list, and it decides a catalogue binding
+(`catalogRefs`) only where an item's old stage and key UNIQUELY name a shipped suggestion on
+its instrument — two copies stay undecided and are shown as a choice. It keys a shipped
+course's own study source only where exactly one source is proven to be it. No text is
+rewritten: «Shur» stays «Shur». It reads no clock, so two devices upgrade the same file to the
+same bytes, and running it again changes nothing. A v14 build refuses a v15 file outright
+("from a newer version") and changes nothing — state and attachment bytes alike — so a
+rollback is restoring the full backup you kept BEFORE upgrading. Keep one, and try the upgrade
+on a disposable copy first.
 
 ### Schema v13 — one home per kind of information
 

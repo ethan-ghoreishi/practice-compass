@@ -17,8 +17,9 @@ describe('groupByDastgah', () => {
       item('Pish-darāmad-e Māhur', { dastgahAvaz: 'Māhur', composer: 'Darvish Khān' }),
       item('Darāmad-e Shur', { dastgahAvaz: 'Shur' }),
     ]);
-    // "Afshāri" and "Āvāz-e Afshāri" fold into one group labelled by the majority spelling.
-    expect(groups.map((g) => g.dastgah)).toEqual(['Shur', 'Afshāri', 'Māhur']);
+    // "Afshāri" and "Āvāz-e Afshāri" are both curated spellings of ONE term,
+    // so they are one group, labelled with the term's own (Farsi) name.
+    expect(groups.map((g) => g.dastgah)).toEqual(['شور', 'افشاری', 'ماهور']);
     expect(groups[1].items).toHaveLength(3);
   });
 
@@ -27,7 +28,7 @@ describe('groupByDastgah', () => {
       item('Zarbi piece', { form: 'Zarbi' }),
       item('Darāmad-e Shur', { dastgahAvaz: 'Shur' }),
     ]);
-    expect(groups.map((g) => g.dastgah)).toEqual(['Shur', UNCLASSIFIED_DASTGAH]);
+    expect(groups.map((g) => g.dastgah)).toEqual(['شور', UNCLASSIFIED_DASTGAH]);
   });
 
   it('omits items with no Persian identity (plain technique work is not repertoire)', () => {
@@ -51,6 +52,17 @@ describe('groupByDastgah', () => {
       item('درآمد ماهور', { dastgahAvaz: 'ماهور' }),
     ]);
     expect(groups.map((g) => g.dastgah)).toEqual(['شور', 'افشاری', 'ماهور']);
+  });
+
+  it('keeps a composite or unknown spelling as its own literal group, after the terms, never folded into one', () => {
+    const groups = groupByDastgah([
+      item('الف', { dastgahAvaz: 'دشتی/شور' }), // composite
+      item('ب', { dastgahAvaz: 'راک(ماهور)' }), // gusheh-in-dastgāh note
+      item('ج', { dastgahAvaz: 'درآمد شور' }), // contains a term, is not one
+      item('د', { dastgahAvaz: 'شور' }),
+    ]);
+    expect(groups.map((g) => g.dastgah)).toEqual(['شور', 'درآمد شور', 'دشتی/شور', 'راک(ماهور)']);
+    expect(groups[0].items.map((i) => i.title)).toEqual(['د']);
   });
 
   it('folds Farsi spelling variants (Arabic yeh, آواز prefix) into one group', () => {

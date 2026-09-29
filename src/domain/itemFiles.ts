@@ -1,5 +1,5 @@
 import type { AttachmentKind, AttachmentMeta, AttachmentOwnerType, ID, ISODate, LessonFileKind, PracticeDB } from './types';
-import { type CourseFileKind, courseFilesFor } from './courseSeed';
+import { type CourseFileKind, courseFilesForReference, itemReferences } from './courseSeed';
 import {
   CLASS_ROLE,
   CORRECTION_ROLE,
@@ -211,17 +211,18 @@ export function itemFiles(db: PracticeDB, itemId: ID): ItemFile[] {
 
   // 2. WHAT THE COURSE SAYS IS MATERIAL FOR THIS SECTION.
   //
-  // COMPOSED LIVE FROM THE CATALOGUE, NEVER STORED ON THE ITEM. The item holds
-  // only the stage and the catalogue key it was created from; its videos,
-  // scores, images and contrast-card folder are read out of the course data
-  // every time — so re-running the scanner after the course changes reaches
+  // COMPOSED LIVE FROM THE CATALOGUE, NEVER STORED ON THE ITEM — and read from
+  // the REFERENCES the item stands for (`itemReferences`), never from where it
+  // happens to sit now: moving it to another stage, detaching it from its
+  // pathway or deleting that stage leaves its videos and scores exactly where
+  // they were. Re-running the scanner after the course changes still reaches
   // every item that already exists, and the owner never types a link.
   //
   // These paths are relative to the SHARED MEDIA ROOT, not to the archive base,
   // which is why they carry `root: 'media'`. No bytes enter the app: a course
   // file is opened where it lives, exactly like a class recording.
-  if (item?.stageId && item.catalogKey) {
-    for (const f of courseFilesFor(item.stageId, item.catalogKey)) {
+  for (const ref of item ? itemReferences(item) : []) {
+    for (const f of courseFilesForReference(ref)) {
       const key = referenceKey(f.path);
       if (!key || seen.has(key)) continue;
       seen.add(key);

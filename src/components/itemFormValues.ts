@@ -73,10 +73,17 @@ export function itemToValues(item: PracticeItem): ItemFormValues {
   };
 }
 
+/**
+ * Keep what the owner filled in: text trimmed, a term REFERENCE kept exactly as
+ * it is — never passed through `String()`, which would store the literal text
+ * "[object Object]" in place of the term.
+ */
 function cleanRecord<T extends object>(obj: T): T | undefined {
-  const entries = Object.entries(obj).filter(([, val]) => val && String(val).trim());
-  if (entries.length === 0) return undefined;
-  return Object.fromEntries(entries.map(([k, val]) => [k, String(val).trim()])) as T;
+  const entries = Object.entries(obj).flatMap(([k, val]): [string, unknown][] => {
+    if (typeof val === 'string') return val.trim() ? [[k, val.trim()]] : [];
+    return val ? [[k, val]] : [];
+  });
+  return entries.length ? (Object.fromEntries(entries) as T) : undefined;
 }
 
 export function valuesToCreateInput(v: ItemFormValues) {

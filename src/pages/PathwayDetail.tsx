@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  currentStage,
   groupStages,
+  pathwayPosition,
   pathwayProgress,
+  type StageContext,
   routinesOfPathway,
   stageProgress,
   stagesOfPathway,
@@ -60,8 +61,11 @@ export default function PathwayDetail() {
     );
   }
 
-  const current = currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId);
-  const prog = pathwayProgress(db.pathwayStages, db.items, pathway.id);
+  // The SAME position Today, the Session Plan and Repertoire follow: the
+  // pinned stage while it exists, else the first incomplete — over the
+  // visible (unhidden) suggestions.
+  const { stage: current, ctx } = pathwayPosition(db, pathway);
+  const prog = pathwayProgress(db.pathwayStages, db.items, pathway.id, ctx);
   const grouped = groupStages(stages);
   const groupNames = [...new Set(stages.map((s) => s.group).filter((g): g is string => !!g))];
 
@@ -126,23 +130,44 @@ export default function PathwayDetail() {
               {pathway.note}
             </div>
           )}
-          <div className="row" style={{ gap: 8, marginTop: 4 }}>
+        </header>
+      )}
+      {/* The pathway's own controls sit OUTSIDE its title group: fixed English
+          labels are not captions of the (possibly Farsi) name. */}
+      {!editing && (
+        <div className="stack-sm">
+          {pathway.archived && (
+            <p className="small" role="status" style={{ margin: 0 }}>
+              Archived — hidden from Today, the Session Plan and Repertoire. Every item in it is untouched.
+            </p>
+          )}
+          <div className="row-wrap" style={{ gap: 8, marginTop: 4 }}>
             <button className="btn btn-sm" onClick={() => setEditing(true)}>
               Edit
             </button>
             <button
+              className="btn btn-sm"
+              onClick={() => updatePathway(pathway.id, { archived: !pathway.archived })}
+            >
+              {pathway.archived ? 'Restore pathway' : 'Archive pathway'}
+            </button>
+            <button
               className="btn btn-sm btn-danger"
               onClick={() => {
-                if (confirm(`Delete the pathway “${pathway.name}” and all its stages? Your practice items are kept.`)) {
+                if (
+                  confirm(
+                    `Delete the pathway “${pathway.name}” and its stages?\n\nYour practice items are NOT deleted: they are detached from this pathway and stay in My repertoire with all their notes, files and history. Routines are kept, unplaced. To just hide it, choose Archive instead.`,
+                  )
+                ) {
                   deletePathway(pathway.id);
-                  navigate('/repertoire');
+                  navigate('/repertoire?view=paths');
                 }
               }}
             >
-              Delete
+              Delete pathway
             </button>
           </div>
-        </header>
+        </div>
       )}
 
       {current && (
@@ -291,6 +316,7 @@ export default function PathwayDetail() {
                 db={db}
                 isCurrent={stage.id === current?.id}
                 isPinned={pathway.currentStageId === stage.id}
+                ctx={ctx}
                 onOpen={() => navigate(`/pathway/${pathway.id}/${stage.id}`)}
                 onMove={(d) => moveStage(stage.id, d)}
               />
@@ -310,6 +336,7 @@ function StageRow({
   db,
   isCurrent,
   isPinned,
+  ctx,
   onOpen,
   onMove,
 }: {
@@ -318,10 +345,11 @@ function StageRow({
   db: ReturnType<typeof useStore.getState>['db'];
   isCurrent: boolean;
   isPinned: boolean;
+  ctx: StageContext;
   onOpen: () => void;
   onMove: (dir: -1 | 1) => void;
 }) {
-  const sp = stageProgress(stageUnits(stage, db.items));
+  const sp = stageProgress(stageUnits(stage, db.items, ctx));
   return (
     <div className={`card list-row${isCurrent ? ' card-accent' : ''}`} style={{ padding: 'var(--space-3) var(--space-4)' }}>
       <div
