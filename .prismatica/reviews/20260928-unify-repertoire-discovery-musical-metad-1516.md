@@ -1,91 +1,48 @@
 ---
 id: 20260928-unify-repertoire-discovery-musical-metad-1516
 contractId: 20260928-unify-repertoire-discovery-musical-metad-1516
-patchId: bb4572529e269c2a42502347bc439ef2906ca49d
+patchId: 6e505b4c44224233e7d8b1d0ac307a58ee8550c3
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: v15-identity-writes-remain-valid
-    summary: "P1: Every local mutation must preserve the reference and source-key
-      invariants enforced on reload. Instrument and source administration
-      currently writes states validateDB refuses."
-    counterexample: "Reproduced with the real store and in-memory persistence: move
-      it-cgs-chords to inst-setar; rename inst-setar to Guitar; change cgs
-      pathway to inst-setar then Add arpeggios; move mat-cgs onto an instrument
-      already holding course:cgs; or choose a second source for an already keyed
-      course. Each succeeds locally and fails validateDB. Sweep:
-      useStore.updateItem, updateInstrument, updatePathway/addFromCatalog,
-      updateMaterial and chooseCourseSource/withCourseSourceKey. Clean for this
-      invariant: normal same-instrument Add/reuse, unlink/hide, decided-binding
-      detach, and inbound refusal. Consumers checked: ItemForm/ItemDetail,
-      Settings instrument editing, PathwayDetail/StageDetail, Materials,
-      reference row/progress/file/routine readers and validateDB install doors."
-  - family: legacy-reference-evidence-is-never-unilaterally-promoted-or-lost
-    summary: "P1: Legacy ambiguity must remain unresolved until that reference is
-      explicitly chosen, and migration must not fabricate a binding that makes
-      accepted legacy data unreadable."
-    counterexample: "Using the committed legacy fixture, link it-daramad-a to Shur
-      rohab: planLinkReference also claims its ambiguous daramad reference. Link
-      it-daramad-b to golriz: both now explicitly claim daramad and reload
-      refuses. bindLegacyReferences also promotes a legacy CGS item on Setar to
-      a forbidden guitar reference; baseline v14 accepts that file and current
-      v15 refuses it. Sweep: planLinkReference inherited base,
-      bindLegacyReferences/migrateToV15, and unresolved-item placement writers
-      updateItem, placeItemInStage, planRemoveFromPathway, deleteStage and
-      deletePathway, which discard/change the only stage-based evidence. Clean:
-      resolver and Add retain ambiguity before these mutations; direct selection
-      of the disputed reference refuses an existing explicit holder;
-      already-decided bindings survive placement changes. Consumers checked:
-      migration, stage rows, Add/Start, progress/current/next, course files and
-      course routines."
-  - family: registry-and-source-editor-save-lifecycle
-    summary: "P1: Save feedback and retry must belong to the current draft and
-      survive collection changes; a completed save must not poison a new editor
-      session."
-    counterexample: "MusicTerms Add -> Saved -> Done -> Add again leaves the empty
-      inputs disabled and removes Add term because save state is never reset;
-      reproduced from the actual component with in-memory hooks. Editing during
-      a pending Add/rename can display Saved for older text, with Add locking
-      the newer text. Archive/restore move TermRow between separate parents and
-      Delete removes it before acknowledgement, losing failure/retry UI.
-      Materials save clears its draft synchronously; ItemForm inline source
-      creation clears the name; StageDetail source choice dismisses immediately,
-      without acknowledgement. Sweep includes useAcknowledgedSave, AddTerm,
-      TermRow add/edit/archive/restore/delete, Materials create/edit/delete,
-      ItemForm.createSource and StageDetail SourceChoice. Clean:
-      idb.storageSettled, ItemNotes current-draft/sequence handling, term edit
-      retry after a settled failure and store updateTerm issuing a new write.
-      The named ac-4 test does not exercise these lifecycle cases."
-  - family: browse-context-survives-every-detail-and-source-door
-    summary: "P2: All repertoire detail and source journeys must preserve the
-      browsed instrument and return context."
-    counterexample: "With Today on Setar, open /repertoire?view=paths&inst=inst-tar,
-      open a pathway and use its Repertoire link: PathwayDetail returns to
-      /repertoire, resetting to My repertoire and the session instrument.
-      Repertoire's Study sources link sends no instrument query, so Materials
-      defaults a new source to Setar while browsing Tar. Sweep: PathwaysView
-      card/create navigation, PathwayDetail normal/missing/deleted returns and
-      StageDetail onward/back navigation; Repertoire-to-Materials instrument
-      handoff. Clean: WorkRow/part links, AllItems ItemCard from, ItemDetail
-      return, NewItem instrument prefill, and term/source back links carrying
-      from. Named ac-6 covers the work-detail return but misses the pathway
-      return."
-  - family: explicit-additive-restoration-covers-all-shipped-stages
-    summary: "P2: A selected missing shipped stage must be restorable without
-      deleting its surviving pathway or replacing owner edits."
-    counterexample: "Delete a stage from setar-radif, either named radif pathway, or
-      tar-honarestan while keeping the pathway. missingDefaults excludes present
-      pathways, planDefaultPathways restores nothing, and CourseLevels is absent
-      because courseForPathway recognises only CGS/Khonyagar. Reproduced for
-      setar-radif and tar-honarestan. Sweep:
-      missingDefaults/offeredDefaultPathways/planDefaultPathways,
-      reseedDefaultPathways, CourseLevels/addCourseLevels and manual addStage,
-      whose new random id cannot recover the catalogue. Clean: whole missing
-      default installation and selected CGS/Khonyagar course-level restoration.
-      Named ac-10 omits the non-course missing-stage class."
-createdAt: 2026-09-29T12:00:19.419Z
-sealedAt: 2026-09-29T13:18:51.785Z
+  - family: Course-source ambiguity must remain answerable across every Add and
+      Start path
+    summary: "StageDetail.addSuggestion surfaces sourceCandidates, but
+      StageDetail.practise ignores them and navigates away. planCatalogAddition
+      persists an item without materialId; its bound-item fast path never
+      returns the candidates again. The question is also lost if the Add prompt
+      is cancelled or the page is left. Sweep: findCourseSource and
+      resolveCourseSource detect ambiguity; planCatalogAddition and
+      useStore.addFromCatalog carry it on first creation;
+      StageDetail.addSuggestion and SourceChoice handle it only while mounted;
+      StageDetail.practise and repeat bound Add do not; chooseCourseSource
+      correctly checks instrument and key clashes. The named study-source test
+      covers only the first pure planner result."
+    counterexample: With two unkeyed Tar sources titled as Khonyagar candidates, tap
+      Play on an untaken Khonyagar suggestion. The new item is saved without
+      materialId, practice opens, no choice appears, and later Add sees the
+      bound item and returns no sourceCandidates.
+  - family: Vocabulary edits must not silently reclassify ambiguous authored text
+    summary: "Inbound term validation deliberately accepts overlapping aliases and
+      resolveValue keeps their item text ambiguous. itemsUsingTerm counts only
+      uniquely resolved terms, so planDeleteTerm allows deleting a colliding
+      custom term used in ambiguous text; planUpdateTerm likewise misses the
+      transition when removing an alias. The remaining claimant then becomes a
+      unique term without an item edit. Sweep: validateMusicTerms and vocabulary
+      admit the collision; resolveValue and valueGroup correctly keep it literal
+      while ambiguous; planAddTerm refuses new collisions; planUpdateTerm and
+      planDeleteTerm miss this transition; MusicTerms uses the same count to
+      enable Delete; store updateTerm/deleteTerm apply those planners;
+      repertoire grouping/search and source reconciliation consume the changed
+      resolution."
+    counterexample: Import a valid v15 custom Dastgah term named My Shur with alias
+      Shur alongside the built-in Shur alias and an item whose dastgahAvaz is
+      literal Shur. The item is initially ambiguous, the custom term shows zero
+      users, and Delete succeeds. On the next render, that unchanged item
+      resolves and groups as the built-in Shur term.
+createdAt: 2026-09-29T16:50:55.136Z
+sealedAt: 2026-09-29T17:00:14.605Z
 ---
 
 # Review: Unify repertoire discovery, musical metadata and pathways around a calmer practice interface
@@ -99,7 +56,7 @@ sealedAt: 2026-09-29T13:18:51.785Z
 - **Contract:** 20260928-unify-repertoire-discovery-musical-metad-1516
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/39
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `bb4572529e269c2a42502347bc439ef2906ca49d`
+- **Diff patch-id:** `6e505b4c44224233e7d8b1d0ac307a58ee8550c3`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
 ## The plan the owner approved
@@ -566,6 +523,7 @@ On phone and desktop, find the same work by Farsi/Latin term or maestro, open an
 - src/components/direction.test.ts
 - src/components/itemFields.ts
 - src/components/itemFormValues.ts
+- src/components/ui.tsx
 - src/components/useViewportGuard.ts
 - src/components/viewport.test.ts
 - src/components/viewport.ts
