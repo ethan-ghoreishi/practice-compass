@@ -22,9 +22,10 @@
 // case a focus-gated guard never corrected. There is no timer, no forced
 // blur, no zoom lock, and `<main>`'s own scroll position is never touched.
 // Browser fixtures prove this mechanism; they cannot prove the native iPhone
-// keyboard. The owner still reports a lifted bar there, so the native
-// mechanism is UNMEASURED: `useViewportGuard.ts` carries an opt-in trace
-// (More → Keyboard trace) for recording it on the device.
+// keyboard. The owner's first device trace showed their lifted bar is NOT a
+// scroll offset at all — every offset was 0 while the viewport HEIGHT flipped
+// — so this guard does not address it; see the standalone shell height in
+// global.css and the opt-in trace in `useViewportGuard.ts`.
 // ---------------------------------------------------------------------------
 
 export interface ViewportGeometry {

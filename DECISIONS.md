@@ -41,12 +41,13 @@ and the proof route.
   it would make text act as identity (progress, Play and Add would all follow a guess). Instead
   ONE list (`unlinkedInStage`) marks the placed row and holds Add (`planStageAddition`) until the
   owner links an item or chooses Add as a new item. Until then the two rows are honestly two units.
-- **The native keyboard defect is measured on the device, not guessed at in the guard.** The owner
-  still saw a lifted bar after the geometry guard. The one source-level blind spot found — a
-  reveal scrolling `body`/`#root`, which `overflow: hidden` does not prevent — is now restored
-  under the same geometry rules, but it is a closed hypothesis, not a diagnosis. More → Keyboard
-  trace (memory only) records what the device reports so ac-24 can name the real mechanism;
-  adding timers or thresholds without that trace is exactly what the plan forbids.
+- **The native keyboard defect is measured on the device, not guessed at in the guard.** More →
+  Keyboard trace (memory only) records what the device reports. The first installed-app trace
+  showed a HEIGHT flip (`innerHeight`/`100dvh` 852↔793, all scroll offsets 0), so the guard's
+  scroll restore cannot be the fix. The standalone-only shell height `calc(100vh +
+  env(safe-area-inset-top))` is a candidate chosen because the base viewport height was the one
+  stable reading; it changes nothing else (guard and `interactive-widget` untouched) so the next
+  trace — which now records what each unit resolves to — can confirm or refute exactly it.
 - **The Undo that deleted a "fresh" item is gone.** "Not practised yet" never proved an item was
   empty — notes, files, class links and commitments all arrive before a first block.
   `removeCatalogItem` stays only because an out-of-scope test calls it; it no longer deletes.

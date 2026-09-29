@@ -196,6 +196,11 @@ describe('the iPhone keyboard, as geometry', () => {
         const lines = (await page.getByRole('textbox', { name: 'Keyboard trace' }).inputValue()).split('\n').map((l) => JSON.parse(l));
         expect(lines[0], engine).toMatchObject({ ua: expect.any(String), secure: true, build: expect.any(String) });
         expect(lines.some((l) => l.ev === 'vv:resize' && l.vvH === 508), `${engine}: keyboard-up sample`).toBe(true);
+        // Every line carries what the viewport units and insets RESOLVE to.
+        for (const key of ['vh', 'svh', 'lvh', 'dvh', 'pct', 'insetTop', 'insetBottom', 'screenH']) {
+          expect(typeof lines[1][key], `${engine}: probe ${key}`).toBe('number');
+        }
+        expect(await page.locator('body > div[aria-hidden="true"][style*="visibility"]').count(), `${engine}: probes removed`).toBe(0);
         // <main>'s own scrolling is the owner's and never fills the trace.
         expect(lines.some((l) => /main/.test(l.ev ?? '')), engine).toBe(false);
         expect(lines.some((l) => l.ev === 'restore'), `${engine}: guard action recorded`).toBe(true);

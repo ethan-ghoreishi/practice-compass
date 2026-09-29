@@ -77,20 +77,31 @@ and is driven in Chromium and WebKit through a scripted `visualViewport` whose g
 written by hand per state (keyboard up, Done with retained focus, blur, zoom, hardware keyboard,
 rotation-shaped heights, background/resume, absent `visualViewport`, route changes).
 
-**Not measured:** a native iPhone. After the geometry guard shipped the owner **still sees the
-lifted bar** on the device, so the native mechanism is unknown and the defect is **not claimed
-fixed**; ac-24 (Safari + installed PWA traces) remains outstanding. One source-level blind spot
-was closed on the way: the guard read only the document's own offset, while `overflow: hidden`
-on `body`/`#root` stops the owner scrolling them, not a focus reveal — a reveal that scrolled
-`#root` lifts the bar with the document offset reading 0. Both are now restored under the same
-geometry rules (fixture-proved in both engines, with a real lifted bar). That is a hypothesis
-closed, not a diagnosis. The old "scroll the focused field into view after 300 ms" behaviour
-was removed, not replaced.
+**First native trace (2026-09-29, installed app, `standalone: true`, plain http).** The lifted
+bar is a **height flip, not a scroll displacement**: in the bad state every scroll offset
+(`scrollY`, `html`, `body`, `root`) is 0 and the guard correctly decides `none`. What moves is
+`innerH` — and `100dvh` with it, so the shell height — between 852 (full screen, bar flush at the
+bottom) and 793 (screen minus the 59 px status bar, bar lifted by exactly that), while `clientH`
+stayed 793 on every portrait line. The recording STARTED at 793, the keyboard left it at 793,
+and it only reached 852 after rotation; returning to portrait flipped 852↔793 every frame for
+~1.8 s and settled on either. So the keyboard is not shown to CAUSE the bad state here.
 
-**Capturing the trace (ac-24).** On the iPhone, once in Safari and once in the installed app:
-More → Keyboard trace → Start recording; then focus a field and type, tap Done (focus kept),
-dismiss by tapping away, repeat, scroll, rotate, switch tabs, background and resume, pinch-zoom
-and release; return to More → Stop recording → Copy trace. The first line names the device, iOS
+The guard's `body`/`#root` restore (a real, fixture-proved blind spot) never fired in this trace
+and is not the fix for this defect. The **candidate** now shipping — standalone only, browser
+tabs untouched — sizes the shell as `calc(100vh + env(safe-area-inset-top))` instead of from
+`dvh`. It rests on two readings the trace did not measure directly (that `100vh` resolves to 793
+and the top inset to 59), so each trace line now also records what `100vh`/`svh`/`lvh`/`dvh`/`100%`
+and both insets RESOLVE to, plus `screen.height`. If the candidate is wrong the bar is partly cut
+off at the bottom; if right it stays flush and sits behind the keyboard while typing rather
+than above it. Nothing is claimed fixed; ac-24 remains outstanding, and Safari/Chrome tabs have
+no trace yet. The old "scroll the focused field into view after 300 ms" behaviour was removed,
+not replaced.
+
+**Capturing the trace (ac-24).** Three recordings — the installed app, a Safari tab, a Chrome
+tab — each started with the bar confirmed flush at the bottom (cold-start the installed app):
+More → Keyboard trace → Start recording; focus a field and type, tap Done without touching
+anything else, then tap away, rotate once and back; return to More → Stop recording → Copy
+trace. Note the iOS version from Settings → General → About: the user agent freezes it. The first line names the device, iOS
 (user agent), whether it ran standalone, the build and `secure` (it must be `true`: the trace
 has to come from this build served over HTTPS — the NAS mirror via `scripts/deploy-nas.sh` for
 the installed-app half, since GitHub Pages publishes only `main`). Each further line is one

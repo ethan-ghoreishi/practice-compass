@@ -209,6 +209,22 @@ body,
     height: 100dvh;
   }
 }
+/* INSTALLED APP ONLY — a CANDIDATE awaiting the owner's next keyboard trace,
+   not a verified fix. An iPhone trace (docs/repertoire-experience.md) showed
+   the lifted bar is a HEIGHT flip, not a scroll: in standalone `innerHeight`,
+   and so `100dvh`, flips between the full screen (852) and the screen minus
+   the status bar (793, bar lifted 59px), and after rotation flips every frame
+   for ~2s, while the base viewport height stayed 793 on every portrait line.
+   So the shell is sized here from the stable base height plus the status-bar
+   inset instead of from `dvh`. If wrong it shows as the bar cut off at the
+   bottom; browser tabs never match this query. */
+@media (display-mode: standalone) {
+  html,
+  body,
+  #root {
+    height: calc(100vh + env(safe-area-inset-top, 0px));
+  }
+}
 
 .app {
   height: 100%;

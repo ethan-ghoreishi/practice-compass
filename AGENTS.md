@@ -3040,11 +3040,12 @@ decides from GEOMETRY alone — never focus — restoring those to 0 only once t
 back to full height at scale 1 (keyboard dismissed, "Done" with focus retained included), never
 while it is short (intentional reveal) or zoomed, and never touching `<main>`'s scroll;
 `useViewportGuard` is the thin adapter (visual-viewport resize/scroll and visibility, no timers,
-full teardown, no-op without `visualViewport`). **NATIVE RECOVERY IS UNVERIFIED:** the owner
-still sees a lifted bar on the iPhone after the fixture-proved fix, so the native mechanism is
-unmeasured. More → Keyboard trace records the device's geometry (memory only, never saved) for
-the ac-24 capture in Safari AND the installed PWA; diagnose from that trace, never by adding
-guesses to the guard. Five EQUAL nav tabs
+full teardown, no-op without `visualViewport`). **THE OWNER'S LIFTED BAR IS NOT THAT:** the first
+iPhone trace (installed app) showed every scroll offset at 0 while `innerHeight` — so `100dvh` —
+flipped between the full screen and the screen minus the status bar. The standalone-only shell
+height in `global.css` is a CANDIDATE for that, unverified; browser tabs are untraced. More →
+Keyboard trace (memory only) records geometry plus what each viewport unit and inset resolves
+to; diagnose from traces, never by adding guesses to the guard. Five EQUAL nav tabs
 (no raised centre button — Today owns the primary Start
 action); route changes scroll `<main>` to top; per-route page widths (narrow for focused
 practice, wide ~1100px for browsing/notes on desktop); serif is for headings only,

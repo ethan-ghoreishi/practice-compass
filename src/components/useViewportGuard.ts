@@ -63,6 +63,43 @@ export function useViewportGuard(): void {
 // ---------------------------------------------------------------------------
 
 let trace: string[] = [];
+// Hidden fixed-position probes: what each viewport unit and safe-area inset
+// actually RESOLVES to on this device, read per line (clientHeight is not a
+// measurement of 100vh). Present only while recording.
+const PROBES = ['100vh', '100svh', '100lvh', '100dvh', '100%'] as const;
+let probes: HTMLElement[] = [];
+let insetProbe: HTMLElement | null = null;
+
+function addProbes(): void {
+  const make = (css: string) => {
+    const el = document.createElement('div');
+    el.setAttribute('aria-hidden', 'true');
+    el.style.cssText = `position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;${css}`;
+    document.body.append(el);
+    return el;
+  };
+  probes = PROBES.map((h) => make(`height:${h}`));
+  insetProbe = make('height:0;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)');
+}
+
+function removeProbes(): void {
+  probes.forEach((el) => el.remove());
+  insetProbe?.remove();
+  probes = [];
+  insetProbe = null;
+}
+
+function probeReadings(): Record<string, number | null> {
+  const out: Record<string, number | null> = {};
+  PROBES.forEach((h, i) => {
+    out[h.replace('100', '').replace('%', 'pct')] = probes[i] ? Math.round(probes[i].getBoundingClientRect().height * 10) / 10 : null;
+  });
+  const cs = insetProbe ? getComputedStyle(insetProbe) : null;
+  out.insetTop = cs ? parseFloat(cs.paddingTop) : null;
+  out.insetBottom = cs ? parseFloat(cs.paddingBottom) : null;
+  out.screenH = screen.height;
+  return out;
+}
 let stopTrace: (() => void) | null = null;
 let t0 = 0;
 // ponytail: fixed cap so a forgotten recording cannot grow without bound; raise if a real capture needs more.
@@ -93,6 +130,7 @@ function snapshot(event: string, extra?: unknown): string {
     barBottom: r(bar?.bottom),
     focus: active && active !== document.body ? `${active.tagName.toLowerCase()}:${active.getAttribute('aria-label') ?? active.getAttribute('name') ?? ''}` : null,
     vis: document.visibilityState,
+    ...probeReadings(),
     ...(extra ? { decision: decideViewport(extra as ViewportGeometry) } : {}),
   });
 }
@@ -154,7 +192,11 @@ export function startViewportTrace(): void {
     on(document, 'document', 'focusout'),
     on(document, 'document', 'visibilitychange'),
   ];
-  stopTrace = () => offs.forEach((off) => off());
+  addProbes();
+  stopTrace = () => {
+    offs.forEach((off) => off());
+    removeProbes();
+  };
   trace.push(snapshot('start'));
 }
 
