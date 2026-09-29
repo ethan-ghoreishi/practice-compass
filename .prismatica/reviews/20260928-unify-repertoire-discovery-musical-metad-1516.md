@@ -1,48 +1,35 @@
 ---
 id: 20260928-unify-repertoire-discovery-musical-metad-1516
 contractId: 20260928-unify-repertoire-discovery-musical-metad-1516
-patchId: 6e505b4c44224233e7d8b1d0ac307a58ee8550c3
+patchId: b48e8fc38702ca24f914e5789a7e6381b551a865
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: Course-source ambiguity must remain answerable across every Add and
-      Start path
-    summary: "StageDetail.addSuggestion surfaces sourceCandidates, but
-      StageDetail.practise ignores them and navigates away. planCatalogAddition
-      persists an item without materialId; its bound-item fast path never
-      returns the candidates again. The question is also lost if the Add prompt
-      is cancelled or the page is left. Sweep: findCourseSource and
-      resolveCourseSource detect ambiguity; planCatalogAddition and
-      useStore.addFromCatalog carry it on first creation;
-      StageDetail.addSuggestion and SourceChoice handle it only while mounted;
-      StageDetail.practise and repeat bound Add do not; chooseCourseSource
-      correctly checks instrument and key clashes. The named study-source test
-      covers only the first pure planner result."
-    counterexample: With two unkeyed Tar sources titled as Khonyagar candidates, tap
-      Play on an untaken Khonyagar suggestion. The new item is saved without
-      materialId, practice opens, no choice appears, and later Add sees the
-      bound item and returns no sourceCandidates.
-  - family: Vocabulary edits must not silently reclassify ambiguous authored text
-    summary: "Inbound term validation deliberately accepts overlapping aliases and
-      resolveValue keeps their item text ambiguous. itemsUsingTerm counts only
-      uniquely resolved terms, so planDeleteTerm allows deleting a colliding
-      custom term used in ambiguous text; planUpdateTerm likewise misses the
-      transition when removing an alias. The remaining claimant then becomes a
-      unique term without an item edit. Sweep: validateMusicTerms and vocabulary
-      admit the collision; resolveValue and valueGroup correctly keep it literal
-      while ambiguous; planAddTerm refuses new collisions; planUpdateTerm and
-      planDeleteTerm miss this transition; MusicTerms uses the same count to
-      enable Delete; store updateTerm/deleteTerm apply those planners;
-      repertoire grouping/search and source reconciliation consume the changed
-      resolution."
-    counterexample: Import a valid v15 custom Dastgah term named My Shur with alias
-      Shur alongside the built-in Shur alias and an item whose dastgahAvaz is
-      literal Shur. The item is initially ambiguous, the custom term shows zero
-      users, and Delete succeeds. On the next render, that unchanged item
-      resolves and groups as the built-in Shur term.
-createdAt: 2026-09-29T16:50:55.136Z
-sealedAt: 2026-09-29T17:00:14.605Z
+  - family: Native iPhone bottom navigation recovers after keyboard dismissal
+    summary: "ac-24 fails: the owner still reproduces a raised bottom bar after
+      dismissing the keyboard on an actual iPhone. Browser geometry fixtures do
+      not establish Safari or installed-PWA acceptance. Sweep checked shell/tab
+      CSS, Layout, useViewportGuard, viewport decision and browser fixture;
+      native behaviour remains failing and its mechanism unmeasured."
+    counterexample: On the owner's iPhone, focus and type in an input, dismiss the
+      keyboard, and observe the Today/Repertoire/Start/Lessons/More bar remain
+      displaced. Capture the required Safari and installed-PWA traces before
+      claiming recovery.
+  - family: Owned work and stage suggestion present one clear musical work
+    summary: Placing an owned item changes stageId without binding the matching
+      reference. stageUnits then shows the unbound suggestion followed by the
+      owned item, and Add can create another item. Sweep checked Item Detail
+      placement, catalogue Add/Play, resolution, stage rows, progress/next-unit,
+      explicit link, unlink, hide/restore and removal. Explicit linking is
+      clean; the ordinary placement journey remains misleading. Preserve
+      explicit identity choice and owner data.
+    counterexample: Place سیخی-ابوعطا-ردیف-میرزاعبدالله in the stage containing the
+      سیخی reference. The stage shows both rows; tapping Add on سیخی creates a
+      second practice item instead of making the existing relationship clear and
+      actionable.
+createdAt: 2026-09-29T17:55:22.883Z
+sealedAt: 2026-09-29T18:07:01.589Z
 ---
 
 # Review: Unify repertoire discovery, musical metadata and pathways around a calmer practice interface
@@ -56,426 +43,8 @@ sealedAt: 2026-09-29T17:00:14.605Z
 - **Contract:** 20260928-unify-repertoire-discovery-musical-metad-1516
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/39
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `6e505b4c44224233e7d8b1d0ac307a58ee8550c3`
+- **Diff patch-id:** `b48e8fc38702ca24f914e5789a7e6381b551a865`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
-
-## The plan the owner approved
-
-Verbatim. `assumptions` and `possibleConflicts` are the Planner's advisory
-reading — check them against the diff rather than accepting them.
-
-````yaml
-# Approved intent: Unify repertoire discovery, musical metadata and pathways around a calmer practice interface
-
-The owner imported this plan and confirmed the change. Its approved meaning is
-recorded here verbatim; the transport snapshot is deliberately omitted.
-
-- **Kind:** existing-flow
-- **Risk tier:** heavy
-- **Builder:** claude
-
-## What the owner asked for
-
-This is the wording the owner and the planning agent settled on together, taken
-from the plan itself — not a description reconstructed afterwards.
-
-> Revisit the draft as research, re-examine Practice Compass and plan one deliberately wide but coherent HEAVY UI/UX, repertoire, pathway and metadata lane, with Claude as builder. Make everyday practice calm, efficient, accessible and trustworthy; investigate the iPhone keyboard/tab-bar defect before fixing it; improve reference versus owned-item semantics, Setar/Tar Persian pathways, repertoire discovery and study-source clarity. Prefer fewer concepts, shared stable identities, one source of truth and deterministic, idempotent, lossless inbound migrations. Preserve local-first behaviour and practice/scheduling semantics. The apparent Setar NAS refresh defect was delayed execution of the NAS setar-indexer task, which runs about every 15 minutes; do not redesign NAS identity, fingerprinting or relocation to solve it. Do not implement during planning.
-
-## Why
-
-One lane, one end state: find music, understand its context, take a reference suggestion into owned practice once, and return to practising without organising the same fact twice. The shared structural causes are text used as identity, catalogue identity coupled to editable placement, and fragmented browsing/editing state. The shell and keyboard work belong because those same tasks must remain usable on the owner's phone. This replaces the earlier draft, not merely its NAS section. Reuse existing domain helpers, native controls, browser harness and additive default installation. Do not introduce a generic ontology, new scheduling system or new archive protocol.
-
-## Today
-
-Evidence baseline: clean main b6bef3418572340c22e93deed79204878d45dc6d; the fresh context reports no pending proposals or open lanes. Re-read the current implementation rather than treating earlier draft recommendations as decisions.
-
-Repertoire.tsx defaults to Pathways and mounts three independently stateful views. My repertoire has form chips but no general search or composer/maestro facet. repertoireWorks includes title-only full pieces, but groupByDastgah drops Persian-family works with no identity metadata. persian.ts ranks transliterations but groups by folded raw text, so Shur and شور can remain separate. itemFields.ts, farsi.ts, persian.ts and seeds contain overlapping vocabulary knowledge.
-
-PersianFields holds optional raw strings. Materials are instrument-scoped named sources, but the twelve source kinds mix collections, pieces, activities and lesson events. ItemForm already has progressive kind-first creation and optional source/pathway/lesson/parent connections; retain this investment.
-
-Catalogue ownership is inferred from stageId + catalogKey, with a special cross-stage course-work resolver. Moving/detaching an item can defeat reuse; itemFiles also uses stageId for course material. isLosslesslyRemovable checks new status, practice count and blocks, not authored notes or other relationships. deletePathway/deleteStage already detach owned items. planDefaultPathways and course-level restoration already provide explicit additive installation and must be extended, not replaced.
-
-Setar's existing mixed pathway contains foundations, modal radif suggestions and generic form-name suggestions. Its gusheh factory does not populate the modal/gusheh identity fields. Tar already has Honarestan and Khonyagar pathways, so equivalent Persian browsing is an addition to a real instrument experience, not a new Tar subsystem. Repertoire's pathway card omits the existing current-stage pin; Today and SessionPlan pick a first matching pathway without a consistent archived/order policy.
-
-The fixed flex shell already uses dynamic viewport units, safe areas and a main scroll region. useViewportGuard has 80ms/300ms timing, returns while an editable element remains focused, and calls element.scrollIntoView without limiting it to main. These are concrete weaknesses and a testable retained-focus blind spot, not proof of the owner's precise native-iPhone failure. Native trace evidence is still needed.
-
-Archive Refresh fetches a commit-pinned published setar/index.json through archiveIndex.ts; it does not run the NAS scanner. The owner's corrected explanation fits that boundary. No remaining live NAS defect has been established. The earlier draft's synthetic missing-rename scenario does not justify fingerprinting or a protocol migration.
-
-Schema v14 is installed through validateDB/migrateToCurrent, including both hydration paths. validateDB reconstructs the top-level database, so merely adding TypeScript fields would drop them. Existing attachment-byte, unfinished-session, revision and acknowledged-save protections are load-bearing.
-
-## Instead
-
-COHERENT END STATE
-The owned practice item remains the only unit of practice. A reference catalogue suggests music; a pathway arranges suggestions and owned work; a study source names the material studied; a musical term classifies it. None stores another copy of practice progress, notes or history. The lane is broad across these connected flows, not a general rewrite of every subsystem.
-
-IMPLEMENTATION CHECKLIST
-[ ] 1. Capture the existing phone/desktop journey and commit focused failing fixtures before redesign. Highest leverage: enumerate every reader/writer of musical terms and reference identity, including rendered grouping, catalogue add/progress, course files and inbound installation. Record a concise before/after screen specification and the proof matrix in docs/repertoire-experience.md. Inspect actual screenshots before visual judgements. Use synthetic data, not the owner's live database.
-[ ] 2. Establish the small shared musical vocabulary and durable catalogue identity, then prove v15 migration/validation before wiring screens.
-[ ] 3. Build the coherent Repertoire, Pathways, source and item-editing experience on those shared decisions. Apply the same shell, hierarchy and interaction language across the everyday practice journey.
-[ ] 4. Diagnose and fix the native viewport problem from evidence, independently of the data work. Run focused browser families, full configured checks and owner-device acceptance before review.
-
-INTERFACE AND NAVIGATION
-Keep Today / Repertoire / Start / Lessons / More as the five stable destinations. Within Repertoire make My repertoire the default, with Pathways and All practice items clearly named peer views. One instrument selector and retained browse context serve those views; encode view, instrument, query and filters in route search parameters so back/forward and returning from details restore context. Validate stale/unknown parameters and expose Clear filters; browsing must not silently change Today's session instrument. Give one primary action per view, restrained secondary menus, readable Farsi titles, predictable back navigation, useful empty/no-results states, visible saving/error states and consistent destructive-action language. Do not introduce a design-system framework or replace the router.
-Apply a small shared spacing/type/colour/control vocabulary through existing CSS and UI components. Cover phone and desktop, light/dark/system theme, keyboard/focus, labelled controls, mixed-script directionality and reduced motion. Aim for 44px primary touch controls and meet applicable WCAG 2.2 AA contrast, reflow, focus and target criteria. Keep dense metadata progressive. Redesign the connected Today, browse/detail/add, pathway/stage, source, Start/Active/Close and lesson entry surfaces where needed; Insights, reports and settings receive shared-style/metadata-consumer compatibility only, not independent feature redesigns. Preserve the owner's Plan then Routines ordering above the visible Today recommendation at 390x844.
-
-IPHONE VIEWPORT: DIAGNOSIS BEFORE PRESCRIPTION
-Capture layout/visual viewport sizes and offsets, scale, focused element, main scroll position and nav bounds through keyboard show, Done with retained focus, dismissal, repeat focus, rotation, route change and background/resume on Safari and installed PWA. Distinguish intentional keyboard accommodation from residual displacement. Prefer a correct CSS/scroll-owner arrangement; retain only the smallest event-driven correction if a measured WebKit behaviour requires one. Do not infer keyboard visibility from focus alone, assume interactive-widget support, use arbitrary sleeps/height thresholds, force blur, disable zoom or add scroll loops. Remove obsolete guard timers rather than add more. Any correction must respect zoom, hardware keyboards, absent VisualViewport, intended content scrolling and effect teardown. Browser geometry fixtures prove the chosen mechanism, not the native keyboard. If native evidence is unavailable, record that limit and do not claim the reported defect fixed or its owner acceptance complete; other lane work can proceed.
-
-SHARED MUSICAL TERMS, NOT AN ONTOLOGY
-Introduce one small persisted vocabulary for Dastgah/Avaz, Form and Composer/Maestro, with stable namespaced IDs, kind, display name, explicit search aliases and archived state. Built-in Persian names are Farsi; IDs never derive from mutable labels. Keep the existing composer/maestro meaning without pretending every maestro is a verified composer or building a people/roles graph. Do not centralise gusheh titles: repeated names need modal/source context and remain item/reference text.
-Use one authoritative value per item field: a term reference or literal custom/legacy text, never parallel editable label and ID fields. Retain legacy strings verbatim during migration. A shared resolver may group/search an exact unique curated alias as its term without rewriting the owner string; display the original in editing/context where needed. Ambiguous, unknown and composite values stay literal and searchable, never fuzzy-assigned. Broader transliteration matching is for search, not identity. Existing Farsi normalisation is reused. Reconcile overlapping form/modal suggestion and rank tables into this source; title-search aliases unrelated to term identity may remain.
-Provide compact management under More: add, rename, edit aliases, archive/restore, and delete only unreferenced custom terms. Referenced or built-in deletion is refused; archived values remain readable and filterable on existing items but leave new-entry suggestions. Existing exact aliases cannot silently change meaning on edit. Name changes preserve IDs and former labels as aliases unless doing so would collide, in which case refuse and explain. Conflicting aliases never pick a first winner. Inline custom text remains possible without requiring registry administration. No merge wizard, synonym inference, bulk retagging or person biography fields.
-
-REPERTOIRE DISCOVERY
-Search title, gusheh, displayed/raw term labels and aliases, study-source label and existing archive title aliases using the shared text normaliser. Provide combinable instrument, Dastgah/Avaz, Form and Composer/Maestro filters, with source/status available progressively if needed by the current view. Group by Dastgah/Avaz, Form, Composer/Maestro or source without changing stored data. All eligible works appear exactly once, including unclassified/title-only Persian full pieces; children stay with their parent and a matching child keeps its parent discoverable. Clearly distinguish no metadata from no matching results. Facets derive from actual owned items, not empty catalogue categories. Shared search semantics reach All practice items and Start while preserving their different eligibility rules.
-
-REFERENCE IDENTITY, OWNERSHIP AND REVERSIBLE ORGANISATION
-Give code-defined catalogue suggestions stable contextual reference IDs independent of editable stage/pathway placement and display text. Preserve the existing courseWorkKey equivalence for genuinely shared course works; identical generic keys such as chords in different stages remain different references. Use the smallest persisted binding representation that allows explicit linking of an existing same-instrument item and survives move/detach/deletion of its placement. A reference resolves to at most one item per instrument; several references may deliberately point to one owner item. Do not add a second catalogue database or universal work ontology.
-One resolver drives row state, Add/Start, progress, next suggestion and course-material access. Add reuses an exact binding and is idempotent even after detach/reload. Offer Link existing when appropriate, with explicit choice; titles are candidates, not merge authority. Duplicate or ambiguous legacy bindings remain visible as unresolved candidates with all records intact, never first-match selection or automatic deletion. Do not force an instrument change to reuse Setar work for Tar: practice evidence remains separate.
-Hiding a reference suggestion persists per pathway context and never hides/deletes the owned item from My repertoire or its explicit stage placement. Show hidden suggestions with Restore. Progress and next suggestion consume the same visible set; hiding is not completion, and an empty stage is not falsely mastered. Archive/restore pathways using the existing archived field; delete only after explaining that owned work is detached, not deleted. Restore missing named defaults/stages additively using existing planners, preserving edits, IDs, routines and pins; no automatic reseed and no destructive Reset to defaults button.
-Replace the unsafe catalogue Undo/delete shortcut with clearly labelled Unlink reference and Remove from pathway actions that keep owned data. Actual Delete practice item remains the existing explicit destructive workflow. This avoids a new pristine-snapshot/provenance subsystem just to guess when deletion is safe. Resolve active visible pathways consistently using existing order and stable ID tie-breaks, exclude archived ones and honour currentStageId everywhere. Do not add a separate preferred-pathway setting.
-
-SETAR AND TAR: SHARED REPERTOIRE, SEPARATE PRACTICE
-Author one shared, explicitly partial Persian reference catalogue for the existing Mirza Abdullah-oriented modal selections, scoped by source/recension and Dastgah/Avaz so repeated gusheh names are not conflated. Audit every existing suggestion against its stated source; do not claim a complete authoritative radif or invent missing gusheh sequences. Use its modal term IDs and actual gusheh metadata when creating new items. Setar and Tar get independently installable instrument-specific pathway instances from that same definition, with independent item bindings/progress. Keep Tar's existing Honarestan/Khonyagar and Guitar course content unchanged.
-For new installations offer a clearly titled سه‌تار · ردیف میرزا عبدالله and the Tar equivalent. Forms is a grouping/lens over real repertoire using the shared Form vocabulary, with add-a-piece prefilled by the selected form. Do not create generic practice items merely named چهارمضراب or رنگ and do not create a second Forms taxonomy or a compulsory Forms pathway. Technique/foundation practice remains in ordinary items and existing stages/routines; do not manufacture a new foundation pathway.
-Existing mixed Setar pathways, their titles/stages/routines and generic-form items are preserved on upgrade. Offer the new named reference pathway explicitly, and reuse known bindings so adopting it cannot duplicate existing music. Explain how to archive or detach the old organisation using normal controls. No bespoke reorganisation wizard, bulk stage moves or automatic renaming of owner records. Correct only shipped reference definitions and provably unmodified seeded metadata; if proof is lacking preserve the record and let normal editing resolve it.
-
-STUDY SOURCES
-Define a source as the named book, collection/radif edition, course or teaching material from which work is studied. It is not a person, an individual practice item, a pathway or a dated lesson record. Keep Material and materialId as the existing implementation; no entity rename migration. For new sources expose the existing radif, method_book, repertoire (label Collection), course and other kinds with clear examples. Legacy piece/song/lesson/activity kinds stay stored and editable as legacy values, not coerced into a guessed new meaning. Preserve sourceName, parentTitle, section, teacherOrSource and notes, including fields not visible in the compact editor.
-Default creation to the browsed/session instrument, keep only title required and preserve inline creation. Composer/Maestro classifies the work; the source title states the edition/tradition where appropriate; a lesson is linked separately and a pathway is organisation. Do not infer authorship from source titles or add mandatory person/source/pathway relationships. For code-defined course source reuse, add a bounded stable source key only where needed to stop renaming a known seeded source creating another copy; backfill only uniquely proven origins, and ask on multiple candidates. Do not deduplicate arbitrary sources by title or share user Material records across instruments.
-
-SAVED DATA AND COMPATIBILITY
-Use one next schema version, v15, for vocabulary, catalogue bindings and hidden-reference choices. Implement pure deterministic migration and strict validation in the existing migrateToCurrent/validateDB chain, including top-level reconstruction. Re-running on current-schema partial conversions must neither lose fields nor reseed intentionally empty collections. Validate present malformed collections/records, duplicate new IDs, wrong-kind/dangling term refs, cross-instrument/dangling bindings and invalid suppression scope before any install; absence in genuine legacy data is not the same as malformed current data. Keep ambiguous legacy strings/keys as unresolved legacy evidence rather than fabricating identities. Never coerce an object to text or drop a bad row to make validation pass.
-Derive migrated IDs from stable existing identity only; do not read clock, random state, input order or locale-sensitive sort to decide identity. Address the existing pre-v3 seedPathways wall-clock default narrowly where it would make this supported inbound chain nondeterministic; use a documented fixed legacy timestamp fallback, not fresh dates. No broader old-schema cleanup. Preserve owner notes, empty values, custom metadata, all item IDs, history, reviews, schedule fields, lessons, agenda, attachments and references. The old v13 dummy-text waiver grants no new deletion permission.
-Verify full/state-only backup import, sync pull, Keep remote, archive restore, cold recovery and both persist migration/merge paths. Preserve new state through export/content hashing and prove older v14 readers refuse v15 without overwrite. Keep unfinished-practice/revision guards and attachment byte ownership unchanged. Registry/source editing must report durable save only after existing storage acknowledgement, retain failed drafts and retry current text. Reuse existing patterns rather than introduce a transaction framework.
-NAS source-index schema, scanner, publisher, matching, rename, absence/reappearance and refresh transaction are OUTSIDE this lane. Existing source metadata remains raw source evidence; if item term references require adaptation in sourceReconcile, limit changes to the shared musical-field resolver/adoption boundary and preserve stale-premise protection. No location or identity logic changes. Retain existing archive regression coverage.
-
-FOCUSED FAMILY PROOF PLAN, BEFORE FIRST REVIEW
-Commit tests/fixtures/repertoire-legacy-v14.json and repertoire-current-v15.json plus independently authored expectations, not outputs generated by the implementation under test. Record the reader/writer matrix and commands in docs/repertoire-experience.md. Provide one reproducible focused runner at scripts/check-repertoire-families.mjs using the existing Vitest/browser harness, no new dependencies. Every automated acceptance title below names exactly one test; loop engine/viewport cases inside that test instead of generating duplicate titles.
-Family A, terms and discovery: unique aliases / ambiguous aliases / unknown literals / empty / malformed / archived / renamed, crossed with modal/form/person kinds and owned work/part/title-only work; consumers include forms, detail/practice rendering, search/facets/grouping, seeds, source-metadata adoption and export/import.
-Family B, references: exact / absent / conflicting legacy binding, same/different instrument, ordinary same-key versus declared shared course work; cross with detach/move/archive/delete, hide/restore, explicit link, repeated stale Add and course-file rendering. Cover all stage/progress/next-unit and Today/SessionPlan consumers with independent expected item IDs and counts.
-Family C, inbound safety: every install door crossed with valid legacy/current/partial state versus malformed identity or unsupported version, with and without local attachment bytes and unfinished/concurrently completed practice. Exercise real rendered import/recovery/sync wiring using the existing fake-remote boundary, not helper-only proofs. Assert before/after DB and blob projections and acknowledged failure/retry semantics. No network mutation or real owner import.
-Family D, UI/viewport: Chromium and WebKit at 390x844 and desktop, long Farsi/English/mixed labels, empty/dense data, light/dark, offline/reload/back navigation, keyboard-only use and error states. Geometry cases include retained focus, blur, absent VisualViewport, zoom, route teardown and repeated transitions; physical keyboard assertions are separately manual. Retain every pageerror and isolate Vite caches as the current harness does. Run existing scheduling/practice/notes/lesson/archive regressions plus configured typecheck, lint, unit, build and secrets after focused tests. No skipped engine reported as success.
-
-NEXT THREE ACTIONS FOR CLAUDE
-1. Highest leverage: reproduce the identity/grouping counterexamples, capture baseline screenshots and map all consumers before choosing storage fields or moving controls.
-2. Implement and prove the minimal shared term/reference model and lossless v15 inbound boundary, leaving NAS protocols untouched.
-3. Wire the coherent UI and shared Setar/Tar reference views, complete the evidence-led viewport correction, and run the focused route plus owner acceptance.
-
-## Advisory — the planning agent's reading, not established fact
-
-The two lists below are the planning agent's interpretation. Deterministic code
-checked that this plan is complete, in scope, correctly bound, and correctly
-tiered; it did not and cannot check whether this reading of the app is right.
-Verify them against the code.
-
-**Assumptions**
-
-- A1: The previous Claude builder selection remains in force. This is a replacement planning artifact only; the owner imports and approves it.
-- A2: The owner's NAS task-timing correction supersedes the earlier draft. No independent remaining archive defect has been demonstrated.
-- A3: Existing catalogue selections can support a clearly labelled partial shared Persian reference. Unsupported musical attribution will be left unspecified, not guessed.
-
-**Possible conflicts**
-
-- The existing viewport guidance describes the current guard as sufficient. Revise that guidance in place only after root-cause evidence; a source-level blind spot is not native-device confirmation.
-- Existing default-pathway names/structure and Undo wording change for future use, but upgrades must preserve edited legacy paths and owned items. No automatic reset is authorised.
-- Primary Flow is browse-my-repertoire; capture-a-practice-item, work-a-pathway-stage, practise-todays-recommendation, run-a-session-plan, log-a-class and back-up-and-restore are affected consumers. Reflect actual changed mechanics through the normal governed workflow, not new invented product Flows.
-- Native iPhone acceptance needs the owner's device. Browser WebKit does not replace it; keep that check visibly outstanding if unavailable.
-
-## The complete approved plan
-
-```json
-{
-  "format": "prismatica/start@1",
-  "request": "Revisit the draft as research, re-examine Practice Compass and plan one deliberately wide but coherent HEAVY UI/UX, repertoire, pathway and metadata lane, with Claude as builder. Make everyday practice calm, efficient, accessible and trustworthy; investigate the iPhone keyboard/tab-bar defect before fixing it; improve reference versus owned-item semantics, Setar/Tar Persian pathways, repertoire discovery and study-source clarity. Prefer fewer concepts, shared stable identities, one source of truth and deterministic, idempotent, lossless inbound migrations. Preserve local-first behaviour and practice/scheduling semantics. The apparent Setar NAS refresh defect was delayed execution of the NAS setar-indexer task, which runs about every 15 minutes; do not redesign NAS identity, fingerprinting or relocation to solve it. Do not implement during planning.",
-  "builder": "claude",
-  "summary": "Unify repertoire discovery, musical metadata and pathways around a calmer practice interface",
-  "rationale": "One lane, one end state: find music, understand its context, take a reference suggestion into owned practice once, and return to practising without organising the same fact twice. The shared structural causes are text used as identity, catalogue identity coupled to editable placement, and fragmented browsing/editing state. The shell and keyboard work belong because those same tasks must remain usable on the owner's phone. This replaces the earlier draft, not merely its NAS section. Reuse existing domain helpers, native controls, browser harness and additive default installation. Do not introduce a generic ontology, new scheduling system or new archive protocol.",
-  "kind": "existing-flow",
-  "flowId": "browse-my-repertoire",
-  "currentBehaviour": "Evidence baseline: clean main b6bef3418572340c22e93deed79204878d45dc6d; the fresh context reports no pending proposals or open lanes. Re-read the current implementation rather than treating earlier draft recommendations as decisions.\n\nRepertoire.tsx defaults to Pathways and mounts three independently stateful views. My repertoire has form chips but no general search or composer/maestro facet. repertoireWorks includes title-only full pieces, but groupByDastgah drops Persian-family works with no identity metadata. persian.ts ranks transliterations but groups by folded raw text, so Shur and شور can remain separate. itemFields.ts, farsi.ts, persian.ts and seeds contain overlapping vocabulary knowledge.\n\nPersianFields holds optional raw strings. Materials are instrument-scoped named sources, but the twelve source kinds mix collections, pieces, activities and lesson events. ItemForm already has progressive kind-first creation and optional source/pathway/lesson/parent connections; retain this investment.\n\nCatalogue ownership is inferred from stageId + catalogKey, with a special cross-stage course-work resolver. Moving/detaching an item can defeat reuse; itemFiles also uses stageId for course material. isLosslesslyRemovable checks new status, practice count and blocks, not authored notes or other relationships. deletePathway/deleteStage already detach owned items. planDefaultPathways and course-level restoration already provide explicit additive installation and must be extended, not replaced.\n\nSetar's existing mixed pathway contains foundations, modal radif suggestions and generic form-name suggestions. Its gusheh factory does not populate the modal/gusheh identity fields. Tar already has Honarestan and Khonyagar pathways, so equivalent Persian browsing is an addition to a real instrument experience, not a new Tar subsystem. Repertoire's pathway card omits the existing current-stage pin; Today and SessionPlan pick a first matching pathway without a consistent archived/order policy.\n\nThe fixed flex shell already uses dynamic viewport units, safe areas and a main scroll region. useViewportGuard has 80ms/300ms timing, returns while an editable element remains focused, and calls element.scrollIntoView without limiting it to main. These are concrete weaknesses and a testable retained-focus blind spot, not proof of the owner's precise native-iPhone failure. Native trace evidence is still needed.\n\nArchive Refresh fetches a commit-pinned published setar/index.json through archiveIndex.ts; it does not run the NAS scanner. The owner's corrected explanation fits that boundary. No remaining live NAS defect has been established. The earlier draft's synthetic missing-rename scenario does not justify fingerprinting or a protocol migration.\n\nSchema v14 is installed through validateDB/migrateToCurrent, including both hydration paths. validateDB reconstructs the top-level database, so merely adding TypeScript fields would drop them. Existing attachment-byte, unfinished-session, revision and acknowledged-save protections are load-bearing.",
-  "desiredBehaviour": "COHERENT END STATE\nThe owned practice item remains the only unit of practice. A reference catalogue suggests music; a pathway arranges suggestions and owned work; a study source names the material studied; a musical term classifies it. None stores another copy of practice progress, notes or history. The lane is broad across these connected flows, not a general rewrite of every subsystem.\n\nIMPLEMENTATION CHECKLIST\n[ ] 1. Capture the existing phone/desktop journey and commit focused failing fixtures before redesign. Highest leverage: enumerate every reader/writer of musical terms and reference identity, including rendered grouping, catalogue add/progress, course files and inbound installation. Record a concise before/after screen specification and the proof matrix in docs/repertoire-experience.md. Inspect actual screenshots before visual judgements. Use synthetic data, not the owner's live database.\n[ ] 2. Establish the small shared musical vocabulary and durable catalogue identity, then prove v15 migration/validation before wiring screens.\n[ ] 3. Build the coherent Repertoire, Pathways, source and item-editing experience on those shared decisions. Apply the same shell, hierarchy and interaction language across the everyday practice journey.\n[ ] 4. Diagnose and fix the native viewport problem from evidence, independently of the data work. Run focused browser families, full configured checks and owner-device acceptance before review.\n\nINTERFACE AND NAVIGATION\nKeep Today / Repertoire / Start / Lessons / More as the five stable destinations. Within Repertoire make My repertoire the default, with Pathways and All practice items clearly named peer views. One instrument selector and retained browse context serve those views; encode view, instrument, query and filters in route search parameters so back/forward and returning from details restore context. Validate stale/unknown parameters and expose Clear filters; browsing must not silently change Today's session instrument. Give one primary action per view, restrained secondary menus, readable Farsi titles, predictable back navigation, useful empty/no-results states, visible saving/error states and consistent destructive-action language. Do not introduce a design-system framework or replace the router.\nApply a small shared spacing/type/colour/control vocabulary through existing CSS and UI components. Cover phone and desktop, light/dark/system theme, keyboard/focus, labelled controls, mixed-script directionality and reduced motion. Aim for 44px primary touch controls and meet applicable WCAG 2.2 AA contrast, reflow, focus and target criteria. Keep dense metadata progressive. Redesign the connected Today, browse/detail/add, pathway/stage, source, Start/Active/Close and lesson entry surfaces where needed; Insights, reports and settings receive shared-style/metadata-consumer compatibility only, not independent feature redesigns. Preserve the owner's Plan then Routines ordering above the visible Today recommendation at 390x844.\n\nIPHONE VIEWPORT: DIAGNOSIS BEFORE PRESCRIPTION\nCapture layout/visual viewport sizes and offsets, scale, focused element, main scroll position and nav bounds through keyboard show, Done with retained focus, dismissal, repeat focus, rotation, route change and background/resume on Safari and installed PWA. Distinguish intentional keyboard accommodation from residual displacement. Prefer a correct CSS/scroll-owner arrangement; retain only the smallest event-driven correction if a measured WebKit behaviour requires one. Do not infer keyboard visibility from focus alone, assume interactive-widget support, use arbitrary sleeps/height thresholds, force blur, disable zoom or add scroll loops. Remove obsolete guard timers rather than add more. Any correction must respect zoom, hardware keyboards, absent VisualViewport, intended content scrolling and effect teardown. Browser geometry fixtures prove the chosen mechanism, not the native keyboard. If native evidence is unavailable, record that limit and do not claim the reported defect fixed or its owner acceptance complete; other lane work can proceed.\n\nSHARED MUSICAL TERMS, NOT AN ONTOLOGY\nIntroduce one small persisted vocabulary for Dastgah/Avaz, Form and Composer/Maestro, with stable namespaced IDs, kind, display name, explicit search aliases and archived state. Built-in Persian names are Farsi; IDs never derive from mutable labels. Keep the existing composer/maestro meaning without pretending every maestro is a verified composer or building a people/roles graph. Do not centralise gusheh titles: repeated names need modal/source context and remain item/reference text.\nUse one authoritative value per item field: a term reference or literal custom/legacy text, never parallel editable label and ID fields. Retain legacy strings verbatim during migration. A shared resolver may group/search an exact unique curated alias as its term without rewriting the owner string; display the original in editing/context where needed. Ambiguous, unknown and composite values stay literal and searchable, never fuzzy-assigned. Broader transliteration matching is for search, not identity. Existing Farsi normalisation is reused. Reconcile overlapping form/modal suggestion and rank tables into this source; title-search aliases unrelated to term identity may remain.\nProvide compact management under More: add, rename, edit aliases, archive/restore, and delete only unreferenced custom terms. Referenced or built-in deletion is refused; archived values remain readable and filterable on existing items but leave new-entry suggestions. Existing exact aliases cannot silently change meaning on edit. Name changes preserve IDs and former labels as aliases unless doing so would collide, in which case refuse and explain. Conflicting aliases never pick a first winner. Inline custom text remains possible without requiring registry administration. No merge wizard, synonym inference, bulk retagging or person biography fields.\n\nREPERTOIRE DISCOVERY\nSearch title, gusheh, displayed/raw term labels and aliases, study-source label and existing archive title aliases using the shared text normaliser. Provide combinable instrument, Dastgah/Avaz, Form and Composer/Maestro filters, with source/status available progressively if needed by the current view. Group by Dastgah/Avaz, Form, Composer/Maestro or source without changing stored data. All eligible works appear exactly once, including unclassified/title-only Persian full pieces; children stay with their parent and a matching child keeps its parent discoverable. Clearly distinguish no metadata from no matching results. Facets derive from actual owned items, not empty catalogue categories. Shared search semantics reach All practice items and Start while preserving their different eligibility rules.\n\nREFERENCE IDENTITY, OWNERSHIP AND REVERSIBLE ORGANISATION\nGive code-defined catalogue suggestions stable contextual reference IDs independent of editable stage/pathway placement and display text. Preserve the existing courseWorkKey equivalence for genuinely shared course works; identical generic keys such as chords in different stages remain different references. Use the smallest persisted binding representation that allows explicit linking of an existing same-instrument item and survives move/detach/deletion of its placement. A reference resolves to at most one item per instrument; several references may deliberately point to one owner item. Do not add a second catalogue database or universal work ontology.\nOne resolver drives row state, Add/Start, progress, next suggestion and course-material access. Add reuses an exact binding and is idempotent even after detach/reload. Offer Link existing when appropriate, with explicit choice; titles are candidates, not merge authority. Duplicate or ambiguous legacy bindings remain visible as unresolved candidates with all records intact, never first-match selection or automatic deletion. Do not force an instrument change to reuse Setar work for Tar: practice evidence remains separate.\nHiding a reference suggestion persists per pathway context and never hides/deletes the owned item from My repertoire or its explicit stage placement. Show hidden suggestions with Restore. Progress and next suggestion consume the same visible set; hiding is not completion, and an empty stage is not falsely mastered. Archive/restore pathways using the existing archived field; delete only after explaining that owned work is detached, not deleted. Restore missing named defaults/stages additively using existing planners, preserving edits, IDs, routines and pins; no automatic reseed and no destructive Reset to defaults button.\nReplace the unsafe catalogue Undo/delete shortcut with clearly labelled Unlink reference and Remove from pathway actions that keep owned data. Actual Delete practice item remains the existing explicit destructive workflow. This avoids a new pristine-snapshot/provenance subsystem just to guess when deletion is safe. Resolve active visible pathways consistently using existing order and stable ID tie-breaks, exclude archived ones and honour currentStageId everywhere. Do not add a separate preferred-pathway setting.\n\nSETAR AND TAR: SHARED REPERTOIRE, SEPARATE PRACTICE\nAuthor one shared, explicitly partial Persian reference catalogue for the existing Mirza Abdullah-oriented modal selections, scoped by source/recension and Dastgah/Avaz so repeated gusheh names are not conflated. Audit every existing suggestion against its stated source; do not claim a complete authoritative radif or invent missing gusheh sequences. Use its modal term IDs and actual gusheh metadata when creating new items. Setar and Tar get independently installable instrument-specific pathway instances from that same definition, with independent item bindings/progress. Keep Tar's existing Honarestan/Khonyagar and Guitar course content unchanged.\nFor new installations offer a clearly titled سه‌تار · ردیف میرزا عبدالله and the Tar equivalent. Forms is a grouping/lens over real repertoire using the shared Form vocabulary, with add-a-piece prefilled by the selected form. Do not create generic practice items merely named چهارمضراب or رنگ and do not create a second Forms taxonomy or a compulsory Forms pathway. Technique/foundation practice remains in ordinary items and existing stages/routines; do not manufacture a new foundation pathway.\nExisting mixed Setar pathways, their titles/stages/routines and generic-form items are preserved on upgrade. Offer the new named reference pathway explicitly, and reuse known bindings so adopting it cannot duplicate existing music. Explain how to archive or detach the old organisation using normal controls. No bespoke reorganisation wizard, bulk stage moves or automatic renaming of owner records. Correct only shipped reference definitions and provably unmodified seeded metadata; if proof is lacking preserve the record and let normal editing resolve it.\n\nSTUDY SOURCES\nDefine a source as the named book, collection/radif edition, course or teaching material from which work is studied. It is not a person, an individual practice item, a pathway or a dated lesson record. Keep Material and materialId as the existing implementation; no entity rename migration. For new sources expose the existing radif, method_book, repertoire (label Collection), course and other kinds with clear examples. Legacy piece/song/lesson/activity kinds stay stored and editable as legacy values, not coerced into a guessed new meaning. Preserve sourceName, parentTitle, section, teacherOrSource and notes, including fields not visible in the compact editor.\nDefault creation to the browsed/session instrument, keep only title required and preserve inline creation. Composer/Maestro classifies the work; the source title states the edition/tradition where appropriate; a lesson is linked separately and a pathway is organisation. Do not infer authorship from source titles or add mandatory person/source/pathway relationships. For code-defined course source reuse, add a bounded stable source key only where needed to stop renaming a known seeded source creating another copy; backfill only uniquely proven origins, and ask on multiple candidates. Do not deduplicate arbitrary sources by title or share user Material records across instruments.\n\nSAVED DATA AND COMPATIBILITY\nUse one next schema version, v15, for vocabulary, catalogue bindings and hidden-reference choices. Implement pure deterministic migration and strict validation in the existing migrateToCurrent/validateDB chain, including top-level reconstruction. Re-running on current-schema partial conversions must neither lose fields nor reseed intentionally empty collections. Validate present malformed collections/records, duplicate new IDs, wrong-kind/dangling term refs, cross-instrument/dangling bindings and invalid suppression scope before any install; absence in genuine legacy data is not the same as malformed current data. Keep ambiguous legacy strings/keys as unresolved legacy evidence rather than fabricating identities. Never coerce an object to text or drop a bad row to make validation pass.\nDerive migrated IDs from stable existing identity only; do not read clock, random state, input order or locale-sensitive sort to decide identity. Address the existing pre-v3 seedPathways wall-clock default narrowly where it would make this supported inbound chain nondeterministic; use a documented fixed legacy timestamp fallback, not fresh dates. No broader old-schema cleanup. Preserve owner notes, empty values, custom metadata, all item IDs, history, reviews, schedule fields, lessons, agenda, attachments and references. The old v13 dummy-text waiver grants no new deletion permission.\nVerify full/state-only backup import, sync pull, Keep remote, archive restore, cold recovery and both persist migration/merge paths. Preserve new state through export/content hashing and prove older v14 readers refuse v15 without overwrite. Keep unfinished-practice/revision guards and attachment byte ownership unchanged. Registry/source editing must report durable save only after existing storage acknowledgement, retain failed drafts and retry current text. Reuse existing patterns rather than introduce a transaction framework.\nNAS source-index schema, scanner, publisher, matching, rename, absence/reappearance and refresh transaction are OUTSIDE this lane. Existing source metadata remains raw source evidence; if item term references require adaptation in sourceReconcile, limit changes to the shared musical-field resolver/adoption boundary and preserve stale-premise protection. No location or identity logic changes. Retain existing archive regression coverage.\n\nFOCUSED FAMILY PROOF PLAN, BEFORE FIRST REVIEW\nCommit tests/fixtures/repertoire-legacy-v14.json and repertoire-current-v15.json plus independently authored expectations, not outputs generated by the implementation under test. Record the reader/writer matrix and commands in docs/repertoire-experience.md. Provide one reproducible focused runner at scripts/check-repertoire-families.mjs using the existing Vitest/browser harness, no new dependencies. Every automated acceptance title below names exactly one test; loop engine/viewport cases inside that test instead of generating duplicate titles.\nFamily A, terms and discovery: unique aliases / ambiguous aliases / unknown literals / empty / malformed / archived / renamed, crossed with modal/form/person kinds and owned work/part/title-only work; consumers include forms, detail/practice rendering, search/facets/grouping, seeds, source-metadata adoption and export/import.\nFamily B, references: exact / absent / conflicting legacy binding, same/different instrument, ordinary same-key versus declared shared course work; cross with detach/move/archive/delete, hide/restore, explicit link, repeated stale Add and course-file rendering. Cover all stage/progress/next-unit and Today/SessionPlan consumers with independent expected item IDs and counts.\nFamily C, inbound safety: every install door crossed with valid legacy/current/partial state versus malformed identity or unsupported version, with and without local attachment bytes and unfinished/concurrently completed practice. Exercise real rendered import/recovery/sync wiring using the existing fake-remote boundary, not helper-only proofs. Assert before/after DB and blob projections and acknowledged failure/retry semantics. No network mutation or real owner import.\nFamily D, UI/viewport: Chromium and WebKit at 390x844 and desktop, long Farsi/English/mixed labels, empty/dense data, light/dark, offline/reload/back navigation, keyboard-only use and error states. Geometry cases include retained focus, blur, absent VisualViewport, zoom, route teardown and repeated transitions; physical keyboard assertions are separately manual. Retain every pageerror and isolate Vite caches as the current harness does. Run existing scheduling/practice/notes/lesson/archive regressions plus configured typecheck, lint, unit, build and secrets after focused tests. No skipped engine reported as success.\n\nNEXT THREE ACTIONS FOR CLAUDE\n1. Highest leverage: reproduce the identity/grouping counterexamples, capture baseline screenshots and map all consumers before choosing storage fields or moving controls.\n2. Implement and prove the minimal shared term/reference model and lossless v15 inbound boundary, leaving NAS protocols untouched.\n3. Wire the coherent UI and shared Setar/Tar reference views, complete the evidence-led viewport correction, and run the focused route plus owner acceptance.",
-  "mustNotChange": [
-    "The core loop remains one item, one mode, one focus, one result, one next action. Working notes stay in their existing canonical home and use the acknowledged, item-tagged editor.",
-    "No scheduling/scoring/SM-2, review-completion, snooze, session-plan or routine timing changes. Administration is not practice evidence.",
-    "One instrument per Today session, peer Plan/Routines doorways above the recommendation, title-only Quick add and progressive one-step full creation; no newly required metadata. Start under 30 seconds, close under 60 seconds.",
-    "Local-first/offline, no gamification/backend/account, NAS media remains references only, device secrets never enter saved data. Existing sync, revision, attachment and unfinished-session protections remain intact.",
-    "No mutation of real owner data during investigation/tests and no widening the v13 retired-text waiver."
-  ],
-  "assumptions": [
-    "A1: The previous Claude builder selection remains in force. This is a replacement planning artifact only; the owner imports and approves it.",
-    "A2: The owner's NAS task-timing correction supersedes the earlier draft. No independent remaining archive defect has been demonstrated.",
-    "A3: Existing catalogue selections can support a clearly labelled partial shared Persian reference. Unsupported musical attribution will be left unspecified, not guessed."
-  ],
-  "possibleConflicts": [
-    "The existing viewport guidance describes the current guard as sufficient. Revise that guidance in place only after root-cause evidence; a source-level blind spot is not native-device confirmation.",
-    "Existing default-pathway names/structure and Undo wording change for future use, but upgrades must preserve edited legacy paths and owned items. No automatic reset is authorised.",
-    "Primary Flow is browse-my-repertoire; capture-a-practice-item, work-a-pathway-stage, practise-todays-recommendation, run-a-session-plan, log-a-class and back-up-and-restore are affected consumers. Reflect actual changed mechanics through the normal governed workflow, not new invented product Flows.",
-    "Native iPhone acceptance needs the owner's device. Browser WebKit does not replace it; keep that check visibly outstanding if unavailable."
-  ],
-  "scope": {
-    "allow": [
-      "src/App.tsx",
-      "index.html",
-      "src/styles/global.css",
-      "src/styles/contrast.test.ts",
-      "src/domain/types.ts",
-      "src/domain/index.ts",
-      "src/domain/factories.ts",
-      "src/domain/labels.ts",
-      "src/domain/migrations.ts",
-      "src/domain/io.ts",
-      "src/domain/seed.ts",
-      "src/domain/pathwaySeed.ts",
-      "src/domain/pathways.ts",
-      "src/domain/courseSeed.ts",
-      "src/domain/repertoire.ts",
-      "src/domain/persian.ts",
-      "src/domain/farsi.ts",
-      "src/domain/selectors.ts",
-      "src/domain/itemFiles.ts",
-      "src/domain/sourceReconcile.ts",
-      "src/domain/migrations.test.ts",
-      "src/domain/io.test.ts",
-      "src/domain/seedMigration.test.ts",
-      "src/domain/pathways.test.ts",
-      "src/domain/courseSeed.test.ts",
-      "src/domain/repertoire.test.ts",
-      "src/domain/persian.test.ts",
-      "src/domain/farsi.test.ts",
-      "src/domain/selectors.test.ts",
-      "src/domain/itemFiles.test.ts",
-      "src/domain/sourceReconcile.test.ts",
-      "src/store/useStore.ts",
-      "src/store/lookups.ts",
-      "src/components/Layout.tsx",
-      "src/components/ui.tsx",
-      "src/components/ItemForm.tsx",
-      "src/components/ItemCard.tsx",
-      "src/components/ItemMaterial.tsx",
-      "src/components/QuickAdd.tsx",
-      "src/components/useViewportGuard.ts",
-      "src/components/itemFields.ts",
-      "src/components/itemFormValues.ts",
-      "src/components/itemKinds.ts",
-      "src/components/format.ts",
-      "src/components/itemKinds.test.ts",
-      "src/components/format.test.ts",
-      "src/components/direction.test.ts",
-      "src/pages/Repertoire.tsx",
-      "src/pages/ItemDetail.tsx",
-      "src/pages/NewItem.tsx",
-      "src/pages/PathwayDetail.tsx",
-      "src/pages/StageDetail.tsx",
-      "src/pages/Materials.tsx",
-      "src/pages/More.tsx",
-      "src/pages/Today.tsx",
-      "src/pages/StartBlock.tsx",
-      "src/pages/ActiveBlock.tsx",
-      "src/pages/CloseBlock.tsx",
-      "src/pages/SessionPlan.tsx",
-      "src/pages/Lessons.tsx",
-      "src/pages/RoutineRunner.tsx",
-      "src/pages/RoutineEdit.tsx",
-      "src/domain/musicTerms.ts",
-      "src/domain/musicTerms.test.ts",
-      "src/domain/referenceCatalog.ts",
-      "src/domain/referenceCatalog.test.ts",
-      "src/domain/studySources.ts",
-      "src/domain/studySources.test.ts",
-      "src/pages/MusicTerms.tsx",
-      "src/components/MusicalTermField.tsx",
-      "src/components/ReferenceChoices.tsx",
-      "src/components/viewport.ts",
-      "src/components/viewport.test.ts",
-      "tests/practiceBrowser.ts",
-      "tests/repertoire-experience.browser.test.ts",
-      "tests/repertoire-inbound.browser.test.ts",
-      "tests/repertoire-viewport.browser.test.ts",
-      "tests/repertoire-families.test.ts",
-      "tests/fixtures/repertoire-legacy-v14.json",
-      "tests/fixtures/repertoire-current-v15.json",
-      "tests/fixtures/repertoire-family-expectations.json",
-      "scripts/check-repertoire-families.mjs",
-      "AGENTS.md",
-      "DECISIONS.md",
-      "docs/product-spec.md",
-      "docs/repertoire-experience.md",
-      "README.md"
-    ],
-    "forbid": [
-      ".prismatica/**",
-      ".agents/**",
-      ".codex/**",
-      ".github/**",
-      "src/domain/scheduling.ts",
-      "src/domain/scoring.ts",
-      "src/domain/recommend.ts",
-      "src/domain/plan.ts",
-      "src/domain/practiceSignal.ts",
-      "src/domain/practiceSession.ts",
-      "src/domain/routines.ts",
-      "src/domain/courseData.ts",
-      "src/domain/khonyagarData.ts",
-      "src/domain/setarClasses.ts",
-      "src/domain/sourceArchive.ts",
-      "src/domain/recordings.ts",
-      "src/store/archiveIndex.ts",
-      "src/store/gitRemote.ts",
-      "src/store/syncEngine.ts",
-      "src/store/githubSync.ts",
-      "src/store/idb.ts",
-      "src/store/backup.ts",
-      "scripts/scan-setar-classes.mjs",
-      "scripts/publish-setar-index.mjs",
-      "scripts/run-setar-index.sh",
-      "package.json",
-      "package-lock.json",
-      "vite.config.ts",
-      "public/**"
-    ]
-  },
-  "exclusions": [
-    "NAS fingerprinting, archive-v2, relocation maps, scanner/publisher deployment, polling changes, media-file renames and refresh-transaction redesign. A genuinely new archive defect needs a separately scoped decision, not opportunistic expansion here.",
-    "Generic metadata ontology, biographies/credits graph, term merge wizard, fuzzy identity inference, many-layer provenance framework, destructive bulk normalisation and automated deduplication of owner items.",
-    "New preferred-pathway settings, dedicated Forms taxonomy/pathway, foundation-pathway product, legacy reorganisation wizard or automatic replacement of existing Setar organisation.",
-    "Scheduling/practice-engine changes, analytics/report feature redesign, new sync/backup architecture, new dependencies, and whole-repo component rewrites.",
-    "No implementation, imported lane, issue, branch or PR is created by this planning session."
-  ],
-  "acceptance": [
-    {
-      "description": "Legacy/current/partial v15 fixtures migrate identically across clocks and repeated runs, preserve authored strings and IDs, leave deliberately empty collections empty and handle pre-v3 seeding deterministically. No new deletion waiver.",
-      "test": "repertoire v15 migration is deterministic idempotent and lossless"
-    },
-    {
-      "description": "Wrong types, duplicate new IDs, wrong-kind/dangling term refs and invalid binding/suppression records refuse installation, while unknown/ambiguous legacy strings remain exact and usable.",
-      "test": "repertoire identity validation refuses malformed state without discarding legacy evidence"
-    },
-    {
-      "description": "Curated unique aliases group Shur and شور; ambiguous names, composites and substrings never establish identity. Renamed and archived terms retain stable references; broader search matching does not change ownership.",
-      "test": "musical term resolution separates exact identity from broad search"
-    },
-    {
-      "description": "Real add/rename/alias/archive/restore/delete controls preserve references across reload, refuse referenced/built-in deletion and alias collisions, and retain drafts through failed acknowledged saves and retry.",
-      "test": "musical term management preserves identities and reports durable saves honestly"
-    },
-    {
-      "description": "Combined query/facets find terms, maestros, sources, raw text and existing archive aliases; title-only Persian full pieces remain visible, parents occur once, matching parts expose their parent and empty results are clear.",
-      "test": "repertoire discovery includes every eligible work without duplicate parents"
-    },
-    {
-      "description": "Rendered My repertoire, All practice items and Start share text matching but retain eligibility differences; switching views and back/forward preserve browse state without changing Today's session instrument.",
-      "test": "repertoire navigation restores browse context without changing session scope"
-    },
-    {
-      "description": "Reference Add/Start/row/progress/course-file consumers agree after detach, move, stage/path deletion and reload; repeat stale Add reuses one item; same generic keys across distinct contexts never conflate.",
-      "test": "catalogue identity survives placement changes across every consumer"
-    },
-    {
-      "description": "Link existing preserves all owner fields; ambiguous legacy matches and duplicates require an explicit choice, never first-match/title merging. Several references can deliberately reuse one item; cross-instrument reuse refuses.",
-      "test": "catalogue linking preserves owner records and refuses ambiguous automatic reuse"
-    },
-    {
-      "description": "Hiding/restoring survives reload and backup round trip, affects only reference visibility in its context, preserves explicitly placed and owned work, and keeps progress/next suggestion consistent without treating hidden work as done.",
-      "test": "hidden reference suggestions never delete or complete owned practice"
-    },
-    {
-      "description": "Existing additive installation restores only missing selected defaults/stages, preserves edited rows and routines and never auto-reseeds on load. Archive/restore and repeated no-op actions are idempotent.",
-      "test": "pathway restoration remains explicit additive and lossless"
-    },
-    {
-      "description": "Unlink reference and Remove from pathway retain notes, attachments, lesson/agenda/routine links, children, reviews and all history, even for a new never-practised item. No catalogue shortcut calls automatic item deletion.",
-      "test": "pathway removal keeps enriched and never practised owner items"
-    },
-    {
-      "description": "One shared contextual Persian catalogue yields independent Setar/Tar instances; duplicate gusheh names stay scoped, new gusheh items receive modal metadata, and existing Guitar/Honarestan/Khonyagar work/material identities remain intact.",
-      "test": "Setar and Tar share reference definitions without sharing practice state"
-    },
-    {
-      "description": "Upgrade leaves the old mixed Setar path, generic-form items, text, pins and routines unchanged. Explicitly adding the new radif view reuses proven bindings; Forms derives actual works from the term vocabulary and creates no generic form item.",
-      "test": "new Persian reference views preserve existing Setar organisation"
-    },
-    {
-      "description": "Today, both SessionPlan derivations, Repertoire and PathwayDetail use the same visible ordered pathway and pinned stage, including archived/deleted pins and equal-order tie cases, without changing scheduling decisions.",
-      "test": "pathway context readers agree on visible routes and pinned stages"
-    },
-    {
-      "description": "New source choices describe collections/materials; legacy kinds and hidden fields survive edit/export, session instrument defaults correctly, and known course-source renames reuse stable provenance while ambiguous candidates require choice.",
-      "test": "study sources clarify new choices without rewriting legacy meaning"
-    },
-    {
-      "description": "Every inbound door installs valid v15 and legacy fixtures consistently and refuses malformed/unsupported state before replacement: full/state-only import, fake-remote pull, Keep remote, archive restore, cold recovery and both hydration paths. Preserve existing byte/session/revision guards.",
-      "test": "every inbound door enforces the repertoire v15 boundary"
-    },
-    {
-      "description": "Export/import and content hashing preserve terms/bindings/hides and custom strings. A disposable baseline v14 reader refuses a v15 backup without replacing state/blobs; current reader accepts prior backups.",
-      "test": "repertoire backups round trip and older readers refuse v15 safely"
-    },
-    {
-      "description": "Source metadata adoption understands term-backed and literal fields while retaining raw source facts, owner edits and stale-premise refusals; archive identity/location/refresh outcomes remain unchanged for existing fixtures.",
-      "test": "musical metadata integration preserves archive reconciliation boundaries"
-    },
-    {
-      "description": "Actual rendered Chromium/WebKit phone and desktop journeys exercise browse/edit/add/link/hide/restore/Tar/source/term flows plus Today/Start/Active/Close, reload/offline/failure states and all pageerrors. Assert real saved state as well as UI.",
-      "test": "the unified repertoire journey works in Chromium and WebKit"
-    },
-    {
-      "description": "Chosen viewport mechanism handles retained focus, blur, repeated geometry changes, zoom, absent VisualViewport, route teardown and hardware-keyboard geometry without timer guesses, forced blur or scrolling loops. Expected geometry is fixture-authored, not copied from implementation.",
-      "test": "viewport recovery respects focus zoom and scroll ownership"
-    },
-    {
-      "description": "Both engines demonstrate mixed-script wrapping, labelled controls, keyboard access, focus visibility, theme contrast, reflow and accessible empty/error states at phone/desktop widths; Today preserves the owner's ordering and visible recommendation.",
-      "test": "the shared practice shell remains accessible and readable across layouts"
-    },
-    {
-      "description": "Before/after projections for term/source/reference/pathway administration leave practice history, item status/ratings/SM-2/dates, notes, reviews, agenda and unfinished block/routine/plan untouched apart from explicitly chosen organisation fields.",
-      "test": "repertoire administration never fabricates or resets practice evidence"
-    },
-    {
-      "description": "Before first review, inspect the committed consumer/invariant matrix, independent fixture expectations and reproducible focused runner; every acceptance title maps to exactly one test, both engines actually ran, and proof limits are explicit.",
-      "test": "manual:OWNER"
-    },
-    {
-      "description": "On the owner's actual iPhone Safari and installed PWA, record device/iOS version and before/after viewport traces, keyboard Done with retained focus, repeated opening/dismissal, scroll, rotation, route change, background/resume and zoom. Verify no residual lifted bar, occluded editing or lost text. Without device evidence this remains outstanding.",
-      "test": "manual:OWNER"
-    },
-    {
-      "description": "Review the coherent phone/desktop journey and partial radif labels against source evidence. Confirm useful Forms browsing, maestro discovery, screen-reader/keyboard operation, Plan then Routines ordering and start/close budgets. Keep a pre-upgrade full backup; approve migration on a disposable copy before any real upgrade.",
-      "test": "manual:OWNER"
-    }
-  ],
-  "risk": {
-    "touchesAuth": false,
-    "touchesPayments": false,
-    "touchesSavedData": true,
-    "copyOnly": false,
-    "rationale": "HEAVY: schema migration and strict inbound identity validation, shared reference and vocabulary semantics, many rendered consumers and native-mobile behaviour. Main hazards are lost owner data, accidental duplicate items, misleading progress, dropped schema fields, and false keyboard claims. Boundary and family tests plus owner-device acceptance are mandatory."
-  },
-  "delta": {
-    "step": 1,
-    "today": "Repertoire browsing depends on separate raw-text groups and placement-based catalogue lookup; reference, owned practice and source concepts are inconsistently presented.",
-    "instead": "Browse owned music through shared term-aware search and facets, retain browsing context, and follow or hide reference suggestions without duplicating or deleting practice data. Setar/Tar share reference definitions, not practice state.",
-    "keep": [
-      "Owned PracticeItem is the practice unit.",
-      "Core practice/scheduling and local-first guarantees.",
-      "Existing owner data and explicit additive defaults."
-    ],
-    "assumptions": [
-      "NAS refresh delay was external indexer timing, not an app relocation defect."
-    ],
-    "showMe": "On phone and desktop, find the same work by Farsi/Latin term or maestro, open and return without losing filters, move it out of a stage and add its reference without duplication, hide/restore suggestions, and install Tar's shared radif view with independent practice. Show unclassified works, safe legacy migration, honest failed saves and the actual iPhone keyboard recovery."
-  },
-  "desiredRules": [],
-  "docsDelta": [
-    "AGENTS.md",
-    "DECISIONS.md",
-    "docs/product-spec.md",
-    "docs/repertoire-experience.md",
-    "README.md"
-  ]
-}
-```
-````
 
 ## The Delta this change was framed from
 
@@ -507,79 +76,903 @@ On phone and desktop, find the same work by Farsi/Latin term or maestro, open an
 
 
 
-## Files in this diff
+## Re-review after a rejection — scoped to the rework
 
-- AGENTS.md
-- DECISIONS.md
-- README.md
-- docs/product-spec.md
-- docs/repertoire-experience.md
-- scripts/check-repertoire-families.mjs
-- src/App.tsx
-- src/components/ItemCard.tsx
-- src/components/ItemForm.tsx
-- src/components/MusicalTermField.tsx
-- src/components/ReferenceChoices.tsx
-- src/components/direction.test.ts
-- src/components/itemFields.ts
-- src/components/itemFormValues.ts
-- src/components/ui.tsx
-- src/components/useViewportGuard.ts
-- src/components/viewport.test.ts
-- src/components/viewport.ts
-- src/domain/courseSeed.test.ts
-- src/domain/courseSeed.ts
-- src/domain/factories.ts
-- src/domain/farsi.test.ts
-- src/domain/farsi.ts
-- src/domain/index.ts
-- src/domain/io.test.ts
-- src/domain/io.ts
-- src/domain/itemFiles.test.ts
-- src/domain/itemFiles.ts
-- src/domain/labels.ts
-- src/domain/migrations.test.ts
-- src/domain/migrations.ts
-- src/domain/musicTerms.test.ts
-- src/domain/musicTerms.ts
-- src/domain/pathwaySeed.ts
-- src/domain/pathways.test.ts
-- src/domain/pathways.ts
-- src/domain/persian.test.ts
-- src/domain/persian.ts
-- src/domain/referenceCatalog.test.ts
-- src/domain/referenceCatalog.ts
-- src/domain/repertoire.test.ts
-- src/domain/repertoire.ts
-- src/domain/seed.ts
-- src/domain/seedMigration.test.ts
-- src/domain/selectors.ts
-- src/domain/sourceReconcile.test.ts
-- src/domain/sourceReconcile.ts
-- src/domain/studySources.test.ts
-- src/domain/studySources.ts
-- src/domain/types.ts
-- src/pages/ItemDetail.tsx
-- src/pages/Materials.tsx
-- src/pages/More.tsx
-- src/pages/MusicTerms.tsx
-- src/pages/NewItem.tsx
-- src/pages/PathwayDetail.tsx
-- src/pages/Repertoire.tsx
-- src/pages/SessionPlan.tsx
-- src/pages/StageDetail.tsx
-- src/pages/StartBlock.tsx
-- src/pages/Today.tsx
-- src/store/useStore.ts
-- src/styles/global.css
-- tests/fixtures/repertoire-current-v15.json
-- tests/fixtures/repertoire-family-expectations.json
-- tests/fixtures/repertoire-legacy-v14.json
-- tests/practiceBrowser.ts
-- tests/repertoire-experience.browser.test.ts
-- tests/repertoire-families.test.ts
-- tests/repertoire-inbound.browser.test.ts
-- tests/repertoire-viewport.browser.test.ts
+The last review of this contract asked for changes. This is NOT the whole plan
+restated: it is what changed since the previously reviewed head, the findings
+that review recorded, and the paths the rework touched — read any file you need
+from the lane. The same Check already bound to this head is not to be rerun
+wholesale.
+
+Verify each prior finding's FAMILY across every consumer in the repository, not
+only the lines this rework changed: a family is closed when no instance of its
+invariant survives anywhere, and a fix that reached one consumer while a sibling
+still breaks it is not closed.
+
+**Approved intent:** `.prismatica/intents/20260928-unify-repertoire-discovery-musical-metad-1516.md`
+
+**Findings from the previous review:**
+
+- **Course-source ambiguity must remain answerable across every Add and Start path** — StageDetail.addSuggestion surfaces sourceCandidates, but StageDetail.practise ignores them and navigates away. planCatalogAddition persists an item without materialId; its bound-item fast path never returns the candidates again. The question is also lost if the Add prompt is cancelled or the page is left. Sweep: findCourseSource and resolveCourseSource detect ambiguity; planCatalogAddition and useStore.addFromCatalog carry it on first creation; StageDetail.addSuggestion and SourceChoice handle it only while mounted; StageDetail.practise and repeat bound Add do not; chooseCourseSource correctly checks instrument and key clashes. The named study-source test covers only the first pure planner result.
+  _counterexample:_ With two unkeyed Tar sources titled as Khonyagar candidates, tap Play on an untaken Khonyagar suggestion. The new item is saved without materialId, practice opens, no choice appears, and later Add sees the bound item and returns no sourceCandidates.
+- **Vocabulary edits must not silently reclassify ambiguous authored text** — Inbound term validation deliberately accepts overlapping aliases and resolveValue keeps their item text ambiguous. itemsUsingTerm counts only uniquely resolved terms, so planDeleteTerm allows deleting a colliding custom term used in ambiguous text; planUpdateTerm likewise misses the transition when removing an alias. The remaining claimant then becomes a unique term without an item edit. Sweep: validateMusicTerms and vocabulary admit the collision; resolveValue and valueGroup correctly keep it literal while ambiguous; planAddTerm refuses new collisions; planUpdateTerm and planDeleteTerm miss this transition; MusicTerms uses the same count to enable Delete; store updateTerm/deleteTerm apply those planners; repertoire grouping/search and source reconciliation consume the changed resolution.
+  _counterexample:_ Import a valid v15 custom Dastgah term named My Shur with alias Shur alongside the built-in Shur alias and an item whose dastgahAvaz is literal Shur. The item is initially ambiguous, the custom term shows zero users, and Delete succeeds. On the next render, that unchanged item resolves and groups as the built-in Shur term.
+
+**What changed since the previously reviewed head:**
+
+```diff
+diff --git a/AGENTS.md b/AGENTS.md
+index cdd67d21e5ef73f3988b783d789d1f51fe106be8..8ff05404fe9cfd9a02395313f89607412d6eb2d2 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -779,8 +779,9 @@ own pace, on a route they trust. Protect that:
+   stay literal and group by their own text; transliteration is search only
+   (`searchAliasTable`). Picking a term's NAME stores the reference. More → Musical terms
+   renames (id kept, old name kept as a spelling), refuses a spelling another term claims or
+-  an item still depends on, archives (still readable, no longer offered) and deletes only
+-  unused custom terms; "Saved." waits for IndexedDB. Gusheh titles are NOT terms. Term and
++  any edit that would change what an unedited item's value means (`reclassifiedItems` —
++  ambiguous text collapsing onto the remaining claimant included), archives (still
++  readable, no longer offered) and deletes only custom terms no value depends on; "Saved." waits for IndexedDB. Gusheh titles are NOT terms. Term and
+   source editors share `useAcknowledgedSaves` (`ui.tsx`): Saved speaks only for the draft it
+   carried (newer text is re-written), outcomes are keyed by record so a moved or deleted row
+   keeps its failure and Try again, nothing closes before acknowledgement, and Done resets.
+@@ -790,7 +791,9 @@ own pace, on a route they trust. Protect that:
+   stored and selectable on its own source, and the compact editor patches only what it
+   shows. A new source starts on the browsed/session instrument. A shipped course's own source
+   carries `sourceKey` (v15) so a rename never mints a copy; only a uniquely proven origin (the
+-  course's title AND kind) is keyed, an unproven same-titled source is ASKED about. Never
++  course's title AND kind) is keyed, an unproven same-titled source is ASKED about — and
++  that question is DERIVED from saved data (`courseSourceQuestions`), so Play, a cancelled
++  prompt or a reload never loses it; the answer goes only to the items it named. Never
+   deduplicate arbitrary sources by title or share them across instruments. One keyed source
+   per course per instrument: a second is refused, never silently un-keyed.
+ - **Seeds are honest starting points, never fabricated authority.** Guitar = CGS. Setar =
+diff --git a/docs/repertoire-experience.md b/docs/repertoire-experience.md
+index 1437d81f4faaefa7fd26d657abbba60ff68cd7e7..00291f077e655e5e4b04cac6f2b341e45b244f58 100644
+--- a/docs/repertoire-experience.md
++++ b/docs/repertoire-experience.md
+@@ -42,11 +42,11 @@ Reference ids: `stage:<stageId>:<key>` · `course:<courseId>:work:<identity>` ·
+ | Fact | Written by | Read by |
+ | --- | --- | --- |
+ | Term values on items | `ItemForm` (`MusicalTermField` → `valueFromInput`), `itemFromCatalogEntry` (radif entries carry `{termId}`), archive adoption (`sourceReconcile`, raw registry TEXT only), migration (never — legacy text is kept) | `resolveValue`/`valueLabel`/`valueGroup`/`valueSearchTexts` → `groupByDastgah`, `discoverRepertoire`, `repertoireSearchTexts` (Practice list, Start), `ItemDetail` details, `WorkRow`, `MusicalTermField`, archive suggestion comparison (`fieldAlreadySays`), `isWork`/`hasPersianIdentity`, `kindFromItem`, `validateMusicTerms` |
+-| `musicTerms` | `addTerm`/`updateTerm`/`deleteTerm` (store, via `planAddTerm`/`planUpdateTerm`/`planDeleteTerm`), `migrateToV15` (empty list only) | `vocabulary()` everywhere above, `searchAliasTable`, MusicTerms page, `validateDB` |
++| `musicTerms` | `addTerm`/`updateTerm`/`deleteTerm` (store, via `planAddTerm`/`planUpdateTerm`/`planDeleteTerm`; an update is refused when `reclassifiedItems` finds an unedited value whose meaning would change, a delete while `itemsUsingTerm` — ambiguous claimants included — is non-empty; MusicTerms' Delete reads `planDeleteTerm` itself), `migrateToV15` (empty list only) | `vocabulary()` everywhere above, `searchAliasTable`, MusicTerms page, `validateDB` |
+ | `catalogRefs` | `planCatalogAddition` (Add), `planLinkReference`, `planUnlinkReference`, `planRemoveFromPathway`, and — through `settleLegacyEvidence` (unique legacy decided, ambiguous refused) — every placement writer: `updateItem` (stage/key/instrument), `placeItemInStage`, `deleteStage`, `deletePathway`; `bindLegacyReferences` (v15 migration, fitting evidence only). Every one passes `identityRefusal` before `set()`; a link or instrument move may not overrule another item's legacy answer (`legacyClaimRefusal`) | `resolveCatalogReference` → `stageUnits`/`hiddenUnits`/`stageProgress`/`currentStage`/`nextUnitInStage`/`pathwayProgress`, `planCatalogAddition` reuse, `carriedCourseWorkItem`, routine segment binding (`unitItem`), `itemReferences` → `itemFiles` course material, `validateReferences` |
+ | `hiddenRefs` | `planSetReferenceHidden` (Hide/Restore), `planRemoveFromPathway` | `pathwayStageContext` → every stage consumer above; `validateReferences` (scope = the pathway's shipped definition) |
+ | Pathway route | `updatePathway` (archived, pin), `deleteStage` (clears pin) | `visiblePathways`/`primaryPathway`/`pathwayPosition` → Today, SessionPlan (build + editor), Repertoire cards, PathwayDetail |
+-| `sourceKey` | `resolveCourseSource` (mint/adopt), `chooseCourseSource` and `updateMaterial` (both refused by `sourceKeyClash` when the instrument already holds the key), `backfillCourseSourceKeys` (v15) | `findCourseSource`, `validateStudySources` |
++| `sourceKey` | `resolveCourseSource` (mint/adopt), `chooseCourseSource` (via `planChooseCourseSource`, answering the derived `courseSourceQuestions` for exactly the items it names — StageDetail renders it; `planCatalogAddition` returns its candidates on first AND repeat Add) and `updateMaterial` (both refused by `sourceKeyClash` when the instrument already holds the key), `backfillCourseSourceKeys` (v15) | `findCourseSource`, `validateStudySources` |
+ | Missing shipped stages | `planDefaultStages` via `addDefaultStages` (PathwayDetail "Restore shipped stages"), `planCourseLevels` (course levels) | `offeredDefaultStages`, `offeredCourseLevels` |
+ | Save outcomes (terms, sources, course source choice) | `useAcknowledgedSaves` in MusicTerms, Materials, ItemForm inline source, StageDetail `SourceChoice` | `SaveStatus` (keyed by record, carried-draft aware) |
+ | Browse return | Repertoire (`state.from`, Study sources `?instrument=`) | PathwayDetail, StageDetail (`pathwaysReturnPath` fallback), Materials |
+diff --git a/src/components/ReferenceChoices.tsx b/src/components/ReferenceChoices.tsx
+index 1f9f4a8170965cbda711ab35a9e8034c8a74b67f..c6d7e4059da45b6c5129b83ab7bdd7e5262c52bc 100644
+--- a/src/components/ReferenceChoices.tsx
++++ b/src/components/ReferenceChoices.tsx
+@@ -66,12 +66,15 @@ export function ItemChoice({
+ export function SourceChoice({
+   courseName,
+   materials,
++  items,
+   ack,
+   onChoose,
+   onCancel,
+ }: {
+   courseName: string;
+   materials: Material[];
++  /** The items the answer is given to — named, because only those are. */
++  items: PracticeItem[];
+   /** The saved outcome of the last choice: it stays on screen until acknowledged. */
+   ack?: Ack;
+   onChoose: (materialId: string) => void;
+@@ -85,6 +88,16 @@ export function SourceChoice({
+       <p className="tiny dim" style={{ margin: 0 }}>
+         More than one of your sources could be this course. Choose the one to keep using — nothing is merged or renamed.
+       </p>
++      <p className="tiny dim" style={{ margin: 0 }}>
++        Your choice is given to{' '}
++        {items.map((i, n) => (
++          <span key={i.id}>
++            {n > 0 && ', '}
++            <span dir="auto">{i.title}</span>
++          </span>
++        ))}
++        .
++      </p>
+       {materials.map((m) => (
+         <button
+           key={m.id}
+diff --git a/src/components/direction.test.ts b/src/components/direction.test.ts
+index 9f313b19ca68ec4fb1fa61b9043336cdd1cab4a3..e507132fd34a608069715c75900cfd0605a1663b 100644
+--- a/src/components/direction.test.ts
++++ b/src/components/direction.test.ts
+@@ -174,6 +174,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string
+   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
++  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+   { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
+   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
+   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
+diff --git a/src/domain/courseSeed.ts b/src/domain/courseSeed.ts
+index 541d194f47ad12dbfc22ab6372329097102fc338..4c5c72d632020883ac22d2f02f7aae6ed0b5396f 100644
+--- a/src/domain/courseSeed.ts
++++ b/src/domain/courseSeed.ts
+@@ -668,7 +668,16 @@ export function planCatalogAddition(
+   const ref = catalogReferenceId(stageId, entryKey);
+   const resolved = resolveCatalogReference(ref, instrumentId, db.items);
+   if (resolved.status === 'bound') {
+-    return { items: db.items, materials: db.materials, itemId: resolved.item.id, created: false };
++    // Reuse writes nothing — but a source question the item is still waiting
++    // on is asked again, so no tap, cancel or page left behind can lose it.
++    const asked = pendingSourceCandidates(db, resolved.item);
++    return {
++      items: db.items,
++      materials: db.materials,
++      itemId: resolved.item.id,
++      created: false,
++      ...(asked ? { sourceCandidates: asked } : {}),
++    };
+   }
+   if (resolved.status === 'ambiguous') {
+     return { items: db.items, materials: db.materials, itemId: '', created: false, candidates: resolved.candidates };
+@@ -687,13 +696,85 @@ export function planCatalogAddition(
+ 
+   const source = resolveCourseSource(db.materials, found.course, instrumentId, now);
+   const item = source.materialId ? { ...base, materialId: source.materialId } : base;
+-  return {
+-    items: [...db.items, item],
+-    materials: source.materials,
+-    itemId: item.id,
+-    created: true,
+-    ...(source.candidates ? { sourceCandidates: source.candidates } : {}),
+-  };
++  const next = { items: [...db.items, item], materials: source.materials };
++  const asked = pendingSourceCandidates(next, item);
++  return { ...next, itemId: item.id, created: true, ...(asked ? { sourceCandidates: asked } : {}) };
++}
++
++// --- the course's study source, when the owner must say which it is ----------
++
++/** The course a reference belongs to: a course work, or a section of a course stage. */
++export function courseOfReference(refId: string): CourseData | undefined {
++  const work = /^course:([^:]+):work:/.exec(refId);
++  if (work) return courseById(work[1]);
++  if (!refId.startsWith('stage:')) return undefined;
++  const rest = refId.slice('stage:'.length);
++  const cut = rest.lastIndexOf(':');
++  return cut > 0 ? courseStage(rest.slice(0, cut))?.course : undefined;
++}
++
++export interface CourseSourceQuestion {
++  course: CourseData;
++  instrumentId: ID;
++  /** The owner's sources that could each be this course's. */
++  candidates: Material[];
++  /** Every item waiting on the answer — named on screen, and the only ones it is written to. */
++  items: PracticeItem[];
++}
++
++/**
++ * WHICH STUDY SOURCE IS THIS COURSE — DERIVED FROM SAVED DATA, NEVER HELD BY A
++ * SCREEN. The question stands, per instrument, while the course's source is
++ * ambiguous (`findCourseSource`) and some item of that course — by the
++ * references it answers, never its placement, so a moved or detached item is
++ * still asked — has no source. Nothing ephemeral carries it, so leaving the
++ * page, "Decide later", Play instead of Add and a reload all leave it exactly
++ * as answerable as before; it ends only when the owner answers it (or gives
++ * each item a source themselves).
++ */
++export function courseSourceQuestions(db: CatalogAdditionDB, course: CourseData): CourseSourceQuestion[] {
++  const out: CourseSourceQuestion[] = [];
++  const waiting = db.items.filter((i) => !i.materialId && itemReferences(i).some((r) => courseOfReference(r)?.id === course.id));
++  for (const instrumentId of [...new Set(waiting.map((i) => i.instrumentId))]) {
++    const found = findCourseSource(db.materials, course, instrumentId);
++    if (found.status !== 'ambiguous') continue;
++    out.push({ course, instrumentId, candidates: found.candidates, items: waiting.filter((i) => i.instrumentId === instrumentId) });
++  }
++  return out;
++}
++
++/** The candidates one item is still waiting on the owner to choose between, if any. */
++function pendingSourceCandidates(db: CatalogAdditionDB, item: PracticeItem): Material[] | undefined {
++  for (const ref of itemReferences(item)) {
++    const course = courseOfReference(ref);
++    const q = course && courseSourceQuestions(db, course).find((x) => x.items.some((i) => i.id === item.id));
++    if (q) return q.candidates;
++  }
++  return undefined;
++}
++
++/**
++ * The owner's answer: key the chosen source as the course's, and give it to
++ * exactly the items the question NAMED that still have none. A course item
++ * without a source is indistinguishable from one whose source the owner
++ * cleared, so nothing the question did not name is ever filled in. Choosing
++ * again (a retry) re-states the same answer and changes nothing further.
++ */
++export function planChooseCourseSource(
++  db: CatalogAdditionDB,
++  course: CourseData,
++  materialId: ID,
++  itemIds: ID[],
++  now: Date,
++): { ok: true; items: PracticeItem[]; materials: Material[] } | { ok: false; reason: string } {
++  const material = db.materials.find((m) => m.id === materialId);
++  const named = new Set(itemIds);
++  const targets = db.items.filter((i) => named.has(i.id));
++  if (!material || !targets.length) return { ok: false, reason: 'That item or study source no longer exists.' };
++  if (targets.some((i) => i.instrumentId !== material.instrumentId)) return { ok: false, reason: 'That study source belongs to another instrument.' };
++  const materials = withCourseSourceKey(db.materials, materialId, course);
++  const items = db.items.map((i) => (named.has(i.id) && !i.materialId ? { ...i, materialId, updatedAt: nowISO(now) } : i));
++  return { ok: true, items, materials };
+ }
+ 
+ /**
+diff --git a/src/domain/musicTerms.test.ts b/src/domain/musicTerms.test.ts
+index c3d3f9ecef4e748736ee3dfd675536e2695d4972..9527b15fe729f2cb9ba6935728db4bd65ee7dcad 100644
+--- a/src/domain/musicTerms.test.ts
++++ b/src/domain/musicTerms.test.ts
+@@ -1,9 +1,11 @@
+ import { describe, expect, it } from 'vitest';
+ import {
+   BUILT_IN_TERMS,
++  itemsUsingTerm,
+   planAddTerm,
+   planDeleteTerm,
+   planUpdateTerm,
++  reclassifiedItems,
+   resolveValue,
+   searchAliasTable,
+   searchMatch,
+@@ -138,5 +140,53 @@ describe('the shared musical vocabulary', () => {
+     expect(planDeleteTerm(terms, items, 'term-khatai')).toMatchObject({ ok: false });
+     expect(planDeleteTerm(terms, [item('y', { form: { termId: 'term-khatai' } })], 'term-khatai')).toMatchObject({ ok: false });
+     expect(planDeleteTerm(terms, [], 'term-khatai')).toEqual({ ok: true, terms: [] });
++
++    // AMBIGUOUS TEXT IS HELD IN PLACE BY EVERY CLAIMANT. An imported custom
++    // term sharing a spelling with another (validation admits it; resolution
++    // keeps that text literal) may neither be deleted nor lose the spelling,
++    // for each field — against a built-in claimant and against a custom one —
++    // because either hands the item to whichever claimant is left.
++    const cases: { field: 'dastgahAvaz' | 'form' | 'composer'; kind: MusicTerm['kind']; spelling: string; other?: MusicTerm }[] = [
++      { field: 'dastgahAvaz', kind: 'dastgah', spelling: 'Shur' },
++      { field: 'form', kind: 'form', spelling: 'Reng' },
++      { field: 'composer', kind: 'composer', spelling: 'Darvish Khan' },
++      { field: 'form', kind: 'form', spelling: 'Naghmeh', other: term('term-other', 'form', 'Other naghmeh', ['Naghmeh']) },
++    ];
++    for (const c of cases) {
++      const mine = term('term-mine', c.kind, `My ${c.spelling}`, [c.spelling]);
++      const stored = [mine, ...(c.other ? [c.other] : [])];
++      const piece = item('amb', { [c.field]: c.spelling });
++      const label = `${c.field} ${c.spelling}${c.other ? ' (custom claimant)' : ''}`;
++      expect(resolveValue(c.spelling, c.kind, vocabulary(stored)).status, label).toBe('ambiguous');
++      // Neither term may be deleted out from under it, and the count says why.
++      expect(itemsUsingTerm([piece], 'term-mine', vocabulary(stored)).map((i) => i.id), label).toEqual(['amb']);
++      expect(planDeleteTerm(stored, [piece], 'term-mine').ok, label).toBe(false);
++      if (c.other) expect(planDeleteTerm(stored, [piece], 'term-other').ok, label).toBe(false);
++      // Removing the shared spelling is the same collapse, said as an edit.
++      const dropped = planUpdateTerm(stored, [piece], 'term-mine', { aliases: [] }, NOW);
++      expect(dropped.ok, label).toBe(false);
++      expect(!dropped.ok && dropped.reason, label).toMatch(/quietly change what it means/);
++      // …but the term is not stuck: the collision it arrived with is not this
++      // edit's doing, so archiving it and renaming it (spelling kept) still work,
++      // and the piece still reads as the owner wrote it.
++      const archived = planUpdateTerm(stored, [piece], 'term-mine', { archived: true }, NOW);
++      expect(archived.ok, label).toBe(true);
++      const renamed = planUpdateTerm(archived.ok ? archived.terms : stored, [piece], 'term-mine', { name: `Mine ${c.spelling}` }, NOW);
++      expect(renamed.ok, label).toBe(true);
++      expect(resolveValue(c.spelling, c.kind, vocabulary(renamed.ok ? renamed.terms : [])).status, label).toBe('ambiguous');
++      expect(reclassifiedItems([piece], c.kind, vocabulary(stored), vocabulary(renamed.ok ? renamed.terms : [])), label).toEqual([]);
++      // With nothing written in that spelling, both edits are free.
++      expect(planDeleteTerm(stored, [], 'term-mine').ok, label).toBe(true);
++      expect(planUpdateTerm(stored, [], 'term-mine', { aliases: [] }, NOW).ok, label).toBe(true);
++    }
++    // Text that STAYS ambiguous reads literally either way: three claimants of
++    // «Zarbi», one of them dropping it, reclassify nothing.
++    const three = [term('term-a', 'form', 'Zarbi A', ['Zarbi']), term('term-b', 'form', 'Zarbi B', ['Zarbi'])];
++    expect(planUpdateTerm(three, [item('z', { form: 'Zarbi' })], 'term-a', { aliases: [] }, NOW).ok).toBe(true);
++    // Giving LITERAL text a term is what adding a spelling is for — allowed.
++    const plain = item('plain', { form: 'Chaharpareh' });
++    const claimed = planUpdateTerm(terms, [plain], 'term-khatai', { aliases: ['Khatai', 'Chaharpareh'] }, NOW);
++    expect(claimed.ok).toBe(true);
++    expect(resolveValue('Chaharpareh', 'form', vocabulary(claimed.ok ? claimed.terms : [])).status).toBe('term');
+   });
+ });
+diff --git a/src/domain/musicTerms.ts b/src/domain/musicTerms.ts
+index 746cf4dc91fe3c249d3f98ff79a8499492bfbd2f..7de8e3f938007f7899398aee9d70658d28401bbe 100644
+--- a/src/domain/musicTerms.ts
++++ b/src/domain/musicTerms.ts
+@@ -373,7 +373,12 @@ export function parseAliases(text: string): string[] {
+   return [...new Set(text.split(/[\n,،]/).map((a) => a.trim()).filter(Boolean))];
+ }
+ 
+-/** Items whose stored value currently MEANS this term, by reference or by alias. */
++/**
++ * Items whose stored value DEPENDS on this term: a reference to it, text that
++ * means it uniquely, or text it is one of several claimants of (ambiguous
++ * text is kept literal only because more than one term answers to it, so
++ * every claimant is holding that reading in place).
++ */
+ export function itemsUsingTerm(items: PracticeItem[], termId: ID, vocab: Vocabulary): PracticeItem[] {
+   const term = vocab.byId.get(termId);
+   if (!term) return [];
+@@ -381,16 +386,53 @@ export function itemsUsingTerm(items: PracticeItem[], termId: ID, vocab: Vocabul
+     TERM_FIELDS.some((field) => {
+       if (TERM_FIELD_KIND[field] !== term.kind) return false;
+       const r = resolveValue(item.persian?.[field], term.kind, vocab);
+-      return r.status === 'term' && r.term.id === termId;
++      if (r.status === 'term') return r.term.id === termId;
++      return r.status === 'ambiguous' && r.candidates.some((t) => t.id === termId);
++    }),
++  );
++}
++
++/** What a value MEANS, as one comparable word: a term's id, or how it reads without one. */
++function meaning(value: MusicalValue | null | undefined, kind: MusicTermKind, vocab: Vocabulary): string {
++  const r = resolveValue(value, kind, vocab);
++  return r.status === 'term' ? `term:${r.term.id}` : r.status;
++}
++
++/**
++ * THE ONE CHECK a vocabulary edit passes before it is applied: the items whose
++ * stored text or reference would MEAN something different under `after` than
++ * under `before`, with nothing about the item itself edited. The only change
++ * allowed is literal text becoming a term — a spelling the owner has just
++ * given a term, which is what adding that spelling is for. Everything else —
++ * a term's text turning literal, one term becoming another, a reference left
++ * dangling, or AMBIGUOUS text collapsing onto whichever claimant is left — is
++ * reclassifying the owner's piece behind their back. Still-ambiguous text is
++ * no change: it reads literally either way.
++ */
++export function reclassifiedItems(items: PracticeItem[], kind: MusicTermKind, before: Vocabulary, after: Vocabulary): PracticeItem[] {
++  return items.filter((item) =>
++    TERM_FIELDS.some((field) => {
++      if (TERM_FIELD_KIND[field] !== kind) return false;
++      const was = meaning(item.persian?.[field], kind, before);
++      const now = meaning(item.persian?.[field], kind, after);
++      return was !== now && !(was === 'literal' && now.startsWith('term:'));
+     }),
+   );
+ }
+ 
+-/** Which keys of `candidate` another term of the same kind already claims. */
+-function collisions(candidate: Pick<MusicTerm, 'id' | 'kind' | 'name' | 'aliases'>, vocab: Vocabulary): string[] {
++/**
++ * Which keys of `candidate` another term of the same kind already claims —
++ * only the keys this edit ADDS. A collision the term already carried (an
++ * imported file may hold one; resolution keeps that text literal) is not the
++ * edit's doing, and refusing on it would leave the term impossible to archive
++ * or rename at all.
++ */
++function collisions(candidate: Pick<MusicTerm, 'id' | 'kind' | 'name' | 'aliases'>, vocab: Vocabulary, had: string[] = []): string[] {
+   const own = vocab.keys.get(candidate.kind)!;
++  const held = new Set(had);
+   const out: string[] = [];
+   for (const text of [candidate.name, ...candidate.aliases]) {
++    if (held.has(termKey(text))) continue;
+     const claimants = (own.get(termKey(text)) ?? []).filter((t) => t.id !== candidate.id);
+     if (claimants.length) out.push(`“${text}” already means ${claimants.map((t) => `“${t.name}”`).join(', ')}`);
+   }
+@@ -445,29 +487,25 @@ export function planUpdateTerm(
+   const next: MusicTerm = { ...current, name, aliases, updatedAt: nowISO(now) };
+   if (archived) next.archived = true;
+   else delete next.archived;
+-  const clash = collisions(next, vocab);
++  const clash = collisions(next, vocab, termKeys(current));
+   if (clash.length) return { ok: false, reason: `Not saved: ${clash.join('; ')}. One spelling cannot mean two terms.` };
+-  const keptKeys = new Set(termKeys(next));
+-  const dependents = items.filter((item) =>
+-    TERM_FIELDS.some((field) => {
+-      if (TERM_FIELD_KIND[field] !== current.kind) return false;
+-      const value = item.persian?.[field];
+-      if (typeof value !== 'string') return false;
+-      const r = resolveValue(value, current.kind, vocab);
+-      return r.status === 'term' && r.term.id === id && !keptKeys.has(termKey(value));
+-    }),
+-  );
+-  if (dependents.length) {
+-    const n = dependents.length;
++  const terms = withStored(stored, next);
++  const changed = reclassifiedItems(items, current.kind, vocab, vocabulary(terms));
++  if (changed.length) {
++    const n = changed.length;
+     return {
+       ok: false,
+-      reason: `Not saved: ${n} item${n === 1 ? ' is' : 's are'} written with a spelling you removed. Keep it as an alias, or change ${n === 1 ? 'that item' : 'those items'} first.`,
++      reason: `Not saved: ${n} item${n === 1 ? ' is' : 's are'} written with a spelling you removed, and would quietly change what ${n === 1 ? 'it means' : 'they mean'}. Keep it as an alias, or change ${n === 1 ? 'that item' : 'those items'} first.`,
+     };
+   }
+-  return { ok: true, terms: withStored(stored, next) };
++  return { ok: true, terms };
+ }
+ 
+-/** Delete: custom terms only, and only while nothing means them. */
++/**
++ * Delete: custom terms only, and only while no item's value depends on it —
++ * including text it is one of several claimants of, whose other claimant it
++ * would otherwise silently hand the item to.
++ */
+ export function planDeleteTerm(stored: MusicTerm[], items: PracticeItem[], id: ID): TermPlan {
+   if (isBuiltInTerm(id)) return { ok: false, reason: 'A built-in term cannot be deleted. Archive it to stop offering it.' };
+   const vocab = vocabulary(stored);
+diff --git a/src/domain/studySources.test.ts b/src/domain/studySources.test.ts
+index 59dfef35c908900bc90ea7f3dffb77e399eb7fd7..b5f80e5693ff9c12abf331cb747769b90b7f2356 100644
+--- a/src/domain/studySources.test.ts
++++ b/src/domain/studySources.test.ts
+@@ -7,7 +7,14 @@ import {
+   sourceKindOptions,
+   withCourseSourceKey,
+ } from './studySources';
+-import { courseStageId, COURSES, planCatalogAddition, resolveCourseSource } from './courseSeed';
++import {
++  courseSourceQuestions,
++  courseStageId,
++  COURSES,
++  planCatalogAddition,
++  planChooseCourseSource,
++  resolveCourseSource,
++} from './courseSeed';
+ import { catalogForStage } from './pathwaySeed';
+ import { CGS_COURSE } from './courseData';
+ import { KHONYAGAR_COURSE } from './khonyagarData';
+@@ -85,6 +92,46 @@ describe('study sources', () => {
+     expect(asked.items.find((i) => i.id === asked.itemId)!.materialId).toBeUndefined();
+     expect(asked.sourceCandidates!.map((m) => m.id)).toEqual(['mat-khon-1', 'mat-khon-2']);
+     expect(asked.materials).toBe(db.materials);
++    // 6. THE QUESTION IS SAVED DATA, NOT A SCREEN'S MEMORY. Whatever the tap
++    //    (Play adds exactly as Add does), the new item is left waiting, and the
++    //    question is derived from the database: it survives an export/reload,
++    //    and a REPEAT Add of the now-bound suggestion asks it again while
++    //    writing nothing.
++    const afterFirst = { ...db, items: asked.items, materials: asked.materials };
++    const reloaded = validateDB(JSON.parse(serializeExport(afterFirst, NOW)));
++    const questionOf = (d: Pick<typeof db, 'items' | 'materials'>) => courseSourceQuestions(d, KHONYAGAR_COURSE);
++    expect(questionOf(reloaded).map((q) => [q.instrumentId, q.candidates.map((m) => m.id), q.items.map((i) => i.id)])).toEqual([
++      ['inst-tar', ['mat-khon-1', 'mat-khon-2'], [asked.itemId]],
++    ]);
++    const again = planCatalogAddition(reloaded, kStage, kEntry.key, kEntry, 'inst-tar', NOW);
++    expect([again.created, again.itemId, again.items, again.materials]).toEqual([false, asked.itemId, reloaded.items, reloaded.materials]);
++    expect(again.items).toBe(reloaded.items);
++    expect(again.sourceCandidates!.map((m) => m.id)).toEqual(['mat-khon-1', 'mat-khon-2']);
++    // Moved out of its stage, it is still asked: the course is read from the
++    // references it answers, never from where it sits.
++    const moved = reloaded.items.map((i) => (i.id === asked.itemId ? { ...i, stageId: undefined } : i));
++    expect(questionOf({ ...reloaded, items: moved })[0].items.map((i) => i.id)).toEqual([asked.itemId]);
++    // A second suggestion added while it is still open joins the SAME question.
++    const kEntry2 = catalogForStage(kStage)[1];
++    const second = planCatalogAddition(reloaded, kStage, kEntry2.key, kEntry2, 'inst-tar', NOW);
++    const both = { ...reloaded, items: second.items, materials: second.materials };
++    expect(questionOf(both)[0].items.map((i) => i.id)).toEqual([asked.itemId, second.itemId]);
++    // 7. THE ANSWER goes to exactly the items the question named — both here —
++    //    keys the chosen source, and ends the question. Choosing again (a
++    //    retry) restates it and changes nothing further.
++    const answered = planChooseCourseSource(both, KHONYAGAR_COURSE, 'mat-khon-2', [asked.itemId, second.itemId], NOW);
++    if (!answered.ok) throw new Error(answered.reason);
++    expect(answered.items.filter((i) => i.materialId === 'mat-khon-2').map((i) => i.id)).toEqual([asked.itemId, second.itemId]);
++    expect(questionOf(answered)).toEqual([]);
++    const retried = planChooseCourseSource(answered, KHONYAGAR_COURSE, 'mat-khon-2', [asked.itemId, second.itemId], NOW);
++    expect(retried.ok && [retried.items, retried.materials]).toEqual([answered.items, answered.materials]);
++    // …and ONLY to those: a course item it did not name keeps no source —
++    // one without a source looks exactly like one the owner cleared.
++    const onlyFirst = planChooseCourseSource(both, KHONYAGAR_COURSE, 'mat-khon-2', [asked.itemId], NOW);
++    expect(onlyFirst.ok && onlyFirst.items.find((i) => i.id === second.itemId)!.materialId).toBeUndefined();
++    // A source on another instrument is refused, never half-applied.
++    expect(planChooseCourseSource(both, KHONYAGAR_COURSE, 'mat-cgs', [asked.itemId], NOW)).toMatchObject({ ok: false });
++
+     // The owner's answer keys exactly the one chosen.
+     const chosen = withCourseSourceKey(db.materials, 'mat-khon-2', KHONYAGAR_COURSE);
+     expect(chosen.filter((m) => m.sourceKey).map((m) => [m.id, m.sourceKey])).toEqual([
+diff --git a/src/pages/MusicTerms.tsx b/src/pages/MusicTerms.tsx
+index 6b3eac3b441469ff5ef9d846312c73615ecb221b..061bce2aa18e0da72b24d9f60e4dfb4f5decb2ff 100644
+--- a/src/pages/MusicTerms.tsx
++++ b/src/pages/MusicTerms.tsx
+@@ -6,6 +6,7 @@ import {
+   MUSIC_TERM_KIND_LABELS,
+   MUSIC_TERM_KINDS,
+   parseAliases,
++  planDeleteTerm,
+   vocabulary,
+   type MusicTerm,
+   type MusicTermKind,
+@@ -49,8 +50,16 @@ export default function MusicTerms() {
+     setDeleted((d) => ({ ...d, [term.id]: term.name }));
+     saves.run(term.id, 'delete', () => deleteTerm(term.id));
+   };
++  // Delete is offered exactly when the planner the store applies would allow it.
+   const row = (t: MusicTerm) => (
+-    <TermRow key={t.id} term={t} users={itemsUsingTerm(db.items, t.id, vocab).length} saves={saves} onDelete={() => remove(t)} />
++    <TermRow
++      key={t.id}
++      term={t}
++      users={itemsUsingTerm(db.items, t.id, vocab).length}
++      deletable={planDeleteTerm(db.musicTerms, db.items, t.id).ok}
++      saves={saves}
++      onDelete={() => remove(t)}
++    />
+   );
+ 
+   return (
+@@ -180,7 +189,19 @@ function AddTerm({ kind, saves }: { kind: MusicTermKind; saves: AckSaves }) {
+   );
+ }
+ 
+-function TermRow({ term, users, saves, onDelete }: { term: MusicTerm; users: number; saves: AckSaves; onDelete: () => void }) {
++function TermRow({
++  term,
++  users,
++  deletable,
++  saves,
++  onDelete,
++}: {
++  term: MusicTerm;
++  users: number;
++  deletable: boolean;
++  saves: AckSaves;
++  onDelete: () => void;
++}) {
+   const updateTerm = useStore((s) => s.updateTerm);
+   const [editing, setEditing] = useState(false);
+   const [name, setNameState] = useState(term.name);
+@@ -258,8 +279,8 @@ function TermRow({ term, users, saves, onDelete }: { term: MusicTerm; users: num
+           <button
+             className="btn btn-ghost btn-sm btn-danger"
+             aria-label={`Delete ${term.name}`}
+-            disabled={users > 0}
+-            title={users > 0 ? 'Used by pieces — archive it instead' : undefined}
++            disabled={!deletable}
++            title={deletable ? undefined : 'Used by pieces — archive it instead'}
+             onClick={() => {
+               if (confirm(`Delete the term “${term.name}”? No piece uses it.`)) onDelete();
+             }}
+diff --git a/src/pages/StageDetail.tsx b/src/pages/StageDetail.tsx
+index 09901b4f8a4840b119c4bcd21c5561bccbe50fde..66df98c71e31424a4b020d8367898aef5f2f2995 100644
+--- a/src/pages/StageDetail.tsx
++++ b/src/pages/StageDetail.tsx
+@@ -9,9 +9,10 @@ import {
+   stageUnits,
+   ITEM_STATUS_LABELS,
+   STRAND_LABELS,
+-  type Material,
++  type CourseSourceQuestion,
+   type PathwayRoutine,
+   type StageUnit,
++  courseSourceQuestions,
+   courseStage,
+   itemsPreparedForLesson,
+   pathwaysReturnPath,
+@@ -72,13 +73,21 @@ export default function StageDetail() {
+   // An explicit choice in progress: which item a suggestion is, or which
+   // study source a course is.
+   const [choosing, setChoosing] = useState<{ unit: StageUnit; mode: 'link' | 'ambiguous' } | null>(null);
+-  const [sourceChoice, setSourceChoice] = useState<{ itemId: string; materials: Material[] } | null>(null);
+-  // Choosing the course's source is a saved decision: the choice stays on
++  // Which study source the course is: a question DERIVED from saved data
++  // (`courseSourceQuestions`), so Play, a cancelled prompt, leaving the page
++  // or a reload never loses it. "Decide later" only quiets it for this visit.
++  const [sourceDeferred, setSourceDeferred] = useState(false);
++  // Choosing is a saved decision: the question the owner answered stays on
+   // screen until IndexedDB acknowledged it, and a failure offers Try again.
++  const [heldQuestion, setHeldQuestion] = useState<CourseSourceQuestion | null>(null);
+   const saves = useAcknowledgedSaves();
+   // A stage this course owns can write two routines from the course's own
+   // syllabus. Both become ORDINARY EDITABLE routines — neither is a live view.
+   const course = stageId ? courseStage(stageId) : undefined;
++  const openQuestion = course
++    ? courseSourceQuestions(db, course.course).find((q) => !ctx.instrumentId || q.instrumentId === ctx.instrumentId)
++    : undefined;
++  const sourceQuestion = heldQuestion ?? (sourceDeferred ? undefined : openQuestion);
+ 
+   if (!stage) {
+     return (
+@@ -123,7 +132,9 @@ export default function StageDetail() {
+       return;
+     }
+     setNotice(result.created ? `Added “${unit.title}” to your items — not practised yet.` : `“${unit.title}” is already one of your items.`);
+-    if (result.sourceCandidates) setSourceChoice({ itemId: result.id, materials: result.sourceCandidates });
++    // The tap asked about this suggestion's course source: show the question
++    // again even if it was put off earlier in this visit.
++    if (result.sourceCandidates) setSourceDeferred(false);
+   }
+ 
+   function practise(unit: StageUnit) {
+@@ -134,6 +145,8 @@ export default function StageDetail() {
+       navigate(`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`);
+       return;
+     }
++    // Practice starts at once. A study-source question this raises is not
++    // asked here — it is derived from saved data and waits on this stage.
+     const added = unit.item ? null : addFromCatalog(stage!.id, unit.key);
+     if (added?.refusal) {
+       setRefusal(added.refusal);
+@@ -291,26 +304,34 @@ export default function StageDetail() {
+             {refusal}
+           </p>
+         )}
+-        {sourceChoice && course && (
++        {sourceQuestion && (
+           <SourceChoice
+-            courseName={course.course.sourceName}
+-            materials={sourceChoice.materials}
++            courseName={sourceQuestion.course.sourceName}
++            materials={sourceQuestion.candidates}
++            items={sourceQuestion.items}
+             ack={saves.states.source}
+             onChoose={(materialId) => {
+-              const { itemId } = sourceChoice;
+-              saves.run('source', materialId, () => chooseCourseSource(itemId, materialId, course.course.id), {
+-                current: () => materialId,
+-                again: () => undefined,
+-                saved: () => {
+-                  saves.reset('source');
+-                  setSourceChoice(null);
+-                  setNotice('Study source chosen — Saved.');
++              const q = sourceQuestion;
++              setHeldQuestion(q);
++              saves.run(
++                'source',
++                materialId,
++                () => chooseCourseSource(q.items.map((i) => i.id), materialId, q.course.id),
++                {
++                  current: () => materialId,
++                  again: () => undefined,
++                  saved: () => {
++                    saves.reset('source');
++                    setHeldQuestion(null);
++                    setNotice('Study source chosen — Saved.');
++                  },
+                 },
+-              });
++              );
+             }}
+             onCancel={() => {
+               saves.reset('source');
+-              setSourceChoice(null);
++              setHeldQuestion(null);
++              setSourceDeferred(true);
+             }}
+           />
+         )}
+diff --git a/src/store/useStore.ts b/src/store/useStore.ts
+index eb4f892e0dd99b2c99908fec066b692cf20b7fec..8799bcc1074269bef9c6b0d16dd2e97cf849cebe 100644
+--- a/src/store/useStore.ts
++++ b/src/store/useStore.ts
+@@ -49,6 +49,7 @@ import {
+   courseRoutine,
+   courseStage,
+   planCatalogAddition,
++  planChooseCourseSource,
+   planCourseLevels,
+   itemOwnedAttachments,
+   retargetRoutineInstrument,
+@@ -85,7 +86,6 @@ import {
+   planUnlinkReference,
+   planUpdateTerm,
+   courseById,
+-  withCourseSourceKey,
+   isBuiltInTerm,
+   settleLegacyEvidence,
+   legacyClaimRefusal,
+@@ -402,8 +402,8 @@ interface StoreState {
+   removeFromPathway: (itemId: ID, pathwayId: ID) => string | null;
+   /** Hide or restore one suggestion in one pathway. Visibility only. */
+   setReferenceHidden: (pathwayId: ID, refId: string, hidden: boolean) => void;
+-  /** Answer "which study source is this course?" when two candidates exist. */
+-  chooseCourseSource: (itemId: ID, materialId: ID, courseId: string) => string | null;
++  /** Answer "which study source is this course?" for the items the question named (`courseSourceQuestions`). */
++  chooseCourseSource: (itemIds: ID[], materialId: ID, courseId: string) => string | null;
+ 
+   // --- Shared musical terms (each returns the refusal, or null) --------------
+   /** Returns the new term's id, or the refusal. */
+@@ -1088,19 +1088,17 @@ export const useStore = create<StoreState>()(
+         if (plan.ok && plan.pathways !== db.pathways) set((s) => ({ db: { ...s.db, pathways: plan.pathways } }));
+       },
+ 
+-      chooseCourseSource: (itemId, materialId, courseId) => {
++      chooseCourseSource: (itemIds, materialId, courseId) => {
+         const course = courseById(courseId);
+         const { db } = get();
+-        const material = db.materials.find((m) => m.id === materialId);
+-        const item = db.items.find((i) => i.id === itemId);
+-        if (!course || !material || !item) return 'That item or study source no longer exists.';
+-        if (material.instrumentId !== item.instrumentId) return 'That study source belongs to another instrument.';
+-        const now = new Date();
+-        const materials = withCourseSourceKey(db.materials, materialId, course);
+-        const items = db.items.map((i) => (i.id === itemId ? touch({ ...i, materialId }, now) : i));
+-        const refusal = identityRefusal({ ...db, materials, items });
++        if (!course) return 'That item or study source no longer exists.';
++        const plan = planChooseCourseSource(db, course, materialId, itemIds, new Date());
++        if (!plan.ok) return plan.reason;
++        const refusal = identityRefusal({ ...db, materials: plan.materials, items: plan.items });
+         if (refusal) return refusal;
+-        set((s) => ({ db: { ...s.db, materials, items } }));
++        // Always a write, even when a retry re-states an answer already in
++        // memory: the save it is retrying never reached IndexedDB.
++        set((s) => ({ db: { ...s.db, materials: plan.materials, items: plan.items } }));
+         return null;
+       },
+ 
+diff --git a/tests/repertoire-experience.browser.test.ts b/tests/repertoire-experience.browser.test.ts
+index f812cfae5fb61a523911d9ee429eb5f61391d990..e4e250970573a0ddb041752ae22e279728ca1754 100644
+--- a/tests/repertoire-experience.browser.test.ts
++++ b/tests/repertoire-experience.browser.test.ts
+@@ -33,6 +33,21 @@ function stateOnly(text: string): string {
+   return JSON.stringify(raw);
+ }
+ 
++/**
++ * The current fixture plus a COLLISION an inbound file may legitimately carry:
++ * a custom composer term sharing the spelling «Darvish Khan» with the built-in
++ * درویش‌خان, and a piece written in exactly that spelling — which therefore
++ * reads as ambiguous, literal text.
++ */
++function withCollision(text: string): string {
++  const raw = JSON.parse(text);
++  const at = '2026-09-20T10:00:00.000Z';
++  raw.data.musicTerms.push({ id: 'term-my-darvish', kind: 'composer', name: 'درویش من', aliases: ['Darvish Khan'], createdAt: at, updatedAt: at });
++  const base = raw.data.items.find((i: { id: string }) => i.id === 'it-khatai');
++  raw.data.items.push({ ...base, id: 'it-ambiguous', title: 'رنگ قدیمی', timesPractised: 0, totalMinutes: 0, persian: { composer: 'Darvish Khan' } });
++  return JSON.stringify(raw);
++}
++
+ const db = async (app: PracticeApp) => (await persistedDb(app)) as unknown as Db;
+ const until = <T,>(app: PracticeApp, read: (d: Db) => T, ok: (v: T) => boolean) =>
+   persistedUntil(app, (s) => read((s.state as { db: Db }).db), ok, 20_000);
+@@ -93,10 +108,21 @@ describe('musical terms, managed', () => {
+     const { page } = app;
+     const term = async (id: string) => (await db(app)).musicTerms.find((t) => t.id === id);
+     try {
+-      await importBackup(app, 'repertoire-current-v15.json', stateOnly(CURRENT_TEXT));
++      await importBackup(app, 'repertoire-current-v15.json', withCollision(stateOnly(CURRENT_TEXT)));
+       expect(await importOutcome(app)).toContain('Imported');
+       await goTo(app, '/terms');
+ 
++      // AMBIGUOUS TEXT IS HELD BY EVERY CLAIMANT: the custom term the piece's
++      // «Darvish Khan» could mean counts it, cannot be deleted (that would hand
++      // the piece to the built-in درویش‌خان), and is not stuck — it archives.
++      await page.getByRole('button', { name: 'Composer / maestro' }).click();
++      const mine = page.locator('.list-row', { hasText: 'درویش من' });
++      expect(await mine.innerText()).toContain('1 piece');
++      expect(await page.getByRole('button', { name: 'Delete درویش من' }).isDisabled()).toBe(true);
++      await page.getByRole('button', { name: 'Archive درویش من' }).click();
++      await until(app, (d) => d.musicTerms.find((t) => t.id === 'term-my-darvish')?.archived, (a) => a === true);
++      await page.getByRole('button', { name: 'Dastgāh / Āvāz' }).click();
++
+       // RENAME A BUILT-IN: same id, former name kept as a spelling.
+       await page.getByRole('button', { name: 'Edit دستگاه شور' }).click();
+       await page.getByRole('textbox', { name: 'Name of دستگاه شور' }).fill('شورِ من');
+@@ -180,6 +206,9 @@ describe('musical terms, managed', () => {
+       expect(after.musicTerms.find((t) => t.id === 'dastgah:shur')!.name).toBe('شورِ من');
+       expect(after.musicTerms.find((t) => t.id === 'term-khatai')!.archived).toBe(true);
+       expect(after.items.find((i) => i.id === 'it-khatai')!.persian!.form).toEqual({ termId: 'term-khatai' });
++      // …and the ambiguous piece still reads exactly as written, its term kept.
++      expect(after.items.find((i) => i.id === 'it-ambiguous')!.persian!.composer).toBe('Darvish Khan');
++      expect(after.musicTerms.find((t) => t.id === 'term-my-darvish')!.aliases).toEqual(['Darvish Khan']);
+ 
+       // A FAILED WRITE never says Saved: the draft stays, and Try again writes
+       // what is on screen NOW.
+@@ -273,9 +302,33 @@ describe('musical terms, managed', () => {
+       await page.getByRole('button', { name: /Add default pathway: .*خنیاگر/ }).click();
+       await page.getByRole('button', { name: /آزاد میرزاپور/ }).first().click();
+       await page.getByRole('link', { name: 'Continue this stage' }).click();
++      const tarItems = async () => (await db(app)).items.filter((i) => i.instrumentId === 'inst-tar').map((i) => i.id);
++      const preexisting = new Set(await tarItems());
+       await page.locator('button[title="Add to your items"]').first().click();
+       const choice = page.getByRole('region', { name: 'Choose the study source' });
+       await choice.waitFor({ timeout: 10_000 });
++      // THE QUESTION IS SAVED DATA, NOT THIS SCREEN'S MEMORY: put off, then
++      // Play (practice starts at once, nothing blocks it), then come back —
++      // and reload — and it is still asked.
++      await expect.poll(async () => (await tarItems()).filter((id) => !preexisting.has(id)).length).toBe(1);
++      const firstId = (await tarItems()).filter((id) => !preexisting.has(id));
++      expect((await db(app)).items.find((i) => i.id === firstId[0])!.materialId).toBeUndefined();
++      const stageUrl = page.url();
++      await choice.getByRole('button', { name: 'Decide later' }).click();
++      await expect.poll(() => choice.count()).toBe(0);
++      await page.locator('button[aria-label^="Practise "]').first().click();
++      await page.waitForURL(/#\/active/, { timeout: 10_000 });
++      await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 10_000 });
++      await page.goto(stageUrl);
++      await choice.waitFor({ timeout: 10_000 });
++      await reload(app);
++      await choice.waitFor({ timeout: 10_000 });
++      // A second Add while it is open joins the SAME question, which names both.
++      await page.locator('button[title="Add to your items"]').first().click();
++      await expect.poll(async () => (await tarItems()).filter((id) => !preexisting.has(id)).length).toBe(2);
++      const waiting = (await tarItems()).filter((id) => !preexisting.has(id));
++      const titles = (await db(app)).items.filter((i) => waiting.includes(i.id)).map((i) => i.title);
++      for (const t of titles) expect(await choice.innerText()).toContain(t);
+       await breakStorage(page);
+       await choice.getByRole('button', { name: 'خنیاگر' }).first().click();
+       await choice.getByText(/Not saved/).waitFor({ timeout: 10_000 });
+@@ -288,6 +341,9 @@ describe('musical terms, managed', () => {
+         (d) => d.materials.filter((m) => m.instrumentId === 'inst-tar' && m.sourceKey).map((m) => m.id),
+         (ids) => ids.length === 1 && khon.includes(ids[0]),
+       );
++      // …and the answer reached exactly the items it named.
++      const keyed = (await db(app)).materials.find((m) => m.instrumentId === 'inst-tar' && m.sourceKey)!.id;
++      expect((await db(app)).items.filter((i) => waiting.includes(i.id)).map((i) => i.materialId)).toEqual([keyed, keyed]);
+       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+     } finally {
+       await app.close();
+diff --git a/tests/repertoire-families.test.ts b/tests/repertoire-families.test.ts
+index bf93575a37bfa16eb9bfda213135510cc077ef1c..b10c5353024b7300029b194df11bd93525f0c893 100644
+--- a/tests/repertoire-families.test.ts
++++ b/tests/repertoire-families.test.ts
+@@ -476,7 +476,7 @@ describe('Family A — administration is organisation, never practice evidence',
+     run('delete unused custom', () => expect(store().deleteTerm(added)).toBeNull());
+     // SOURCE administration.
+     run('edit a source', () => store().updateMaterial('mat-song', { title: 'Songbook', sourceType: 'song' }));
+-    run('choose a course source', () => store().chooseCourseSource('it-cgs-chords', 'mat-cgs', 'cgs'));
++    run('choose a course source', () => store().chooseCourseSource(['it-cgs-chords'], 'mat-cgs', 'cgs'));
+     // REFERENCE and PATHWAY administration.
+     run('link', () => expect(store().linkReference(SEED_PATHWAY_IDS.setar, catalogReferenceId('setar-radif-shur', 'daramad-e-shur'), 'it-daramad-a')).toBeNull());
+     run('unlink', () => store().unlinkReference('it-daramad-a', catalogReferenceId('setar-radif-shur', 'daramad-e-shur')));
+@@ -546,7 +546,7 @@ describe('Family A — administration is organisation, never practice evidence',
+     // source, or moving the keyed one onto an instrument that already holds
+     // the key, is refused — the other source is never silently un-keyed.
+     const copy = store().addMaterial({ instrumentId: 'inst-guitar', title: 'CGS notes', sourceType: 'course' });
+-    unchanged('a second source for a keyed course', () => store().chooseCourseSource('it-cgs-chords', copy, 'cgs'), /already this course's study source/);
++    unchanged('a second source for a keyed course', () => store().chooseCourseSource(['it-cgs-chords'], copy, 'cgs'), /already this course's study source/);
+     // (Adding from the pathway while it sat on Setar minted Setar's own keyed source.)
+     expect(store().db.materials.filter((m) => m.sourceKey === 'course:cgs').map((m) => m.instrumentId).sort()).toEqual(['inst-guitar', 'inst-setar']);
+     unchanged('keyed source moved onto a holder', () => store().updateMaterial('mat-cgs', { instrumentId: 'inst-setar' }), /already this course's study source/);
+```
+
+**Paths the rework touched:**
+
+- `AGENTS.md`
+- `docs/repertoire-experience.md`
+- `src/components/ReferenceChoices.tsx`
+- `src/components/direction.test.ts`
+- `src/domain/courseSeed.ts`
+- `src/domain/musicTerms.test.ts`
+- `src/domain/musicTerms.ts`
+- `src/domain/studySources.test.ts`
+- `src/pages/MusicTerms.tsx`
+- `src/pages/StageDetail.tsx`
+- `src/store/useStore.ts`
+- `tests/repertoire-experience.browser.test.ts`
+- `tests/repertoire-families.test.ts`
+
+**The builder's rework commit messages — claims to verify against the diff, never evidence:**
+
+```
+31822af Rework: close the course-source and term-reclassification families
+
+Family 1 — a course's study-source question stays answerable on every Add
+and Start path.
+Invariant: while a course's source is ambiguous on an instrument, every item
+of that course with no source is waiting on the owner, and that fact is read
+from saved data, never held by a screen.
+Choke point: courseSourceQuestions (courseSeed.ts) derives the question —
+course read from the item's references, not its placement — and
+planChooseCourseSource writes the answer to exactly the items it named
+(a sourceless course item looks the same as one the owner cleared, so
+nothing unnamed is filled in; a retry restates the same answer).
+Consumers:
+- findCourseSource / resolveCourseSource: detect ambiguity — unchanged, checked.
+- planCatalogAddition: created path and the bound (repeat Add) fast path both
+  return the derived candidates; the fast path still writes nothing. Fixed.
+- useStore.addFromCatalog: passes them through. Checked.
+- useStore.chooseCourseSource: now takes the named item ids, applies the pure
+  planner, keeps the sourceKeyClash/identityRefusal guard. Fixed.
+- StageDetail: the SourceChoice is rendered from the derived question, so
+  Play, "Decide later", leaving the page and reload lose nothing; a held copy
+  keeps a failed save and its Try again on screen. practise() starts at once
+  and the question waits on the stage. Fixed.
+- SourceChoice: names the items the answer goes to. Fixed.
+Proof: 'study sources clarify new choices without rewriting legacy meaning'
+(reload round trip, repeat Add, moved item, two items, answer/retry, only
+named items, cross-instrument refusal) and the ac-4 browser journey (Add,
+Decide later, Play, come back, reload, second Add joins, answer reaches both).
+
+Family 2 — a vocabulary edit never silently reclassifies an unedited item.
+Invariant: an update or delete may not change what any item's stored value
+means, except literal text gaining a term (what adding a spe
+… (truncated)
+```
 
 ## Check against the contract
 
