@@ -97,15 +97,31 @@ function snapshot(event: string, extra?: unknown): string {
   });
 }
 
+/** Append one line; at the cap, say so ONCE rather than silently dropping the rest. */
+function record(line: () => string): void {
+  if (trace.length < TRACE_LIMIT) trace.push(line());
+  else if (trace.length === TRACE_LIMIT) trace.push(JSON.stringify({ ev: 'trace-full', limit: TRACE_LIMIT }));
+}
+
 function traceNote(event: string, g?: ViewportGeometry): void {
-  if (stopTrace && trace.length < TRACE_LIMIT) trace.push(snapshot(event, g));
+  if (stopTrace) record(() => snapshot(event, g));
 }
 
 export function isTracingViewport(): boolean {
   return stopTrace !== null;
 }
 
-/** Start recording (clears any earlier trace). The header names the device and mode. */
+export function isViewportTraceFull(): boolean {
+  return trace.length > TRACE_LIMIT;
+}
+
+/**
+ * Start recording (clears any earlier trace). The header names the device, the
+ * mode, the build and whether this is a secure context, so a pasted trace says
+ * which app produced it. Each line's `ev` names its SOURCE (`vv:resize`,
+ * `window:scroll`, `root:scroll`…). `<main>`'s own scrolling is not an event
+ * here — it is the owner's, and its offset is in every line anyway.
+ */
 export function startViewportTrace(): void {
   if (stopTrace) return;
   t0 = performance.now();
@@ -113,28 +129,30 @@ export function startViewportTrace(): void {
     JSON.stringify({
       ua: navigator.userAgent,
       standalone: window.matchMedia('(display-mode: standalone)').matches,
+      secure: window.isSecureContext,
+      build: typeof __APP_VERSION__ === 'undefined' ? null : __APP_VERSION__,
       screen: `${screen.width}x${screen.height}`,
       dpr: window.devicePixelRatio,
       at: new Date().toISOString(),
     }),
   ];
-  const vv = window.visualViewport;
-  const on = (target: EventTarget | null | undefined, type: string) => {
-    const fn = () => {
-      if (trace.length < TRACE_LIMIT) trace.push(snapshot(type));
-    };
-    target?.addEventListener(type, fn, { passive: true, capture: type === 'scroll' });
-    return () => target?.removeEventListener(type, fn, { capture: type === 'scroll' });
+  const on = (target: EventTarget | null | undefined, source: string, type: string) => {
+    const fn = () => record(() => snapshot(`${source}:${type}`));
+    target?.addEventListener(type, fn, { passive: true });
+    return () => target?.removeEventListener(type, fn);
   };
+  const vv = window.visualViewport;
   const offs = [
-    on(vv, 'resize'),
-    on(vv, 'scroll'),
-    on(window, 'resize'),
-    on(window, 'scroll'),
-    on(window, 'orientationchange'),
-    on(document, 'focusin'),
-    on(document, 'focusout'),
-    on(document, 'visibilitychange'),
+    on(vv, 'vv', 'resize'),
+    on(vv, 'vv', 'scroll'),
+    on(window, 'window', 'resize'),
+    on(window, 'window', 'scroll'),
+    on(window, 'window', 'orientationchange'),
+    on(document.body, 'body', 'scroll'),
+    on(root(), 'root', 'scroll'),
+    on(document, 'document', 'focusin'),
+    on(document, 'document', 'focusout'),
+    on(document, 'document', 'visibilitychange'),
   ];
   stopTrace = () => offs.forEach((off) => off());
   trace.push(snapshot('start'));
@@ -142,7 +160,7 @@ export function startViewportTrace(): void {
 
 export function stopViewportTrace(): void {
   if (!stopTrace) return;
-  trace.push(snapshot('stop'));
+  record(() => snapshot('stop'));
   stopTrace();
   stopTrace = null;
 }

@@ -187,10 +187,17 @@ describe('the iPhone keyboard, as geometry', () => {
         await g.set(844, 1, 120);
         await g.fire('resize');
         expect(await g.restores(), `${engine}: traced restore`).toBe(6);
+        await page.evaluate(() => {
+          const main = document.querySelector('main')!;
+          main.scrollTop = 40;
+          main.dispatchEvent(new Event('scroll'));
+        });
         await page.getByRole('button', { name: 'Stop recording' }).click();
         const lines = (await page.getByRole('textbox', { name: 'Keyboard trace' }).inputValue()).split('\n').map((l) => JSON.parse(l));
-        expect(lines[0], engine).toHaveProperty('ua');
-        expect(lines.some((l) => l.ev === 'resize' && l.vvH === 508), `${engine}: keyboard-up sample`).toBe(true);
+        expect(lines[0], engine).toMatchObject({ ua: expect.any(String), secure: true, build: expect.any(String) });
+        expect(lines.some((l) => l.ev === 'vv:resize' && l.vvH === 508), `${engine}: keyboard-up sample`).toBe(true);
+        // <main>'s own scrolling is the owner's and never fills the trace.
+        expect(lines.some((l) => /main/.test(l.ev ?? '')), engine).toBe(false);
         expect(lines.some((l) => l.ev === 'restore'), `${engine}: guard action recorded`).toBe(true);
         expect(await g.listeners(), `${engine}: recorder torn down`).toBe(2);
         expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);

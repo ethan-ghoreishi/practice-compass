@@ -91,7 +91,11 @@ was removed, not replaced.
 More → Keyboard trace → Start recording; then focus a field and type, tap Done (focus kept),
 dismiss by tapping away, repeat, scroll, rotate, switch tabs, background and resume, pinch-zoom
 and release; return to More → Stop recording → Copy trace. The first line names the device, iOS
-(user agent) and whether it ran standalone; each further line is one event with both viewports
+(user agent), whether it ran standalone, the build and `secure` (it must be `true`: the trace
+has to come from this build served over HTTPS — the NAS mirror via `scripts/deploy-nas.sh` for
+the installed-app half, since GitHub Pages publishes only `main`). Each further line is one
+event, labelled by its source (`vv:resize`, `window:scroll`, `root:scroll`, `document:focusout`…;
+`<main>`'s own scrolling is not an event), with both viewports
 (`innerH`, `vvH`, `vvTop`, `scale`), every shell offset (`scrollY`, `html`, `body`, `root`,
 `main`), the bar's `barTop`/`barBottom`, the focused element, and — at each guard evaluation —
 its decision and any `restore`. A lifted bar shows as `barBottom` less than `innerH` with the

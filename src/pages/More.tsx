@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { isTracingViewport, startViewportTrace, stopViewportTrace, viewportTraceText } from '../components/useViewportGuard';
+import { isTracingViewport, isViewportTraceFull, startViewportTrace, stopViewportTrace, viewportTraceText } from '../components/useViewportGuard';
 import {
   ChevronRightIcon,
   FolderIcon,
@@ -97,6 +97,11 @@ function KeyboardTrace() {
           )}
         </div>
         {recording && <p className="tiny" role="status">Recording…</p>}
+        {text && isViewportTraceFull() && (
+          <p className="tiny" role="alert">
+            The trace filled up and later events were not recorded — start again and keep the session shorter.
+          </p>
+        )}
         {copied && (
           <p className="tiny" role="status">
             {copied}
