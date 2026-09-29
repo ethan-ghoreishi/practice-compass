@@ -115,7 +115,8 @@ export default function Repertoire() {
           </Link>
         </div>
         <nav className="row-wrap tiny" aria-label="Repertoire tools" style={{ gap: 14 }}>
-          <Link to="/materials" state={{ from: here }} className="link">
+          {/* The browsed instrument travels with it: a new source starts there. */}
+          <Link to={state.instrumentId ? `/materials?instrument=${encodeURIComponent(state.instrumentId)}` : '/materials'} state={{ from: here }} className="link">
             Study sources
           </Link>
           <Link to="/terms" state={{ from: here }} className="link">
@@ -160,7 +161,7 @@ export default function Repertoire() {
       {state.view === 'works' ? (
         <MyRepertoireView db={db} state={state} update={update} here={here} />
       ) : state.view === 'paths' ? (
-        <PathwaysView db={db} state={state} />
+        <PathwaysView db={db} state={state} here={here} />
       ) : (
         <AllItemsView db={db} state={state} update={update} here={here} />
       )}
@@ -422,7 +423,7 @@ function WorkRow({
 
 // --- Pathways ------------------------------------------------------------------
 
-function PathwaysView({ db, state }: { db: DB; state: BrowseState }) {
+function PathwaysView({ db, state, here }: { db: DB; state: BrowseState; here: string }) {
   const addPathway = useStore((s) => s.addPathway);
   const updatePathway = useStore((s) => s.updatePathway);
   const reseedDefaultPathways = useStore((s) => s.reseedDefaultPathways);
@@ -451,7 +452,7 @@ function PathwaysView({ db, state }: { db: DB; state: BrowseState }) {
     const id = addPathway({ name, instrumentId: instrumentId || undefined });
     setName('');
     setCreating(false);
-    navigate(`/pathway/${id}`);
+    navigate(`/pathway/${id}`, { state: { from: here } });
   }
 
   return (
@@ -461,7 +462,7 @@ function PathwaysView({ db, state }: { db: DB; state: BrowseState }) {
       </p>
 
       {pathways.map((p) => (
-        <PathwayCard key={p.id} pathway={p} db={db} onOpen={() => navigate(`/pathway/${p.id}`)} />
+        <PathwayCard key={p.id} pathway={p} db={db} onOpen={() => navigate(`/pathway/${p.id}`, { state: { from: here } })} />
       ))}
       {pathways.length === 0 && (
         <div className="card">

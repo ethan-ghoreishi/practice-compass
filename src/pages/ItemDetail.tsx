@@ -543,6 +543,8 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
   const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
   const lessons = db.lessons.filter((l) => (l.itemIds ?? []).includes(item.id)).sort((a, b) => b.date.localeCompare(a.date));
   const parent = item.parentItemId ? db.items.find((i) => i.id === item.parentItemId) : undefined;
+  // A refusal is about ONE item: tagged, so it never shows under another.
+  const [refusal, setRefusal] = useState<{ forItem: string; message: string | null } | null>(null);
 
   if (!material && !stage && lessons.length === 0 && !parent) return null;
 
@@ -596,10 +598,15 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
         <button
           className="link tiny"
           style={{ background: 'none', border: 'none', width: 'fit-content', textAlign: 'start' }}
-          onClick={() => removeFromPathway(item.id, stage.pathwayId)}
+          onClick={() => setRefusal({ forItem: item.id, message: removeFromPathway(item.id, stage.pathwayId) })}
         >
           Remove from pathway (keeps this item)
         </button>
+      )}
+      {refusal?.forItem === item.id && refusal.message && (
+        <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
+          {refusal.message}
+        </p>
       )}
     </div>
   );
@@ -802,6 +809,7 @@ function ConnectionsSection({ item }: { item: PracticeItem }) {
   const placeItemInStage = useStore((s) => s.placeItemInStage);
   const linkItemToLesson = useStore((s) => s.linkItemToLesson);
   const unlinkItemFromLesson = useStore((s) => s.unlinkItemFromLesson);
+  const [refusal, setRefusal] = useState<{ forItem: string; message: string | null } | null>(null);
 
   const stages = useMemo(() => {
     const pathways = db.pathways.filter((p) => !p.instrumentId || p.instrumentId === item.instrumentId);
@@ -835,7 +843,7 @@ function ConnectionsSection({ item }: { item: PracticeItem }) {
             className="select"
             aria-label="Pathway stage this item belongs to"
             value={item.stageId ?? ''}
-            onChange={(e) => placeItemInStage(item.id, e.target.value || undefined)}
+            onChange={(e) => setRefusal({ forItem: item.id, message: placeItemInStage(item.id, e.target.value || undefined) })}
           >
             <option value="">Not in a pathway</option>
             {stages.map(({ stage, pathway }) => (
@@ -845,6 +853,11 @@ function ConnectionsSection({ item }: { item: PracticeItem }) {
               </option>
             ))}
           </select>
+          {refusal?.forItem === item.id && refusal.message && (
+            <span className="tiny" role="alert" style={{ color: 'var(--tone-alert)' }}>
+              {refusal.message}
+            </span>
+          )}
         </div>
 
         <div className="field">

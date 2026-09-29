@@ -8,8 +8,8 @@ import type {
   PracticeItem,
   StepStrand,
 } from './types';
-import { catalogForStage, knownReference, pathwayReferenceIds, referenceInstrumentKinds, seedInstrumentIds } from './pathwaySeed';
-import { catalogReferenceId, legacyReferenceOf, resolveCatalogReference } from './courseSeed';
+import { catalogForStage, knownReference, pathwayReferenceIds } from './pathwaySeed';
+import { catalogReferenceId, itemReferences, legacyReferenceOf, resolveCatalogReference } from './courseSeed';
 import { nowISO } from './util';
 
 // ---------------------------------------------------------------------------
@@ -267,15 +267,32 @@ export function pathwayPosition(
 
 // --- the persisted binding: migration and validation ----------------------------
 
+type Placement = Pick<PracticeDB, 'items' | 'pathwayStages' | 'pathways'>;
+
+/**
+ * Legacy evidence is honoured only where the app ever honoured it: in a stage
+ * that exists, of a pathway on the item's OWN instrument (or a General one).
+ * A Setar item left in a Guitar stage never showed as that stage's answer —
+ * every stage row is scoped to its pathway's instrument — so binding it would
+ * fabricate an identity the owner never saw.
+ */
+function legacyFits(db: Pick<PracticeDB, 'pathwayStages' | 'pathways'>, item: PracticeItem): boolean {
+  const stage = item.stageId ? db.pathwayStages.find((s) => s.id === item.stageId) : undefined;
+  const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
+  return !!pathway && (!pathway.instrumentId || pathway.instrumentId === item.instrumentId);
+}
+
 /**
  * The v15 backfill: turn each legacy item's `stageId` + `catalogKey` into a
  * decided binding — but ONLY where that evidence names a shipped suggestion,
- * the item is the only one on its instrument naming it, and no item on that
- * instrument is already bound to it. Duplicates stay undecided and visible;
+ * the item is the only one on its instrument naming it, no item on that
+ * instrument is already bound to it, and the evidence FITS (`legacyFits`).
+ * Anything else stays undecided and visible, exactly as the file had it;
  * nothing is chosen, merged or deleted. Reads no clock and no order: the same
- * items always bind the same way.
+ * database always binds the same way.
  */
-export function bindLegacyReferences(items: PracticeItem[]): PracticeItem[] {
+export function bindLegacyReferences(db: Placement): PracticeItem[] {
+  const items = db.items;
   const slot = (instrumentId: ID, ref: string) => `${instrumentId}\u0000${ref}`;
   const decided = new Set<string>();
   const legacy = new Map<string, number>();
@@ -292,7 +309,7 @@ export function bindLegacyReferences(items: PracticeItem[]): PracticeItem[] {
     const ref = legacyReferenceOf(i);
     if (!ref || !knownReference(ref)) return i;
     const s = slot(i.instrumentId, ref);
-    if (legacy.get(s) !== 1 || decided.has(s)) return i;
+    if (legacy.get(s) !== 1 || decided.has(s) || !legacyFits(db, i)) return i;
     changed = true;
     return { ...i, catalogRefs: [ref] };
   });
@@ -303,14 +320,17 @@ export function bindLegacyReferences(items: PracticeItem[]): PracticeItem[] {
  * The v15 organisation fields at every inbound door: an item's bindings and a
  * pathway's hidden suggestions. Refused (never repaired) when a list is not a
  * list of text, names a suggestion this build does not ship, repeats itself,
- * binds two items on ONE instrument to one suggestion, binds an item on an
- * instrument this device positively recognises as a different one than every
- * pathway presenting the suggestion, or hides a suggestion outside its own
- * pathway. Undecided legacy evidence (`catalogRefs` absent) is never refused.
+ * binds two items on ONE instrument to one suggestion, or hides a suggestion
+ * outside its own pathway. Undecided legacy evidence (`catalogRefs` absent) is
+ * never refused.
+ *
+ * Nothing here reads an instrument's NAME. A name is the owner's editable text
+ * (Settings renames on every keystroke), so a rule derived from it would let an
+ * ordinary rename turn a valid database into one this device refuses to load.
+ * Which instrument a suggestion is offered on is decided where a binding is
+ * MADE — against the pathway's own `instrumentId` — never re-judged by name.
  */
-export function validateReferences(db: Pick<PracticeDB, 'items' | 'pathways' | 'instruments'>): string | null {
-  const kindOf = new Map<ID, string>();
-  for (const [kind, id] of Object.entries(seedInstrumentIds(db.instruments))) if (id) kindOf.set(id, kind);
+export function validateReferences(db: Pick<PracticeDB, 'items' | 'pathways'>): string | null {
   const bound = new Map<string, ID>();
   for (const item of db.items) {
     const refs = (item as { catalogRefs?: unknown }).catalogRefs;
@@ -319,9 +339,6 @@ export function validateReferences(db: Pick<PracticeDB, 'items' | 'pathways' | '
     if (new Set(refs).size !== refs.length) return `Item "${item.id}" names one suggestion twice.`;
     for (const ref of refs as string[]) {
       if (!knownReference(ref)) return `Item "${item.id}" is bound to a suggestion this app does not ship ("${ref}").`;
-      const kinds = referenceInstrumentKinds(ref);
-      const own = kindOf.get(item.instrumentId);
-      if (own && kinds.size && !kinds.has(own)) return `Item "${item.id}" is bound to a suggestion for another instrument ("${ref}").`;
       const slot = `${item.instrumentId}\u0000${ref}`;
       const other = bound.get(slot);
       if (other) return `Two items ("${other}", "${item.id}") are bound to the same suggestion on one instrument ("${ref}").`;
@@ -340,6 +357,135 @@ export function validateReferences(db: Pick<PracticeDB, 'items' | 'pathways' | '
   return null;
 }
 
+/**
+ * The same one-holder rule, said for the owner: the first suggestion two items
+ * on one instrument would both answer. The store checks every local write that
+ * can move a binding or an item's instrument against it BEFORE applying, so
+ * nothing this device writes is something its own reload would refuse.
+ */
+export function bindingClash(items: PracticeItem[]): string | null {
+  const bound = new Map<string, PracticeItem>();
+  for (const item of items) {
+    for (const ref of item.catalogRefs ?? []) {
+      const slot = `${item.instrumentId}\u0000${ref}`;
+      const other = bound.get(slot);
+      if (other) {
+        return `“${other.title}” and “${item.title}” would both answer the same suggestion on one instrument. Unlink one of them first.`;
+      }
+      bound.set(slot, item);
+    }
+  }
+  return null;
+}
+
+// --- undecided legacy evidence: kept until the owner decides it --------------
+
+function referenceTitle(item: PracticeItem): string {
+  return (item.stageId && catalogForStage(item.stageId).find((e) => e.key === item.catalogKey)?.title) || item.title;
+}
+
+/**
+ * What an UNDECIDED item's legacy evidence stands for right now, before a
+ * write changes it:
+ *
+ *  - `bound`      it is the one fitting answer — keep it by deciding it;
+ *  - `ambiguous`  it is one of several candidates — only the owner may choose;
+ *  - `none`       nothing (decided already, no evidence, evidence overruled by
+ *                 an explicit binding elsewhere, or evidence that never fit).
+ */
+function legacyStanding(db: Placement, item: PracticeItem): { status: 'bound' | 'ambiguous' | 'none'; ref?: string } {
+  if (item.catalogRefs !== undefined) return { status: 'none' };
+  const ref = legacyReferenceOf(item);
+  if (!ref || !knownReference(ref)) return { status: 'none' };
+  const r = resolveCatalogReference(ref, item.instrumentId, db.items);
+  if (r.status === 'ambiguous' && r.candidates.some((c) => c.id === item.id)) return { status: 'ambiguous', ref };
+  if (r.status === 'bound' && r.item.id === item.id && legacyFits(db, item)) return { status: 'bound', ref };
+  return { status: 'none', ref };
+}
+
+function ambiguityRefusal(item: PracticeItem): string {
+  return `“${item.title}” is one of several items that may answer “${referenceTitle(item)}”. Choose which one answers it on its stage first.`;
+}
+
+/**
+ * THE ONE RULE for every write that changes where an undecided item's legacy
+ * evidence points — a new stage, a new key, a new instrument, or no stage at
+ * all (a deleted stage or pathway, Remove from pathway). Its evidence is the
+ * only record of which suggestion it answered, so it is settled FIRST:
+ *
+ *  - the one fitting answer is decided (`catalogRefs: [ref]`), so the move
+ *    loses nothing;
+ *  - one of several candidates REFUSES the whole write: leaving would silently
+ *    promote the other candidate, and only the owner may choose between them;
+ *  - anything else is decided as answering nothing (`[]`), so the new
+ *    placement can never quietly make it the answer to a different suggestion.
+ *
+ * `next` is the proposed item list (same ids); decided items pass untouched.
+ */
+export function settleLegacyEvidence(
+  db: Placement,
+  next: PracticeItem[],
+  now: Date,
+): { ok: true; items: PracticeItem[] } | { ok: false; reason: string } {
+  const before = new Map(db.items.map((i) => [i.id, i]));
+  let changed = false;
+  const out: PracticeItem[] = [];
+  for (const item of next) {
+    const prior = before.get(item.id);
+    if (!prior || prior.catalogRefs !== undefined || item.catalogRefs !== undefined) {
+      out.push(item);
+      continue;
+    }
+    const moved = legacyReferenceOf(prior) !== legacyReferenceOf(item) || prior.instrumentId !== item.instrumentId;
+    const standing = legacyStanding(db, prior);
+    if (!moved || (!standing.ref && !(legacyReferenceOf(item) && knownReference(legacyReferenceOf(item)!)))) {
+      out.push(item);
+      continue;
+    }
+    if (standing.status === 'ambiguous') return { ok: false, reason: ambiguityRefusal(prior) };
+    changed = true;
+    out.push(touchItem(item, { catalogRefs: standing.status === 'bound' ? [standing.ref!] : [] }, now));
+  }
+  return { ok: true, items: changed ? out : next };
+}
+
+/**
+ * Whether `item` may BECOME the answer to `refId` on its own instrument: not
+ * while another item already answers it — by a decided binding OR by its
+ * undecided legacy evidence — and not while several candidates dispute it and
+ * this item is not one of them. Either would silently overrule a record the
+ * owner never chose against. Choosing one of the candidates is the explicit
+ * choice, and is allowed.
+ */
+function claimRefusal(items: PracticeItem[], item: PracticeItem, refId: string): string | null {
+  const r = resolveCatalogReference(refId, item.instrumentId, items);
+  if (r.status === 'bound' && r.item.id !== item.id) return `“${r.item.title}” already answers this suggestion. Unlink it first.`;
+  if (r.status === 'ambiguous' && !r.candidates.some((c) => c.id === item.id)) {
+    return `${r.candidates.length} of your items may already answer this suggestion. Choose one of them instead.`;
+  }
+  return null;
+}
+
+/**
+ * The same rule over a whole proposed item list — for a write (an item moved to
+ * another instrument) that brings decided bindings somewhere new: each binding
+ * an item did not already answer ON THAT INSTRUMENT must be free to claim there.
+ */
+export function legacyClaimRefusal(db: Pick<PracticeDB, 'items'>, next: PracticeItem[]): string | null {
+  const before = new Map(db.items.map((i) => [i.id, i]));
+  for (const item of next) {
+    const prior = before.get(item.id);
+    if (prior === item || !item.catalogRefs?.length) continue;
+    const had = new Set(prior && prior.instrumentId === item.instrumentId ? itemReferences(prior) : []);
+    for (const ref of item.catalogRefs) {
+      if (had.has(ref)) continue;
+      const claim = claimRefusal(db.items, item, ref);
+      if (claim) return claim;
+    }
+  }
+  return null;
+}
+
 // --- reversible organisation (pure planners; the store applies each in one set) --
 
 export type OrganisePlan = { ok: true; items: PracticeItem[] } | { ok: false; reason: string };
@@ -354,26 +500,32 @@ function touchItem(item: PracticeItem, patch: Partial<PracticeItem>, now: Date):
  * reused for Tar — and only when no other item on that instrument is already
  * bound to it. Nothing else about the item changes, and the item may already
  * answer other suggestions: several references may deliberately name one item.
+ *
+ * An undecided item keeps its OWN legacy answer when that answer is uniquely
+ * its; while it is one of several candidates for another suggestion, linking it
+ * elsewhere is refused — deciding it would silently hand that other suggestion
+ * to the remaining candidate. Choosing it for the disputed suggestion itself is
+ * exactly the explicit choice, and is allowed.
  */
 export function planLinkReference(
-  items: PracticeItem[],
+  db: Placement,
   refId: string,
   itemId: ID,
   instrumentId: ID | undefined,
   now: Date,
 ): OrganisePlan {
+  const items = db.items;
   const item = items.find((i) => i.id === itemId);
   if (!item) return { ok: false, reason: 'That item no longer exists.' };
   if (instrumentId && item.instrumentId !== instrumentId) {
     return { ok: false, reason: 'That item belongs to another instrument. Practice on one instrument is never counted for another.' };
   }
-  const holder = items.find((i) => i.id !== itemId && i.instrumentId === item.instrumentId && i.catalogRefs?.includes(refId));
-  if (holder) return { ok: false, reason: `“${holder.title}” already answers this suggestion. Unlink it first.` };
   if (item.catalogRefs?.includes(refId)) return { ok: true, items };
-  // An undecided legacy item becomes decided with its OWN legacy evidence kept
-  // alongside, so linking it here never silently unbinds it elsewhere.
-  const legacy = item.catalogRefs === undefined ? legacyReferenceOf(item) : undefined;
-  const base = item.catalogRefs ?? (legacy && knownReference(legacy) && legacy !== refId ? [legacy] : []);
+  const claim = claimRefusal(items, item, refId);
+  if (claim) return { ok: false, reason: claim };
+  const standing = legacyStanding(db, item);
+  if (standing.status === 'ambiguous' && standing.ref !== refId) return { ok: false, reason: ambiguityRefusal(item) };
+  const base = item.catalogRefs ?? (standing.status === 'bound' && standing.ref !== refId ? [standing.ref!] : []);
   return { ok: true, items: items.map((i) => (i.id === itemId ? touchItem(i, { catalogRefs: [...base, refId] }, now) : i)) };
 }
 
@@ -381,7 +533,8 @@ export function planLinkReference(
  * UNLINK REFERENCE: the item stops answering one suggestion, which reads as a
  * suggestion again. The item keeps everything else — notes, history, files,
  * links, placement. The decided (possibly empty) list is kept, so old
- * placement evidence can never re-bind it on the next load.
+ * placement evidence can never re-bind it on the next load. Unlinking one
+ * candidate from a disputed suggestion is itself the owner's explicit choice.
  */
 export function planUnlinkReference(items: PracticeItem[], itemId: ID, refId: string, now: Date): OrganisePlan {
   const item = items.find((i) => i.id === itemId);
@@ -404,10 +557,11 @@ export function planUnlinkReference(items: PracticeItem[], itemId: ID, refId: st
  * pathway, so unbinding it here would make the OTHER pathway offer the same
  * music as untaken, and Add there would mint a duplicate. Restoring the hidden
  * suggestion shows the same item again; Unlink is the one action that changes
- * identity; Delete practice item stays its own explicit action.
+ * identity; Delete practice item stays its own explicit action. An undecided
+ * item's legacy evidence is settled first (`settleLegacyEvidence`).
  */
 export function planRemoveFromPathway(
-  db: Pick<PracticeDB, 'items' | 'pathwayStages' | 'pathways'>,
+  db: Placement,
   itemId: ID,
   pathwayId: ID,
   now: Date,
@@ -417,25 +571,27 @@ export function planRemoveFromPathway(
   if (!item || !pathway) return { ok: false, reason: 'That item or pathway no longer exists.' };
   const stageIds = new Set(db.pathwayStages.filter((s) => s.pathwayId === pathwayId).map((s) => s.id));
   const scope = pathwayReferenceIds(pathwayId);
+  const leavesStage = !!item.stageId && stageIds.has(item.stageId);
   // The references the item ANSWERS: its decided binding, or — for an item
   // whose legacy evidence the resolver alone vouches for — that one, decided
   // now so leaving the stage cannot also lose it.
-  let decided = item.catalogRefs;
-  if (decided === undefined) {
-    const legacy = legacyReferenceOf(item);
-    const r = legacy && knownReference(legacy) ? resolveCatalogReference(legacy, item.instrumentId, db.items) : undefined;
-    if (r?.status === 'bound' && r.item.id === itemId) decided = [legacy!];
+  const standing = legacyStanding(db, item);
+  if (standing.status === 'ambiguous') {
+    return leavesStage ? { ok: false, reason: ambiguityRefusal(item) } : { ok: true, items: db.items, pathways: db.pathways };
   }
+  const decided = item.catalogRefs ?? (standing.status === 'bound' ? [standing.ref!] : undefined);
   const toHide = (decided ?? []).filter((r) => scope.has(r) && !(pathway.hiddenRefs ?? []).includes(r));
-  const leavesStage = !!item.stageId && stageIds.has(item.stageId);
   const decides = decided !== undefined && item.catalogRefs === undefined;
   if (!leavesStage && !toHide.length && !decides) return { ok: true, items: db.items, pathways: db.pathways };
-  const items =
-    leavesStage || decides
-      ? db.items.map((i) =>
-          i.id === itemId ? touchItem(i, { ...(leavesStage ? { stageId: undefined } : {}), ...(decides ? { catalogRefs: decided } : {}) }, now) : i,
-        )
-      : db.items;
+  let items = db.items;
+  if (leavesStage || decides) {
+    const moved = db.items.map((i) =>
+      i.id === itemId ? touchItem(i, { ...(leavesStage ? { stageId: undefined } : {}), ...(decides ? { catalogRefs: decided } : {}) }, now) : i,
+    );
+    const settled = settleLegacyEvidence(db, moved, now);
+    if (!settled.ok) return settled;
+    items = settled.items;
+  }
   const pathways = toHide.length
     ? db.pathways.map((p) => (p.id === pathwayId ? { ...p, hiddenRefs: [...(p.hiddenRefs ?? []), ...toHide], updatedAt: nowISO(now) } : p))
     : db.pathways;

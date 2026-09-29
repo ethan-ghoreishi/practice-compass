@@ -76,6 +76,7 @@ import {
   type SourceIndex,
   SCHEMA_VERSION,
   planDefaultPathways,
+  planDefaultStages,
   planAddTerm,
   planDeleteTerm,
   planLinkReference,
@@ -85,6 +86,14 @@ import {
   planUpdateTerm,
   courseById,
   withCourseSourceKey,
+  isBuiltInTerm,
+  settleLegacyEvidence,
+  legacyClaimRefusal,
+  bindingClash,
+  sourceKeyClash,
+  validateReferences,
+  validateStudySources,
+  COURSES,
   type MusicTermKind,
   validateDB,
   SchemaTooNewError,
@@ -361,7 +370,8 @@ interface StoreState {
     notes?: string;
     status?: MaterialStatus;
   }) => ID;
-  updateMaterial: (id: ID, patch: Partial<Omit<Material, 'id' | 'createdAt'>>) => void;
+  /** Returns the refusal (a course key already held on that instrument), or null. */
+  updateMaterial: (id: ID, patch: Partial<Omit<Material, 'id' | 'createdAt'>>) => string | null;
   deleteMaterial: (id: ID) => void;
 
   // Items
@@ -380,7 +390,8 @@ interface StoreState {
    * deletes anything; returns whether anything changed.
    */
   removeCatalogItem: (id: ID) => boolean;
-  placeItemInStage: (itemId: ID, stageId: ID | undefined) => void;
+  /** Returns the refusal (one of several candidates for a suggestion), or null. */
+  placeItemInStage: (itemId: ID, stageId: ID | undefined) => string | null;
 
   // --- Reference suggestions: reversible organisation, never deletion -------
   /** Make an existing same-instrument item the answer to a suggestion. Returns the refusal, or null. */
@@ -388,11 +399,11 @@ interface StoreState {
   /** The item stops answering one suggestion; it keeps everything else. */
   unlinkReference: (itemId: ID, refId: string) => void;
   /** The item leaves this pathway's stages; its suggestions there are hidden. Nothing is unbound or deleted. */
-  removeFromPathway: (itemId: ID, pathwayId: ID) => void;
+  removeFromPathway: (itemId: ID, pathwayId: ID) => string | null;
   /** Hide or restore one suggestion in one pathway. Visibility only. */
   setReferenceHidden: (pathwayId: ID, refId: string, hidden: boolean) => void;
   /** Answer "which study source is this course?" when two candidates exist. */
-  chooseCourseSource: (itemId: ID, materialId: ID, courseId: string) => void;
+  chooseCourseSource: (itemId: ID, materialId: ID, courseId: string) => string | null;
 
   // --- Shared musical terms (each returns the refusal, or null) --------------
   /** Returns the new term's id, or the refusal. */
@@ -458,7 +469,7 @@ interface StoreState {
   addFromCatalog: (
     stageId: ID,
     entryKey: string,
-  ) => { id: ID; created: boolean; candidates?: PracticeItem[]; sourceCandidates?: Material[] };
+  ) => { id: ID; created: boolean; candidates?: PracticeItem[]; sourceCandidates?: Material[]; refusal?: string };
   /**
    * Write one of a course stage's own routines — the level's, or one built for
    * where the owner actually is — as an ordinary editable routine. Returns its
@@ -471,6 +482,12 @@ interface StoreState {
    * `reseedDefaultPathways`, which adds only whole missing pathways.
    */
   addCourseLevels: (pathwayId: ID, groupKeys: string[]) => void;
+  /**
+   * Add the SELECTED shipped stages a present default pathway lacks (see
+   * `offeredDefaultStages`). Adds nothing on its own, never a routine, and a
+   * choice that adds nothing writes nothing.
+   */
+  addDefaultStages: (pathwayId: ID, stageIds: string[]) => void;
   /** Begin a session on an existing item (with smart defaults). */
   startItemSession: (itemId: ID) => void;
 
@@ -506,7 +523,8 @@ interface StoreState {
   // Pathways
   addPathway: (input: { name: string; instrumentId?: ID; source?: string; description?: string; note?: string }) => ID;
   updatePathway: (id: ID, patch: Partial<Pick<Pathway, 'name' | 'instrumentId' | 'source' | 'description' | 'note' | 'archived' | 'currentStageId'>>) => void;
-  deletePathway: (id: ID) => void;
+  /** Returns the refusal (it holds one of several candidates for a suggestion), or null. */
+  deletePathway: (id: ID) => string | null;
   /**
    * Add the SELECTED shipped default pathways this database lacks — whole
    * pathways only, never stages into one that exists. Adds nothing on its own:
@@ -516,7 +534,8 @@ interface StoreState {
 
   addStage: (pathwayId: ID, input: { code: string; title: string; group?: string; intro?: string }) => ID;
   updateStage: (id: ID, patch: Partial<Pick<PathwayStage, 'code' | 'title' | 'group' | 'intro'>>) => void;
-  deleteStage: (id: ID) => void;
+  /** Returns the refusal (it holds one of several candidates for a suggestion), or null. */
+  deleteStage: (id: ID) => string | null;
   moveStage: (id: ID, dir: -1 | 1) => void;
   /** Rename a section heading across all of a pathway's stages. */
   renameSection: (pathwayId: ID, oldGroup: string | undefined, newGroup: string) => void;
@@ -568,6 +587,18 @@ interface StoreState {
 
 function touch<T extends { updatedAt: string }>(entity: T, now: Date): T {
   return { ...entity, updatedAt: nowISO(now) };
+}
+
+/**
+ * THE SAME RULES RELOAD ENFORCES, checked BEFORE a local write that can move a
+ * binding, an item's instrument or a course key. Said for the owner first, the
+ * validators themselves as the backstop — so nothing this device writes is a
+ * database its own next load (or any other door) would refuse.
+ */
+const IDENTITY_FIELDS = ['instrumentId', 'stageId', 'catalogKey', 'catalogRefs'] as const;
+
+function identityRefusal(db: PracticeDB): string | null {
+  return bindingClash(db.items) ?? sourceKeyClash(db.materials) ?? validateReferences(db) ?? validateStudySources(db, COURSES);
 }
 
 export const useStore = create<StoreState>()(
@@ -825,14 +856,12 @@ export const useStore = create<StoreState>()(
 
       updateMaterial: (id, patch) => {
         const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            materials: s.db.materials.map((m) =>
-              m.id === id ? touch({ ...m, ...patch }, now) : m,
-            ),
-          },
-        }));
+        const { db } = get();
+        const materials = db.materials.map((m) => (m.id === id ? touch({ ...m, ...patch }, now) : m));
+        const refusal = identityRefusal({ ...db, materials });
+        if (refusal) return refusal;
+        set((s) => ({ db: { ...s.db, materials } }));
+        return null;
       },
 
       deleteMaterial: (id) => {
@@ -905,29 +934,42 @@ export const useStore = create<StoreState>()(
                 ]
               : transfer.reviews
             : null;
+        const db = get().db;
+        const patched = db.items.map((i) => {
+          if (i.id !== id) return i;
+          const next = { ...i, ...rest };
+          if (write) {
+            next.nextReviewDate = write.nextReviewDate;
+            // A date arriving through an explicit item patch is the
+            // OWNER'S, never the engine's — stamp the provenance here so
+            // this cannot become a fourth path that writes a date without
+            // one (closeSession, snoozeReview and scheduleReviewAgain all
+            // stamp their own). Without it an owner-edited date on an
+            // auto-source item would stay 'auto' and lose the protection
+            // A4/A5 promise it. Clearing the date clears the provenance.
+            next.nextReviewSource = write.nextReviewDate ? 'user' : undefined;
+          }
+          if (transfer && transfer.ok) {
+            // Same DATE, new authority. Only the provenance moves.
+            next.nextReviewSource = transfer.item.nextReviewSource;
+          }
+          return touch(next, now);
+        });
+        // A new stage, key or instrument moves an UNDECIDED item's legacy
+        // evidence: settle it first (one of several candidates refuses), and
+        // refuse anything this device's own reload would refuse.
+        // Only a patch that touches identity is judged: a notes save (the
+        // notebook ignores this return value) must never be refusable.
+        const settled = settleLegacyEvidence(db, patched, now);
+        if (!settled.ok) return settled.reason;
+        if (IDENTITY_FIELDS.some((k) => k in rest)) {
+          const identity = legacyClaimRefusal(db, settled.items) ?? identityRefusal({ ...db, items: settled.items });
+          if (identity) return identity;
+        }
         set((s) => ({
           db: {
             ...s.db,
-            items: s.db.items.map((i) => {
-              if (i.id !== id) return i;
-              const next = { ...i, ...rest };
-              if (write) {
-                next.nextReviewDate = write.nextReviewDate;
-                // A date arriving through an explicit item patch is the
-                // OWNER'S, never the engine's — stamp the provenance here so
-                // this cannot become a fourth path that writes a date without
-                // one (closeSession, snoozeReview and scheduleReviewAgain all
-                // stamp their own). Without it an owner-edited date on an
-                // auto-source item would stay 'auto' and lose the protection
-                // A4/A5 promise it. Clearing the date clears the provenance.
-                next.nextReviewSource = write.nextReviewDate ? 'user' : undefined;
-              }
-              if (transfer && transfer.ok) {
-                // Same DATE, new authority. Only the provenance moves.
-                next.nextReviewSource = transfer.item.nextReviewSource;
-              }
-              return touch(next, now);
-            }),
+            items: settled.items,
             reviews:
               applyReviewDateToRows({ reviews: s.db.reviews, practiceItemId: id, instruction: nextReviewDate, now }) ??
               transferredRows ??
@@ -1016,8 +1058,10 @@ export const useStore = create<StoreState>()(
       linkReference: (pathwayId, refId, itemId) => {
         const { db } = get();
         const pathway = db.pathways.find((p) => p.id === pathwayId);
-        const plan = planLinkReference(db.items, refId, itemId, pathway?.instrumentId || undefined, new Date());
+        const plan = planLinkReference(db, refId, itemId, pathway?.instrumentId || undefined, new Date());
         if (!plan.ok) return plan.reason;
+        const refusal = identityRefusal({ ...db, items: plan.items });
+        if (refusal) return refusal;
         if (plan.items !== db.items) set((s) => ({ db: { ...s.db, items: plan.items } }));
         return null;
       },
@@ -1031,9 +1075,11 @@ export const useStore = create<StoreState>()(
       removeFromPathway: (itemId, pathwayId) => {
         const { db } = get();
         const plan = planRemoveFromPathway(db, itemId, pathwayId, new Date());
-        if (plan.ok && (plan.items !== db.items || plan.pathways !== db.pathways)) {
+        if (!plan.ok) return plan.reason;
+        if (plan.items !== db.items || plan.pathways !== db.pathways) {
           set((s) => ({ db: { ...s.db, items: plan.items, pathways: plan.pathways } }));
         }
+        return null;
       },
 
       setReferenceHidden: (pathwayId, refId, hidden) => {
@@ -1047,15 +1093,15 @@ export const useStore = create<StoreState>()(
         const { db } = get();
         const material = db.materials.find((m) => m.id === materialId);
         const item = db.items.find((i) => i.id === itemId);
-        if (!course || !material || !item || material.instrumentId !== item.instrumentId) return;
+        if (!course || !material || !item) return 'That item or study source no longer exists.';
+        if (material.instrumentId !== item.instrumentId) return 'That study source belongs to another instrument.';
         const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            materials: withCourseSourceKey(s.db.materials, materialId, course),
-            items: s.db.items.map((i) => (i.id === itemId ? touch({ ...i, materialId }, now) : i)),
-          },
-        }));
+        const materials = withCourseSourceKey(db.materials, materialId, course);
+        const items = db.items.map((i) => (i.id === itemId ? touch({ ...i, materialId }, now) : i));
+        const refusal = identityRefusal({ ...db, materials, items });
+        if (refusal) return refusal;
+        set((s) => ({ db: { ...s.db, materials, items } }));
+        return null;
       },
 
       addTerm: (input) => {
@@ -1077,6 +1123,13 @@ export const useStore = create<StoreState>()(
 
       deleteTerm: (id) => {
         const { db } = get();
+        // Already gone (a Try again after the first write failed): the store
+        // holds the deletion; write it again rather than refuse, so a retry is
+        // never a silent no-op over a write that never reached storage.
+        if (!isBuiltInTerm(id) && !db.musicTerms.some((t) => t.id === id)) {
+          set((s) => ({ db: { ...s.db, musicTerms: [...s.db.musicTerms] } }));
+          return null;
+        }
         const plan = planDeleteTerm(db.musicTerms, db.items, id);
         if (!plan.ok) return plan.reason;
         set((s) => ({ db: { ...s.db, musicTerms: plan.terms } }));
@@ -1085,12 +1138,15 @@ export const useStore = create<StoreState>()(
 
       placeItemInStage: (itemId, stageId) => {
         const now = new Date();
-        set((s) => ({
-          db: {
-            ...s.db,
-            items: s.db.items.map((i) => (i.id === itemId ? touch({ ...i, stageId }, now) : i)),
-          },
-        }));
+        const { db } = get();
+        const settled = settleLegacyEvidence(
+          db,
+          db.items.map((i) => (i.id === itemId ? touch({ ...i, stageId }, now) : i)),
+          now,
+        );
+        if (!settled.ok) return settled.reason;
+        set((s) => ({ db: { ...s.db, items: settled.items } }));
+        return null;
       },
 
       previewArchiveImport: ({ index, instrumentId, decisions, verifiedBase, now }) => {
@@ -1364,7 +1420,12 @@ export const useStore = create<StoreState>()(
         // protects the wiring.
         const plan = planCatalogAddition(db, stageId, entryKey, entry, instrumentId, new Date());
         // Reuse and an ambiguous answer change nothing — no set(), no revision.
-        if (plan.items !== db.items || plan.materials !== db.materials) {
+        // A write reload would refuse is never applied (a backstop: the plan
+        // itself creates a binding only where nothing on that instrument holds it).
+        const changed = plan.items !== db.items || plan.materials !== db.materials;
+        const refusal = changed ? identityRefusal({ ...db, items: plan.items, materials: plan.materials }) : null;
+        if (refusal) return { id: '', created: false, refusal };
+        if (changed) {
           set((s) => ({ db: { ...s.db, items: plan.items, materials: plan.materials } }));
         }
         return {
@@ -1401,6 +1462,12 @@ export const useStore = create<StoreState>()(
         set((s) => ({
           db: { ...s.db, pathwayStages: planCourseLevels(course, s.db.pathwayStages, groupKeys, now) },
         }));
+      },
+
+      addDefaultStages: (pathwayId, stageIds) => {
+        const { db } = get();
+        const pathwayStages = planDefaultStages(db, pathwayId, stageIds, new Date());
+        if (pathwayStages !== db.pathwayStages) set((s) => ({ db: { ...s.db, pathwayStages } }));
       },
 
       startItemSession: (itemId) => {
@@ -1759,22 +1826,27 @@ export const useStore = create<StoreState>()(
 
       deletePathway: (id) => {
         const now = new Date();
-        set((s) => {
-          const stageIds = new Set(s.db.pathwayStages.filter((st) => st.pathwayId === id).map((st) => st.id));
-          return {
-            db: {
-              ...s.db,
-              pathways: s.db.pathways.filter((p) => p.id !== id),
-              pathwayStages: s.db.pathwayStages.filter((st) => st.pathwayId !== id),
-              // A user's routine is detached, never deleted — same rule as items.
-              pathwayRoutines: detachRoutinesFromPathway(s.db.pathwayRoutines, id, now),
-              // Items are kept — they simply leave their stages.
-              items: s.db.items.map((i) =>
-                i.stageId && stageIds.has(i.stageId) ? touch({ ...i, stageId: undefined }, now) : i,
-              ),
-            },
-          };
-        });
+        const { db } = get();
+        const stageIds = new Set(db.pathwayStages.filter((st) => st.pathwayId === id).map((st) => st.id));
+        // Items are kept — they simply leave their stages, with any undecided
+        // legacy answer settled first (one of several candidates refuses).
+        const settled = settleLegacyEvidence(
+          db,
+          db.items.map((i) => (i.stageId && stageIds.has(i.stageId) ? touch({ ...i, stageId: undefined }, now) : i)),
+          now,
+        );
+        if (!settled.ok) return settled.reason;
+        set((s) => ({
+          db: {
+            ...s.db,
+            pathways: s.db.pathways.filter((p) => p.id !== id),
+            pathwayStages: s.db.pathwayStages.filter((st) => st.pathwayId !== id),
+            // A user's routine is detached, never deleted — same rule as items.
+            pathwayRoutines: detachRoutinesFromPathway(s.db.pathwayRoutines, id, now),
+            items: settled.items,
+          },
+        }));
+        return null;
       },
 
       reseedDefaultPathways: (pathwayIds) => {
@@ -1814,6 +1886,15 @@ export const useStore = create<StoreState>()(
 
       deleteStage: (id) => {
         const now = new Date();
+        const { db } = get();
+        // Items stay — they just leave the stage, with any undecided legacy
+        // answer settled first (one of several candidates refuses).
+        const settled = settleLegacyEvidence(
+          db,
+          db.items.map((i) => (i.stageId === id ? touch({ ...i, stageId: undefined }, now) : i)),
+          now,
+        );
+        if (!settled.ok) return settled.reason;
         set((s) => ({
           db: {
             ...s.db,
@@ -1821,14 +1902,14 @@ export const useStore = create<StoreState>()(
             // Stage deletion is not pathway deletion — the routine keeps its
             // pathwayId and only stageId is cleared.
             pathwayRoutines: detachRoutinesFromStage(s.db.pathwayRoutines, id, now),
-            // Items stay — they just leave the stage.
-            items: s.db.items.map((i) => (i.stageId === id ? touch({ ...i, stageId: undefined }, now) : i)),
+            items: settled.items,
             // Un-pin any pathway pointing at the removed stage.
             pathways: s.db.pathways.map((p) =>
               p.currentStageId === id ? touch({ ...p, currentStageId: undefined }, now) : p,
             ),
           },
         }));
+        return null;
       },
 
       renameSection: (pathwayId, oldGroup, newGroup) => {

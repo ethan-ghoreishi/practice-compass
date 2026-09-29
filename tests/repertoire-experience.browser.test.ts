@@ -54,6 +54,39 @@ async function repairStorage(page: Page): Promise<void> {
   });
 }
 
+/**
+ * Hold every write to the app's state IN FLIGHT: a second connection keeps a
+ * readwrite transaction on the same store alive, so the app's own write queues
+ * behind it — pending, neither failed nor done — until `releaseStorage`.
+ */
+async function holdStorage(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const w = window as unknown as { __holdStorage?: boolean };
+        w.__holdStorage = true;
+        const open = indexedDB.open('practice-compass');
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const conn = open.result;
+          const tx = conn.transaction('kv', 'readwrite');
+          const store = tx.objectStore('kv');
+          const spin = () => {
+            if (w.__holdStorage) store.get('__hold__').onsuccess = spin;
+          };
+          spin();
+          tx.oncomplete = () => conn.close();
+          resolve();
+        };
+      }),
+  );
+}
+async function releaseStorage(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    (window as unknown as { __holdStorage?: boolean }).__holdStorage = false;
+  });
+}
+
 describe('musical terms, managed', () => {
   it('musical term management preserves identities and reports durable saves honestly', async () => {
     const app = await openPracticeApp({ now: CLOCK });
@@ -102,12 +135,40 @@ describe('musical terms, managed', () => {
       const added = await until(app, (d) => d.musicTerms.find((t) => t.name === 'چهارپاره'), (t) => !!t);
       expect([added!.kind, added!.aliases]).toEqual(['form', ['Chaharpareh']]);
       await page.getByRole('button', { name: 'Done' }).click();
+      // Done starts a FRESH session next time: empty, editable, with its Add
+      // button — nothing from the finished save carries over.
+      await page.getByRole('button', { name: /Add a term/ }).click();
+      const freshName = page.getByRole('textbox', { name: 'Term name' });
+      expect([await freshName.inputValue(), await freshName.isEnabled()]).toEqual(['', true]);
+      expect(await page.getByRole('textbox', { name: 'Other spellings' }).isEnabled()).toBe(true);
+      expect(await page.getByText('Saved.').count()).toBe(0);
+      await freshName.fill('سه‌ضربی');
+      await page.getByRole('button', { name: 'Add term' }).click();
+      await until(app, (d) => d.musicTerms.find((t) => t.name === 'سه‌ضربی')?.kind, (k) => k === 'form');
+      await page.getByRole('button', { name: 'Done' }).click();
+
+      // ARCHIVE whose write FAILS: the row moves to the archived part of the
+      // list and its failure — with Try again — moves with it.
+      await breakStorage(page);
       await page.getByRole('button', { name: 'Archive چهارپاره' }).click();
+      await page.getByText(/Not saved/).first().waitFor({ timeout: 10_000 });
+      expect(await page.getByText('Saved.').count()).toBe(0);
+      await repairStorage(page);
+      await page.getByRole('button', { name: 'Try again' }).click();
       await until(app, (d) => d.musicTerms.find((t) => t.id === added!.id)?.archived, (a) => a === true);
+      await expect.poll(() => page.getByText(/Not saved/).count()).toBe(0);
       await page.getByRole('button', { name: 'Restore چهارپاره' }).click();
       await until(app, (d) => d.musicTerms.find((t) => t.id === added!.id)?.archived, (a) => a === undefined);
+      // DELETE whose write FAILS: the row is gone, the outcome is not — it
+      // says so under the term's name, and Try again writes the deletion.
+      await breakStorage(page);
       await page.getByRole('button', { name: 'Delete چهارپاره' }).click();
+      await page.getByText(/deleted — Not saved/).waitFor({ timeout: 10_000 });
+      expect((await db(app)).musicTerms.some((t) => t.id === added!.id)).toBe(true);
+      await repairStorage(page);
+      await page.getByRole('button', { name: 'Try again' }).click();
       await until(app, (d) => d.musicTerms.some((t) => t.id === added!.id), (present) => !present);
+      await page.getByText(/deleted — Saved\./).waitFor({ timeout: 10_000 });
       // A REFERENCED custom term cannot be deleted (the archived ختایی is on a
       // piece); a BUILT-IN offers no Delete at all.
       expect(await page.getByRole('button', { name: 'Delete ختایی' }).isDisabled()).toBe(true);
@@ -139,6 +200,94 @@ describe('musical terms, managed', () => {
       await until(app, (d) => d.musicTerms.find((t) => t.id === 'term-mahjoubi')?.name, (n) => n === 'مرتضی محجوبی — edited twice');
       await reload(app);
       expect((await term('term-mahjoubi'))!.name).toBe('مرتضی محجوبی — edited twice');
+
+      // TYPING WHILE A WRITE IS IN FLIGHT: the older write never says "Saved."
+      // over newer words; they are written, and only then is it Saved.
+      await page.getByRole('button', { name: 'Composer / maestro' }).click();
+      await page.getByRole('button', { name: 'Edit مرتضی محجوبی — edited twice' }).click();
+      const liveName = page.locator('input[aria-label^="Name of"]');
+      await holdStorage(page);
+      await liveName.fill('محجوبی — first');
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await page.getByText('Saving…').waitFor({ timeout: 10_000 });
+      await liveName.fill('محجوبی — second');
+      expect(await page.getByText('Saved.').count()).toBe(0);
+      await releaseStorage(page);
+      await page.getByText('Saved.').first().waitFor({ timeout: 10_000 });
+      expect(await liveName.inputValue()).toBe('محجوبی — second');
+      await until(app, (d) => d.musicTerms.find((t) => t.id === 'term-mahjoubi')?.name, (n) => n === 'محجوبی — second');
+
+      // THE SAME LIFECYCLE FOR STUDY SOURCES — the full editor, the item
+      // form's inline "new source", and choosing which source a course is.
+      // Each keeps what is on screen until IndexedDB acknowledged THAT, and a
+      // Try again after a failure writes once, never a second copy.
+      await goTo(app, '/materials');
+      await page.getByRole('button', { name: /New/ }).click();
+      const srcName = page.getByRole('textbox', { name: 'Source name' });
+      await srcName.fill('کتاب اول');
+      await breakStorage(page);
+      await page.getByRole('button', { name: 'Create source' }).click();
+      await page.getByText(/Not saved/).first().waitFor({ timeout: 10_000 });
+      expect(await srcName.inputValue()).toBe('کتاب اول');
+      await repairStorage(page);
+      await srcName.fill('کتاب اول — ویرایش');
+      await page.getByRole('button', { name: 'Try again' }).click();
+      await page.getByText(/— Saved\./).waitFor({ timeout: 10_000 });
+      expect(await srcName.count()).toBe(0);
+      await until(
+        app,
+        (d) => d.materials.filter((m) => m.title.startsWith('کتاب اول')).map((m) => m.title),
+        (t) => t.length === 1 && t[0] === 'کتاب اول — ویرایش',
+      );
+
+      await goTo(app, '/items/new');
+      await page.getByRole('combobox', { name: 'Study source' }).selectOption('__new__');
+      const inlineName = page.getByRole('textbox', { name: 'New study source name' });
+      await inlineName.fill('جزوهٔ کلاس');
+      await breakStorage(page);
+      await page.getByRole('button', { name: 'Create', exact: true }).click();
+      await page.getByText(/Not saved/).first().waitFor({ timeout: 10_000 });
+      expect(await inlineName.inputValue()).toBe('جزوهٔ کلاس');
+      await repairStorage(page);
+      await page.getByRole('button', { name: 'Try again' }).click();
+      await expect.poll(() => inlineName.count()).toBe(0);
+      const inline = await until(app, (d) => d.materials.filter((m) => m.title === 'جزوهٔ کلاس'), (m) => m.length === 1);
+      expect(await page.getByRole('combobox', { name: 'Study source' }).inputValue()).toBe(inline[0].id);
+
+      // Two sources both proven to be the Khonyagar course: the owner chooses,
+      // and the choice stays on screen until it is saved.
+      await goTo(app, '/materials?instrument=inst-tar');
+      for (let n = 0; n < 2; n++) {
+        await page.getByRole('button', { name: /New/ }).click();
+        await page.getByRole('combobox', { name: 'Kind' }).selectOption('course');
+        await page.getByRole('textbox', { name: 'Source name' }).fill('خنیاگر');
+        await page.getByRole('button', { name: 'Create source' }).click();
+        await page.getByText(/— Saved\./).waitFor({ timeout: 10_000 });
+      }
+      const khon = await until(
+        app,
+        (d) => d.materials.filter((m) => m.instrumentId === 'inst-tar' && m.title === 'خنیاگر').map((m) => m.id),
+        (ids) => ids.length === 2,
+      );
+      await goTo(app, '/repertoire?view=paths&inst=inst-tar');
+      await page.getByRole('button', { name: /Add default pathway: .*خنیاگر/ }).click();
+      await page.getByRole('button', { name: /آزاد میرزاپور/ }).first().click();
+      await page.getByRole('link', { name: 'Continue this stage' }).click();
+      await page.locator('button[title="Add to your items"]').first().click();
+      const choice = page.getByRole('region', { name: 'Choose the study source' });
+      await choice.waitFor({ timeout: 10_000 });
+      await breakStorage(page);
+      await choice.getByRole('button', { name: 'خنیاگر' }).first().click();
+      await choice.getByText(/Not saved/).waitFor({ timeout: 10_000 });
+      await repairStorage(page);
+      await choice.getByRole('button', { name: 'Try again' }).click();
+      await expect.poll(() => choice.count()).toBe(0);
+      await page.getByText(/Study source chosen — Saved\./).waitFor({ timeout: 10_000 });
+      await until(
+        app,
+        (d) => d.materials.filter((m) => m.instrumentId === 'inst-tar' && m.sourceKey).map((m) => m.id),
+        (ids) => ids.length === 1 && khon.includes(ids[0]),
+      );
       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
     } finally {
       await app.close();
@@ -213,6 +362,36 @@ describe('browsing, and coming back to it', () => {
       await expect.poll(() => page.url()).toMatch(/inst=inst-tar/);
       expect(await session()).toBe('inst-setar');
       await reload(app);
+      expect(await session()).toBe('inst-setar');
+
+      // …and through a PATHWAY and its STAGE: whichever door the owner leaves
+      // by, the browsed view and instrument come back — never My repertoire on
+      // the session instrument.
+      const pathsOnTar = async () => {
+        await expect.poll(() => page.url()).toMatch(/view=paths&inst=inst-tar/);
+        expect(await page.getByRole('button', { name: 'Pathways', exact: true }).getAttribute('aria-pressed')).toBe('true');
+        expect(await instruments.getByRole('button', { name: 'Tar', exact: true }).getAttribute('aria-pressed')).toBe('true');
+      };
+      await page.getByRole('button', { name: 'Pathways', exact: true }).click();
+      await page.getByRole('button', { name: /روش هنرستان/ }).click();
+      await page.locator('main').getByRole('link', { name: 'Repertoire', exact: true }).click();
+      await pathsOnTar();
+      await page.getByRole('button', { name: /روش هنرستان/ }).click();
+      await page.getByRole('button', { name: /مبانی دست راست/ }).first().click();
+      await page.locator('main').getByRole('link', { name: 'Pathway', exact: true }).click();
+      await page.locator('main').getByRole('link', { name: 'Repertoire', exact: true }).click();
+      await pathsOnTar();
+      // Opened with no browse context at all (a bookmark), a pathway returns
+      // to ITS OWN instrument's pathways.
+      await goTo(app, '/pathway/tar-honarestan');
+      await page.locator('main').getByRole('link', { name: 'Repertoire', exact: true }).click();
+      await pathsOnTar();
+      // Study sources opened while browsing Tar starts a new source ON Tar.
+      await page.getByRole('link', { name: 'Study sources' }).click();
+      await page.getByRole('button', { name: /New/ }).click();
+      expect(await page.locator('main').getByRole('combobox', { name: 'Instrument' }).inputValue()).toBe('inst-tar');
+      await page.getByRole('link', { name: /Back/ }).click();
+      await pathsOnTar();
       expect(await session()).toBe('inst-setar');
 
       // STALE or UNKNOWN parameters open the nearest honest view.

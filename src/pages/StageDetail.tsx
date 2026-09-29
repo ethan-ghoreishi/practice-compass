@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   hiddenUnits,
   linkCandidates,
@@ -14,11 +14,12 @@ import {
   type StageUnit,
   courseStage,
   itemsPreparedForLesson,
+  pathwaysReturnPath,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
 import RoutineDuration from '../components/RoutineDuration';
-import { Field } from '../components/ui';
+import { Field, useAcknowledgedSaves } from '../components/ui';
 import { ItemChoice, SourceChoice } from '../components/ReferenceChoices';
 import { ArrowLeftIcon, CheckIcon, PlayIcon, PlusIcon } from '../components/icons';
 
@@ -38,9 +39,15 @@ export default function StageDetail() {
   const startItemSession = useStore((s) => s.startItemSession);
   const activeRoutine = useStore((s) => s.activeRoutine);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const stage = db.pathwayStages.find((s) => s.id === stageId);
   const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
+  // The browse context the PATHWAY returns to, handed on by it and handed
+  // back to it; otherwise its own instrument's Pathways view.
+  const browseFrom =
+    (location.state as { from?: string } | null)?.from ??
+    pathwaysReturnPath((pathway ?? db.pathways.find((p) => p.id === pathwayId))?.instrumentId);
   // The pathway's instrument and hidden suggestions: every row, the progress
   // bar and the next suggestion read the SAME resolution.
   const ctx = useMemo(() => pathwayStageContext(pathway), [pathway]);
@@ -60,10 +67,15 @@ export default function StageDetail() {
   const [editIntro, setEditIntro] = useState('');
   // What the last tap did, said plainly — never an Undo that deletes.
   const [notice, setNotice] = useState<string | null>(null);
+  // What a tap was refused, and why — never silent.
+  const [refusal, setRefusal] = useState<string | null>(null);
   // An explicit choice in progress: which item a suggestion is, or which
   // study source a course is.
   const [choosing, setChoosing] = useState<{ unit: StageUnit; mode: 'link' | 'ambiguous' } | null>(null);
   const [sourceChoice, setSourceChoice] = useState<{ itemId: string; materials: Material[] } | null>(null);
+  // Choosing the course's source is a saved decision: the choice stays on
+  // screen until IndexedDB acknowledged it, and a failure offers Try again.
+  const saves = useAcknowledgedSaves();
   // A stage this course owns can write two routines from the course's own
   // syllabus. Both become ORDINARY EDITABLE routines — neither is a live view.
   const course = stageId ? courseStage(stageId) : undefined;
@@ -71,7 +83,7 @@ export default function StageDetail() {
   if (!stage) {
     return (
       <div className="stack">
-        <Link to="/repertoire" className="link">
+        <Link to={browseFrom} className="link">
           ← Back to repertoire
         </Link>
         <div className="card">That stage doesn't exist.</div>
@@ -102,6 +114,8 @@ export default function StageDetail() {
 
   function addSuggestion(unit: StageUnit) {
     const result = addFromCatalog(stage!.id, unit.key);
+    setRefusal(result.refusal ?? null);
+    if (result.refusal) return;
     // Two of the owner's items already answer this suggestion: nothing was
     // created or picked — the owner chooses.
     if (result.candidates) {
@@ -120,7 +134,12 @@ export default function StageDetail() {
       navigate(`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`);
       return;
     }
-    const itemId = unit.item?.id ?? addFromCatalog(stage!.id, unit.key).id;
+    const added = unit.item ? null : addFromCatalog(stage!.id, unit.key);
+    if (added?.refusal) {
+      setRefusal(added.refusal);
+      return;
+    }
+    const itemId = unit.item?.id ?? added?.id;
     if (!itemId) {
       setChoosing({ unit, mode: 'ambiguous' });
       return;
@@ -131,7 +150,7 @@ export default function StageDetail() {
 
   return (
     <div className="stack-lg">
-      <Link to={backTo} className="link row" style={{ gap: 4, width: 'fit-content' }}>
+      <Link to={backTo} state={{ from: browseFrom }} className="link row" style={{ gap: 4, width: 'fit-content' }}>
         <ArrowLeftIcon width={16} height={16} /> Pathway
       </Link>
 
@@ -159,14 +178,20 @@ export default function StageDetail() {
               className="btn btn-danger"
               onClick={() => {
                 if (confirm(`Delete the stage "${stage.code}"? Your items are kept — they just leave the stage.`)) {
-                  deleteStage(stage.id);
-                  navigate(backTo);
+                  const refused = deleteStage(stage.id);
+                  setRefusal(refused);
+                  if (!refused) navigate(backTo, { state: { from: browseFrom } });
                 }
               }}
             >
               Delete
             </button>
           </div>
+          {refusal && (
+            <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
+              {refusal}
+            </p>
+          )}
         </div>
       ) : (
         <header className="stack-sm">
@@ -261,15 +286,32 @@ export default function StageDetail() {
             {notice}
           </p>
         )}
+        {refusal && !editing && (
+          <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
+            {refusal}
+          </p>
+        )}
         {sourceChoice && course && (
           <SourceChoice
             courseName={course.course.sourceName}
             materials={sourceChoice.materials}
+            ack={saves.states.source}
             onChoose={(materialId) => {
-              chooseCourseSource(sourceChoice.itemId, materialId, course.course.id);
+              const { itemId } = sourceChoice;
+              saves.run('source', materialId, () => chooseCourseSource(itemId, materialId, course.course.id), {
+                current: () => materialId,
+                again: () => undefined,
+                saved: () => {
+                  saves.reset('source');
+                  setSourceChoice(null);
+                  setNotice('Study source chosen — Saved.');
+                },
+              });
+            }}
+            onCancel={() => {
+              saves.reset('source');
               setSourceChoice(null);
             }}
-            onCancel={() => setSourceChoice(null)}
           />
         )}
         <div className="stack-sm">
@@ -306,7 +348,7 @@ export default function StageDetail() {
                 onChoose={() => setChoosing({ unit: u, mode: u.candidates ? 'ambiguous' : 'link' })}
                 onHide={pathway && u.ref ? () => setReferenceHidden(pathway.id, u.ref!, true) : undefined}
                 onUnlink={u.item && u.ref ? () => unlinkReference(u.item!.id, u.ref!) : undefined}
-                onRemoveFromPathway={u.item && pathway ? () => removeFromPathway(u.item!.id, pathway.id) : undefined}
+                onRemoveFromPathway={u.item && pathway ? () => setRefusal(removeFromPathway(u.item!.id, pathway.id)) : undefined}
               />
             ),
           )}

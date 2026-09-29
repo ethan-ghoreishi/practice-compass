@@ -119,6 +119,25 @@ export function backfillCourseSourceKeys(materials: Material[], courses: Pick<Co
   return next;
 }
 
+/**
+ * The same one-source-per-course rule, said for the owner: the store checks
+ * every local write that can move a keyed source or stamp a key against it
+ * BEFORE applying, so nothing this device writes is refused on reload. A
+ * second source is never silently un-keyed to make room — that would rewrite
+ * a record the owner did not touch.
+ */
+export function sourceKeyClash(materials: Material[]): string | null {
+  const taken = new Map<string, Material>();
+  for (const m of materials) {
+    if (m.sourceKey === undefined) continue;
+    const slot = `${m.instrumentId}\u0000${m.sourceKey}`;
+    const other = taken.get(slot);
+    if (other) return `“${other.title}” is already this course's study source on that instrument. Keep that one, or move it first.`;
+    taken.set(slot, m);
+  }
+  return null;
+}
+
 /** Inbound validation of the one field this lane adds to a source. */
 export function validateStudySources(db: Pick<PracticeDB, 'materials'>, courses: Pick<CourseData, 'id'>[]): string | null {
   const known = new Set(courses.map(courseSourceKey));

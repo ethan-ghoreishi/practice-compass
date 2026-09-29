@@ -24,6 +24,8 @@ import {
   pathwayProgress,
   pathwayStageContext,
   planLinkReference,
+  planRemoveFromPathway,
+  settleLegacyEvidence,
   stageProgress,
   stageUnits,
 } from './pathways';
@@ -161,7 +163,47 @@ describe('catalogue identity', () => {
     expect(candidates.every((i) => i.instrumentId === 'inst-setar')).toBe(true);
 
     // 3. An explicit Link changes the binding and NOTHING else about the item.
-    const linked = planLinkReference(db.items, ref, 'it-daramad-b', 'inst-setar', NOW);
+    // 3a. While the two are UNDECIDED candidates, neither may be linked
+    //     somewhere else: deciding one would silently hand «درآمد شور» to the
+    //     other. Nor may either leave its stage — by a move, Remove from
+    //     pathway, or a deleted stage — for the same reason. Nothing changes.
+    const rohab = catalogReferenceId(shur, 'rohab');
+    const golriz = catalogReferenceId(shur, 'golriz');
+    expect(planLinkReference(db, rohab, 'it-daramad-a', 'inst-setar', NOW)).toMatchObject({ ok: false, reason: expect.stringMatching(/Choose which one/) });
+    expect(planLinkReference(db, golriz, 'it-daramad-b', 'inst-setar', NOW)).toMatchObject({ ok: false });
+    expect(planRemoveFromPathway(db, 'it-daramad-a', SEED_PATHWAY_IDS.setar, NOW)).toMatchObject({ ok: false });
+    for (const move of [
+      { stageId: undefined },
+      { stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari') },
+      { instrumentId: 'inst-tar' },
+    ]) {
+      const moved = db.items.map((i) => (i.id === 'it-daramad-b' ? { ...i, ...move } : i));
+      expect(settleLegacyEvidence(db, moved, NOW), JSON.stringify(move)).toMatchObject({ ok: false });
+    }
+    // A UNIQUE legacy answer is kept by deciding it when its item moves; an
+    // item with no evidence passes through untouched (same array back).
+    const iraqMoved = db.items.map((i) => (i.id === 'it-iraq' ? { ...i, stageId: undefined } : i));
+    const keptIraq = settleLegacyEvidence(db, iraqMoved, NOW);
+    expect(keptIraq.ok && keptIraq.items.find((i) => i.id === 'it-iraq')!.catalogRefs).toEqual(['radif:mirza-abdollah:afshari:iraq']);
+    const plain = db.items.map((i) => (i.id === 'it-title-only' ? { ...i, stageId: shur } : i));
+    expect(settleLegacyEvidence(db, plain, NOW)).toEqual({ ok: true, items: plain });
+    // An undecided item moved INTO a stage where its key happens to name a
+    // suggestion never silently becomes its answer.
+    const into = db.items.map((i) => (i.id === 'it-kereshmeh-moved' ? { ...i, stageId: shur } : i));
+    const settledInto = settleLegacyEvidence(db, into, NOW);
+    expect(settledInto.ok && settledInto.items.find((i) => i.id === 'it-kereshmeh-moved')!.catalogRefs).toEqual([]);
+
+    // …and an item that is NOT a candidate may not take the disputed
+    // suggestion, nor one another item answers through unique legacy
+    // evidence: either would overrule a record the owner never chose against.
+    expect(planLinkReference(db, ref, 'it-title-only', 'inst-setar', NOW)).toMatchObject({ ok: false });
+    const onlyB = { ...db, items: db.items.filter((i) => i.id !== 'it-daramad-a') };
+    expect(planLinkReference(onlyB, ref, 'it-title-only', 'inst-setar', NOW)).toMatchObject({ ok: false, reason: expect.stringMatching(/already answers/) });
+    const stillOnlyB = resolveCatalogReference(ref, 'inst-setar', onlyB.items);
+    expect(stillOnlyB.status === 'bound' && stillOnlyB.item.id).toBe('it-daramad-b');
+
+    // 3b. Choosing one candidate FOR the disputed suggestion is the explicit choice.
+    const linked = planLinkReference(db, ref, 'it-daramad-b', 'inst-setar', NOW);
     expect(linked.ok).toBe(true);
     const items = linked.ok ? linked.items : [];
     const after = items.find((i) => i.id === 'it-daramad-b')!;
@@ -173,18 +215,27 @@ describe('catalogue identity', () => {
     expect(resolved.status === 'bound' && resolved.item.id).toBe('it-daramad-b');
 
     // 4. A second item cannot silently take a suggestion another already answers.
-    expect(planLinkReference(items, ref, 'it-daramad-a', 'inst-setar', NOW)).toMatchObject({ ok: false });
+    expect(planLinkReference({ ...db, items }, ref, 'it-daramad-a', 'inst-setar', NOW)).toMatchObject({ ok: false });
+    // Once chosen, the other candidate is free to answer something else — and
+    // does NOT carry the disputed suggestion along: the choice stands, and the
+    // result is a database reload accepts.
+    const elsewhere = planLinkReference({ ...db, items }, rohab, 'it-daramad-a', 'inst-setar', NOW);
+    expect(elsewhere.ok && elsewhere.items.find((i) => i.id === 'it-daramad-a')!.catalogRefs).toEqual([rohab]);
+    const chosen = elsewhere.ok ? elsewhere.items : [];
+    expect(() => validateDB({ ...db, items: chosen })).not.toThrow();
+    const stillB = resolveCatalogReference(ref, 'inst-setar', chosen);
+    expect(stillB.status === 'bound' && stillB.item.id).toBe('it-daramad-b');
 
     // 5. Several references may deliberately name ONE item.
     const afshariDaramad = catalogReferenceId(stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari'), 'daramad');
-    const both = planLinkReference(db.items, afshariDaramad, 'it-iraq', 'inst-setar', NOW);
+    const both = planLinkReference(db, afshariDaramad, 'it-iraq', 'inst-setar', NOW);
     expect(both.ok && both.items.find((i) => i.id === 'it-iraq')!.catalogRefs).toEqual([
       'radif:mirza-abdollah:afshari:iraq',
       afshariDaramad,
     ]);
 
     // 6. Cross-instrument reuse is refused: Tar work is never Setar evidence.
-    expect(planLinkReference(db.items, ref, 'it-tar-afshari', 'inst-setar', NOW)).toMatchObject({ ok: false });
+    expect(planLinkReference(db, ref, 'it-tar-afshari', 'inst-setar', NOW)).toMatchObject({ ok: false });
     expect(resolveCatalogReference('radif:mirza-abdollah:afshari:iraq', 'inst-tar', db.items).status).toBe('absent');
     // …and nothing on the stage page links by title on its own.
     expect(stageUnits(stage, db.items, { instrumentId: 'inst-setar' }).find((u) => u.key === 'kereshmeh')!.item).toBeUndefined();

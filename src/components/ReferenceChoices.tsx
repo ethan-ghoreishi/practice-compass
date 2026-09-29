@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { ITEM_STATUS_LABELS, type Material, type PracticeItem } from '../domain';
+import { SaveStatus, type Ack } from './ui';
 
 /**
  * An EXPLICIT choice, never a guess: which of the owner's items a suggestion
@@ -65,11 +66,14 @@ export function ItemChoice({
 export function SourceChoice({
   courseName,
   materials,
+  ack,
   onChoose,
   onCancel,
 }: {
   courseName: string;
   materials: Material[];
+  /** The saved outcome of the last choice: it stays on screen until acknowledged. */
+  ack?: Ack;
   onChoose: (materialId: string) => void;
   onCancel: () => void;
 }) {
@@ -82,10 +86,18 @@ export function SourceChoice({
         More than one of your sources could be this course. Choose the one to keep using — nothing is merged or renamed.
       </p>
       {materials.map((m) => (
-        <button key={m.id} className="btn btn-block" style={{ textAlign: 'start' }} onClick={() => onChoose(m.id)}>
+        <button
+          key={m.id}
+          className="btn btn-block"
+          style={{ textAlign: 'start' }}
+          aria-pressed={ack?.carried === m.id}
+          disabled={ack?.status === 'saving'}
+          onClick={() => onChoose(m.id)}
+        >
           <span dir="auto">{m.title}</span>
         </button>
       ))}
+      <SaveStatus ack={ack} onRetry={() => ack && onChoose(ack.carried)} />
       <button className="btn btn-ghost btn-sm" style={{ width: 'fit-content' }} onClick={onCancel}>
         Decide later
       </button>

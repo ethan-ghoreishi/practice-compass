@@ -210,7 +210,6 @@ describe('Family C — the v15 inbound boundary', () => {
     // INVALID BINDINGS AND SUPPRESSION SCOPE.
     refuse('dangling suggestion', (db) => setItem(db, 'it-iraq', { catalogRefs: ['radif:mirza-abdollah:afshari:no-such'] }), /does not ship/);
     refuse('two items, one instrument, one suggestion', (db) => setItem(db, 'it-daramad-a', { catalogRefs: ['radif:mirza-abdollah:shur:daramad-e-shur'] }), /Two items/);
-    refuse('a Guitar item on a Tar course work', (db) => setItem(db, 'it-cgs-chords', { catalogRefs: ['stage:tar-honarestan-rh-basics:chap-up'] }), /another instrument/);
     refuse('hiding outside its pathway', (db) => void (db.pathways[2] = { ...db.pathways[2], hiddenRefs: ['stage:cgs-1b:chords'] }), /does not present/);
     refuse('unknown course key', (db) => void (db.materials[0] = { ...db.materials[0], sourceKey: 'course:nope' }), /unknown course key/);
     refuse('unsupported version', (db) => ({ ...db, schemaVersion: SCHEMA_VERSION + 1 }), /newer version/);
@@ -227,6 +226,13 @@ describe('Family C — the v15 inbound boundary', () => {
     expect(found.groups.flatMap((g) => g.works.map((w) => w.work.id))).toEqual(['it-daramad-a']);
     // Undecided legacy evidence (no catalogRefs) is never refused.
     expect(byId(kept, 'it-daramad-a').catalogRefs).toBeUndefined();
+    // Validity never reads an instrument's NAME — the owner's editable text.
+    // Renaming Setar to "Guitar" (or anything) leaves every binding as valid
+    // as it was; which instrument a suggestion is offered on is decided where
+    // a binding is made, against the pathway's own instrument id.
+    const renamed = structuredClone(good) as PracticeDB;
+    renamed.instruments = renamed.instruments.map((i) => (i.id === 'inst-setar' ? { ...i, name: 'Guitar' } : { ...i, name: 'سه‌تار' }));
+    expect(() => validateDB(renamed)).not.toThrow();
   });
 });
 
@@ -326,7 +332,19 @@ describe('Family B — reference suggestions', () => {
     store().unlinkReference('it-iraq', 'radif:mirza-abdollah:afshari:iraq');
     const iraq = store().db.items.find((i) => i.id === 'it-iraq')!;
     expect([iraq.stageId, iraq.catalogRefs]).toEqual(['setar-radif-afshari', []]);
-    // The OLD catalogue shortcut no longer deletes anything, ever.
+    // The OLD catalogue shortcut no longer deletes anything, ever — and while
+    // it-daramad-b is one of two UNDECIDED candidates for «درآمد شور», nothing
+    // may move it out of its stage: that would hand the suggestion to the
+    // other candidate without the owner choosing.
+    const daramad = catalogReferenceId('setar-radif-shur', 'daramad-e-shur');
+    expect(store().removeCatalogItem('it-daramad-b')).toBe(false);
+    expect(store().removeFromPathway('it-daramad-b', SEED_PATHWAY_IDS.setar)).toMatch(/Choose which one/);
+    expect(store().placeItemInStage('it-daramad-b', undefined)).toMatch(/Choose which one/);
+    expect(store().deleteStage('setar-radif-shur')).toMatch(/Choose which one/);
+    expect(store().deletePathway(SEED_PATHWAY_IDS.setar)).toMatch(/Choose which one/);
+    expect(store().db.pathwayStages.some((st) => st.id === 'setar-radif-shur')).toBe(true);
+    // Once the owner chooses the OTHER one, it leaves freely — kept whole.
+    expect(store().linkReference(SEED_PATHWAY_IDS.setar, daramad, 'it-daramad-a')).toBeNull();
     expect(store().removeCatalogItem('it-daramad-b')).toBe(true);
     expect(store().db.items.some((i) => i.id === 'it-daramad-b')).toBe(true);
     // Removing a PARENT work from its pathway keeps its parts under it.
@@ -482,5 +500,57 @@ describe('Family A — administration is organisation, never practice evidence',
     const afterCreate = JSON.parse(JSON.stringify(project()));
     afterCreate.items = afterCreate.items.filter(([id]: [string]) => id !== created.id);
     expect(JSON.stringify(afterCreate)).toBe(before);
+
+    // EVERY LOCAL WRITE STAYS A DATABASE RELOAD ACCEPTS. Each administrative
+    // action that can move a binding, an item's instrument or a course key is
+    // followed by the SAME validation every inbound door runs; a write that
+    // would fail it is refused with a sentence and changes nothing.
+    const reloads = (label: string) => expect(() => validateDB(store().exportDB()), label).not.toThrow();
+    const unchanged = (label: string, action: () => unknown, says: RegExp) => {
+      const db = store().db;
+      expect(action(), label).toMatch(says);
+      expect(store().db, label).toBe(db);
+    };
+    reloads('after the administration above');
+    // Moving a bound item to another instrument keeps its binding where it
+    // answers nothing anything else answers there (Tar)…
+    expect(store().updateItem('it-cgs-chords', { instrumentId: 'inst-tar' })).toBeNull();
+    reloads('bound item moved to another instrument');
+    expect(store().updateItem('it-cgs-chords', { instrumentId: 'inst-guitar' })).toBeNull();
+    // …and is refused where an undecided Setar item's legacy evidence already
+    // answers the same suggestion: the move would silently overrule it.
+    unchanged('a move onto legacy evidence', () => store().updateItem('it-cgs-chords', { instrumentId: 'inst-setar' }), /already answers/);
+    // An instrument's name is the owner's text: renaming never invalidates.
+    store().updateInstrument('inst-setar', { name: 'Guitar' });
+    reloads('Setar renamed to Guitar');
+    store().updateInstrument('inst-setar', { name: 'Setar' });
+    // A pathway moved to another instrument still adds valid items.
+    store().updatePathway(SEED_PATHWAY_IDS.guitar, { instrumentId: 'inst-setar' });
+    expect(store().addFromCatalog('cgs-1b', 'arpeggios').created).toBe(true);
+    reloads('pathway moved to Setar, then Add');
+    store().updatePathway(SEED_PATHWAY_IDS.guitar, { instrumentId: 'inst-guitar' });
+    // Moving a bound Tar radif item onto Setar, where another item already
+    // answers the same shared gusheh, is refused rather than written — both
+    // while that Setar item answers only through its undecided legacy
+    // evidence (it-daramad-b, since it-daramad-a was unlinked above) and once
+    // it is explicitly bound. A move never silently overrules either.
+    store().reseedDefaultPathways([RADIF_PATHWAY_IDS.tar]);
+    const tarDaramad = store().addFromCatalog(stageIdFor(RADIF_PATHWAY_IDS.tar, 'shur'), 'daramad-e-shur');
+    expect(tarDaramad.created).toBe(true);
+    unchanged('a move overruling legacy evidence', () => store().updateItem(tarDaramad.id, { instrumentId: 'inst-setar' }), /already answers/);
+    expect(store().linkReference(SEED_PATHWAY_IDS.setar, catalogReferenceId('setar-radif-shur', 'daramad-e-shur'), 'it-daramad-b')).toBeNull();
+    unchanged('two items, one gusheh, one instrument', () => store().updateItem(tarDaramad.id, { instrumentId: 'inst-setar' }), /already answers/);
+    // A notes save is never judged by any of this.
+    expect(store().updateItem(tarDaramad.id, { notes: 'on Tar' })).toBeNull();
+    // A course key stays on ONE source per instrument: choosing a second
+    // source, or moving the keyed one onto an instrument that already holds
+    // the key, is refused — the other source is never silently un-keyed.
+    const copy = store().addMaterial({ instrumentId: 'inst-guitar', title: 'CGS notes', sourceType: 'course' });
+    unchanged('a second source for a keyed course', () => store().chooseCourseSource('it-cgs-chords', copy, 'cgs'), /already this course's study source/);
+    // (Adding from the pathway while it sat on Setar minted Setar's own keyed source.)
+    expect(store().db.materials.filter((m) => m.sourceKey === 'course:cgs').map((m) => m.instrumentId).sort()).toEqual(['inst-guitar', 'inst-setar']);
+    unchanged('keyed source moved onto a holder', () => store().updateMaterial('mat-cgs', { instrumentId: 'inst-setar' }), /already this course's study source/);
+    expect(store().updateMaterial('mat-cgs', { title: 'CGS (renamed)' })).toBeNull();
+    reloads('after every counterexample');
   });
 });

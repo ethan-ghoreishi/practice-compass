@@ -55,6 +55,40 @@ and the proof route.
 - **"Practice list" keeps its name.** The plan spoke of "All practice items"; three existing
   journeys and AGENTS.md's canonical names use "Practice list", so the view kept it.
 
+**After the first sealed review (same day).** Five families came back; each was closed at its
+shared choke point rather than per counterexample.
+
+- **Stored-binding validity no longer reads an instrument's name.** `validateReferences` refused
+  a binding whose ref's shipped instrument KIND differed from the item's, with the kind derived
+  from the instrument NAME (`seedInstrumentIds`). Settings renames on every keystroke and is out
+  of this lane's scope, so a refusal there could only ever be silent — and renaming Setar to
+  "Guitar" turned a valid database into one reload refused. The per-instrument ONE-holder rule
+  stays; which instrument a suggestion is offered on is decided where a binding is MADE, against
+  the pathway's own `instrumentId`. The ac-2 case that asserted the name-derived refusal was
+  replaced by one asserting a rename leaves the database valid.
+- **Every local identity write is checked against the reload rules first** (`identityRefusal`:
+  friendly `bindingClash`/`sourceKeyClash`, then the validators themselves). A second keyed
+  source for one course is REFUSED, never made room for by un-keying the other.
+- **Undecided legacy evidence is settled, never dropped** (`settleLegacyEvidence`). Once an
+  undecided item is decided it leaves the legacy candidates, so linking, moving or unplacing one
+  of two candidates silently handed the suggestion to the other. The unique answer is decided
+  before it moves; one of several REFUSES until the owner chooses (the existing candidate
+  picker). Refusing — rather than a new "pending" field — keeps the schema as it is and adds no
+  provenance layer. The mirror case is refused too: a link or an instrument move may not make an item
+  the answer to a suggestion another item answers (or disputes) through legacy evidence. The migration binds only evidence in a stage of a pathway on the item's own
+  instrument: a Setar item in a Guitar stage never showed as that stage's answer, and binding it
+  is what made a baseline-accepted v14 file refuse.
+- **Registry editors share one acknowledged-save hook** (`useAcknowledgedSaves`, `ui.tsx`), on
+  the notebook's rules: Saved only for the carried draft, newer text re-written, outcomes keyed by
+  record (a row moved by archive or removed by delete keeps its Try again), close only after
+  acknowledgement, and Done resets. Deleting an already-deleted custom term rewrites rather than
+  refuses, so its Try again is never a silent no-op.
+- **Missing shipped stages are offered, not reseeded** (`offeredDefaultStages`), for every shipped
+  pathway that is present; a course's levels stay the course action's. Their routines are not
+  recreated — deleting a stage keeps them, so an absent one was deleted by the owner.
+- **Pathway and stage return to the browse that opened them**, else to their own instrument's
+  Pathways view (`pathwaysReturnPath`).
+
 ## The WebKit teardown race: six excuses, and why none could be proved (history, moved from AGENTS.md 2026-09-29)
 
 AGENTS.md keeps the rules; this is the record of how they were found.

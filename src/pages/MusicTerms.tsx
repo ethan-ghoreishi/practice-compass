@@ -11,8 +11,7 @@ import {
   type MusicTermKind,
 } from '../domain';
 import { useStore } from '../store/useStore';
-import { storageSettled } from '../store/idb';
-import { Field } from '../components/ui';
+import { Field, SaveStatus, useAcknowledgedSaves, type AckSaves } from '../components/ui';
 import { ArrowLeftIcon, PlusIcon } from '../components/icons';
 
 // ---------------------------------------------------------------------------
@@ -23,65 +22,36 @@ import { ArrowLeftIcon, PlusIcon } from '../components/icons';
 // spelling. Nothing here is required to classify a piece — typed text always
 // works — and nothing here merges, bulk-edits or guesses.
 //
-// "Saved." means IndexedDB acknowledged the write (`storageSettled`), exactly
-// as the item notebook does. A failed write keeps the draft on screen with
-// Try again, which writes what is on screen NOW.
+// "Saved." means IndexedDB acknowledged the write, exactly as the item
+// notebook does, and only for the text that write carried (`useAcknowledged-
+// Saves`). A failed write keeps the draft on screen with Try again, which
+// writes what is on screen NOW. Every outcome is held HERE, keyed by term, so
+// archiving (the row moves), restoring or deleting (the row goes) never takes
+// a failure and its Try again with it.
 // ---------------------------------------------------------------------------
-
-type SaveState = { status: 'idle' } | { status: 'saving' } | { status: 'saved' } | { status: 'failed' } | { status: 'refused'; reason: string };
-
-/** Run one store action, then report durability only once storage answers. */
-function useAcknowledgedSave(): [SaveState, (action: () => string | null) => void] {
-  const [state, setState] = useState<SaveState>({ status: 'idle' });
-  const seq = useRef(0);
-  const run = (action: () => string | null) => {
-    const refusal = action();
-    if (refusal) {
-      setState({ status: 'refused', reason: refusal });
-      return;
-    }
-    const mine = ++seq.current;
-    setState({ status: 'saving' });
-    // Captured in the same tick as the action: this write's own outcome.
-    storageSettled().then(
-      () => mine === seq.current && setState({ status: 'saved' }),
-      () => mine === seq.current && setState({ status: 'failed' }),
-    );
-  };
-  return [state, run];
-}
-
-function SaveStatus({ state, onRetry }: { state: SaveState; onRetry: () => void }) {
-  if (state.status === 'saving') return <span className="tiny faint" role="status">Saving…</span>;
-  if (state.status === 'saved') return <span className="tiny" role="status">Saved.</span>;
-  if (state.status === 'refused')
-    return (
-      <span className="tiny" role="alert" style={{ color: 'var(--tone-alert)' }}>
-        {state.reason}
-      </span>
-    );
-  if (state.status === 'failed')
-    return (
-      <span className="row tiny" role="alert" style={{ gap: 8, color: 'var(--tone-alert)' }}>
-        Not saved — this device refused the write. Your text is still here.
-        <button className="btn btn-sm" onClick={onRetry}>
-          Try again
-        </button>
-      </span>
-    );
-  return null;
-}
 
 export default function MusicTerms() {
   const db = useStore((s) => s.db);
+  const deleteTerm = useStore((s) => s.deleteTerm);
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? '/more';
   const vocab = useMemo(() => vocabulary(db.musicTerms), [db.musicTerms]);
   const [kind, setKind] = useState<MusicTermKind>('dastgah');
+  const saves = useAcknowledgedSaves();
+  // A deleted term has no row left to speak for it: its name is kept here so
+  // its save outcome — and a Try again — still has somewhere to appear.
+  const [deleted, setDeleted] = useState<Record<string, string>>({});
 
   const terms = vocab.terms.filter((t) => t.kind === kind);
   const live = terms.filter((t) => !t.archived);
   const archived = terms.filter((t) => t.archived);
+  const remove = (term: MusicTerm) => {
+    setDeleted((d) => ({ ...d, [term.id]: term.name }));
+    saves.run(term.id, 'delete', () => deleteTerm(term.id));
+  };
+  const row = (t: MusicTerm) => (
+    <TermRow key={t.id} term={t} users={itemsUsingTerm(db.items, t.id, vocab).length} saves={saves} onDelete={() => remove(t)} />
+  );
 
   return (
     <div className="stack-lg">
@@ -104,48 +74,78 @@ export default function MusicTerms() {
         ))}
       </div>
 
-      <AddTerm kind={kind} />
+      <AddTerm kind={kind} saves={saves} />
 
+      {Object.entries(deleted).map(([id, name]) => (
+        <SaveStatus
+          key={id}
+          ack={saves.states[id]}
+          subject={<><span dir="auto">{name}</span> deleted — </>}
+          onRetry={() => saves.run(id, 'delete', () => deleteTerm(id))}
+        />
+      ))}
+
+      {/* ONE parent for live and archived rows, so archiving or restoring a
+          term MOVES its row (state and all) instead of remounting it. */}
       <section className="stack-sm" aria-label={`${MUSIC_TERM_KIND_LABELS[kind]} terms`}>
         <div className="card card-flush list">
-          {live.map((t) => (
-            <TermRow key={t.id} term={t} users={itemsUsingTerm(db.items, t.id, vocab).length} />
-          ))}
+          {live.map(row)}
+          {archived.length > 0 && (
+            <div key="archived-heading" className="list-row section-label">
+              Archived — still on your pieces, no longer offered
+            </div>
+          )}
+          {archived.map(row)}
         </div>
       </section>
-
-      {archived.length > 0 && (
-        <section className="stack-sm">
-          <div className="section-label">Archived — still on your pieces, no longer offered</div>
-          <div className="card card-flush list">
-            {archived.map((t) => (
-              <TermRow key={t.id} term={t} users={itemsUsingTerm(db.items, t.id, vocab).length} />
-            ))}
-          </div>
-        </section>
-      )}
     </div>
   );
 }
 
-function AddTerm({ kind }: { kind: MusicTermKind }) {
+function AddTerm({ kind, saves }: { kind: MusicTermKind; saves: AckSaves }) {
   const addTerm = useStore((s) => s.addTerm);
   const updateTerm = useStore((s) => s.updateTerm);
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [aliases, setAliases] = useState('');
-  // Once added, a retry REWRITES that term rather than adding a second one.
-  const [addedId, setAddedId] = useState<string | null>(null);
-  const [save, run] = useAcknowledgedSave();
+  const [name, setNameState] = useState('');
+  const [aliases, setAliasesState] = useState('');
+  // The live draft, readable when a write settles (a ref, never a render's copy).
+  const draft = useRef({ name: '', aliases: '' });
+  const setName = (v: string) => {
+    draft.current = { ...draft.current, name: v };
+    setNameState(v);
+  };
+  const setAliases = (v: string) => {
+    draft.current = { ...draft.current, aliases: v };
+    setAliasesState(v);
+  };
+  const keyOf = () => JSON.stringify([draft.current.name, draft.current.aliases]);
+  // Once added, a retry or a later edit REWRITES that term rather than adding a second one.
+  const addedId = useRef<string | null>(null);
+  const ack = saves.states.new;
 
   function submit() {
-    run(() => {
-      if (addedId) return updateTerm(addedId, { name, aliases: parseAliases(aliases) });
-      const result = addTerm({ kind, name, aliases: parseAliases(aliases) });
-      if ('refusal' in result) return result.refusal;
-      setAddedId(result.id);
-      return null;
-    });
+    saves.run(
+      'new',
+      keyOf(),
+      () => {
+        const { name: n, aliases: a } = draft.current;
+        if (addedId.current) return updateTerm(addedId.current, { name: n, aliases: parseAliases(a) });
+        const result = addTerm({ kind, name: n, aliases: parseAliases(a) });
+        if ('refusal' in result) return result.refusal;
+        addedId.current = result.id;
+        return null;
+      },
+      { current: keyOf, again: submit },
+    );
+  }
+
+  function close() {
+    // A fresh session next time: nothing from this one carries over.
+    saves.reset('new');
+    addedId.current = null;
+    setName('');
+    setAliases('');
+    setOpen(false);
   }
 
   if (!open) {
@@ -155,67 +155,70 @@ function AddTerm({ kind }: { kind: MusicTermKind }) {
       </button>
     );
   }
-  const done = save.status === 'saved';
+  // Done only while what is on screen is exactly what storage acknowledged.
+  const done = ack?.status === 'saved' && ack.carried === keyOf();
   return (
     <div className="card stack-sm">
       <Field label="Name">
-        <input className="input" dir="auto" aria-label="Term name" value={name} onChange={(e) => setName(e.target.value)} disabled={done} />
+        <input className="input" dir="auto" aria-label="Term name" value={name} onChange={(e) => setName(e.target.value)} />
       </Field>
       <Field label="Other spellings" hint="One per line — each is an exact spelling that means this term.">
-        <textarea className="textarea" dir="auto" aria-label="Other spellings" value={aliases} onChange={(e) => setAliases(e.target.value)} disabled={done} />
+        <textarea className="textarea" dir="auto" aria-label="Other spellings" value={aliases} onChange={(e) => setAliases(e.target.value)} />
       </Field>
       <div className="row-wrap" style={{ gap: 8 }}>
         {!done && (
-          <button className="btn btn-primary" disabled={!name.trim() || save.status === 'saving'} onClick={submit}>
-            Add term
+          <button className="btn btn-primary" disabled={!name.trim() || ack?.status === 'saving'} onClick={submit}>
+            {addedId.current ? 'Save changes' : 'Add term'}
           </button>
         )}
-        <button
-          className="btn"
-          onClick={() => {
-            setOpen(false);
-            setName('');
-            setAliases('');
-            setAddedId(null);
-          }}
-        >
+        <button className="btn" onClick={close}>
           {done ? 'Done' : 'Cancel'}
         </button>
-        <SaveStatus state={save} onRetry={submit} />
+        <SaveStatus ack={ack} current={keyOf()} onRetry={submit} />
       </div>
     </div>
   );
 }
 
-function TermRow({ term, users }: { term: MusicTerm; users: number }) {
+function TermRow({ term, users, saves, onDelete }: { term: MusicTerm; users: number; saves: AckSaves; onDelete: () => void }) {
   const updateTerm = useStore((s) => s.updateTerm);
-  const deleteTerm = useStore((s) => s.deleteTerm);
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(term.name);
-  const [aliases, setAliases] = useState(term.aliases.join('\n'));
-  const [save, run] = useAcknowledgedSave();
+  const [name, setNameState] = useState(term.name);
+  const [aliases, setAliasesState] = useState(term.aliases.join('\n'));
+  const draft = useRef({ name: term.name, aliases: term.aliases.join('\n') });
+  const setName = (v: string) => {
+    draft.current = { ...draft.current, name: v };
+    setNameState(v);
+  };
+  const setAliases = (v: string) => {
+    draft.current = { ...draft.current, aliases: v };
+    setAliasesState(v);
+  };
+  const editKey = () => JSON.stringify(['edit', draft.current.name, draft.current.aliases]);
   const builtIn = isBuiltInTerm(term.id);
-  // Try again repeats the action that failed, with what is on screen NOW.
-  const [last, setLast] = useState<'edit' | 'archive'>('edit');
+  const ack = saves.states[term.id];
 
-  const saveEdit = () => {
-    setLast('edit');
-    run(() => {
-      const refusal = updateTerm(term.id, { name, aliases: parseAliases(aliases) });
-      // An accepted rename keeps the FORMER name as a spelling. Show the
-      // spellings the store now holds, so a Try again (or a second save)
-      // writes them rather than quietly asking to remove that one.
-      if (!refusal) {
-        const saved = vocabulary(useStore.getState().db.musicTerms).byId.get(term.id);
-        if (saved) setAliases(saved.aliases.join('\n'));
-      }
-      return refusal;
-    });
-  };
-  const toggleArchive = () => {
-    setLast('archive');
-    run(() => updateTerm(term.id, { archived: !term.archived }));
-  };
+  const saveEdit = () =>
+    saves.run(
+      term.id,
+      editKey,
+      () => {
+        const refusal = updateTerm(term.id, { name: draft.current.name, aliases: parseAliases(draft.current.aliases) });
+        // An accepted rename keeps the FORMER name as a spelling. Show the
+        // spellings the store now holds, so a Try again (or a second save)
+        // writes them rather than quietly asking to remove that one.
+        if (!refusal) {
+          const saved = vocabulary(useStore.getState().db.musicTerms).byId.get(term.id);
+          if (saved) setAliases(saved.aliases.join('\n'));
+        }
+        return refusal;
+      },
+      { current: editKey, again: saveEdit },
+    );
+  // Archive/restore writes the state the store now holds; a retry repeats it.
+  const writeArchived = (archived: boolean) => saves.run(term.id, 'archive', () => updateTerm(term.id, { archived }));
+  // `term` is the store's current state, which a failed write already holds.
+  const retry = () => (ack?.carried === 'archive' ? writeArchived(!!term.archived) : saveEdit());
 
   return (
     <div className="list-row" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
@@ -244,7 +247,11 @@ function TermRow({ term, users }: { term: MusicTerm; users: number }) {
         >
           {editing ? 'Close' : 'Edit'}
         </button>
-        <button className="btn btn-ghost btn-sm" onClick={toggleArchive} aria-label={`${term.archived ? 'Restore' : 'Archive'} ${term.name}`}>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => writeArchived(!term.archived)}
+          aria-label={`${term.archived ? 'Restore' : 'Archive'} ${term.name}`}
+        >
           {term.archived ? 'Restore' : 'Archive'}
         </button>
         {!builtIn && (
@@ -254,7 +261,7 @@ function TermRow({ term, users }: { term: MusicTerm; users: number }) {
             disabled={users > 0}
             title={users > 0 ? 'Used by pieces — archive it instead' : undefined}
             onClick={() => {
-              if (confirm(`Delete the term “${term.name}”? No piece uses it.`)) run(() => deleteTerm(term.id));
+              if (confirm(`Delete the term “${term.name}”? No piece uses it.`)) onDelete();
             }}
           >
             Delete
@@ -270,15 +277,15 @@ function TermRow({ term, users }: { term: MusicTerm; users: number }) {
             <textarea className="textarea" dir="auto" aria-label={`Spellings of ${term.name}`} value={aliases} onChange={(e) => setAliases(e.target.value)} />
           </Field>
           <div className="row-wrap" style={{ gap: 8 }}>
-            <button className="btn btn-primary btn-sm" disabled={!name.trim() || save.status === 'saving'} onClick={saveEdit}>
+            <button className="btn btn-primary btn-sm" disabled={!name.trim() || ack?.status === 'saving'} onClick={saveEdit}>
               Save
             </button>
           </div>
         </div>
       )}
-      {save.status !== 'idle' && (
+      {ack && ack.carried !== 'delete' && (
         <div style={{ width: '100%' }}>
-          <SaveStatus state={save} onRetry={last === 'edit' ? saveEdit : () => run(() => updateTerm(term.id, { archived: term.archived }))} />
+          <SaveStatus ack={ack} current={ack.carried === 'archive' ? undefined : editKey()} onRetry={retry} />
         </div>
       )}
     </div>

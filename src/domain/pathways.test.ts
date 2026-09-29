@@ -3,7 +3,9 @@ import { itemFromCatalogEntry } from './factories';
 import {
   catalogForStage,
   offeredDefaultPathways,
+  offeredDefaultStages,
   planDefaultPathways,
+  planDefaultStages,
   SEED_PATHWAY_IDS,
   seedInstrumentIds,
   seedPathways,
@@ -616,6 +618,40 @@ describe('restoring shipped pathways', () => {
     expect(restored.slice(0, without2b.length)).toEqual(without2b);
     expect(restored.slice(without2b.length).map((s) => s.id)).toEqual(['cgs-2b']);
     expect(planCourseLevels(cgs, restored, ['2b'], LATER)).toBe(restored);
+
+    // 3b. EVERY shipped pathway that is not a course restores a missing stage
+    //     the same explicit way — the mixed Setar radif, both named radif
+    //     pathways and Honarestān — keeping the pathway, its edits and routines.
+    //     (Hand-authored expectations: the deleted stage's own seeded id comes
+    //     back and nothing else does.)
+    const shurId = stageIdFor(SEED_PATHWAY_IDS.setar, 'shur');
+    expect(offeredDefaultStages(installed, SEED_PATHWAY_IDS.setar).map((s) => s.id)).toEqual([shurId]);
+    // The RENAMED stage (Afshari, "Edited stage") is present, so never offered.
+    expect(offeredDefaultStages(installed, SEED_PATHWAY_IDS.setar).some((s) => s.id === AFSHARI)).toBe(false);
+    const withShur = planDefaultStages(installed, SEED_PATHWAY_IDS.setar, [shurId], LATER);
+    expect(withShur.slice(0, installed.pathwayStages.length)).toEqual(installed.pathwayStages);
+    withShur.slice(0, installed.pathwayStages.length).forEach((st, i) => expect(st).toBe(installed.pathwayStages[i]));
+    const back = withShur.slice(installed.pathwayStages.length);
+    expect(back.map((st) => [st.id, st.pathwayId, st.code])).toEqual([[shurId, SEED_PATHWAY_IDS.setar, 'شور']]);
+    // Its suggestions come back with it, because the id is the shipped one.
+    expect(catalogForStage(back[0].id).length).toBeGreaterThan(0);
+    expect(planDefaultStages({ ...installed, pathwayStages: withShur }, SEED_PATHWAY_IDS.setar, [shurId], LATER)).toBe(withShur);
+    expect(planDefaultStages(installed, SEED_PATHWAY_IDS.setar, [], LATER)).toBe(installed.pathwayStages);
+    for (const pathwayId of [RADIF_PATHWAY_IDS.setar, RADIF_PATHWAY_IDS.tar, SEED_PATHWAY_IDS.tar]) {
+      const own = installed.pathwayStages.filter((st) => st.pathwayId === pathwayId);
+      expect(own.length, pathwayId).toBeGreaterThan(1);
+      const gone = own[1];
+      const lacking = { ...installed, pathwayStages: installed.pathwayStages.filter((st) => st.id !== gone.id) };
+      expect(offeredDefaultStages(lacking, pathwayId).map((st) => st.id), pathwayId).toEqual([gone.id]);
+      const put = planDefaultStages(lacking, pathwayId, [gone.id], LATER);
+      expect(put.slice(0, lacking.pathwayStages.length), pathwayId).toEqual(lacking.pathwayStages);
+      expect(put.slice(lacking.pathwayStages.length).map((st) => [st.id, st.code, st.title]), pathwayId).toEqual([[gone.id, gone.code, gone.title]]);
+      expect(put.some((st) => st.pathwayId === pathwayId && st.id === gone.id)).toBe(true);
+    }
+    // A course's LEVELS are offered by the course action only — never twice.
+    expect(offeredDefaultStages({ ...installed, pathwayStages: without2b }, 'cgs').some((st) => st.id === 'cgs-2b')).toBe(false);
+    // An absent pathway offers no stages (that is `offeredDefaultPathways`' job).
+    expect(offeredDefaultStages({ ...installed, pathways: installed.pathways.filter((p) => p.id !== SEED_PATHWAY_IDS.tar) }, SEED_PATHWAY_IDS.tar)).toEqual([]);
 
     // 4. ARCHIVE / RESTORE use the existing field; both directions are
     //    idempotent, and hiding a suggestion twice changes nothing.

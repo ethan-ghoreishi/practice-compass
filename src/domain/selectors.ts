@@ -443,6 +443,16 @@ export function browseParams(state: BrowseState): URLSearchParams {
   return p;
 }
 
+/**
+ * Where a pathway (or one of its stages) returns to when nothing handed it a
+ * browse context: the Pathways view, on the pathway's OWN instrument — so a
+ * Tar pathway opened while practising Setar comes back to Tar's pathways, not
+ * to the session instrument's repertoire. A General pathway returns to all.
+ */
+export function pathwaysReturnPath(pathwayInstrumentId: ID | undefined): string {
+  return `/repertoire?${browseParams({ view: 'paths', instrumentId: pathwayInstrumentId ?? '', q: '', quick: [] })}`;
+}
+
 /** True when anything beyond view and instrument narrows what is shown. */
 export function hasBrowseFilters(state: BrowseState): boolean {
   return !!(state.q || state.dastgah || state.form || state.composer || state.status || state.type || state.quick.length);

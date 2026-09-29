@@ -234,6 +234,22 @@
         "totalMinutes": 70,
         "createdAt": "2026-07-01T09:00:00.000Z",
         "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-cgs-on-setar",
+        "instrumentId": "inst-setar",
+        "stageId": "cgs-1b",
+        "strand": "chords",
+        "catalogKey": "chords",
+        "title": "Chord shapes (moved to Setar)",
+        "itemType": "exercise",
+        "status": "new",
+        "importance": 3,
+        "difficulty": 2,
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "createdAt": "2026-07-02T09:00:00.000Z",
+        "updatedAt": "2026-07-02T09:00:00.000Z"
       }
     ],
     "blocks": [

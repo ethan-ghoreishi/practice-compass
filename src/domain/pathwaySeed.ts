@@ -14,7 +14,7 @@ import type {
 } from './types';
 import { CGS_COURSE } from './courseData';
 import { normalizePersian } from './farsi';
-import { catalogReferenceId, courseStageSeeds, type CourseStageSeed } from './courseSeed';
+import { catalogReferenceId, courseForPathway, courseStageId, courseStageSeeds, type CourseStageSeed } from './courseSeed';
 import { KHONYAGAR_COURSE, KHONYAGAR_PATHWAY } from './khonyagarData';
 import { MIRZA_ABDOLLAH_RADIF, type RadifDastgah } from './referenceCatalog';
 import { nowISO } from './util';
@@ -683,6 +683,44 @@ export function planDefaultPathways(
   };
 }
 
+/**
+ * The shipped stages a PRESENT default pathway lacks — the stage-level twin of
+ * `offeredDefaultPathways`, for every shipped pathway: the radif pathways,
+ * Honarestān, and a course pathway's own hand-authored stages (a course's
+ * LEVELS stay `offeredCourseLevels`', so nothing is offered twice). Keyed by
+ * the stage's deterministic id, never its title: a renamed stage is present and
+ * never offered; a deleted one is offered in a list and added only when chosen
+ * (`planDefaultStages`). Nothing here runs on load, import or sync.
+ */
+export function offeredDefaultStages(db: Pick<PracticeDB, 'pathways' | 'pathwayStages'>, pathwayId: string): PathwayStage[] {
+  const row = ALL_SEEDS.find((r) => r.seed.id === pathwayId);
+  if (!row || !db.pathways.some((p) => p.id === pathwayId)) return [];
+  const course = courseForPathway(pathwayId);
+  const levels = new Set(course ? course.groups.map((g) => courseStageId(course, g.key)) : []);
+  const have = new Set(db.pathwayStages.map((s) => s.id));
+  return expand(row.seed, '', 0, LEGACY_SEED_TIME).pathwayStages.filter((s) => !have.has(s.id) && !levels.has(s.id));
+}
+
+/**
+ * The stages collection with exactly the CHOSEN offered stages added, after
+ * the pathway's own (the order the owner set is kept). The stage only: its
+ * shipped routines are NOT recreated — deleting a stage keeps its routines
+ * (detached, same id), so a missing one is a routine the owner deleted. A
+ * choice that adds nothing returns the SAME array, so a no-op is detectable.
+ */
+export function planDefaultStages(
+  db: Pick<PracticeDB, 'pathways' | 'pathwayStages'>,
+  pathwayId: string,
+  stageIds: string[],
+  now: Date,
+): PathwayStage[] {
+  const chosen = offeredDefaultStages(db, pathwayId).filter((s) => stageIds.includes(s.id));
+  if (!chosen.length) return db.pathwayStages;
+  const ts = nowISO(now);
+  let order = db.pathwayStages.filter((s) => s.pathwayId === pathwayId).length;
+  return [...db.pathwayStages, ...chosen.map((s) => ({ ...s, order: order++, createdAt: ts, updatedAt: ts }))];
+}
+
 // --- Catalog (reference suggestions per stage) ------------------------------
 
 let catalogCache: Record<string, CatalogEntry[]> | null = null;
@@ -721,15 +759,13 @@ export function catalogForStage(stageId: string): CatalogEntry[] {
 let referenceCache: {
   known: Set<string>;
   byPathway: Map<string, Set<string>>;
-  kinds: Map<string, Set<string>>;
 } | null = null;
 
 function references() {
   if (!referenceCache) {
     const known = new Set<string>();
     const byPathway = new Map<string, Set<string>>();
-    const kinds = new Map<string, Set<string>>();
-    for (const { seed, key } of ALL_SEEDS) {
+    for (const { seed } of ALL_SEEDS) {
       const own = byPathway.get(seed.id) ?? new Set<string>();
       for (const st of seed.stages) {
         const stageId = stageIdFor(seed.id, st.slug ?? st.code);
@@ -737,19 +773,13 @@ function references() {
           const ref = catalogReferenceId(stageId, e.key);
           known.add(ref);
           own.add(ref);
-          kinds.set(ref, (kinds.get(ref) ?? new Set()).add(key));
         }
       }
       byPathway.set(seed.id, own);
     }
-    referenceCache = { known, byPathway, kinds };
+    referenceCache = { known, byPathway };
   }
   return referenceCache;
-}
-
-/** Which instruments' shipped pathways present a reference ('guitar' / 'setar' / 'tar'). */
-export function referenceInstrumentKinds(refId: string): ReadonlySet<string> {
-  return references().kinds.get(refId) ?? new Set();
 }
 
 /** True when some shipped suggestion carries this reference id. */

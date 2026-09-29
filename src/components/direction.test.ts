@@ -200,8 +200,13 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/Lessons.tsx", tagName: "div", classValue: "grow" },
   { file: "pages/Lessons.tsx", tagName: "div", classValue: "tiny dim" },
   { file: "pages/Lessons.tsx", tagName: "link", classValue: "grow" },
+  // A saved or deleted source's own title, isolated inside its status line.
+  { file: "pages/Materials.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Materials.tsx", tagName: "span", classValue: "" },
   { file: "pages/Materials.tsx", tagName: "section", classValue: "stack-sm" },
   { file: "pages/Materials.tsx", tagName: "div", classValue: "grow" },
+  // A deleted term's own name, isolated inside its save status.
+  { file: "pages/MusicTerms.tsx", tagName: "span", classValue: "" },
   // A musical term's name with its spellings and generated caption.
   { file: "pages/MusicTerms.tsx", tagName: "div", classValue: "grow" },
   { file: "pages/PathwayDetail.tsx", tagName: "header", classValue: "stack-sm" },
@@ -212,6 +217,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "small dim" },
   { file: "pages/PathwayDetail.tsx", tagName: "button", classValue: "grow" },
   { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "" },
+  // A shipped stage offered for restoring (Farsi for Setar and Tar).
+  { file: "pages/PathwayDetail.tsx", tagName: "span", classValue: "" },
   // The shared instrument selector's own (owner-editable) instrument names.
   { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
   // ONE group per discovered heading (dastgāh, form, maestro or source) —

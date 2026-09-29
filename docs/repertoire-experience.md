@@ -43,10 +43,13 @@ Reference ids: `stage:<stageId>:<key>` · `course:<courseId>:work:<identity>` ·
 | --- | --- | --- |
 | Term values on items | `ItemForm` (`MusicalTermField` → `valueFromInput`), `itemFromCatalogEntry` (radif entries carry `{termId}`), archive adoption (`sourceReconcile`, raw registry TEXT only), migration (never — legacy text is kept) | `resolveValue`/`valueLabel`/`valueGroup`/`valueSearchTexts` → `groupByDastgah`, `discoverRepertoire`, `repertoireSearchTexts` (Practice list, Start), `ItemDetail` details, `WorkRow`, `MusicalTermField`, archive suggestion comparison (`fieldAlreadySays`), `isWork`/`hasPersianIdentity`, `kindFromItem`, `validateMusicTerms` |
 | `musicTerms` | `addTerm`/`updateTerm`/`deleteTerm` (store, via `planAddTerm`/`planUpdateTerm`/`planDeleteTerm`), `migrateToV15` (empty list only) | `vocabulary()` everywhere above, `searchAliasTable`, MusicTerms page, `validateDB` |
-| `catalogRefs` | `planCatalogAddition` (Add), `planLinkReference`, `planUnlinkReference`, `planRemoveFromPathway` (decides a legacy binding before clearing placement), `bindLegacyReferences` (v15 migration) | `resolveCatalogReference` → `stageUnits`/`hiddenUnits`/`stageProgress`/`currentStage`/`nextUnitInStage`/`pathwayProgress`, `planCatalogAddition` reuse, `carriedCourseWorkItem`, routine segment binding (`unitItem`), `itemReferences` → `itemFiles` course material, `validateReferences` |
+| `catalogRefs` | `planCatalogAddition` (Add), `planLinkReference`, `planUnlinkReference`, `planRemoveFromPathway`, and — through `settleLegacyEvidence` (unique legacy decided, ambiguous refused) — every placement writer: `updateItem` (stage/key/instrument), `placeItemInStage`, `deleteStage`, `deletePathway`; `bindLegacyReferences` (v15 migration, fitting evidence only). Every one passes `identityRefusal` before `set()`; a link or instrument move may not overrule another item's legacy answer (`legacyClaimRefusal`) | `resolveCatalogReference` → `stageUnits`/`hiddenUnits`/`stageProgress`/`currentStage`/`nextUnitInStage`/`pathwayProgress`, `planCatalogAddition` reuse, `carriedCourseWorkItem`, routine segment binding (`unitItem`), `itemReferences` → `itemFiles` course material, `validateReferences` |
 | `hiddenRefs` | `planSetReferenceHidden` (Hide/Restore), `planRemoveFromPathway` | `pathwayStageContext` → every stage consumer above; `validateReferences` (scope = the pathway's shipped definition) |
 | Pathway route | `updatePathway` (archived, pin), `deleteStage` (clears pin) | `visiblePathways`/`primaryPathway`/`pathwayPosition` → Today, SessionPlan (build + editor), Repertoire cards, PathwayDetail |
-| `sourceKey` | `resolveCourseSource` (mint/adopt), `chooseCourseSource`, `backfillCourseSourceKeys` (v15) | `findCourseSource`, `validateStudySources` |
+| `sourceKey` | `resolveCourseSource` (mint/adopt), `chooseCourseSource` and `updateMaterial` (both refused by `sourceKeyClash` when the instrument already holds the key), `backfillCourseSourceKeys` (v15) | `findCourseSource`, `validateStudySources` |
+| Missing shipped stages | `planDefaultStages` via `addDefaultStages` (PathwayDetail "Restore shipped stages"), `planCourseLevels` (course levels) | `offeredDefaultStages`, `offeredCourseLevels` |
+| Save outcomes (terms, sources, course source choice) | `useAcknowledgedSaves` in MusicTerms, Materials, ItemForm inline source, StageDetail `SourceChoice` | `SaveStatus` (keyed by record, carried-draft aware) |
+| Browse return | Repertoire (`state.from`, Study sources `?instrument=`) | PathwayDetail, StageDetail (`pathwaysReturnPath` fallback), Materials |
 | Inbound install | Settings import (full/state-only), sync pull, Keep remote, archive restore, cold recovery, persist `migrate` and `merge` | all through `validateDB` → `migrateToCurrent` (+ `migrateToV15`) → reconstruct (incl. `musicTerms`) → validators |
 
 ## The shared Persian reference — audit
@@ -120,12 +123,19 @@ malformed / archived / renamed × dastgāh, form, composer × work, part, title-
 form, detail, discovery, seeds, archive adoption and export. B (references): exact / absent /
 conflicting legacy × same/different instrument × ordinary key vs declared course work × move,
 detach, stage/pathway deletion, archive, hide/restore, link, repeated Add, course files, and
-every stage/progress/next/Today/Session Plan consumer. C (inbound): every door × valid legacy,
+every stage/progress/next/Today/Session Plan consumer; each local writer × reload validation
+(ac-22) and each placement writer × unique/ambiguous/overruled/unfit legacy evidence (ac-8,
+ac-11). C (inbound): every door × valid legacy,
 current and partial state × malformed identity and unsupported version, with attachment bytes
-and with an unfinished block. D (UI): both engines × phone/desktop × light/dark, long mixed
+and with an unfinished block. Save lifecycle (ac-4): add → done → add again, archive/delete
+with a failed write, typing while a write is held in flight (a second IndexedDB connection
+keeps the store's transaction busy), and the same for sources and a course-source choice.
+Browse return (ac-6): pathway, stage, bookmark and Study sources doors. D (UI): both engines × phone/desktop × light/dark, long mixed
 titles, keyboard, focus ring, reflow, empty/no-match/error states, offline, reload, back/forward.
 
 **Limits, stated.** WebKit under automation cannot store a Blob in IndexedDB, so its journeys
 seed state-only; attachment bytes are proved in Chromium (ac-16/17). The baseline v14 reader is
-the real app at `b6bef34` in a disposable worktree. Scripted viewport geometry proves the
+the real app at `b6bef34` in a disposable worktree. A restored shipped stage keeps its shipped section
+(`group`): if the owner renamed that section, it lands in a section of its own — added, never
+overwriting. Scripted viewport geometry proves the
 mechanism, not the native keyboard. The radif audit above is the owner's to settle.

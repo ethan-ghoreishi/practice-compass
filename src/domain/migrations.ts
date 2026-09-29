@@ -296,8 +296,9 @@ function migrateToV14(db: PracticeDB): PracticeDB {
  *    and groups under its term only through the resolver.
  *  - An item whose binding was never decided gets one only where its old
  *    `stageId` + `catalogKey` UNIQUELY names a shipped suggestion on its
- *    instrument (`bindLegacyReferences`); duplicates stay undecided and
- *    visible, with every record intact.
+ *    instrument, in a stage of a pathway on that same instrument
+ *    (`bindLegacyReferences`); duplicates and evidence the app never honoured
+ *    stay undecided and visible, with every record intact.
  *  - A study source is keyed to a shipped course only where it is the one
  *    source PROVEN to be that course's (`backfillCourseSourceKeys`).
  *
@@ -307,7 +308,7 @@ function migrateToV14(db: PracticeDB): PracticeDB {
  */
 function migrateToV15(db: PracticeDB): PracticeDB {
   const musicTerms = Array.isArray(db.musicTerms) ? db.musicTerms : [];
-  const items = bindLegacyReferences(db.items ?? []);
+  const items = bindLegacyReferences({ items: db.items ?? [], pathwayStages: db.pathwayStages ?? [], pathways: db.pathways ?? [] });
   const materials = backfillCourseSourceKeys(db.materials ?? [], COURSES);
   if (musicTerms === db.musicTerms && items === db.items && materials === db.materials) return db;
   return { ...db, musicTerms, items, materials };

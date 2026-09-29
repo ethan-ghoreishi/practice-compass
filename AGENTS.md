@@ -637,7 +637,15 @@ own pace, on a route they trust. Protect that:
   make the other offer a duplicate. **Hide/Restore** is visibility only: hidden suggestions
   count for nothing, and an empty stage is never complete. The old lossless-Undo delete is
   gone (`removeCatalogItem` survives only as a non-deleting alias); Delete practice item stays
-  the one destructive action.
+  the one destructive action. **Undecided legacy evidence is never promoted or lost**: any
+  write moving it (link elsewhere, new stage/key/instrument, Remove from pathway, a deleted
+  stage/pathway) settles it first (`settleLegacyEvidence`) — the unique answer is decided, one
+  of several candidates REFUSES until the owner chooses; the migration binds only evidence in
+  a stage of a pathway on the item's own instrument. **Every local write is one reload
+  accepts**: moves of a binding, an item's instrument or a course key pass `identityRefusal`
+  (`useStore.ts`) first, never silently overrule another item's legacy answer
+  (`legacyClaimRefusal`), and validity never reads an instrument's NAME (owner-editable text).
+  Missing shipped STAGES of a present pathway are offered by id (`offeredDefaultStages`).
 - **Structure, not gamification.** Show honest position (items solid / in progress /
   suggestions remaining). No streaks, scores, or fabricated mastery %.
 - **Pathways/stages stay editable data** (`pathways`, `pathwayStages`, `pathwayRoutines`)
@@ -772,7 +780,10 @@ own pace, on a route they trust. Protect that:
   (`searchAliasTable`). Picking a term's NAME stores the reference. More → Musical terms
   renames (id kept, old name kept as a spelling), refuses a spelling another term claims or
   an item still depends on, archives (still readable, no longer offered) and deletes only
-  unused custom terms; "Saved." waits for IndexedDB. Gusheh titles are NOT terms.
+  unused custom terms; "Saved." waits for IndexedDB. Gusheh titles are NOT terms. Term and
+  source editors share `useAcknowledgedSaves` (`ui.tsx`): Saved speaks only for the draft it
+  carried (newer text is re-written), outcomes are keyed by record so a moved or deleted row
+  keeps its failure and Try again, nothing closes before acknowledgement, and Done resets.
 - **A study source is the named book, collection/radif edition, course or teaching
   material** a piece is studied FROM — not a person, a pathway or a lesson. New sources offer
   Radif · Method book · Collection · Course · Other (`studySources.ts`); an older kind stays
@@ -780,7 +791,8 @@ own pace, on a route they trust. Protect that:
   shows. A new source starts on the browsed/session instrument. A shipped course's own source
   carries `sourceKey` (v15) so a rename never mints a copy; only a uniquely proven origin (the
   course's title AND kind) is keyed, an unproven same-titled source is ASKED about. Never
-  deduplicate arbitrary sources by title or share them across instruments.
+  deduplicate arbitrary sources by title or share them across instruments. One keyed source
+  per course per instrument: a second is refused, never silently un-keyed.
 - **Seeds are honest starting points, never fabricated authority.** Guitar = CGS. Setar =
   «سه‌تار · ردیف میرزا عبدالله» on a new install (an upgraded device keeps its mixed pathway;
   the named one is OFFERED). Tar = the Honarestān method and Khonyagar, with «تار · ردیف میرزا
@@ -1633,7 +1645,9 @@ resolves IN THE LIST THAT SCREEN'S OWN DROPDOWN RENDERS falls back to every-inst
 rather than seeding a value with no matching option and showing an empty screen. These
 screens SEED from that value and never WRITE it: browsing another instrument's
 repertoire must not change what Today recommends. The cross-instrument view is never
-removed — only stopped from being the default you undo on every visit.
+removed — only stopped from being the default you undo on every visit. Every door out of
+a browse keeps it: pathway and stage return to the `from` they were handed, else
+`pathwaysReturnPath(pathway.instrumentId)`; Study sources receives `?instrument=`.
 
 **A NARROWED PATHWAYS VIEW HIDES GENERAL PATHWAYS TOO, NOT JUST OTHER INSTRUMENTS'
 OWN.** A `Pathway` with no `instrumentId` is General — cross-instrument by design — and
