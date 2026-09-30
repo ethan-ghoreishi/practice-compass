@@ -7,64 +7,61 @@ presentation:
   journey: Building the library
   order: 6
 truth:
-  goal: See everything you play, grouped the way you think about it, and open the
-    one you mean.
-  startsWhen: "The musician opens Repertoire and picks one of the three views:
-    Pathways, My repertoire, or Practice list."
+  goal: See everything you play, grouped the way you think about it, find it by
+    any name, and open the one you mean without losing your place.
+  startsWhen: The musician opens Repertoire (My repertoire by default, on the
+    instrument being practised) or comes back to it from a piece.
   needs: []
   steps:
     - actor: The musician
-      action: Chooses 'My repertoire'.
-      shows: Persian works grouped under their dastgāh — radif gushehs and composed
-        maestro pieces side by side — and other instruments grouped by study
-        source.
-      changes: Nothing; this is a lens over ordinary items, not a separate store.
+      action: "Opens Repertoire, or picks one of the three peer views: My repertoire,
+        Pathways or Practice list, and one instrument (or All)."
+      shows: Works grouped by dastgāh (Persian) or study source (others); unclassified
+        works under "No dastgāh yet"; each work once, parts nested.
+      changes: "Nothing but the URL: view, instrument, query and filters live there,
+        and Today's session instrument is never changed."
       assumes: []
       evidence:
-        method: manual
-        at: 2026-09-23T20:20:26.335Z
-        commit: 620518b3afb528e8ddd189d7264feeab33cbc15e
+        method: inferred
+        at: 2026-09-29T02:00:00.000Z
     - actor: Practice Compass
-      action: Folds dastgāh spelling variants together, labels each group with the
-        user's own majority spelling, and keeps parts nested under their parent
-        work.
-      shows: Each work appears exactly once, however many sources, stages and lessons
-        it is linked to.
+      action: "Groups each classifying value by the shared vocabulary: a term
+        reference, or text that is exactly one curated spelling of a term, joins
+        that term; composites and unknown spellings stay the owner's own text."
+      shows: «Shur» and «شور» in one group labelled with the term's name; the owner's
+        text is never rewritten.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-09-23T20:20:26.335Z
-        commit: 620518b3afb528e8ddd189d7264feeab33cbc15e
+        method: inferred
+        at: 2026-09-29T02:00:00.000Z
     - actor: The musician
-      action: Optionally filters by form, or narrows to one instrument.
-      shows: Form chips built from what is actually present.
+      action: Searches (title, gusheh, dastgāh/form/maestro in any spelling, study
+        source, archive aliases) and narrows by Dastgāh, Form or Composer, or
+        regroups by form, composer or source.
+      shows: Facets built only from the works actually owned; a matching part shows
+        its parent once; "No works match" with Clear filters when nothing does.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-09-23T20:20:26.335Z
-        commit: 620518b3afb528e8ddd189d7264feeab33cbc15e
+        method: inferred
+        at: 2026-09-29T02:00:00.000Z
     - actor: The musician
-      action: Or chooses 'Practice list' and filters by search, instrument, status,
-        type, or a quick chip (due today, for class, fragile, neglected,
-        overworked, teacher question).
-      shows: Items in priority order, each with its status and stats.
+      action: Or chooses Practice list and filters by the same search, status, type or
+        a quick chip.
+      shows: Every practice item in priority order, parts included, under Practice
+        list's own eligibility.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-09-23T20:20:26.335Z
-        commit: 620518b3afb528e8ddd189d7264feeab33cbc15e
+        method: inferred
+        at: 2026-09-29T02:00:00.000Z
     - actor: The musician
-      action: Opens an item.
-      shows: "Its page: status, connections, stats, result trend, recent blocks,
-        parts, notes and files."
-      changes: Nothing until an action is taken there.
+      action: Opens an item, then comes back by its back link or browser back.
+      shows: The same view, instrument, query and filters as before.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-09-23T20:20:26.335Z
-        commit: 620518b3afb528e8ddd189d7264feeab33cbc15e
-  endsWith: The right piece is found and opened in a couple of taps, from
-    whichever way of thinking about it came first.
+        method: inferred
+        at: 2026-09-29T02:00:00.000Z
+  endsWith: The musician found the piece they meant and is back where they were,
+    with nothing stored differently.
   variations:
     - name: No dastgāh yet
       differs: Works with Persian identity but no dastgāh sit in an explicit 'No
@@ -111,10 +108,10 @@ mechanics:
       steps:
         - 2
 approval:
-  hash: cb9d8394744e5713b7d083e940a3f3756ceac2bcb59990e1782be80083cf8b8c
-  at: 2026-08-28T13:30:17.801Z
-  by: Ethan
-  signature: q4xKQtb4h3/lcsS7YOVSmle3z9LAMdGgzjDhAp35KWb1IB0V8CzlM/+HWrooUNByW7KRmQwYUjHzHYAalH0FDw==
+  hash: 6dcacf73222002da377340a3771d81526322e55ffc5ee2bfc012ce9c0e6ac7d2
+  at: 2026-09-30T18:18:49.400Z
+  by: owner
+  signature: JnYD8cmDI+uzY7ypnIFKv8Yhg1AS5SGLrGDCPXI+0KrVh6Vin87plwha0ioBc0SILjnkKrhtHTveFTUnQCPKBg==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -123,15 +120,15 @@ approval:
 
 # Find something in my repertoire
 
-_Works now · approved 2026-08-28T13:30:17.801Z by Ethan (signed)_
+_Works now · approved 2026-09-30T18:18:49.400Z by owner (signed)_
 
 ## Goal
 
-See everything you play, grouped the way you think about it, and open the one you mean.
+See everything you play, grouped the way you think about it, find it by any name, and open the one you mean without losing your place.
 
 ## Starts when
 
-The musician opens Repertoire and picks one of the three views: Pathways, My repertoire, or Practice list.
+The musician opens Repertoire (My repertoire by default, on the instrument being practised) or comes back to it from a piece.
 
 ## Needs first
 
@@ -139,26 +136,25 @@ _nothing extra required_
 
 ## Steps
 
-1. **The musician** Chooses 'My repertoire'.
-   - Shows: Persian works grouped under their dastgāh — radif gushehs and composed maestro pieces side by side — and other instruments grouped by study source.
-   - Changes: Nothing; this is a lens over ordinary items, not a separate store.
+1. **The musician** Opens Repertoire, or picks one of the three peer views: My repertoire, Pathways or Practice list, and one instrument (or All).
+   - Shows: Works grouped by dastgāh (Persian) or study source (others); unclassified works under "No dastgāh yet"; each work once, parts nested.
+   - Changes: Nothing but the URL: view, instrument, query and filters live there, and Today's session instrument is never changed.
 
-2. **Practice Compass** Folds dastgāh spelling variants together, labels each group with the user's own majority spelling, and keeps parts nested under their parent work.
-   - Shows: Each work appears exactly once, however many sources, stages and lessons it is linked to.
+2. **Practice Compass** Groups each classifying value by the shared vocabulary: a term reference, or text that is exactly one curated spelling of a term, joins that term; composites and unknown spellings stay the owner's own text.
+   - Shows: «Shur» and «شور» in one group labelled with the term's name; the owner's text is never rewritten.
 
-3. **The musician** Optionally filters by form, or narrows to one instrument.
-   - Shows: Form chips built from what is actually present.
+3. **The musician** Searches (title, gusheh, dastgāh/form/maestro in any spelling, study source, archive aliases) and narrows by Dastgāh, Form or Composer, or regroups by form, composer or source.
+   - Shows: Facets built only from the works actually owned; a matching part shows its parent once; "No works match" with Clear filters when nothing does.
 
-4. **The musician** Or chooses 'Practice list' and filters by search, instrument, status, type, or a quick chip (due today, for class, fragile, neglected, overworked, teacher question).
-   - Shows: Items in priority order, each with its status and stats.
+4. **The musician** Or chooses Practice list and filters by the same search, status, type or a quick chip.
+   - Shows: Every practice item in priority order, parts included, under Practice list's own eligibility.
 
-5. **The musician** Opens an item.
-   - Shows: Its page: status, connections, stats, result trend, recent blocks, parts, notes and files.
-   - Changes: Nothing until an action is taken there.
+5. **The musician** Opens an item, then comes back by its back link or browser back.
+   - Shows: The same view, instrument, query and filters as before.
 
 ## Ends with
 
-The right piece is found and opened in a couple of taps, from whichever way of thinking about it came first.
+The musician found the piece they meant and is back where they were, with nothing stored differently.
 
 ## Variations
 
@@ -174,3 +170,4 @@ The right piece is found and opened in a couple of taps, from whichever way of t
 ## Involves
 
 - The musician
+

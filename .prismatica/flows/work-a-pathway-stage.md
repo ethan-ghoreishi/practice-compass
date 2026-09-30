@@ -8,44 +8,45 @@ presentation:
   order: 5
 truth:
   goal: Follow a route you trust — see where you are, take the next suggestion
-    into your own items, and practise it.
+    into your own items once, and practise it.
   startsWhen: From Repertoire → Pathways (or the 'Now in:' card on Today) the
     musician opens a pathway and then a stage.
   needs: []
   steps:
     - actor: Practice Compass
-      action: "Shows the stage's rows: your own items laid over the stage's reference
-        catalogue, with progress derived from item status."
-      shows: A progress bar reading 'n/m solid', guided routines if any, and one line
-        of metadata per row — greyed rows are labelled reference suggestions.
+      action: "Shows the stage's rows: the owner's items laid over the stage's
+        reference suggestions, each suggestion resolved to the owner's item by
+        its reference binding on the pathway's instrument — never by where the
+        item sits."
+      shows: "'n/m solid' over the visible rows; suggestions hidden in this pathway
+        are omitted; two legacy copies answering one suggestion show as a
+        choice."
       assumes: []
       evidence:
-        method: manual
-        at: 2026-09-23T20:22:04.930Z
-        commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
+        method: inferred
+        at: 2026-09-29T02:00:00.000Z
     - actor: The musician
       action: Taps + on a suggestion.
-      shows: The row becomes a real item, honestly marked 'Not practised yet', with a
-        lingering Undo card.
-      changes: A practice item is created from the catalogue entry, carrying its
-        stable catalogue key — adding is organisation, not progress.
+      shows: "'Added … — not practised yet.' The row now plays that item."
+      changes: A practice item is created bound to the suggestion's reference; tapping
+        again, after a move or a reload, hands back the same item — adding is
+        organisation, not progress.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-09-23T20:22:04.930Z
-        commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
+        method: inferred
+        at: 2026-09-29T02:00:00.000Z
     - actor: The musician
-      action: Undoes it, or removes it later from the row's − button, if it was added
-        by mistake.
-      shows: The row reverts to a suggestion.
-      changes: The item is deleted only while it is provably untouched (catalogue
-        item, still 'not practised', zero blocks); the check is re-run against
-        live data, so anything practised is kept.
+      action: "Optionally uses a row's ⋯ menu: Link an existing item, Unlink
+        reference, Remove from pathway, or Hide this suggestion (restored from
+        'Hidden suggestions')."
+      changes: "Only organisation: Link sets one item's binding (same instrument
+        only); Unlink drops one binding; Remove from pathway clears placement
+        and hides the suggestion in this pathway; Hide is visibility only.
+        Nothing is deleted — Delete practice item stays on the item's own page."
       assumes: []
       evidence:
-        method: manual
-        at: 2026-09-23T20:22:04.930Z
-        commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
+        method: inferred
+        at: 2026-09-29T02:00:00.000Z
     - actor: The musician
       action: Taps ▶ on a row to practise it.
       shows: The ordinary active block.
@@ -56,18 +57,18 @@ truth:
         at: 2026-09-23T20:22:04.930Z
         commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
     - actor: The musician
-      action: Optionally pins the stage as the current one, or edits its code, title
-        and intro.
-      shows: Today's 'Now in:' card points at the pinned stage.
-      changes: The pathway records the pinned stage; deleting a stage detaches items
-        instead of deleting them.
+      action: Optionally pins the stage as the current one, edits it, or
+        archives/restores the pathway.
+      shows: Today, the Session Plan and Repertoire follow the same visible pathway
+        and pinned stage.
+      changes: The pathway records the pin or its archived state; deleting a stage or
+        pathway detaches items instead of deleting them.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-09-23T20:22:04.930Z
-        commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
-  endsWith: The next piece of the route is now a real practice item with real
-    practice behind it, and the stage's progress reflects it honestly.
+        method: inferred
+        at: 2026-09-29T02:00:00.000Z
+  endsWith: The next piece of the route is a real practice item — taken once —
+    with real practice behind it, and the stage's progress reflects it honestly.
   variations:
     - name: Teacher jumps around
       differs: A pinned current stage always beats 'first incomplete stage', because
@@ -156,10 +157,10 @@ mechanics:
       steps:
         - 4
 approval:
-  hash: 2005d4b0c587c51d754ba660dc070d3582c121a64a8e9a475a21db7314d9ce52
-  at: 2026-09-23T20:19:46.232Z
+  hash: b26e276ebfb07186ab1e3b338d2222a02dc2e980532efe4301348044d2494799
+  at: 2026-09-30T18:18:49.421Z
   by: owner
-  signature: WIuicPDKHHQA9UdTWAv/TIQBgjVu1gKg5T2V7S7tJQYQCwpNAfP9yT39Xs1Jl8ZwK9f1RjKbURyYJtzTZVrcBw==
+  signature: okIW/Pc1B9PwcZPAUvyfhhkmt8chV+qr6vMn8STW6YZ6q0wwwkyb4EKZCB3PJZDZTKRJ0+02b8C/UkaOZnl3DA==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -168,11 +169,11 @@ approval:
 
 # Work through a pathway stage
 
-_Works now · approved 2026-09-23T20:19:46.232Z by owner (signed)_
+_Works now · approved 2026-09-30T18:18:49.421Z by owner (signed)_
 
 ## Goal
 
-Follow a route you trust — see where you are, take the next suggestion into your own items, and practise it.
+Follow a route you trust — see where you are, take the next suggestion into your own items once, and practise it.
 
 ## Starts when
 
@@ -184,28 +185,27 @@ _nothing extra required_
 
 ## Steps
 
-1. **Practice Compass** Shows the stage's rows: your own items laid over the stage's reference catalogue, with progress derived from item status.
-   - Shows: A progress bar reading 'n/m solid', guided routines if any, and one line of metadata per row — greyed rows are labelled reference suggestions.
+1. **Practice Compass** Shows the stage's rows: the owner's items laid over the stage's reference suggestions, each suggestion resolved to the owner's item by its reference binding on the pathway's instrument — never by where the item sits.
+   - Shows: 'n/m solid' over the visible rows; suggestions hidden in this pathway are omitted; two legacy copies answering one suggestion show as a choice.
 
 2. **The musician** Taps + on a suggestion.
-   - Shows: The row becomes a real item, honestly marked 'Not practised yet', with a lingering Undo card.
-   - Changes: A practice item is created from the catalogue entry, carrying its stable catalogue key — adding is organisation, not progress.
+   - Shows: 'Added … — not practised yet.' The row now plays that item.
+   - Changes: A practice item is created bound to the suggestion's reference; tapping again, after a move or a reload, hands back the same item — adding is organisation, not progress.
 
-3. **The musician** Undoes it, or removes it later from the row's − button, if it was added by mistake.
-   - Shows: The row reverts to a suggestion.
-   - Changes: The item is deleted only while it is provably untouched (catalogue item, still 'not practised', zero blocks); the check is re-run against live data, so anything practised is kept.
+3. **The musician** Optionally uses a row's ⋯ menu: Link an existing item, Unlink reference, Remove from pathway, or Hide this suggestion (restored from 'Hidden suggestions').
+   - Changes: Only organisation: Link sets one item's binding (same instrument only); Unlink drops one binding; Remove from pathway clears placement and hides the suggestion in this pathway; Hide is visibility only. Nothing is deleted — Delete practice item stays on the item's own page.
 
 4. **The musician** Taps ▶ on a row to practise it.
    - Shows: The ordinary active block.
    - Changes: A suggestion not yet added is added first, then the block opens.
 
-5. **The musician** Optionally pins the stage as the current one, or edits its code, title and intro.
-   - Shows: Today's 'Now in:' card points at the pinned stage.
-   - Changes: The pathway records the pinned stage; deleting a stage detaches items instead of deleting them.
+5. **The musician** Optionally pins the stage as the current one, edits it, or archives/restores the pathway.
+   - Shows: Today, the Session Plan and Repertoire follow the same visible pathway and pinned stage.
+   - Changes: The pathway records the pin or its archived state; deleting a stage or pathway detaches items instead of deleting them.
 
 ## Ends with
 
-The next piece of the route is now a real practice item with real practice behind it, and the stage's progress reflects it honestly.
+The next piece of the route is a real practice item — taken once — with real practice behind it, and the stage's progress reflects it honestly.
 
 ## Variations
 
@@ -225,3 +225,4 @@ The next piece of the route is now a real practice item with real practice behin
 
 - The musician
 - The pathway catalogue
+
