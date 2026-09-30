@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-23T20:20:04.999Z
-        commit: 2faa4202a3272609c665fa3e7d56b3f8af938d9e
+        at: 2026-09-30T18:19:05.079Z
+        commit: bceb7cec11db7dc9570e0d646a07d03d8e86e79f
     - actor: The musician
       action: Changes a value — a review gap, the warm-up or deep-work share of a
         plan, the shortest or longest review slot.
