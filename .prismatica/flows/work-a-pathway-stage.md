@@ -23,8 +23,9 @@ truth:
         choice."
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-09-29T02:00:00.000Z
+        method: manual
+        at: 2026-09-30T18:21:14.435Z
+        commit: 532a06764eb5c1a4164bff8aa88d97e835a1ba2a
     - actor: The musician
       action: Taps + on a suggestion.
       shows: "'Added … — not practised yet.' The row now plays that item."
@@ -33,8 +34,9 @@ truth:
         organisation, not progress.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-09-29T02:00:00.000Z
+        method: manual
+        at: 2026-09-30T18:21:14.435Z
+        commit: 532a06764eb5c1a4164bff8aa88d97e835a1ba2a
     - actor: The musician
       action: "Optionally uses a row's ⋯ menu: Link an existing item, Unlink
         reference, Remove from pathway, or Hide this suggestion (restored from
@@ -45,8 +47,9 @@ truth:
         Nothing is deleted — Delete practice item stays on the item's own page."
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-09-29T02:00:00.000Z
+        method: manual
+        at: 2026-09-30T18:21:14.435Z
+        commit: 532a06764eb5c1a4164bff8aa88d97e835a1ba2a
     - actor: The musician
       action: Taps ▶ on a row to practise it.
       shows: The ordinary active block.
@@ -54,8 +57,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-23T20:22:04.930Z
-        commit: 368cdd9970bb5fd143ed73e90a8fd9eafdf9c621
+        at: 2026-09-30T18:21:14.435Z
+        commit: 532a06764eb5c1a4164bff8aa88d97e835a1ba2a
     - actor: The musician
       action: Optionally pins the stage as the current one, edits it, or
         archives/restores the pathway.
@@ -65,8 +68,9 @@ truth:
         pathway detaches items instead of deleting them.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-09-29T02:00:00.000Z
+        method: manual
+        at: 2026-09-30T18:21:14.435Z
+        commit: 532a06764eb5c1a4164bff8aa88d97e835a1ba2a
   endsWith: The next piece of the route is a real practice item — taken once —
     with real practice behind it, and the stage's progress reflects it honestly.
   variations:
@@ -225,4 +229,3 @@ The next piece of the route is a real practice item — taken once — with real
 
 - The musician
 - The pathway catalogue
-
