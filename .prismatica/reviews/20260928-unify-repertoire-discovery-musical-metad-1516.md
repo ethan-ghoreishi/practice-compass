@@ -1,35 +1,28 @@
 ---
 id: 20260928-unify-repertoire-discovery-musical-metad-1516
 contractId: 20260928-unify-repertoire-discovery-musical-metad-1516
-patchId: b48e8fc38702ca24f914e5789a7e6381b551a865
+patchId: 02dc26ef2cd5fa856dbfa7605d9946dd63727268
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: Native iPhone bottom navigation recovers after keyboard dismissal
-    summary: "ac-24 fails: the owner still reproduces a raised bottom bar after
-      dismissing the keyboard on an actual iPhone. Browser geometry fixtures do
-      not establish Safari or installed-PWA acceptance. Sweep checked shell/tab
-      CSS, Layout, useViewportGuard, viewport decision and browser fixture;
-      native behaviour remains failing and its mechanism unmeasured."
-    counterexample: On the owner's iPhone, focus and type in an input, dismiss the
-      keyboard, and observe the Today/Repertoire/Start/Lessons/More bar remain
-      displaced. Capture the required Safari and installed-PWA traces before
-      claiming recovery.
-  - family: Owned work and stage suggestion present one clear musical work
-    summary: Placing an owned item changes stageId without binding the matching
-      reference. stageUnits then shows the unbound suggestion followed by the
-      owned item, and Add can create another item. Sweep checked Item Detail
-      placement, catalogue Add/Play, resolution, stage rows, progress/next-unit,
-      explicit link, unlink, hide/restore and removal. Explicit linking is
-      clean; the ordinary placement journey remains misleading. Preserve
-      explicit identity choice and owner data.
-    counterexample: Place سیخی-ابوعطا-ردیف-میرزاعبدالله in the stage containing the
-      سیخی reference. The stage shows both rows; tapping Add on سیخی creates a
-      second practice item instead of making the existing relationship clear and
-      actionable.
-createdAt: 2026-09-29T17:55:22.883Z
-sealedAt: 2026-09-29T18:07:01.589Z
+    summary: ac-24 remains outstanding for final HEAD b5ec595.
+      docs/repertoire-experience.md:92-104 records measurements from the
+      preceding standalone-height candidate and explicitly leaves final owner
+      confirmation open. Sweep checked shell/tab CSS, Layout scroll ownership,
+      viewport decision, guard lifecycle, trace recorder, More controls and
+      browser fixtures. Their bounded mechanisms are clean; native final-build
+      acceptance remains unproved.
+    counterexample: The final standalone 100vh fix has no recorded passing
+      owner-device acceptance covering Safari and installed PWA, Done with
+      retained focus, repeated keyboard cycles, scrolling, rotation, route
+      changes, background/resume and zoom, with no lifted bar, occluded editing
+      or lost text. Run and record those cases on the final build before closing
+      this family; no claim is made that the final patch still reproduces the
+      defect.
+createdAt: 2026-09-30T16:40:32.538Z
+sealedAt: 2026-09-30T17:38:29.773Z
 ---
 
 # Review: Unify repertoire discovery, musical metadata and pathways around a calmer practice interface
@@ -43,7 +36,7 @@ sealedAt: 2026-09-29T18:07:01.589Z
 - **Contract:** 20260928-unify-repertoire-discovery-musical-metad-1516
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/39
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `b48e8fc38702ca24f914e5789a7e6381b551a865`
+- **Diff patch-id:** `02dc26ef2cd5fa856dbfa7605d9946dd63727268`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
 ## The Delta this change was framed from
@@ -93,885 +86,1401 @@ still breaks it is not closed.
 
 **Findings from the previous review:**
 
-- **Course-source ambiguity must remain answerable across every Add and Start path** — StageDetail.addSuggestion surfaces sourceCandidates, but StageDetail.practise ignores them and navigates away. planCatalogAddition persists an item without materialId; its bound-item fast path never returns the candidates again. The question is also lost if the Add prompt is cancelled or the page is left. Sweep: findCourseSource and resolveCourseSource detect ambiguity; planCatalogAddition and useStore.addFromCatalog carry it on first creation; StageDetail.addSuggestion and SourceChoice handle it only while mounted; StageDetail.practise and repeat bound Add do not; chooseCourseSource correctly checks instrument and key clashes. The named study-source test covers only the first pure planner result.
-  _counterexample:_ With two unkeyed Tar sources titled as Khonyagar candidates, tap Play on an untaken Khonyagar suggestion. The new item is saved without materialId, practice opens, no choice appears, and later Add sees the bound item and returns no sourceCandidates.
-- **Vocabulary edits must not silently reclassify ambiguous authored text** — Inbound term validation deliberately accepts overlapping aliases and resolveValue keeps their item text ambiguous. itemsUsingTerm counts only uniquely resolved terms, so planDeleteTerm allows deleting a colliding custom term used in ambiguous text; planUpdateTerm likewise misses the transition when removing an alias. The remaining claimant then becomes a unique term without an item edit. Sweep: validateMusicTerms and vocabulary admit the collision; resolveValue and valueGroup correctly keep it literal while ambiguous; planAddTerm refuses new collisions; planUpdateTerm and planDeleteTerm miss this transition; MusicTerms uses the same count to enable Delete; store updateTerm/deleteTerm apply those planners; repertoire grouping/search and source reconciliation consume the changed resolution.
-  _counterexample:_ Import a valid v15 custom Dastgah term named My Shur with alias Shur alongside the built-in Shur alias and an item whose dastgahAvaz is literal Shur. The item is initially ambiguous, the custom term shows zero users, and Delete succeeds. On the next render, that unchanged item resolves and groups as the built-in Shur term.
+- **Native iPhone bottom navigation recovers after keyboard dismissal** — ac-24 fails: the owner still reproduces a raised bottom bar after dismissing the keyboard on an actual iPhone. Browser geometry fixtures do not establish Safari or installed-PWA acceptance. Sweep checked shell/tab CSS, Layout, useViewportGuard, viewport decision and browser fixture; native behaviour remains failing and its mechanism unmeasured.
+  _counterexample:_ On the owner's iPhone, focus and type in an input, dismiss the keyboard, and observe the Today/Repertoire/Start/Lessons/More bar remain displaced. Capture the required Safari and installed-PWA traces before claiming recovery.
+- **Owned work and stage suggestion present one clear musical work** — Placing an owned item changes stageId without binding the matching reference. stageUnits then shows the unbound suggestion followed by the owned item, and Add can create another item. Sweep checked Item Detail placement, catalogue Add/Play, resolution, stage rows, progress/next-unit, explicit link, unlink, hide/restore and removal. Explicit linking is clean; the ordinary placement journey remains misleading. Preserve explicit identity choice and owner data.
+  _counterexample:_ Place سیخی-ابوعطا-ردیف-میرزاعبدالله in the stage containing the سیخی reference. The stage shows both rows; tapping Add on سیخی creates a second practice item instead of making the existing relationship clear and actionable.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/AGENTS.md b/AGENTS.md
-index cdd67d21e5ef73f3988b783d789d1f51fe106be8..8ff05404fe9cfd9a02395313f89607412d6eb2d2 100644
+index 8ff05404fe9cfd9a02395313f89607412d6eb2d2..80f66dfdb28accfdad2fc5b0df3fc6c4d4d2db2d 100644
 --- a/AGENTS.md
 +++ b/AGENTS.md
-@@ -779,8 +779,9 @@ own pace, on a route they trust. Protect that:
-   stay literal and group by their own text; transliteration is search only
-   (`searchAliasTable`). Picking a term's NAME stores the reference. More → Musical terms
-   renames (id kept, old name kept as a spelling), refuses a spelling another term claims or
--  an item still depends on, archives (still readable, no longer offered) and deletes only
--  unused custom terms; "Saved." waits for IndexedDB. Gusheh titles are NOT terms. Term and
-+  any edit that would change what an unedited item's value means (`reclassifiedItems` —
-+  ambiguous text collapsing onto the remaining claimant included), archives (still
-+  readable, no longer offered) and deletes only custom terms no value depends on; "Saved." waits for IndexedDB. Gusheh titles are NOT terms. Term and
-   source editors share `useAcknowledgedSaves` (`ui.tsx`): Saved speaks only for the draft it
-   carried (newer text is re-written), outcomes are keyed by record so a moved or deleted row
-   keeps its failure and Try again, nothing closes before acknowledgement, and Done resets.
-@@ -790,7 +791,9 @@ own pace, on a route they trust. Protect that:
-   stored and selectable on its own source, and the compact editor patches only what it
-   shows. A new source starts on the browsed/session instrument. A shipped course's own source
-   carries `sourceKey` (v15) so a rename never mints a copy; only a uniquely proven origin (the
--  course's title AND kind) is keyed, an unproven same-titled source is ASKED about. Never
-+  course's title AND kind) is keyed, an unproven same-titled source is ASKED about — and
-+  that question is DERIVED from saved data (`courseSourceQuestions`), so Play, a cancelled
-+  prompt or a reload never loses it; the answer goes only to the items it named. Never
-   deduplicate arbitrary sources by title or share them across instruments. One keyed source
-   per course per instrument: a second is refused, never silently un-keyed.
- - **Seeds are honest starting points, never fabricated authority.** Guitar = CGS. Setar =
+@@ -538,7 +538,7 @@ MEASURED, on the owner's own network (2026‑09‑18): `http://192.168.0.113:417
+ `https://192.168.0.20:...` gives `isSecureContext: true` with `crypto.subtle` present,
+ self-signed Synology certificate and all — **HTTPS is a secure context whether or not the
+ certificate is trusted**, so a LAN NAS route needs no public certificate to work. A build
+-mirrored by `scripts/deploy-nas.sh` and opened over that HTTPS origin is the genuine route;
++served over that HTTPS origin is the genuine route;
+ `http://localhost` also qualifies, because browsers privilege localhost deliberately, which
+ is exactly why no test here can see any of this.
+ 
+@@ -630,7 +630,10 @@ own pace, on a route they trust. Protect that:
+   suggestion, routine segment and course file, so a move, detach, deleted stage or reload
+   changes nothing and Add is idempotent. Two items answering one suggestion are shown as
+   candidates, never picked; **Link existing** is an explicit same-instrument choice that
+-  changes only `catalogRefs`. **Unlink reference** drops one binding (the list stays PRESENT,
++  changes only `catalogRefs`. **Placing is not linking**: an item placed in a stage that answers
++  none of its suggestions is marked so on its row (with Link to a suggestion), and Add there
++  creates nothing until the owner links one or chooses Add as a new item (`unlinkedInStage`,
++  `planStageAddition`). **Unlink reference** drops one binding (the list stays PRESENT,
+   even empty, so old placement never re-binds it). **Remove from pathway** clears placement
+   and HIDES the item's suggestions in that pathway (`Pathway.hiddenRefs`) without unbinding —
+   a radif reference is shared by the mixed and the named Setar pathways, and unbinding would
+@@ -3001,7 +3004,10 @@ the app or data private). Prod base `/practice-compass/` (override with `PC_BASE
+ matches the Pages project path. CI (`ci.yml`) still gates lint + tests + build. The
+ installed PWA works fully offline; hosting reliability only affects updates.
+ `scripts/deploy-nas.sh` remains an OPTIONAL LAN mirror — never the primary, and no
+-Tailscale requirement in the main flow.
++Tailscale requirement in the main flow. **It is DESTRUCTIVE:** `rsync --delete` empties
++`PC_DEPLOY_DIR` of everything that is not the build — pointed at a folder that also holds
++media, it deleted the owner's Setar and Tar files (2026-09-30). Never recommend it without
++naming the exact, app-only destination; guarding the script needs its own lane.
+ 
+ **Devices sync via the user's GitHub data repo** (Settings → Sync): on app open, after
+ 30 quiet seconds following changes (rev-driven), on returning online, and manually.
+@@ -3031,13 +3037,19 @@ which stops above the home-indicator safe area, leaving the bar floating above t
+ physical bottom with dead space beneath. With `100dvh` the shell reaches the true
+ bottom and the bar's own `env(safe-area-inset-bottom)` padding lifts just its buttons
+ clear. **The iOS software keyboard must not drift the shell:** the document never scrolls (only
+-`<main>` does), so a non-zero document scroll is WebKit moving the layout viewport. `viewport.ts`
+-decides from GEOMETRY alone — never focus — restoring it to 0 only once the visual viewport is
++`<main>` does), so a non-zero scroll on the document, `body` or `#root` is WebKit moving the
++shell (`overflow: hidden` stops the owner scrolling them, not a focus reveal). `viewport.ts`
++decides from GEOMETRY alone — never focus — restoring those to 0 only once the visual viewport is
+ back to full height at scale 1 (keyboard dismissed, "Done" with focus retained included), never
+ while it is short (intentional reveal) or zoomed, and never touching `<main>`'s scroll;
+ `useViewportGuard` is the thin adapter (visual-viewport resize/scroll and visibility, no timers,
+-full teardown, no-op without `visualViewport`). Browser fixtures prove the mechanism only; the
+-native iPhone check is the owner's (ac-24). Five EQUAL nav tabs
++full teardown, no-op without `visualViewport`). **THE OWNER'S LIFTED BAR IS NOT THAT:** the first
++iPhone trace (installed app) showed every scroll offset at 0 while `innerHeight` — so `100dvh` —
++flipped between the full screen and the screen minus the status bar. MEASURED on iOS 27, the
++installed app's `100vh` stayed the full screen, so standalone sizes the shell `100vh`; browser
++tabs traced correctly on `100dvh` and keep it. Confirmed on one device only — ac-24 is the
++owner's. More → Keyboard trace (memory only) records geometry and what each unit and inset
++resolves to; diagnose from traces, never by adding guesses to the guard. Five EQUAL nav tabs
+ (no raised centre button — Today owns the primary Start
+ action); route changes scroll `<main>` to top; per-route page widths (narrow for focused
+ practice, wide ~1100px for browsing/notes on desktop); serif is for headings only,
+diff --git a/DECISIONS.md b/DECISIONS.md
+index 30fd6e0d78d4cea97d499adcb0a4b915fc01b660..2d494ae2066870ded33762879260117b9076ee3b 100644
+--- a/DECISIONS.md
++++ b/DECISIONS.md
+@@ -35,6 +35,20 @@ and the proof route.
+   the named Setar pathway offer عراق as untaken after the owner tidied the old mixed pathway — Add
+   there would mint a duplicate. Hiding in that one pathway keeps the owner's intent and the
+   shared identity.
++- **Placing is not linking, and Add beside an unlinked placement asks.** Moving an owned item
++  into a stage changes `stageId` only, so the suggestion beside it stayed untaken and Add minted a
++  second copy of the same music. Merging the two rows on a matching title or gusheh was rejected:
++  it would make text act as identity (progress, Play and Add would all follow a guess). Instead
++  ONE list (`unlinkedInStage`) marks the placed row and holds Add (`planStageAddition`) until the
++  owner links an item or chooses Add as a new item. Until then the two rows are honestly two units.
++- **The native keyboard defect is measured on the device, not guessed at in the guard.** More →
++  Keyboard trace (memory only) records what the device reports. The first installed-app trace
++  showed a HEIGHT flip (`innerHeight`/`100dvh` 852↔793, all scroll offsets 0), so the guard's
++  scroll restore cannot be the fix. The standalone-only shell height `calc(100vh +
++  env(safe-area-inset-top))` was a candidate built on UNMEASURED readings, and the next trace
++  refuted it (911, bar cut off). With every unit measured, `100vh` was the full screen on every
++  installed-app line while `dvh` flipped, so standalone uses `100vh`; tabs keep `dvh`, which
++  traced correctly. One change per trace, guard and `interactive-widget` untouched.
+ - **The Undo that deleted a "fresh" item is gone.** "Not practised yet" never proved an item was
+   empty — notes, files, class links and commitments all arrive before a first block.
+   `removeCatalogItem` stays only because an out-of-scope test calls it; it no longer deletes.
+diff --git a/README.md b/README.md
+index 787a60cc3fa8e0e03403254264cda36f3f11fbff..d488659cecd03b1c8f7273b38f8deb4e733639e7 100644
+--- a/README.md
++++ b/README.md
+@@ -147,7 +147,9 @@ npm run test:watch # watch mode
+ Pushing to `main` deploys to GitHub Pages (CI runs lint + tests + build first). The prod
+ base path is `/practice-compass/` (override with `PC_BASE=/`).
+ `scripts/deploy-nas.sh` optionally mirrors the same build onto a locally mounted NAS
+-share for a LAN-only copy — handy, never required.
++share for a LAN-only copy — handy, never required. **Warning:** it runs `rsync --delete`, so
++EVERYTHING in `PC_DEPLOY_DIR` that is not part of the build is deleted. Point it only at a
++folder that holds nothing but this app — never at a share or folder containing media.
+ 
+ ---
+ 
 diff --git a/docs/repertoire-experience.md b/docs/repertoire-experience.md
-index 1437d81f4faaefa7fd26d657abbba60ff68cd7e7..00291f077e655e5e4b04cac6f2b341e45b244f58 100644
+index 00291f077e655e5e4b04cac6f2b341e45b244f58..bc09e2ca8ac36988f8e9fdfba854ff9312578c0e 100644
 --- a/docs/repertoire-experience.md
 +++ b/docs/repertoire-experience.md
-@@ -42,11 +42,11 @@ Reference ids: `stage:<stageId>:<key>` · `course:<courseId>:work:<identity>` ·
- | Fact | Written by | Read by |
+@@ -19,7 +19,7 @@ again after. Synthetic data only; the owner's database was never opened.
+ | Repertoire | Opened on **Pathways**. Three views held separate state, each with its own instrument filter; a form chip row with no search; "Study sources" and a wrapping "Add practice item" crowded the header. | Opens on **My repertoire**. One instrument selector for all three peer views (My repertoire · Pathways · Practice list); view, instrument, query, facets and grouping live in the URL, so opening a work and coming back — or browser back/forward — restores them. One primary action (Add practice item, prefilled with the browsed instrument and form). |
+ | My repertoire | Grouped by folded raw text («Shur» and «شور» apart); title-only full pieces silently missing; no search, no composer filter. | Search (title, gusheh, term names and spellings, source, archive aliases) + Dastgāh/Form/Composer facets from the owner's own works + group by dastgāh/form/composer/source. Every work exactly once; a matching part shows its parent; unclassified works under "No dastgāh yet"; "No works match" is announced and distinct from an empty library; Clear filters. |
+ | Pathways | Card ignored the pinned stage; archived pathways invisible with no way back. | Card shows the pinned stage ("pinned"), same resolver as Today; archived pathways listed under "Archived pathways" with Restore; shipped defaults (incl. the two named radif pathways) offered by name. |
+-| Stage | Every suggestion row carried the generic gusheh prompt (visually heavy); an Undo/"−" deleted a "fresh" item. | Calm rows; a 44×44 "⋯" menu per row: Link an existing item…, Hide this suggestion, Unlink reference, Remove from pathway — none deletes. Ambiguous legacy copies show "N of your items answer this — choose one". Hidden suggestions listed with Restore. |
++| Stage | Every suggestion row carried the generic gusheh prompt (visually heavy); an Undo/"−" deleted a "fresh" item. | Calm rows; a 44×44 "⋯" menu per row: Link an existing item…, Hide this suggestion, Unlink reference, Remove from pathway — none deletes. Ambiguous legacy copies show "N of your items answer this — choose one". An item placed in the stage that answers no suggestion says so ("placed here · answers no suggestion", menu: Link to a suggestion…), and Add beside it asks "Is “…” already in this stage?" — Link it, or Add as a new item — instead of minting a second copy. Hidden suggestions listed with Restore. |
+ | Item form | Dastgāh/Form as free text with Latin-only datalists; composer free text. | The three fields read the shared vocabulary: picking a term links it ("Shared term"); an alias shows "Your spelling — grouped as …"; anything else stays the owner's text. |
+ | Study sources | Twelve kinds mixing collections, pieces, activities and lessons; new sources defaulted to the first instrument. | Five kinds with an example each (Radif · Method book · Collection · Course · Other); an older kind stays selectable on its own source; new sources start on the browsed/session instrument. |
+ | More | Insights, Teacher report, Settings. | + Musical terms (add, rename, spellings, archive/restore, delete unused custom) and Study sources. |
+@@ -43,7 +43,7 @@ Reference ids: `stage:<stageId>:<key>` · `course:<courseId>:work:<identity>` ·
  | --- | --- | --- |
  | Term values on items | `ItemForm` (`MusicalTermField` → `valueFromInput`), `itemFromCatalogEntry` (radif entries carry `{termId}`), archive adoption (`sourceReconcile`, raw registry TEXT only), migration (never — legacy text is kept) | `resolveValue`/`valueLabel`/`valueGroup`/`valueSearchTexts` → `groupByDastgah`, `discoverRepertoire`, `repertoireSearchTexts` (Practice list, Start), `ItemDetail` details, `WorkRow`, `MusicalTermField`, archive suggestion comparison (`fieldAlreadySays`), `isWork`/`hasPersianIdentity`, `kindFromItem`, `validateMusicTerms` |
--| `musicTerms` | `addTerm`/`updateTerm`/`deleteTerm` (store, via `planAddTerm`/`planUpdateTerm`/`planDeleteTerm`), `migrateToV15` (empty list only) | `vocabulary()` everywhere above, `searchAliasTable`, MusicTerms page, `validateDB` |
-+| `musicTerms` | `addTerm`/`updateTerm`/`deleteTerm` (store, via `planAddTerm`/`planUpdateTerm`/`planDeleteTerm`; an update is refused when `reclassifiedItems` finds an unedited value whose meaning would change, a delete while `itemsUsingTerm` — ambiguous claimants included — is non-empty; MusicTerms' Delete reads `planDeleteTerm` itself), `migrateToV15` (empty list only) | `vocabulary()` everywhere above, `searchAliasTable`, MusicTerms page, `validateDB` |
- | `catalogRefs` | `planCatalogAddition` (Add), `planLinkReference`, `planUnlinkReference`, `planRemoveFromPathway`, and — through `settleLegacyEvidence` (unique legacy decided, ambiguous refused) — every placement writer: `updateItem` (stage/key/instrument), `placeItemInStage`, `deleteStage`, `deletePathway`; `bindLegacyReferences` (v15 migration, fitting evidence only). Every one passes `identityRefusal` before `set()`; a link or instrument move may not overrule another item's legacy answer (`legacyClaimRefusal`) | `resolveCatalogReference` → `stageUnits`/`hiddenUnits`/`stageProgress`/`currentStage`/`nextUnitInStage`/`pathwayProgress`, `planCatalogAddition` reuse, `carriedCourseWorkItem`, routine segment binding (`unitItem`), `itemReferences` → `itemFiles` course material, `validateReferences` |
+ | `musicTerms` | `addTerm`/`updateTerm`/`deleteTerm` (store, via `planAddTerm`/`planUpdateTerm`/`planDeleteTerm`; an update is refused when `reclassifiedItems` finds an unedited value whose meaning would change, a delete while `itemsUsingTerm` — ambiguous claimants included — is non-empty; MusicTerms' Delete reads `planDeleteTerm` itself), `migrateToV15` (empty list only) | `vocabulary()` everywhere above, `searchAliasTable`, MusicTerms page, `validateDB` |
+-| `catalogRefs` | `planCatalogAddition` (Add), `planLinkReference`, `planUnlinkReference`, `planRemoveFromPathway`, and — through `settleLegacyEvidence` (unique legacy decided, ambiguous refused) — every placement writer: `updateItem` (stage/key/instrument), `placeItemInStage`, `deleteStage`, `deletePathway`; `bindLegacyReferences` (v15 migration, fitting evidence only). Every one passes `identityRefusal` before `set()`; a link or instrument move may not overrule another item's legacy answer (`legacyClaimRefusal`) | `resolveCatalogReference` → `stageUnits`/`hiddenUnits`/`stageProgress`/`currentStage`/`nextUnitInStage`/`pathwayProgress`, `planCatalogAddition` reuse, `carriedCourseWorkItem`, routine segment binding (`unitItem`), `itemReferences` → `itemFiles` course material, `validateReferences` |
++| `catalogRefs` | `planStageAddition` → `planCatalogAddition` (Add; creates nothing while `unlinkedInStage` lists items placed there that answer no suggestion, unless the owner chose Add as a new item), `planLinkReference`, `planUnlinkReference`, `planRemoveFromPathway`, and — through `settleLegacyEvidence` (unique legacy decided, ambiguous refused) — every placement writer: `updateItem` (stage/key/instrument), `placeItemInStage`, `deleteStage`, `deletePathway`; `bindLegacyReferences` (v15 migration, fitting evidence only). Every one passes `identityRefusal` before `set()`; a link or instrument move may not overrule another item's legacy answer (`legacyClaimRefusal`) | `resolveCatalogReference` → `stageUnits`/`hiddenUnits`/`stageProgress`/`currentStage`/`nextUnitInStage`/`pathwayProgress`, `planCatalogAddition` reuse, `carriedCourseWorkItem`, routine segment binding (`unitItem`), `itemReferences` → `itemFiles` course material, `validateReferences` |
  | `hiddenRefs` | `planSetReferenceHidden` (Hide/Restore), `planRemoveFromPathway` | `pathwayStageContext` → every stage consumer above; `validateReferences` (scope = the pathway's shipped definition) |
  | Pathway route | `updatePathway` (archived, pin), `deleteStage` (clears pin) | `visiblePathways`/`primaryPathway`/`pathwayPosition` → Today, SessionPlan (build + editor), Repertoire cards, PathwayDetail |
--| `sourceKey` | `resolveCourseSource` (mint/adopt), `chooseCourseSource` and `updateMaterial` (both refused by `sourceKeyClash` when the instrument already holds the key), `backfillCourseSourceKeys` (v15) | `findCourseSource`, `validateStudySources` |
-+| `sourceKey` | `resolveCourseSource` (mint/adopt), `chooseCourseSource` (via `planChooseCourseSource`, answering the derived `courseSourceQuestions` for exactly the items it names — StageDetail renders it; `planCatalogAddition` returns its candidates on first AND repeat Add) and `updateMaterial` (both refused by `sourceKeyClash` when the instrument already holds the key), `backfillCourseSourceKeys` (v15) | `findCourseSource`, `validateStudySources` |
- | Missing shipped stages | `planDefaultStages` via `addDefaultStages` (PathwayDetail "Restore shipped stages"), `planCourseLevels` (course levels) | `offeredDefaultStages`, `offeredCourseLevels` |
- | Save outcomes (terms, sources, course source choice) | `useAcknowledgedSaves` in MusicTerms, Materials, ItemForm inline source, StageDetail `SourceChoice` | `SaveStatus` (keyed by record, carried-draft aware) |
- | Browse return | Repertoire (`state.from`, Study sources `?instrument=`) | PathwayDetail, StageDetail (`pathwaysReturnPath` fallback), Materials |
+ | `sourceKey` | `resolveCourseSource` (mint/adopt), `chooseCourseSource` (via `planChooseCourseSource`, answering the derived `courseSourceQuestions` for exactly the items it names — StageDetail renders it; `planCatalogAddition` returns its candidates on first AND repeat Add) and `updateMaterial` (both refused by `sourceKeyClash` when the instrument already holds the key), `backfillCourseSourceKeys` (v15) | `findCourseSource`, `validateStudySources` |
+@@ -77,11 +77,49 @@ and is driven in Chromium and WebKit through a scripted `visualViewport` whose g
+ written by hand per state (keyboard up, Done with retained focus, blur, zoom, hardware keyboard,
+ rotation-shaped heights, background/resume, absent `visualViewport`, route changes).
+ 
+-**Not measured:** a native iPhone. No device trace was available to this lane, so the owner's
+-reported lifted tab bar is **not claimed fixed**; ac-24 (Safari + installed PWA traces) remains
+-outstanding. The old "scroll the focused field into view after 300 ms" behaviour was removed,
+-not replaced: WebKit's own reveal is the accommodation, and the owner check will show whether
+-anything more is needed.
++**First native trace (2026-09-29, installed app, `standalone: true`, plain http).** The lifted
++bar is a **height flip, not a scroll displacement**: in the bad state every scroll offset
++(`scrollY`, `html`, `body`, `root`) is 0 and the guard correctly decides `none`. What moves is
++`innerH` — and `100dvh` with it, so the shell height — between 852 (full screen, bar flush at the
++bottom) and 793 (screen minus the 59 px status bar, bar lifted by exactly that), while `clientH`
++stayed 793 on every portrait line. The recording STARTED at 793, the keyboard left it at 793,
++and it only reached 852 after rotation; returning to portrait flipped 852↔793 every frame for
++~1.8 s and settled on either. So the keyboard is not shown to CAUSE the bad state here.
++
++The guard's `body`/`#root` restore (a real, fixture-proved blind spot) never fired in this trace
++and is not the fix for this defect.
++
++**Second round (2026-09-30, iOS 27.0; installed app, Safari tab, Chrome tab; plain http).** The
++traces now record what each unit RESOLVES to. Installed app: `100vh` = `100lvh` = 852 (the full
++screen) on every portrait line, keyboard included, and 393 in landscape; `100svh` = 793;
++`100dvh` = 852 at rest but 793 while the keyboard is up (and lagging at 793 into landscape);
++top inset 59, bottom 34. So the first candidate, `calc(100vh + inset-top)`, measured **911** —
++the bar cut off, exactly as the owner saw — and is replaced: the installed app now sizes the
++shell `100vh`, the one reading that was the physical screen height throughout. Safari and
++Chrome tabs: the bar was flush and stayed so (`100dvh` = `innerH` at rest, 695 and 665); tabs
++never match the standalone query and are unchanged. The installed-app guard DID act once per
++dismissal here (`scrollY` 59 → 0), which was the 59 px of document the 911 shell made
++scrollable. `100vh` in standalone is still a reading from one device and one iOS version, and
++the "more persistent" report stays unexplained; ac-24 closes on the owner's confirmation, not
++on this page. The old "scroll the focused field into view after 300 ms" behaviour was removed,
++not replaced.
++
++**Capturing the trace (ac-24).** Three recordings — the installed app, a Safari tab, a Chrome
++tab — each started with the bar confirmed flush at the bottom (cold-start the installed app):
++More → Keyboard trace → Start recording; focus a field and type, tap Done without touching
++anything else, then tap away, rotate once and back; return to More → Stop recording → Copy
++trace. Note the iOS version from Settings → General → About: the user agent freezes it. The first line names the device, iOS
++(user agent), whether it ran standalone, the build and `secure`. Layout geometry does not need
++HTTPS, so these traces were taken over plain http; the installed app's offline half of ac-24
++does, and needs a safe HTTPS route the owner chooses (never `scripts/deploy-nas.sh` aimed at a
++folder holding media — its `rsync --delete` deletes everything else there). Each further line is one
++event, labelled by its source (`vv:resize`, `window:scroll`, `root:scroll`, `document:focusout`…;
++`<main>`'s own scrolling is not an event), with both viewports
++(`innerH`, `vvH`, `vvTop`, `scale`), every shell offset (`scrollY`, `html`, `body`, `root`,
++`main`), the bar's `barTop`/`barBottom`, the focused element, and — at each guard evaluation —
++its decision and any `restore`. A lifted bar shows as `barBottom` less than `innerH` with the
++keyboard gone (`vvH ≈ innerH`); which offset is non-zero at that moment names the mechanism.
++The trace lives in memory only and is never saved, synced or backed up.
+ 
+ ## Proof
+ 
 diff --git a/src/components/ReferenceChoices.tsx b/src/components/ReferenceChoices.tsx
-index 1f9f4a8170965cbda711ab35a9e8034c8a74b67f..c6d7e4059da45b6c5129b83ab7bdd7e5262c52bc 100644
+index c6d7e4059da45b6c5129b83ab7bdd7e5262c52bc..21dac0f00eb78b722018eefe068a90d426f98c4a 100644
 --- a/src/components/ReferenceChoices.tsx
 +++ b/src/components/ReferenceChoices.tsx
-@@ -66,12 +66,15 @@ export function ItemChoice({
- export function SourceChoice({
-   courseName,
-   materials,
-+  items,
-   ack,
+@@ -15,6 +15,7 @@ export function ItemChoice({
+   sameTitle,
    onChoose,
    onCancel,
++  alternative,
  }: {
-   courseName: string;
-   materials: Material[];
-+  /** The items the answer is given to — named, because only those are. */
-+  items: PracticeItem[];
-   /** The saved outcome of the last choice: it stays on screen until acknowledged. */
-   ack?: Ack;
-   onChoose: (materialId: string) => void;
-@@ -85,6 +88,16 @@ export function SourceChoice({
-       <p className="tiny dim" style={{ margin: 0 }}>
-         More than one of your sources could be this course. Choose the one to keep using — nothing is merged or renamed.
-       </p>
-+      <p className="tiny dim" style={{ margin: 0 }}>
-+        Your choice is given to{' '}
-+        {items.map((i, n) => (
-+          <span key={i.id}>
-+            {n > 0 && ', '}
-+            <span dir="auto">{i.title}</span>
-+          </span>
-+        ))}
-+        .
-+      </p>
-       {materials.map((m) => (
-         <button
-           key={m.id}
-diff --git a/src/components/direction.test.ts b/src/components/direction.test.ts
-index 9f313b19ca68ec4fb1fa61b9043336cdd1cab4a3..e507132fd34a608069715c75900cfd0605a1663b 100644
---- a/src/components/direction.test.ts
-+++ b/src/components/direction.test.ts
-@@ -174,6 +174,7 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string
-   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
-   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
-   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
-+  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
-   { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
-   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
-   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
-diff --git a/src/domain/courseSeed.ts b/src/domain/courseSeed.ts
-index 541d194f47ad12dbfc22ab6372329097102fc338..4c5c72d632020883ac22d2f02f7aae6ed0b5396f 100644
---- a/src/domain/courseSeed.ts
-+++ b/src/domain/courseSeed.ts
-@@ -668,7 +668,16 @@ export function planCatalogAddition(
-   const ref = catalogReferenceId(stageId, entryKey);
-   const resolved = resolveCatalogReference(ref, instrumentId, db.items);
-   if (resolved.status === 'bound') {
--    return { items: db.items, materials: db.materials, itemId: resolved.item.id, created: false };
-+    // Reuse writes nothing — but a source question the item is still waiting
-+    // on is asked again, so no tap, cancel or page left behind can lose it.
-+    const asked = pendingSourceCandidates(db, resolved.item);
-+    return {
-+      items: db.items,
-+      materials: db.materials,
-+      itemId: resolved.item.id,
-+      created: false,
-+      ...(asked ? { sourceCandidates: asked } : {}),
-+    };
-   }
-   if (resolved.status === 'ambiguous') {
-     return { items: db.items, materials: db.materials, itemId: '', created: false, candidates: resolved.candidates };
-@@ -687,13 +696,85 @@ export function planCatalogAddition(
- 
-   const source = resolveCourseSource(db.materials, found.course, instrumentId, now);
-   const item = source.materialId ? { ...base, materialId: source.materialId } : base;
--  return {
--    items: [...db.items, item],
--    materials: source.materials,
--    itemId: item.id,
--    created: true,
--    ...(source.candidates ? { sourceCandidates: source.candidates } : {}),
--  };
-+  const next = { items: [...db.items, item], materials: source.materials };
-+  const asked = pendingSourceCandidates(next, item);
-+  return { ...next, itemId: item.id, created: true, ...(asked ? { sourceCandidates: asked } : {}) };
-+}
-+
-+// --- the course's study source, when the owner must say which it is ----------
-+
-+/** The course a reference belongs to: a course work, or a section of a course stage. */
-+export function courseOfReference(refId: string): CourseData | undefined {
-+  const work = /^course:([^:]+):work:/.exec(refId);
-+  if (work) return courseById(work[1]);
-+  if (!refId.startsWith('stage:')) return undefined;
-+  const rest = refId.slice('stage:'.length);
-+  const cut = rest.lastIndexOf(':');
-+  return cut > 0 ? courseStage(rest.slice(0, cut))?.course : undefined;
-+}
-+
-+export interface CourseSourceQuestion {
-+  course: CourseData;
-+  instrumentId: ID;
-+  /** The owner's sources that could each be this course's. */
-+  candidates: Material[];
-+  /** Every item waiting on the answer — named on screen, and the only ones it is written to. */
-+  items: PracticeItem[];
-+}
-+
-+/**
-+ * WHICH STUDY SOURCE IS THIS COURSE — DERIVED FROM SAVED DATA, NEVER HELD BY A
-+ * SCREEN. The question stands, per instrument, while the course's source is
-+ * ambiguous (`findCourseSource`) and some item of that course — by the
-+ * references it answers, never its placement, so a moved or detached item is
-+ * still asked — has no source. Nothing ephemeral carries it, so leaving the
-+ * page, "Decide later", Play instead of Add and a reload all leave it exactly
-+ * as answerable as before; it ends only when the owner answers it (or gives
-+ * each item a source themselves).
-+ */
-+export function courseSourceQuestions(db: CatalogAdditionDB, course: CourseData): CourseSourceQuestion[] {
-+  const out: CourseSourceQuestion[] = [];
-+  const waiting = db.items.filter((i) => !i.materialId && itemReferences(i).some((r) => courseOfReference(r)?.id === course.id));
-+  for (const instrumentId of [...new Set(waiting.map((i) => i.instrumentId))]) {
-+    const found = findCourseSource(db.materials, course, instrumentId);
-+    if (found.status !== 'ambiguous') continue;
-+    out.push({ course, instrumentId, candidates: found.candidates, items: waiting.filter((i) => i.instrumentId === instrumentId) });
-+  }
-+  return out;
-+}
-+
-+/** The candidates one item is still waiting on the owner to choose between, if any. */
-+function pendingSourceCandidates(db: CatalogAdditionDB, item: PracticeItem): Material[] | undefined {
-+  for (const ref of itemReferences(item)) {
-+    const course = courseOfReference(ref);
-+    const q = course && courseSourceQuestions(db, course).find((x) => x.items.some((i) => i.id === item.id));
-+    if (q) return q.candidates;
-+  }
-+  return undefined;
-+}
-+
-+/**
-+ * The owner's answer: key the chosen source as the course's, and give it to
-+ * exactly the items the question NAMED that still have none. A course item
-+ * without a source is indistinguishable from one whose source the owner
-+ * cleared, so nothing the question did not name is ever filled in. Choosing
-+ * again (a retry) re-states the same answer and changes nothing further.
-+ */
-+export function planChooseCourseSource(
-+  db: CatalogAdditionDB,
-+  course: CourseData,
-+  materialId: ID,
-+  itemIds: ID[],
-+  now: Date,
-+): { ok: true; items: PracticeItem[]; materials: Material[] } | { ok: false; reason: string } {
-+  const material = db.materials.find((m) => m.id === materialId);
-+  const named = new Set(itemIds);
-+  const targets = db.items.filter((i) => named.has(i.id));
-+  if (!material || !targets.length) return { ok: false, reason: 'That item or study source no longer exists.' };
-+  if (targets.some((i) => i.instrumentId !== material.instrumentId)) return { ok: false, reason: 'That study source belongs to another instrument.' };
-+  const materials = withCourseSourceKey(db.materials, materialId, course);
-+  const items = db.items.map((i) => (named.has(i.id) && !i.materialId ? { ...i, materialId, updatedAt: nowISO(now) } : i));
-+  return { ok: true, items, materials };
- }
- 
- /**
-diff --git a/src/domain/musicTerms.test.ts b/src/domain/musicTerms.test.ts
-index c3d3f9ecef4e748736ee3dfd675536e2695d4972..9527b15fe729f2cb9ba6935728db4bd65ee7dcad 100644
---- a/src/domain/musicTerms.test.ts
-+++ b/src/domain/musicTerms.test.ts
-@@ -1,9 +1,11 @@
- import { describe, expect, it } from 'vitest';
- import {
-   BUILT_IN_TERMS,
-+  itemsUsingTerm,
-   planAddTerm,
-   planDeleteTerm,
-   planUpdateTerm,
-+  reclassifiedItems,
-   resolveValue,
-   searchAliasTable,
-   searchMatch,
-@@ -138,5 +140,53 @@ describe('the shared musical vocabulary', () => {
-     expect(planDeleteTerm(terms, items, 'term-khatai')).toMatchObject({ ok: false });
-     expect(planDeleteTerm(terms, [item('y', { form: { termId: 'term-khatai' } })], 'term-khatai')).toMatchObject({ ok: false });
-     expect(planDeleteTerm(terms, [], 'term-khatai')).toEqual({ ok: true, terms: [] });
-+
-+    // AMBIGUOUS TEXT IS HELD IN PLACE BY EVERY CLAIMANT. An imported custom
-+    // term sharing a spelling with another (validation admits it; resolution
-+    // keeps that text literal) may neither be deleted nor lose the spelling,
-+    // for each field — against a built-in claimant and against a custom one —
-+    // because either hands the item to whichever claimant is left.
-+    const cases: { field: 'dastgahAvaz' | 'form' | 'composer'; kind: MusicTerm['kind']; spelling: string; other?: MusicTerm }[] = [
-+      { field: 'dastgahAvaz', kind: 'dastgah', spelling: 'Shur' },
-+      { field: 'form', kind: 'form', spelling: 'Reng' },
-+      { field: 'composer', kind: 'composer', spelling: 'Darvish Khan' },
-+      { field: 'form', kind: 'form', spelling: 'Naghmeh', other: term('term-other', 'form', 'Other naghmeh', ['Naghmeh']) },
-+    ];
-+    for (const c of cases) {
-+      const mine = term('term-mine', c.kind, `My ${c.spelling}`, [c.spelling]);
-+      const stored = [mine, ...(c.other ? [c.other] : [])];
-+      const piece = item('amb', { [c.field]: c.spelling });
-+      const label = `${c.field} ${c.spelling}${c.other ? ' (custom claimant)' : ''}`;
-+      expect(resolveValue(c.spelling, c.kind, vocabulary(stored)).status, label).toBe('ambiguous');
-+      // Neither term may be deleted out from under it, and the count says why.
-+      expect(itemsUsingTerm([piece], 'term-mine', vocabulary(stored)).map((i) => i.id), label).toEqual(['amb']);
-+      expect(planDeleteTerm(stored, [piece], 'term-mine').ok, label).toBe(false);
-+      if (c.other) expect(planDeleteTerm(stored, [piece], 'term-other').ok, label).toBe(false);
-+      // Removing the shared spelling is the same collapse, said as an edit.
-+      const dropped = planUpdateTerm(stored, [piece], 'term-mine', { aliases: [] }, NOW);
-+      expect(dropped.ok, label).toBe(false);
-+      expect(!dropped.ok && dropped.reason, label).toMatch(/quietly change what it means/);
-+      // …but the term is not stuck: the collision it arrived with is not this
-+      // edit's doing, so archiving it and renaming it (spelling kept) still work,
-+      // and the piece still reads as the owner wrote it.
-+      const archived = planUpdateTerm(stored, [piece], 'term-mine', { archived: true }, NOW);
-+      expect(archived.ok, label).toBe(true);
-+      const renamed = planUpdateTerm(archived.ok ? archived.terms : stored, [piece], 'term-mine', { name: `Mine ${c.spelling}` }, NOW);
-+      expect(renamed.ok, label).toBe(true);
-+      expect(resolveValue(c.spelling, c.kind, vocabulary(renamed.ok ? renamed.terms : [])).status, label).toBe('ambiguous');
-+      expect(reclassifiedItems([piece], c.kind, vocabulary(stored), vocabulary(renamed.ok ? renamed.terms : [])), label).toEqual([]);
-+      // With nothing written in that spelling, both edits are free.
-+      expect(planDeleteTerm(stored, [], 'term-mine').ok, label).toBe(true);
-+      expect(planUpdateTerm(stored, [], 'term-mine', { aliases: [] }, NOW).ok, label).toBe(true);
-+    }
-+    // Text that STAYS ambiguous reads literally either way: three claimants of
-+    // «Zarbi», one of them dropping it, reclassify nothing.
-+    const three = [term('term-a', 'form', 'Zarbi A', ['Zarbi']), term('term-b', 'form', 'Zarbi B', ['Zarbi'])];
-+    expect(planUpdateTerm(three, [item('z', { form: 'Zarbi' })], 'term-a', { aliases: [] }, NOW).ok).toBe(true);
-+    // Giving LITERAL text a term is what adding a spelling is for — allowed.
-+    const plain = item('plain', { form: 'Chaharpareh' });
-+    const claimed = planUpdateTerm(terms, [plain], 'term-khatai', { aliases: ['Khatai', 'Chaharpareh'] }, NOW);
-+    expect(claimed.ok).toBe(true);
-+    expect(resolveValue('Chaharpareh', 'form', vocabulary(claimed.ok ? claimed.terms : [])).status).toBe('term');
-   });
- });
-diff --git a/src/domain/musicTerms.ts b/src/domain/musicTerms.ts
-index 746cf4dc91fe3c249d3f98ff79a8499492bfbd2f..7de8e3f938007f7899398aee9d70658d28401bbe 100644
---- a/src/domain/musicTerms.ts
-+++ b/src/domain/musicTerms.ts
-@@ -373,7 +373,12 @@ export function parseAliases(text: string): string[] {
-   return [...new Set(text.split(/[\n,،]/).map((a) => a.trim()).filter(Boolean))];
- }
- 
--/** Items whose stored value currently MEANS this term, by reference or by alias. */
-+/**
-+ * Items whose stored value DEPENDS on this term: a reference to it, text that
-+ * means it uniquely, or text it is one of several claimants of (ambiguous
-+ * text is kept literal only because more than one term answers to it, so
-+ * every claimant is holding that reading in place).
-+ */
- export function itemsUsingTerm(items: PracticeItem[], termId: ID, vocab: Vocabulary): PracticeItem[] {
-   const term = vocab.byId.get(termId);
-   if (!term) return [];
-@@ -381,16 +386,53 @@ export function itemsUsingTerm(items: PracticeItem[], termId: ID, vocab: Vocabul
-     TERM_FIELDS.some((field) => {
-       if (TERM_FIELD_KIND[field] !== term.kind) return false;
-       const r = resolveValue(item.persian?.[field], term.kind, vocab);
--      return r.status === 'term' && r.term.id === termId;
-+      if (r.status === 'term') return r.term.id === termId;
-+      return r.status === 'ambiguous' && r.candidates.some((t) => t.id === termId);
-+    }),
+   heading: string;
+   explanation: string;
+@@ -23,6 +24,8 @@ export function ItemChoice({
+   sameTitle?: (item: PracticeItem) => boolean;
+   onChoose: (itemId: string) => string | null | void;
+   onCancel: () => void;
++  /** A deliberate way out that is not one of the items (e.g. "Add as a new item"). */
++  alternative?: { label: string; run: () => string | null | void };
+ }) {
+   const [refusal, setRefusal] = useState<string | null>(null);
+   return (
+@@ -56,6 +59,55 @@ export function ItemChoice({
+           {refusal}
+         </p>
+       )}
++      {alternative && (
++        <button className="btn btn-sm" style={{ width: 'fit-content' }} onClick={() => setRefusal(alternative.run() || null)}>
++          {alternative.label}
++        </button>
++      )}
++      <button className="btn btn-ghost btn-sm" style={{ width: 'fit-content' }} onClick={onCancel}>
++        Cancel
++      </button>
++    </div>
 +  );
 +}
 +
-+/** What a value MEANS, as one comparable word: a term's id, or how it reads without one. */
-+function meaning(value: MusicalValue | null | undefined, kind: MusicTermKind, vocab: Vocabulary): string {
-+  const r = resolveValue(value, kind, vocab);
-+  return r.status === 'term' ? `term:${r.term.id}` : r.status;
++/**
++ * The same explicit choice from the ITEM's side: which suggestion an item the
++ * owner placed in a stage answers. Only suggestions nothing answers yet are
++ * offered; nothing happens until one is picked.
++ */
++export function SuggestionChoice({
++  itemTitle,
++  suggestions,
++  onChoose,
++  onCancel,
++}: {
++  itemTitle: string;
++  suggestions: { ref: string; title: string }[];
++  onChoose: (ref: string) => string | null | void;
++  onCancel: () => void;
++}) {
++  const [refusal, setRefusal] = useState<string | null>(null);
++  const heading = `Which suggestion is “${itemTitle}”?`;
++  return (
++    <div className="card card-quiet stack-sm" role="region" aria-label={heading}>
++      <div className="small" style={{ fontWeight: 600 }}>
++        Which suggestion is <span dir="auto">“{itemTitle}”</span>?
++      </div>
++      <p className="tiny dim" style={{ margin: 0 }}>
++        Choose the suggestion this item is. Nothing about the item changes except that it now answers it.
++      </p>
++      {suggestions.length === 0 && <p className="tiny dim">Every suggestion here is already answered.</p>}
++      {suggestions.map((u) => (
++        <button key={u.ref} className="btn btn-block" style={{ textAlign: 'start' }} onClick={() => setRefusal(onChoose(u.ref) || null)}>
++          <span dir="auto">{u.title}</span>
++        </button>
++      ))}
++      {refusal && (
++        <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
++          {refusal}
++        </p>
++      )}
+       <button className="btn btn-ghost btn-sm" style={{ width: 'fit-content' }} onClick={onCancel}>
+         Cancel
+       </button>
+diff --git a/src/components/direction.test.ts b/src/components/direction.test.ts
+index e507132fd34a608069715c75900cfd0605a1663b..933047c0d3d536f63ded7400cd4c62f2284d6336 100644
+--- a/src/components/direction.test.ts
++++ b/src/components/direction.test.ts
+@@ -172,6 +172,9 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string
+   { file: "components/MusicalTermField.tsx", tagName: "span", classValue: "" },
+   // Link existing / which item is it / which source: each candidate's own title.
+   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
++  // SuggestionChoice: the item's title, then each suggestion's.
++  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
++  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+diff --git a/src/components/useViewportGuard.ts b/src/components/useViewportGuard.ts
+index 2e8550c49581b1794ecac6132e6821bf52459d98..5cb3c265371959b181bf689efff9c668218f5d57 100644
+--- a/src/components/useViewportGuard.ts
++++ b/src/components/useViewportGuard.ts
+@@ -1,14 +1,26 @@
+ import { useEffect } from 'react';
+-import { startViewportGuard } from './viewport';
++import { decideViewport, startViewportGuard, type ViewportGeometry } from './viewport';
+ 
+ // ---------------------------------------------------------------------------
+ // The thin browser adapter for `viewport.ts`: supplies the real visual
+-// viewport, document scroll and visibility events, starts the guard once for
+-// the shell, and tears every listener down on unmount. No decision lives here
+-// — see `decideViewport` for when the document scroll is put back, and why a
+-// focused field no longer blocks it.
++// viewport, document and shell scroll offsets and visibility events, starts
++// the guard once for the shell, and tears every listener down on unmount. No
++// decision lives here — see `decideViewport` for when the offsets are put
++// back, and why a focused field no longer blocks it.
+ // ---------------------------------------------------------------------------
+ 
++const root = () => document.getElementById('root');
++
++function geometry(): ViewportGeometry {
++  return {
++    layoutHeight: window.innerHeight,
++    visualHeight: window.visualViewport?.height ?? window.innerHeight,
++    scale: window.visualViewport?.scale ?? 1,
++    documentScroll: window.scrollY || document.documentElement.scrollTop || document.body.scrollTop,
++    shellScroll: Math.max(document.body.scrollTop, root()?.scrollTop ?? 0),
++  };
++}
++
+ export function useViewportGuard(): void {
+   useEffect(
+     () =>
+@@ -21,18 +33,181 @@ export function useViewportGuard(): void {
+           document.addEventListener('visibilitychange', handler);
+           return () => document.removeEventListener('visibilitychange', handler);
+         },
+-        geometry: () => ({
+-          layoutHeight: window.innerHeight,
+-          visualHeight: window.visualViewport?.height ?? window.innerHeight,
+-          scale: window.visualViewport?.scale ?? 1,
+-          documentScroll: window.scrollY || document.documentElement.scrollTop || document.body.scrollTop,
+-        }),
++        geometry: () => {
++          const g = geometry();
++          traceNote('guard', g);
++          return g;
++        },
+         restoreDocument: () => {
++          traceNote('restore');
+           window.scrollTo(0, 0);
+           document.documentElement.scrollTop = 0;
+           document.body.scrollTop = 0;
++          const r = root();
++          if (r) r.scrollTop = 0;
+         },
+       }),
+     [],
+   );
+ }
++
++// ---------------------------------------------------------------------------
++// KEYBOARD TRACE — an opt-in recorder for the owner's own iPhone (More →
++// Keyboard trace). The lifted-bar report is a NATIVE behaviour no browser
++// fixture reproduces, so this writes down what the device actually reports at
++// every event that can move it: both viewports, every scroll offset in the
++// shell, the bar's position and the focused element. Memory only — never in
++// the database, a backup or sync — and nothing here changes what the guard
++// does. Recording outlives route changes and backgrounding (module scope);
++// a relaunch of the app ends it.
++// ---------------------------------------------------------------------------
++
++let trace: string[] = [];
++// Hidden fixed-position probes: what each viewport unit and safe-area inset
++// actually RESOLVES to on this device, read per line (clientHeight is not a
++// measurement of 100vh). Present only while recording.
++const PROBES = ['100vh', '100svh', '100lvh', '100dvh', '100%'] as const;
++let probes: HTMLElement[] = [];
++let insetProbe: HTMLElement | null = null;
++
++function addProbes(): void {
++  const make = (css: string) => {
++    const el = document.createElement('div');
++    el.setAttribute('aria-hidden', 'true');
++    el.style.cssText = `position:fixed;left:0;top:0;width:1px;visibility:hidden;pointer-events:none;${css}`;
++    document.body.append(el);
++    return el;
++  };
++  probes = PROBES.map((h) => make(`height:${h}`));
++  insetProbe = make('height:0;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)');
++}
++
++function removeProbes(): void {
++  probes.forEach((el) => el.remove());
++  insetProbe?.remove();
++  probes = [];
++  insetProbe = null;
++}
++
++function probeReadings(): Record<string, number | null> {
++  const out: Record<string, number | null> = {};
++  PROBES.forEach((h, i) => {
++    out[h.replace('100', '').replace('%', 'pct')] = probes[i] ? Math.round(probes[i].getBoundingClientRect().height * 10) / 10 : null;
++  });
++  const cs = insetProbe ? getComputedStyle(insetProbe) : null;
++  out.insetTop = cs ? parseFloat(cs.paddingTop) : null;
++  out.insetBottom = cs ? parseFloat(cs.paddingBottom) : null;
++  out.screenH = screen.height;
++  return out;
++}
++let stopTrace: (() => void) | null = null;
++let t0 = 0;
++// ponytail: fixed cap so a forgotten recording cannot grow without bound; raise if a real capture needs more.
++const TRACE_LIMIT = 5000;
++
++function snapshot(event: string, extra?: unknown): string {
++  const vv = window.visualViewport;
++  const main = document.querySelector('main');
++  const bar = document.querySelector('.tabbar')?.getBoundingClientRect();
++  const active = document.activeElement as HTMLElement | null;
++  const r = (n: number | undefined) => (n === undefined ? null : Math.round(n * 10) / 10);
++  return JSON.stringify({
++    t: Math.round(performance.now() - t0),
++    ev: event,
++    innerH: window.innerHeight,
++    clientH: document.documentElement.clientHeight,
++    vvH: r(vv?.height),
++    vvTop: r(vv?.offsetTop),
++    vvPageTop: r(vv?.pageTop),
++    scale: r(vv?.scale),
++    scrollY: r(window.scrollY),
++    html: document.documentElement.scrollTop,
++    body: document.body.scrollTop,
++    root: root()?.scrollTop ?? null,
++    main: main?.scrollTop ?? null,
++    htmlH: r(document.documentElement.getBoundingClientRect().height),
++    barTop: r(bar?.top),
++    barBottom: r(bar?.bottom),
++    focus: active && active !== document.body ? `${active.tagName.toLowerCase()}:${active.getAttribute('aria-label') ?? active.getAttribute('name') ?? ''}` : null,
++    vis: document.visibilityState,
++    ...probeReadings(),
++    ...(extra ? { decision: decideViewport(extra as ViewportGeometry) } : {}),
++  });
++}
++
++/** Append one line; at the cap, say so ONCE rather than silently dropping the rest. */
++function record(line: () => string): void {
++  if (trace.length < TRACE_LIMIT) trace.push(line());
++  else if (trace.length === TRACE_LIMIT) trace.push(JSON.stringify({ ev: 'trace-full', limit: TRACE_LIMIT }));
++}
++
++function traceNote(event: string, g?: ViewportGeometry): void {
++  if (stopTrace) record(() => snapshot(event, g));
++}
++
++export function isTracingViewport(): boolean {
++  return stopTrace !== null;
++}
++
++export function isViewportTraceFull(): boolean {
++  return trace.length > TRACE_LIMIT;
 +}
 +
 +/**
-+ * THE ONE CHECK a vocabulary edit passes before it is applied: the items whose
-+ * stored text or reference would MEAN something different under `after` than
-+ * under `before`, with nothing about the item itself edited. The only change
-+ * allowed is literal text becoming a term — a spelling the owner has just
-+ * given a term, which is what adding that spelling is for. Everything else —
-+ * a term's text turning literal, one term becoming another, a reference left
-+ * dangling, or AMBIGUOUS text collapsing onto whichever claimant is left — is
-+ * reclassifying the owner's piece behind their back. Still-ambiguous text is
-+ * no change: it reads literally either way.
++ * Start recording (clears any earlier trace). The header names the device, the
++ * mode, the build and whether this is a secure context, so a pasted trace says
++ * which app produced it. Each line's `ev` names its SOURCE (`vv:resize`,
++ * `window:scroll`, `root:scroll`…). `<main>`'s own scrolling is not an event
++ * here — it is the owner's, and its offset is in every line anyway.
 + */
-+export function reclassifiedItems(items: PracticeItem[], kind: MusicTermKind, before: Vocabulary, after: Vocabulary): PracticeItem[] {
-+  return items.filter((item) =>
-+    TERM_FIELDS.some((field) => {
-+      if (TERM_FIELD_KIND[field] !== kind) return false;
-+      const was = meaning(item.persian?.[field], kind, before);
-+      const now = meaning(item.persian?.[field], kind, after);
-+      return was !== now && !(was === 'literal' && now.startsWith('term:'));
-     }),
-   );
- }
- 
--/** Which keys of `candidate` another term of the same kind already claims. */
--function collisions(candidate: Pick<MusicTerm, 'id' | 'kind' | 'name' | 'aliases'>, vocab: Vocabulary): string[] {
-+/**
-+ * Which keys of `candidate` another term of the same kind already claims —
-+ * only the keys this edit ADDS. A collision the term already carried (an
-+ * imported file may hold one; resolution keeps that text literal) is not the
-+ * edit's doing, and refusing on it would leave the term impossible to archive
-+ * or rename at all.
-+ */
-+function collisions(candidate: Pick<MusicTerm, 'id' | 'kind' | 'name' | 'aliases'>, vocab: Vocabulary, had: string[] = []): string[] {
-   const own = vocab.keys.get(candidate.kind)!;
-+  const held = new Set(had);
-   const out: string[] = [];
-   for (const text of [candidate.name, ...candidate.aliases]) {
-+    if (held.has(termKey(text))) continue;
-     const claimants = (own.get(termKey(text)) ?? []).filter((t) => t.id !== candidate.id);
-     if (claimants.length) out.push(`“${text}” already means ${claimants.map((t) => `“${t.name}”`).join(', ')}`);
-   }
-@@ -445,29 +487,25 @@ export function planUpdateTerm(
-   const next: MusicTerm = { ...current, name, aliases, updatedAt: nowISO(now) };
-   if (archived) next.archived = true;
-   else delete next.archived;
--  const clash = collisions(next, vocab);
-+  const clash = collisions(next, vocab, termKeys(current));
-   if (clash.length) return { ok: false, reason: `Not saved: ${clash.join('; ')}. One spelling cannot mean two terms.` };
--  const keptKeys = new Set(termKeys(next));
--  const dependents = items.filter((item) =>
--    TERM_FIELDS.some((field) => {
--      if (TERM_FIELD_KIND[field] !== current.kind) return false;
--      const value = item.persian?.[field];
--      if (typeof value !== 'string') return false;
--      const r = resolveValue(value, current.kind, vocab);
--      return r.status === 'term' && r.term.id === id && !keptKeys.has(termKey(value));
--    }),
--  );
--  if (dependents.length) {
--    const n = dependents.length;
-+  const terms = withStored(stored, next);
-+  const changed = reclassifiedItems(items, current.kind, vocab, vocabulary(terms));
-+  if (changed.length) {
-+    const n = changed.length;
-     return {
-       ok: false,
--      reason: `Not saved: ${n} item${n === 1 ? ' is' : 's are'} written with a spelling you removed. Keep it as an alias, or change ${n === 1 ? 'that item' : 'those items'} first.`,
-+      reason: `Not saved: ${n} item${n === 1 ? ' is' : 's are'} written with a spelling you removed, and would quietly change what ${n === 1 ? 'it means' : 'they mean'}. Keep it as an alias, or change ${n === 1 ? 'that item' : 'those items'} first.`,
-     };
-   }
--  return { ok: true, terms: withStored(stored, next) };
-+  return { ok: true, terms };
- }
- 
--/** Delete: custom terms only, and only while nothing means them. */
-+/**
-+ * Delete: custom terms only, and only while no item's value depends on it —
-+ * including text it is one of several claimants of, whose other claimant it
-+ * would otherwise silently hand the item to.
-+ */
- export function planDeleteTerm(stored: MusicTerm[], items: PracticeItem[], id: ID): TermPlan {
-   if (isBuiltInTerm(id)) return { ok: false, reason: 'A built-in term cannot be deleted. Archive it to stop offering it.' };
-   const vocab = vocabulary(stored);
-diff --git a/src/domain/studySources.test.ts b/src/domain/studySources.test.ts
-index 59dfef35c908900bc90ea7f3dffb77e399eb7fd7..b5f80e5693ff9c12abf331cb747769b90b7f2356 100644
---- a/src/domain/studySources.test.ts
-+++ b/src/domain/studySources.test.ts
-@@ -7,7 +7,14 @@ import {
-   sourceKindOptions,
-   withCourseSourceKey,
- } from './studySources';
--import { courseStageId, COURSES, planCatalogAddition, resolveCourseSource } from './courseSeed';
-+import {
-+  courseSourceQuestions,
-+  courseStageId,
-+  COURSES,
-+  planCatalogAddition,
-+  planChooseCourseSource,
-+  resolveCourseSource,
-+} from './courseSeed';
- import { catalogForStage } from './pathwaySeed';
- import { CGS_COURSE } from './courseData';
- import { KHONYAGAR_COURSE } from './khonyagarData';
-@@ -85,6 +92,46 @@ describe('study sources', () => {
-     expect(asked.items.find((i) => i.id === asked.itemId)!.materialId).toBeUndefined();
-     expect(asked.sourceCandidates!.map((m) => m.id)).toEqual(['mat-khon-1', 'mat-khon-2']);
-     expect(asked.materials).toBe(db.materials);
-+    // 6. THE QUESTION IS SAVED DATA, NOT A SCREEN'S MEMORY. Whatever the tap
-+    //    (Play adds exactly as Add does), the new item is left waiting, and the
-+    //    question is derived from the database: it survives an export/reload,
-+    //    and a REPEAT Add of the now-bound suggestion asks it again while
-+    //    writing nothing.
-+    const afterFirst = { ...db, items: asked.items, materials: asked.materials };
-+    const reloaded = validateDB(JSON.parse(serializeExport(afterFirst, NOW)));
-+    const questionOf = (d: Pick<typeof db, 'items' | 'materials'>) => courseSourceQuestions(d, KHONYAGAR_COURSE);
-+    expect(questionOf(reloaded).map((q) => [q.instrumentId, q.candidates.map((m) => m.id), q.items.map((i) => i.id)])).toEqual([
-+      ['inst-tar', ['mat-khon-1', 'mat-khon-2'], [asked.itemId]],
-+    ]);
-+    const again = planCatalogAddition(reloaded, kStage, kEntry.key, kEntry, 'inst-tar', NOW);
-+    expect([again.created, again.itemId, again.items, again.materials]).toEqual([false, asked.itemId, reloaded.items, reloaded.materials]);
-+    expect(again.items).toBe(reloaded.items);
-+    expect(again.sourceCandidates!.map((m) => m.id)).toEqual(['mat-khon-1', 'mat-khon-2']);
-+    // Moved out of its stage, it is still asked: the course is read from the
-+    // references it answers, never from where it sits.
-+    const moved = reloaded.items.map((i) => (i.id === asked.itemId ? { ...i, stageId: undefined } : i));
-+    expect(questionOf({ ...reloaded, items: moved })[0].items.map((i) => i.id)).toEqual([asked.itemId]);
-+    // A second suggestion added while it is still open joins the SAME question.
-+    const kEntry2 = catalogForStage(kStage)[1];
-+    const second = planCatalogAddition(reloaded, kStage, kEntry2.key, kEntry2, 'inst-tar', NOW);
-+    const both = { ...reloaded, items: second.items, materials: second.materials };
-+    expect(questionOf(both)[0].items.map((i) => i.id)).toEqual([asked.itemId, second.itemId]);
-+    // 7. THE ANSWER goes to exactly the items the question named — both here —
-+    //    keys the chosen source, and ends the question. Choosing again (a
-+    //    retry) restates it and changes nothing further.
-+    const answered = planChooseCourseSource(both, KHONYAGAR_COURSE, 'mat-khon-2', [asked.itemId, second.itemId], NOW);
-+    if (!answered.ok) throw new Error(answered.reason);
-+    expect(answered.items.filter((i) => i.materialId === 'mat-khon-2').map((i) => i.id)).toEqual([asked.itemId, second.itemId]);
-+    expect(questionOf(answered)).toEqual([]);
-+    const retried = planChooseCourseSource(answered, KHONYAGAR_COURSE, 'mat-khon-2', [asked.itemId, second.itemId], NOW);
-+    expect(retried.ok && [retried.items, retried.materials]).toEqual([answered.items, answered.materials]);
-+    // …and ONLY to those: a course item it did not name keeps no source —
-+    // one without a source looks exactly like one the owner cleared.
-+    const onlyFirst = planChooseCourseSource(both, KHONYAGAR_COURSE, 'mat-khon-2', [asked.itemId], NOW);
-+    expect(onlyFirst.ok && onlyFirst.items.find((i) => i.id === second.itemId)!.materialId).toBeUndefined();
-+    // A source on another instrument is refused, never half-applied.
-+    expect(planChooseCourseSource(both, KHONYAGAR_COURSE, 'mat-cgs', [asked.itemId], NOW)).toMatchObject({ ok: false });
++export function startViewportTrace(): void {
++  if (stopTrace) return;
++  t0 = performance.now();
++  trace = [
++    JSON.stringify({
++      ua: navigator.userAgent,
++      standalone: window.matchMedia('(display-mode: standalone)').matches,
++      secure: window.isSecureContext,
++      build: typeof __APP_VERSION__ === 'undefined' ? null : __APP_VERSION__,
++      screen: `${screen.width}x${screen.height}`,
++      dpr: window.devicePixelRatio,
++      at: new Date().toISOString(),
++    }),
++  ];
++  const on = (target: EventTarget | null | undefined, source: string, type: string) => {
++    const fn = () => record(() => snapshot(`${source}:${type}`));
++    target?.addEventListener(type, fn, { passive: true });
++    return () => target?.removeEventListener(type, fn);
++  };
++  const vv = window.visualViewport;
++  const offs = [
++    on(vv, 'vv', 'resize'),
++    on(vv, 'vv', 'scroll'),
++    on(window, 'window', 'resize'),
++    on(window, 'window', 'scroll'),
++    on(window, 'window', 'orientationchange'),
++    on(document.body, 'body', 'scroll'),
++    on(root(), 'root', 'scroll'),
++    on(document, 'document', 'focusin'),
++    on(document, 'document', 'focusout'),
++    on(document, 'document', 'visibilitychange'),
++  ];
++  addProbes();
++  stopTrace = () => {
++    offs.forEach((off) => off());
++    removeProbes();
++  };
++  trace.push(snapshot('start'));
++}
 +
-     // The owner's answer keys exactly the one chosen.
-     const chosen = withCourseSourceKey(db.materials, 'mat-khon-2', KHONYAGAR_COURSE);
-     expect(chosen.filter((m) => m.sourceKey).map((m) => [m.id, m.sourceKey])).toEqual([
-diff --git a/src/pages/MusicTerms.tsx b/src/pages/MusicTerms.tsx
-index 6b3eac3b441469ff5ef9d846312c73615ecb221b..061bce2aa18e0da72b24d9f60e4dfb4f5decb2ff 100644
---- a/src/pages/MusicTerms.tsx
-+++ b/src/pages/MusicTerms.tsx
-@@ -6,6 +6,7 @@ import {
-   MUSIC_TERM_KIND_LABELS,
-   MUSIC_TERM_KINDS,
-   parseAliases,
-+  planDeleteTerm,
-   vocabulary,
-   type MusicTerm,
-   type MusicTermKind,
-@@ -49,8 +50,16 @@ export default function MusicTerms() {
-     setDeleted((d) => ({ ...d, [term.id]: term.name }));
-     saves.run(term.id, 'delete', () => deleteTerm(term.id));
-   };
-+  // Delete is offered exactly when the planner the store applies would allow it.
-   const row = (t: MusicTerm) => (
--    <TermRow key={t.id} term={t} users={itemsUsingTerm(db.items, t.id, vocab).length} saves={saves} onDelete={() => remove(t)} />
-+    <TermRow
-+      key={t.id}
-+      term={t}
-+      users={itemsUsingTerm(db.items, t.id, vocab).length}
-+      deletable={planDeleteTerm(db.musicTerms, db.items, t.id).ok}
-+      saves={saves}
-+      onDelete={() => remove(t)}
-+    />
-   );
++export function stopViewportTrace(): void {
++  if (!stopTrace) return;
++  record(() => snapshot('stop'));
++  stopTrace();
++  stopTrace = null;
++}
++
++/** The recorded trace, one JSON object per line. */
++export function viewportTraceText(): string {
++  return trace.join('\n');
++}
+diff --git a/src/components/viewport.test.ts b/src/components/viewport.test.ts
+index f175a86934a644720571536285b6574cc108ed00..dc6dcc6848d83c4f1be713dae52ed620d69060de 100644
+--- a/src/components/viewport.test.ts
++++ b/src/components/viewport.test.ts
+@@ -15,6 +15,11 @@ const CASES: { name: string; g: ViewportGeometry; want: 'none' | 'restore' }[] =
+   { name: 'zoomed with a full-height window', g: { layoutHeight: 844, scale: 1.5, visualHeight: 562.7, documentScroll: 120 }, want: 'none' },
+   { name: 'hardware keyboard: no visual change, no displacement', g: { ...PHONE, visualHeight: 844, documentScroll: 0 }, want: 'none' },
+   { name: 'rotated to landscape, displaced', g: { layoutHeight: 390, scale: 1, visualHeight: 390, documentScroll: 60 }, want: 'restore' },
++  // A reveal that scrolled a SHELL box (#root/body) leaves the document at 0.
++  { name: 'shell box scrolled, keyboard gone', g: { ...PHONE, visualHeight: 844, documentScroll: 0, shellScroll: 180 }, want: 'restore' },
++  { name: 'shell box scrolled, keyboard still up', g: { ...PHONE, visualHeight: 508, documentScroll: 0, shellScroll: 180 }, want: 'none' },
++  { name: 'shell box scrolled, pinch-zoomed', g: { layoutHeight: 844, scale: 2, visualHeight: 422, documentScroll: 0, shellScroll: 180 }, want: 'none' },
++  { name: 'shell at rest', g: { ...PHONE, visualHeight: 844, documentScroll: 0, shellScroll: 0 }, want: 'none' },
+ ];
  
-   return (
-@@ -180,7 +189,19 @@ function AddTerm({ kind, saves }: { kind: MusicTermKind; saves: AckSaves }) {
-   );
+ describe('the layout viewport restore', () => {
+diff --git a/src/components/viewport.ts b/src/components/viewport.ts
+index b4e977e584f93a00bcb9fdc3931de4bbcbbcdb84..10e67de0f0f6c0cf6fe38fd7db057eba67a52c80 100644
+--- a/src/components/viewport.ts
++++ b/src/components/viewport.ts
+@@ -12,12 +12,20 @@
+ // is back to the full layout height it is RESIDUAL displacement — the lifted
+ // tab bar — and is put back to zero.
+ //
++// The same holds for `body` and `#root`: `overflow: hidden` stops the OWNER
++// scrolling them, not the browser — a focus reveal may scroll every scroll
++// container above the field, and a box scrolled that way stays scrolled with
++// the document offset reading zero. Any offset on them is displacement too.
++//
+ // Keyboard presence is read from GEOMETRY, never from focus: "Done" on the
+ // iOS keyboard hides it and leaves the field focused, which is exactly the
+ // case a focus-gated guard never corrected. There is no timer, no forced
+ // blur, no zoom lock, and `<main>`'s own scroll position is never touched.
+ // Browser fixtures prove this mechanism; they cannot prove the native iPhone
+-// keyboard, which stays an owner-device check.
++// keyboard. The owner's first device trace showed their lifted bar is NOT a
++// scroll offset at all — every offset was 0 while the viewport HEIGHT flipped
++// — so this guard does not address it; see the standalone shell height in
++// global.css and the opt-in trace in `useViewportGuard.ts`.
+ // ---------------------------------------------------------------------------
+ 
+ export interface ViewportGeometry {
+@@ -29,6 +37,11 @@ export interface ViewportGeometry {
+   scale: number;
+   /** How far the DOCUMENT is scrolled (`window.scrollY`). */
+   documentScroll: number;
++  /**
++   * The largest offset of the shell's own non-scrolling boxes (`body`,
++   * `#root`) — never `<main>`, the one box the owner scrolls. Absent reads 0.
++   */
++  shellScroll?: number;
  }
  
--function TermRow({ term, users, saves, onDelete }: { term: MusicTerm; users: number; saves: AckSaves; onDelete: () => void }) {
-+function TermRow({
-+  term,
-+  users,
-+  deletable,
-+  saves,
-+  onDelete,
-+}: {
-+  term: MusicTerm;
-+  users: number;
-+  deletable: boolean;
-+  saves: AckSaves;
-+  onDelete: () => void;
-+}) {
-   const updateTerm = useStore((s) => s.updateTerm);
-   const [editing, setEditing] = useState(false);
-   const [name, setNameState] = useState(term.name);
-@@ -258,8 +279,8 @@ function TermRow({ term, users, saves, onDelete }: { term: MusicTerm; users: num
-           <button
-             className="btn btn-ghost btn-sm btn-danger"
-             aria-label={`Delete ${term.name}`}
--            disabled={users > 0}
--            title={users > 0 ? 'Used by pieces — archive it instead' : undefined}
-+            disabled={!deletable}
-+            title={deletable ? undefined : 'Used by pieces — archive it instead'}
-             onClick={() => {
-               if (confirm(`Delete the term “${term.name}”? No piece uses it.`)) onDelete();
-             }}
+ /**
+@@ -43,14 +56,14 @@ export type ViewportAction = 'none' | 'restore';
+ /**
+  * What to do about the document's scroll offset, from geometry alone.
+  *
+- *  - no offset             → nothing to correct
++ *  - no offset (document or shell) → nothing to correct
+  *  - zoomed (scale ≠ 1)    → the owner's zoom; never fought
+  *  - visual viewport short → the keyboard (or any panel) is still up; WebKit's
+  *                            reveal is intentional, leave it
+  *  - otherwise             → residual displacement: restore to zero
+  */
+ export function decideViewport(g: ViewportGeometry): ViewportAction {
+-  if (!(g.documentScroll > 0)) return 'none';
++  if (!(g.documentScroll > 0) && !((g.shellScroll ?? 0) > 0)) return 'none';
+   if (Math.abs(g.scale - 1) > 0.001) return 'none';
+   if (g.visualHeight * g.scale < g.layoutHeight - ROUNDING_PX) return 'none';
+   return 'restore';
+@@ -66,7 +79,7 @@ export interface ViewportPort {
+   /** Subscribe to the page becoming visible again; returns the unsubscribe. */
+   onVisible(fn: () => void): () => void;
+   geometry(): ViewportGeometry;
+-  /** Put the DOCUMENT scroll back to zero. Never `<main>`. */
++  /** Put the document and the shell's non-scrolling boxes back to zero. Never `<main>`. */
+   restoreDocument(): void;
+ }
+ 
+diff --git a/src/domain/courseSeed.ts b/src/domain/courseSeed.ts
+index 4c5c72d632020883ac22d2f02f7aae6ed0b5396f..7748d1bb6cba0e10ca924af819bc8014d67568d6 100644
+--- a/src/domain/courseSeed.ts
++++ b/src/domain/courseSeed.ts
+@@ -626,11 +626,17 @@ export interface CatalogAddition {
+    * one explicitly.
+    */
+   candidates?: PracticeItem[];
++  /**
++   * Set by `planStageAddition` (`pathways.ts`) when items placed in the stage
++   * answer no suggestion: nothing is created until the owner links one or asks
++   * for a new item.
++   */
++  placed?: PracticeItem[];
+   /** Set when the course's own study source needs the owner's choice. */
+   sourceCandidates?: Material[];
+ }
+ 
+-interface CatalogAdditionDB {
++export interface CatalogAdditionDB {
+   items: PracticeItem[];
+   materials: Material[];
+ }
+diff --git a/src/domain/pathways.ts b/src/domain/pathways.ts
+index 2b964c4600aa1f166242f03697903918aad021dd..398a8d75e592f8ef93c39a304b54fdc0f0e40909 100644
+--- a/src/domain/pathways.ts
++++ b/src/domain/pathways.ts
+@@ -9,7 +9,15 @@ import type {
+   StepStrand,
+ } from './types';
+ import { catalogForStage, knownReference, pathwayReferenceIds } from './pathwaySeed';
+-import { catalogReferenceId, itemReferences, legacyReferenceOf, resolveCatalogReference } from './courseSeed';
++import {
++  catalogReferenceId,
++  itemReferences,
++  legacyReferenceOf,
++  planCatalogAddition,
++  resolveCatalogReference,
++  type CatalogAddition,
++  type CatalogAdditionDB,
++} from './courseSeed';
+ import { nowISO } from './util';
+ 
+ // ---------------------------------------------------------------------------
+@@ -50,6 +58,12 @@ export interface StageUnit {
+    * owner links one explicitly.
+    */
+   candidates?: PracticeItem[];
++  /**
++   * An item PLACED in this stage that answers none of its suggestions
++   * (`unlinkedInStage`). Shown as its own row, said to be unlinked, with a way
++   * to link it — never merged into a suggestion on the strength of a title.
++   */
++  unlinked?: boolean;
+   state: StageState;
+ }
+ 
+@@ -107,13 +121,64 @@ export function stageUnits(stage: PathwayStage, items: PracticeItem[], ctx: Stag
+     if (unit.item) shown.add(unit.item.id);
+     units.push(unit);
+   }
++  const unlinked = new Set(unlinkedInStage(stage.id, items, ctx.instrumentId).map((i) => i.id));
+   for (const it of itemsInStage(items, stage.id)) {
+     if (shown.has(it.id)) continue;
+-    units.push({ key: it.id, title: it.title, strand: it.strand, item: it, state: itemStageState(it) });
++    units.push({
++      key: it.id,
++      title: it.title,
++      strand: it.strand,
++      item: it,
++      ...(unlinked.has(it.id) ? { unlinked: true } : {}),
++      state: itemStageState(it),
++    });
+   }
+   return units;
+ }
+ 
++/**
++ * The owner's items PLACED in a stage — on its pathway's instrument — that
++ * answer none of the stage's suggestions, hidden ones included. Placing an item
++ * is organisation and changes no identity, so such an item may well BE one of
++ * the suggestions beside it; only the owner can say. It is the ONE list both
++ * the stage rows (`unlinked`) and Add (`planStageAddition`) read, so a row can
++ * never look unrelated while Add quietly mints a second item beside it.
++ */
++export function unlinkedInStage(stageId: ID, items: PracticeItem[], instrumentId?: ID): PracticeItem[] {
++  const refs = new Set(catalogForStage(stageId).map((e) => catalogReferenceId(stageId, e.key)));
++  if (!refs.size) return [];
++  return items.filter(
++    (i) =>
++      i.stageId === stageId &&
++      (!instrumentId || i.instrumentId === instrumentId) &&
++      !itemReferences(i).some((r) => refs.has(r)),
++  );
++}
++
++/**
++ * ADD from a stage: `planCatalogAddition`, except that a suggestion nothing
++ * answers yet is NOT created while items the owner placed in that stage answer
++ * no suggestion — any of them may be this music, and a second item would be a
++ * silent duplicate. The plan returns them as `placed` and writes nothing; the
++ * owner links one (`planLinkReference`) or asks for a new item explicitly
++ * (`separate`). A bound or ambiguous suggestion is decided exactly as before.
++ */
++export function planStageAddition(
++  db: CatalogAdditionDB,
++  stageId: ID,
++  entryKey: string,
++  entry: CatalogEntry | undefined,
++  instrumentId: ID,
++  now: Date,
++  separate = false,
++): CatalogAddition {
++  if (!separate && resolveCatalogReference(catalogReferenceId(stageId, entryKey), instrumentId, db.items).status === 'absent') {
++    const placed = unlinkedInStage(stageId, db.items, instrumentId);
++    if (placed.length) return { items: db.items, materials: db.materials, itemId: '', created: false, placed };
++  }
++  return planCatalogAddition(db, stageId, entryKey, entry, instrumentId, now);
++}
++
+ /** The suggestions this stage's pathway hides — listed so each can be restored. */
+ export function hiddenUnits(stage: PathwayStage, items: PracticeItem[], ctx: StageContext): StageUnit[] {
+   if (!ctx.hidden?.size) return [];
+diff --git a/src/domain/referenceCatalog.test.ts b/src/domain/referenceCatalog.test.ts
+index 037fc302d203061c3b3bba014286abe3128d13ef..072b87d1505e4e16ebebeb0327875a861c397115 100644
+--- a/src/domain/referenceCatalog.test.ts
++++ b/src/domain/referenceCatalog.test.ts
+@@ -26,8 +26,10 @@ import {
+   planLinkReference,
+   planRemoveFromPathway,
+   settleLegacyEvidence,
++  planStageAddition,
+   stageProgress,
+   stageUnits,
++  unlinkedInStage,
+ } from './pathways';
+ import { itemFiles } from './itemFiles';
+ import { serializeExport, validateDB } from './io';
+@@ -239,6 +241,80 @@ describe('catalogue identity', () => {
+     expect(resolveCatalogReference('radif:mirza-abdollah:afshari:iraq', 'inst-tar', db.items).status).toBe('absent');
+     // …and nothing on the stage page links by title on its own.
+     expect(stageUnits(stage, db.items, { instrumentId: 'inst-setar' }).find((u) => u.key === 'kereshmeh')!.item).toBeUndefined();
++
++    // 7. PLACING AN OWNED ITEM IS NOT LINKING IT — and Add beside it never mints
++    //    a silent second copy. The ordinary journey: an item the owner already
++    //    has is given a stage from Item Detail (stageId only, through the same
++    //    settle step every placement write passes).
++    const every = everyPathway();
++    const abuAta = stageIdFor(SEED_PATHWAY_IDS.setar, 'abu-ata');
++    const sayakhi = catalogReferenceId(abuAta, 'sayakhi');
++    const owned: PracticeItem = {
++      ...db.items.find((i) => i.id === 'it-title-only')!,
++      id: 'it-sayakhi-owned',
++      instrumentId: 's',
++      title: 'سیخی-ابوعطا-ردیف-میرزاعبدالله',
++      notes: 'teacher: slower in the second phrase',
++      timesPractised: 3,
++      stageId: undefined,
++      catalogKey: undefined,
++      catalogRefs: undefined,
++    };
++    const before: PracticeDB = { ...every, items: [owned] };
++    const placedWrite = settleLegacyEvidence(before, [{ ...owned, stageId: abuAta }], NOW);
++    expect(placedWrite.ok).toBe(true);
++    const placedDb: PracticeDB = { ...before, items: placedWrite.ok ? placedWrite.items : [] };
++    const placedItem = placedDb.items[0];
++    expect(placedItem.catalogRefs).toBeUndefined(); // placement decided no identity
++    const abuStage = stageOf(placedDb, abuAta);
++    const setarCtx = pathwayStageContext(placedDb.pathways.find((p) => p.id === SEED_PATHWAY_IDS.setar));
++
++    // The stage says so: the suggestion is untaken, and the placed item's own
++    // row names it as answering no suggestion (one clear flag, never a merge).
++    expect(unlinkedInStage(abuAta, placedDb.items, 's').map((i) => i.id)).toEqual(['it-sayakhi-owned']);
++    const rows = stageUnits(abuStage, placedDb.items, setarCtx);
++    expect(rows.find((u) => u.key === 'sayakhi')!.item).toBeUndefined();
++    expect(rows.filter((u) => u.item?.id === 'it-sayakhi-owned').map((u) => u.unlinked)).toEqual([true]);
++    // …a Tar instance never counts a Setar item placed beside its stages.
++    expect(unlinkedInStage(abuAta, placedDb.items, 't')).toEqual([]);
++
++    // Add (and Play, which adds through the same planner) on ANY untaken
++    // suggestion of that stage creates NOTHING while the placed item is
++    // unlinked: it hands the item back to be chosen.
++    for (const key of ['sayakhi', 'hejaz']) {
++      const entry = catalogForStage(abuAta).find((e) => e.key === key);
++      const asked = planStageAddition(placedDb, abuAta, key, entry, 's', NOW);
++      expect([asked.created, asked.itemId, asked.items], key).toEqual([false, '', placedDb.items]);
++      expect(asked.placed!.map((i) => i.id), key).toEqual(['it-sayakhi-owned']);
++    }
++    const sayakhiEntry = catalogForStage(abuAta).find((e) => e.key === 'sayakhi');
++
++    // LINK is the owner's explicit answer: one item, every owner field kept,
++    // one row, and Add now reuses it.
++    const linkedPlaced = planLinkReference(placedDb, sayakhi, 'it-sayakhi-owned', 's', NOW);
++    expect(linkedPlaced.ok).toBe(true);
++    const linkedDb: PracticeDB = { ...placedDb, items: linkedPlaced.ok ? linkedPlaced.items : [] };
++    expect(linkedDb.items).toHaveLength(1);
++    expect(strip(linkedDb.items[0])).toEqual(strip(placedItem));
++    const linkedRows = stageUnits(abuStage, linkedDb.items, setarCtx);
++    expect(linkedRows.filter((u) => u.item?.id === 'it-sayakhi-owned').map((u) => [u.key, u.unlinked])).toEqual([['sayakhi', undefined]]);
++    const reAdd = planStageAddition(linkedDb, abuAta, 'sayakhi', sayakhiEntry, 's', NOW);
++    expect([reAdd.created, reAdd.itemId, reAdd.items, reAdd.placed]).toEqual([false, 'it-sayakhi-owned', linkedDb.items, undefined]);
++    // The stage's OTHER suggestions are no longer held: the placed item now
++    // answers one of them, so Add creates exactly what was asked for.
++    const hejaz = planStageAddition(linkedDb, abuAta, 'hejaz', catalogForStage(abuAta).find((e) => e.key === 'hejaz'), 's', NOW);
++    expect([hejaz.created, hejaz.items.length, hejaz.placed]).toEqual([true, 2, undefined]);
++
++    // "Add as a new item" is the other explicit answer: one new item, bound,
++    // the placed one untouched — and a second Add reuses the new one.
++    const separate = planStageAddition(placedDb, abuAta, 'sayakhi', sayakhiEntry, 's', NOW, true);
++    expect(separate.created).toBe(true);
++    expect(separate.items).toHaveLength(2);
++    expect(separate.items[0]).toBe(placedItem);
++    const separateDb: PracticeDB = { ...placedDb, items: separate.items, materials: separate.materials };
++    const again = planStageAddition(separateDb, abuAta, 'sayakhi', sayakhiEntry, 's', NOW);
++    expect([again.created, again.itemId, again.items]).toEqual([false, separate.itemId, separate.items]);
++    expect(() => validateDB({ ...separateDb })).not.toThrow();
+   });
+ 
+   it('Setar and Tar share reference definitions without sharing practice state', () => {
+diff --git a/src/pages/More.tsx b/src/pages/More.tsx
+index 7ca6fd1516abc583ad8b786c319b2685d55045c9..b0d317b2b7384471c1e9dd373967f146576bf8a9 100644
+--- a/src/pages/More.tsx
++++ b/src/pages/More.tsx
+@@ -1,4 +1,6 @@
++import { useState } from 'react';
+ import { Link } from 'react-router-dom';
++import { isTracingViewport, isViewportTraceFull, startViewportTrace, stopViewportTrace, viewportTraceText } from '../components/useViewportGuard';
+ import {
+   ChevronRightIcon,
+   FolderIcon,
+@@ -37,9 +39,76 @@ export default function More() {
+         ))}
+       </div>
+ 
++      <KeyboardTrace />
++
+       <p className="tiny faint" style={{ textAlign: 'center' }}>
+         Practice Compass · local-first · one item, one focus.
+       </p>
+     </div>
+   );
+ }
++
++/**
++ * The iPhone keyboard check (docs/repertoire-experience.md): record what the
++ * device reports while the keyboard opens and closes, then copy it. Memory
++ * only — nothing here is saved, synced or backed up.
++ */
++function KeyboardTrace() {
++  const [recording, setRecording] = useState(isTracingViewport);
++  const [text, setText] = useState('');
++  const [copied, setCopied] = useState<string | null>(null);
++  return (
++    <details className="card card-quiet">
++      <summary className="small">Keyboard trace</summary>
++      <div className="stack-sm" style={{ marginTop: 8 }}>
++        <p className="tiny dim" style={{ margin: 0 }}>
++          For checking the bottom bar after the keyboard closes. Start, use the app as usual — type, tap Done, rotate,
++          switch screens, leave and come back — then return here, stop and copy. Kept in memory only.
++        </p>
++        <div className="row" style={{ gap: 8 }}>
++          <button
++            className="btn btn-sm"
++            onClick={() => {
++              if (recording) {
++                stopViewportTrace();
++                setText(viewportTraceText());
++              } else {
++                startViewportTrace();
++                setText('');
++                setCopied(null);
++              }
++              setRecording(isTracingViewport());
++            }}
++          >
++            {recording ? 'Stop recording' : 'Start recording'}
++          </button>
++          {text && (
++            <button
++              className="btn btn-sm"
++              onClick={() =>
++                navigator.clipboard?.writeText(text).then(
++                  () => setCopied('Copied.'),
++                  () => setCopied('Copy was refused — select the text below instead.'),
++                ) ?? setCopied('Copy is unavailable — select the text below instead.')
++              }
++            >
++              Copy trace
++            </button>
++          )}
++        </div>
++        {recording && <p className="tiny" role="status">Recording…</p>}
++        {text && isViewportTraceFull() && (
++          <p className="tiny" role="alert">
++            The trace filled up and later events were not recorded — start again and keep the session shorter.
++          </p>
++        )}
++        {copied && (
++          <p className="tiny" role="status">
++            {copied}
++          </p>
++        )}
++        {text && <textarea className="textarea" readOnly aria-label="Keyboard trace" value={text} rows={6} />}
++      </div>
++    </details>
++  );
++}
 diff --git a/src/pages/StageDetail.tsx b/src/pages/StageDetail.tsx
-index 09901b4f8a4840b119c4bcd21c5561bccbe50fde..66df98c71e31424a4b020d8367898aef5f2f2995 100644
+index 66df98c71e31424a4b020d8367898aef5f2f2995..b19e4ed97d5412d59f11b70032922b7d8d424781 100644
 --- a/src/pages/StageDetail.tsx
 +++ b/src/pages/StageDetail.tsx
-@@ -9,9 +9,10 @@ import {
-   stageUnits,
-   ITEM_STATUS_LABELS,
+@@ -11,6 +11,7 @@ import {
    STRAND_LABELS,
--  type Material,
-+  type CourseSourceQuestion,
+   type CourseSourceQuestion,
    type PathwayRoutine,
++  type PracticeItem,
    type StageUnit,
-+  courseSourceQuestions,
+   courseSourceQuestions,
    courseStage,
-   itemsPreparedForLesson,
-   pathwaysReturnPath,
-@@ -72,13 +73,21 @@ export default function StageDetail() {
+@@ -21,7 +22,7 @@ import { useStore } from '../store/useStore';
+ import QuickAdd from '../components/QuickAdd';
+ import RoutineDuration from '../components/RoutineDuration';
+ import { Field, useAcknowledgedSaves } from '../components/ui';
+-import { ItemChoice, SourceChoice } from '../components/ReferenceChoices';
++import { ItemChoice, SourceChoice, SuggestionChoice } from '../components/ReferenceChoices';
+ import { ArrowLeftIcon, CheckIcon, PlayIcon, PlusIcon } from '../components/icons';
+ 
+ export default function StageDetail() {
+@@ -72,7 +73,16 @@ export default function StageDetail() {
+   const [refusal, setRefusal] = useState<string | null>(null);
    // An explicit choice in progress: which item a suggestion is, or which
    // study source a course is.
-   const [choosing, setChoosing] = useState<{ unit: StageUnit; mode: 'link' | 'ambiguous' } | null>(null);
--  const [sourceChoice, setSourceChoice] = useState<{ itemId: string; materials: Material[] } | null>(null);
--  // Choosing the course's source is a saved decision: the choice stays on
-+  // Which study source the course is: a question DERIVED from saved data
-+  // (`courseSourceQuestions`), so Play, a cancelled prompt, leaving the page
-+  // or a reload never loses it. "Decide later" only quiets it for this visit.
-+  const [sourceDeferred, setSourceDeferred] = useState(false);
-+  // Choosing is a saved decision: the question the owner answered stays on
-   // screen until IndexedDB acknowledged it, and a failure offers Try again.
-+  const [heldQuestion, setHeldQuestion] = useState<CourseSourceQuestion | null>(null);
-   const saves = useAcknowledgedSaves();
-   // A stage this course owns can write two routines from the course's own
-   // syllabus. Both become ORDINARY EDITABLE routines — neither is a live view.
-   const course = stageId ? courseStage(stageId) : undefined;
-+  const openQuestion = course
-+    ? courseSourceQuestions(db, course.course).find((q) => !ctx.instrumentId || q.instrumentId === ctx.instrumentId)
-+    : undefined;
-+  const sourceQuestion = heldQuestion ?? (sourceDeferred ? undefined : openQuestion);
- 
-   if (!stage) {
-     return (
-@@ -123,7 +132,9 @@ export default function StageDetail() {
-       return;
-     }
-     setNotice(result.created ? `Added “${unit.title}” to your items — not practised yet.` : `“${unit.title}” is already one of your items.`);
--    if (result.sourceCandidates) setSourceChoice({ itemId: result.id, materials: result.sourceCandidates });
-+    // The tap asked about this suggestion's course source: show the question
-+    // again even if it was put off earlier in this visit.
-+    if (result.sourceCandidates) setSourceDeferred(false);
+-  const [choosing, setChoosing] = useState<{ unit: StageUnit; mode: 'link' | 'ambiguous' } | null>(null);
++  // `placed`: Add found items placed in this stage that answer no suggestion —
++  // the owner says whether one of them IS this music before anything is made.
++  const [choosing, setChoosing] = useState<{
++    unit: StageUnit;
++    mode: 'link' | 'ambiguous' | 'placed';
++    placed?: PracticeItem[];
++    then?: 'practise';
++  } | null>(null);
++  // An unlinked placed item, asked the other way round: which suggestion is it?
++  const [linkingItem, setLinkingItem] = useState<PracticeItem | null>(null);
+   // Which study source the course is: a question DERIVED from saved data
+   // (`courseSourceQuestions`), so Play, a cancelled prompt, leaving the page
+   // or a reload never loses it. "Decide later" only quiets it for this visit.
+@@ -121,8 +131,8 @@ export default function StageDetail() {
+     setEditing(false);
    }
  
-   function practise(unit: StageUnit) {
-@@ -134,6 +145,8 @@ export default function StageDetail() {
-       navigate(`/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`);
+-  function addSuggestion(unit: StageUnit) {
+-    const result = addFromCatalog(stage!.id, unit.key);
++  function addSuggestion(unit: StageUnit, separate = false) {
++    const result = addFromCatalog(stage!.id, unit.key, separate);
+     setRefusal(result.refusal ?? null);
+     if (result.refusal) return;
+     // Two of the owner's items already answer this suggestion: nothing was
+@@ -131,13 +141,23 @@ export default function StageDetail() {
+       setChoosing({ unit, mode: 'ambiguous' });
        return;
      }
-+    // Practice starts at once. A study-source question this raises is not
-+    // asked here — it is derived from saved data and waits on this stage.
-     const added = unit.item ? null : addFromCatalog(stage!.id, unit.key);
++    if (result.placed) {
++      setChoosing({ unit, mode: 'placed', placed: result.placed });
++      return;
++    }
++    setChoosing(null);
+     setNotice(result.created ? `Added “${unit.title}” to your items — not practised yet.` : `“${unit.title}” is already one of your items.`);
+     // The tap asked about this suggestion's course source: show the question
+     // again even if it was put off earlier in this visit.
+     if (result.sourceCandidates) setSourceDeferred(false);
+   }
+ 
+-  function practise(unit: StageUnit) {
++  function start(itemId: string) {
++    startItemSession(itemId);
++    navigate('/active');
++  }
++
++  function practise(unit: StageUnit, separate = false) {
+     // A routine is running: resolve it there rather than trying to start a
+     // block alongside it — startItemSession would just no-op and leave the
+     // user on a dead "no block in progress" screen.
+@@ -147,18 +167,21 @@ export default function StageDetail() {
+     }
+     // Practice starts at once. A study-source question this raises is not
+     // asked here — it is derived from saved data and waits on this stage.
+-    const added = unit.item ? null : addFromCatalog(stage!.id, unit.key);
++    const added = unit.item ? null : addFromCatalog(stage!.id, unit.key, separate);
      if (added?.refusal) {
        setRefusal(added.refusal);
-@@ -291,26 +304,34 @@ export default function StageDetail() {
-             {refusal}
-           </p>
-         )}
--        {sourceChoice && course && (
-+        {sourceQuestion && (
-           <SourceChoice
--            courseName={course.course.sourceName}
--            materials={sourceChoice.materials}
-+            courseName={sourceQuestion.course.sourceName}
-+            materials={sourceQuestion.candidates}
-+            items={sourceQuestion.items}
-             ack={saves.states.source}
-             onChoose={(materialId) => {
--              const { itemId } = sourceChoice;
--              saves.run('source', materialId, () => chooseCourseSource(itemId, materialId, course.course.id), {
--                current: () => materialId,
--                again: () => undefined,
--                saved: () => {
--                  saves.reset('source');
--                  setSourceChoice(null);
--                  setNotice('Study source chosen — Saved.');
-+              const q = sourceQuestion;
-+              setHeldQuestion(q);
-+              saves.run(
-+                'source',
-+                materialId,
-+                () => chooseCourseSource(q.items.map((i) => i.id), materialId, q.course.id),
-+                {
-+                  current: () => materialId,
-+                  again: () => undefined,
-+                  saved: () => {
-+                    saves.reset('source');
-+                    setHeldQuestion(null);
-+                    setNotice('Study source chosen — Saved.');
-+                  },
-                 },
--              });
-+              );
-             }}
-             onCancel={() => {
-               saves.reset('source');
--              setSourceChoice(null);
-+              setHeldQuestion(null);
-+              setSourceDeferred(true);
-             }}
-           />
-         )}
+       return;
+     }
++    if (added?.placed) {
++      setChoosing({ unit, mode: 'placed', placed: added.placed, then: 'practise' });
++      return;
++    }
+     const itemId = unit.item?.id ?? added?.id;
+     if (!itemId) {
+       setChoosing({ unit, mode: 'ambiguous' });
+       return;
+     }
+-    startItemSession(itemId);
+-    navigate('/active');
++    start(itemId);
+   }
+ 
+   return (
+@@ -340,24 +363,63 @@ export default function StageDetail() {
+             choosing?.unit.key === u.key ? (
+               <ItemChoice
+                 key={u.key}
+-                heading={choosing.mode === 'ambiguous' ? `Which item is “${u.title}”?` : `Link an existing item to “${u.title}”`}
++                heading={
++                  choosing.mode === 'ambiguous'
++                    ? `Which item is “${u.title}”?`
++                    : choosing.mode === 'placed'
++                      ? `Is “${u.title}” already in this stage?`
++                      : `Link an existing item to “${u.title}”`
++                }
+                 explanation={
+                   choosing.mode === 'ambiguous'
+                     ? 'More than one of your items answers this suggestion. Choose the one it is — every item stays exactly as it is.'
+-                    : 'Choose one of your items on this instrument. Nothing about it changes except that it now answers this suggestion.'
++                    : choosing.mode === 'placed'
++                      ? 'You placed these items in this stage, and none of them answers a suggestion yet. If one of them is this music, link it — nothing else about it changes. Otherwise add a new item.'
++                      : 'Choose one of your items on this instrument. Nothing about it changes except that it now answers this suggestion.'
++                }
++                items={
++                  choosing.mode === 'ambiguous'
++                    ? u.candidates ?? []
++                    : choosing.mode === 'placed'
++                      ? choosing.placed ?? []
++                      : linkCandidates(db.items, ctx.instrumentId, u.entry?.title ?? u.title)
+                 }
+-                items={choosing.mode === 'ambiguous' ? u.candidates ?? [] : linkCandidates(db.items, ctx.instrumentId, u.entry?.title ?? u.title)}
+                 sameTitle={(i) => i.title.trim() === (u.entry?.title ?? u.title).trim()}
+                 onChoose={(itemId) => {
+                   const refusal = pathway && u.ref ? linkReference(pathway.id, u.ref, itemId) : 'This suggestion cannot be linked.';
+                   if (!refusal) {
++                    const then = choosing.then;
+                     setChoosing(null);
+                     setNotice(`Linked — “${db.items.find((i) => i.id === itemId)?.title ?? ''}” now answers this suggestion.`);
++                    if (then === 'practise') start(itemId);
+                   }
+                   return refusal;
+                 }}
++                alternative={
++                  choosing.mode === 'placed'
++                    ? {
++                        label: 'Add as a new item',
++                        run: () => (choosing.then === 'practise' ? practise(u, true) : addSuggestion(u, true)),
++                      }
++                    : undefined
++                }
+                 onCancel={() => setChoosing(null)}
+               />
++            ) : linkingItem && u.item?.id === linkingItem.id ? (
++              <SuggestionChoice
++                key={u.key}
++                itemTitle={u.title}
++                suggestions={units.filter((x) => !x.item && !x.candidates && x.ref).map((x) => ({ ref: x.ref!, title: x.title }))}
++                onChoose={(ref) => {
++                  const refusal = pathway ? linkReference(pathway.id, ref, linkingItem.id) : 'This suggestion cannot be linked.';
++                  if (!refusal) {
++                    setLinkingItem(null);
++                    setNotice(`Linked — “${linkingItem.title}” now answers this suggestion.`);
++                  }
++                  return refusal;
++                }}
++                onCancel={() => setLinkingItem(null)}
++              />
+             ) : (
+               <UnitRow
+                 key={u.key}
+@@ -367,6 +429,7 @@ export default function StageDetail() {
+                 onPractise={() => practise(u)}
+                 onAdd={() => addSuggestion(u)}
+                 onChoose={() => setChoosing({ unit: u, mode: u.candidates ? 'ambiguous' : 'link' })}
++                onLinkToSuggestion={u.unlinked && pathway ? () => setLinkingItem(u.item!) : undefined}
+                 onHide={pathway && u.ref ? () => setReferenceHidden(pathway.id, u.ref!, true) : undefined}
+                 onUnlink={u.item && u.ref ? () => unlinkReference(u.item!.id, u.ref!) : undefined}
+                 onRemoveFromPathway={u.item && pathway ? () => setRefusal(removeFromPathway(u.item!.id, pathway.id)) : undefined}
+@@ -426,6 +489,7 @@ function UnitRow({
+   onHide,
+   onUnlink,
+   onRemoveFromPathway,
++  onLinkToSuggestion,
+ }: {
+   unit: StageUnit;
+   returnTo: string;
+@@ -437,6 +501,7 @@ function UnitRow({
+   onHide?: () => void;
+   onUnlink?: () => void;
+   onRemoveFromPathway?: () => void;
++  onLinkToSuggestion?: () => void;
+ }) {
+   const navigate = useNavigate();
+   const item = unit.item;
+@@ -447,6 +512,7 @@ function UnitRow({
+   // what the suggestion needs. The status lives here alone.
+   const meta = [
+     unit.strand ? STRAND_LABELS[unit.strand] : null,
++    unit.unlinked ? 'placed here · answers no suggestion' : null,
+     item ? ITEM_STATUS_LABELS[item.status] : ambiguous ? `${unit.candidates!.length} of your items answer this — choose one` : 'suggestion',
+     item && committedItemIds.has(item.id) ? 'for class' : null,
+   ].filter(Boolean);
+@@ -455,6 +521,7 @@ function UnitRow({
+   const menu: { label: string; run: () => void }[] = [
+     ...(!item && !ambiguous ? [{ label: 'Link an existing item…', run: onChoose }] : []),
+     ...(!item && onHide ? [{ label: 'Hide this suggestion', run: onHide }] : []),
++    ...(item && onLinkToSuggestion ? [{ label: 'Link to a suggestion…', run: onLinkToSuggestion }] : []),
+     ...(item && onUnlink ? [{ label: 'Unlink reference (keeps the item)', run: onUnlink }] : []),
+     ...(item && onRemoveFromPathway ? [{ label: 'Remove from pathway (keeps the item)', run: onRemoveFromPathway }] : []),
+   ];
 diff --git a/src/store/useStore.ts b/src/store/useStore.ts
-index eb4f892e0dd99b2c99908fec066b692cf20b7fec..8799bcc1074269bef9c6b0d16dd2e97cf849cebe 100644
+index 8799bcc1074269bef9c6b0d16dd2e97cf849cebe..7da3235b23c386b4cd966a2a2a346a94f8a2c396 100644
 --- a/src/store/useStore.ts
 +++ b/src/store/useStore.ts
-@@ -49,6 +49,7 @@ import {
+@@ -48,7 +48,7 @@ import {
+   courseForPathway,
    courseRoutine,
    courseStage,
-   planCatalogAddition,
-+  planChooseCourseSource,
+-  planCatalogAddition,
++  planStageAddition,
+   planChooseCourseSource,
    planCourseLevels,
    itemOwnedAttachments,
-   retargetRoutineInstrument,
-@@ -85,7 +86,6 @@ import {
-   planUnlinkReference,
-   planUpdateTerm,
-   courseById,
--  withCourseSourceKey,
-   isBuiltInTerm,
-   settleLegacyEvidence,
-   legacyClaimRefusal,
-@@ -402,8 +402,8 @@ interface StoreState {
-   removeFromPathway: (itemId: ID, pathwayId: ID) => string | null;
-   /** Hide or restore one suggestion in one pathway. Visibility only. */
-   setReferenceHidden: (pathwayId: ID, refId: string, hidden: boolean) => void;
--  /** Answer "which study source is this course?" when two candidates exist. */
--  chooseCourseSource: (itemId: ID, materialId: ID, courseId: string) => string | null;
-+  /** Answer "which study source is this course?" for the items the question named (`courseSourceQuestions`). */
-+  chooseCourseSource: (itemIds: ID[], materialId: ID, courseId: string) => string | null;
- 
-   // --- Shared musical terms (each returns the refusal, or null) --------------
-   /** Returns the new term's id, or the refusal. */
-@@ -1088,19 +1088,17 @@ export const useStore = create<StoreState>()(
-         if (plan.ok && plan.pathways !== db.pathways) set((s) => ({ db: { ...s.db, pathways: plan.pathways } }));
+@@ -469,7 +469,16 @@ interface StoreState {
+   addFromCatalog: (
+     stageId: ID,
+     entryKey: string,
+-  ) => { id: ID; created: boolean; candidates?: PracticeItem[]; sourceCandidates?: Material[]; refusal?: string };
++    /** The owner explicitly asked for a NEW item beside the unlinked ones placed in the stage. */
++    separate?: boolean,
++  ) => {
++    id: ID;
++    created: boolean;
++    candidates?: PracticeItem[];
++    placed?: PracticeItem[];
++    sourceCandidates?: Material[];
++    refusal?: string;
++  };
+   /**
+    * Write one of a course stage's own routines — the level's, or one built for
+    * where the owner actually is — as an ordinary editable routine. Returns its
+@@ -1400,7 +1409,7 @@ export const useStore = create<StoreState>()(
+         set((s) => ({ db: { ...s.db, lessonAgenda: s.db.lessonAgenda.filter((e) => e.id !== id) } }));
        },
  
--      chooseCourseSource: (itemId, materialId, courseId) => {
-+      chooseCourseSource: (itemIds, materialId, courseId) => {
-         const course = courseById(courseId);
+-      addFromCatalog: (stageId, entryKey) => {
++      addFromCatalog: (stageId, entryKey, separate = false) => {
          const { db } = get();
--        const material = db.materials.find((m) => m.id === materialId);
--        const item = db.items.find((i) => i.id === itemId);
--        if (!course || !material || !item) return 'That item or study source no longer exists.';
--        if (material.instrumentId !== item.instrumentId) return 'That study source belongs to another instrument.';
--        const now = new Date();
--        const materials = withCourseSourceKey(db.materials, materialId, course);
--        const items = db.items.map((i) => (i.id === itemId ? touch({ ...i, materialId }, now) : i));
--        const refusal = identityRefusal({ ...db, materials, items });
-+        if (!course) return 'That item or study source no longer exists.';
-+        const plan = planChooseCourseSource(db, course, materialId, itemIds, new Date());
-+        if (!plan.ok) return plan.reason;
-+        const refusal = identityRefusal({ ...db, materials: plan.materials, items: plan.items });
-         if (refusal) return refusal;
--        set((s) => ({ db: { ...s.db, materials, items } }));
-+        // Always a write, even when a retry re-states an answer already in
-+        // memory: the save it is retrying never reached IndexedDB.
-+        set((s) => ({ db: { ...s.db, materials: plan.materials, items: plan.items } }));
-         return null;
+         const entry = catalogForStage(stageId).find((e) => e.key === entryKey);
+         const stage = db.pathwayStages.find((s) => s.id === stageId);
+@@ -1416,7 +1425,7 @@ export const useStore = create<StoreState>()(
+         // test environment cannot import this file (Dexie, through ./idb), so
+         // the decision is proved in courseSeed.test.ts and this SHAPE is what
+         // protects the wiring.
+-        const plan = planCatalogAddition(db, stageId, entryKey, entry, instrumentId, new Date());
++        const plan = planStageAddition(db, stageId, entryKey, entry, instrumentId, new Date(), separate);
+         // Reuse and an ambiguous answer change nothing — no set(), no revision.
+         // A write reload would refuse is never applied (a backstop: the plan
+         // itself creates a binding only where nothing on that instrument holds it).
+@@ -1430,6 +1439,7 @@ export const useStore = create<StoreState>()(
+           id: plan.itemId,
+           created: plan.created,
+           ...(plan.candidates ? { candidates: plan.candidates } : {}),
++          ...(plan.placed ? { placed: plan.placed } : {}),
+           ...(plan.sourceCandidates ? { sourceCandidates: plan.sourceCandidates } : {}),
+         };
        },
+diff --git a/src/styles/global.css b/src/styles/global.css
+index 85b08e30bb437e4668c112b15d1361c550168d6d..5c993a48b8cef8b5a8af1d6fb188a09c0264039f 100644
+--- a/src/styles/global.css
++++ b/src/styles/global.css
+@@ -209,6 +209,22 @@ body,
+     height: 100dvh;
+   }
+ }
++/* INSTALLED APP ONLY. Measured on the owner's iPhone (iOS 27, standalone,
++   docs/repertoire-experience.md): `100dvh` flips between the full screen
++   (852) and the screen minus the status bar (793) — during the keyboard, after
++   rotation, and sometimes stuck there, which is the lifted bar — while `100vh`
++   (= `100lvh`) resolved to the full screen on every portrait line, keyboard
++   included, and to the landscape height after rotation. So the installed app
++   is sized from `vh`. (`100vh + safe-area-inset-top` was tried and measured
++   911: the bar cut off.) Browser tabs never match this query and keep `dvh`,
++   which traced correctly there. */
++@media (display-mode: standalone) {
++  html,
++  body,
++  #root {
++    height: 100vh;
++  }
++}
  
+ .app {
+   height: 100%;
 diff --git a/tests/repertoire-experience.browser.test.ts b/tests/repertoire-experience.browser.test.ts
-index f812cfae5fb61a523911d9ee429eb5f61391d990..e4e250970573a0ddb041752ae22e279728ca1754 100644
+index e4e250970573a0ddb041752ae22e279728ca1754..2d8eb548b3ebf8929e1249bbb3af5b104a42c898 100644
 --- a/tests/repertoire-experience.browser.test.ts
 +++ b/tests/repertoire-experience.browser.test.ts
-@@ -33,6 +33,21 @@ function stateOnly(text: string): string {
-   return JSON.stringify(raw);
- }
+@@ -526,6 +526,26 @@ describe('the whole repertoire experience, in both engines', () => {
+           await until(app, (d) => d.pathways.find((p) => p.id === 'setar-radif-mirza')!.hiddenRefs ?? [], (h) => h.length === 0);
+           expect((await db(app)).items.length, where).toBe(itemsBefore);
  
-+/**
-+ * The current fixture plus a COLLISION an inbound file may legitimately carry:
-+ * a custom composer term sharing the spelling «Darvish Khan» with the built-in
-+ * درویش‌خان, and a piece written in exactly that spelling — which therefore
-+ * reads as ambiguous, literal text.
-+ */
-+function withCollision(text: string): string {
-+  const raw = JSON.parse(text);
-+  const at = '2026-09-20T10:00:00.000Z';
-+  raw.data.musicTerms.push({ id: 'term-my-darvish', kind: 'composer', name: 'درویش من', aliases: ['Darvish Khan'], createdAt: at, updatedAt: at });
-+  const base = raw.data.items.find((i: { id: string }) => i.id === 'it-khatai');
-+  raw.data.items.push({ ...base, id: 'it-ambiguous', title: 'رنگ قدیمی', timesPractised: 0, totalMinutes: 0, persian: { composer: 'Darvish Khan' } });
-+  return JSON.stringify(raw);
-+}
++          // PLACING an owned item beside a suggestion is not linking it — and
++          // Add never mints a silent second copy: it asks, and Link answers.
++          await goTo(app, '/items/it-title-only');
++          await page.getByRole('combobox', { name: 'Pathway stage this item belongs to' }).selectOption('setar-radif-mirza-abu-ata');
++          await until(app, (d) => d.items.find((i) => i.id === 'it-title-only')!.stageId, (x) => x === 'setar-radif-mirza-abu-ata');
++          await goTo(app, '/pathway/setar-radif-mirza/setar-radif-mirza-abu-ata');
++          expect(await page.locator('.stage-unit', { hasText: 'Untitled tasnif' }).innerText(), where).toContain('answers no suggestion');
++          await page.getByRole('button', { name: 'Add سیخی to your items' }).click();
++          const asked = page.getByRole('region', { name: 'Is “سیخی” already in this stage?' });
++          await asked.getByRole('button', { name: /Untitled tasnif/ }).click();
++          const linkedPlaced = await until(
++            app,
++            (d) => d.items.find((i) => i.id === 'it-title-only')!.catalogRefs,
++            (r) => !!r?.includes('radif:mirza-abdollah:abu-ata:sayakhi'),
++          );
++          expect(linkedPlaced, where).toEqual(['radif:mirza-abdollah:abu-ata:sayakhi']);
++          expect((await db(app)).items.length, where).toBe(itemsBefore);
++          await page.getByRole('button', { name: 'Practise Untitled tasnif' }).waitFor();
++          expect(await page.locator('.stage-unit', { hasText: 'Untitled tasnif' }).count(), where).toBe(1);
 +
- const db = async (app: PracticeApp) => (await persistedDb(app)) as unknown as Db;
- const until = <T,>(app: PracticeApp, read: (d: Db) => T, ok: (v: T) => boolean) =>
-   persistedUntil(app, (s) => read((s.state as { db: Db }).db), ok, 20_000);
-@@ -93,10 +108,21 @@ describe('musical terms, managed', () => {
-     const { page } = app;
-     const term = async (id: string) => (await db(app)).musicTerms.find((t) => t.id === id);
-     try {
--      await importBackup(app, 'repertoire-current-v15.json', stateOnly(CURRENT_TEXT));
-+      await importBackup(app, 'repertoire-current-v15.json', withCollision(stateOnly(CURRENT_TEXT)));
-       expect(await importOutcome(app)).toContain('Imported');
-       await goTo(app, '/terms');
+           // TAR shares the definition, never the practice.
+           await goTo(app, '/repertoire?view=paths&inst=inst-tar');
+           await page.getByRole('button', { name: /Add default pathway: تار · ردیف میرزا عبدالله/ }).click();
+diff --git a/tests/repertoire-viewport.browser.test.ts b/tests/repertoire-viewport.browser.test.ts
+index 2e3da6d8ea938f2222cbd39636a4158cdcce44a6..1fa8244cb14fa0227eec3946b1240f61e004dff8 100644
+--- a/tests/repertoire-viewport.browser.test.ts
++++ b/tests/repertoire-viewport.browser.test.ts
+@@ -143,6 +143,30 @@ describe('the iPhone keyboard, as geometry', () => {
+         expect(await g.restores(), `${engine}: residual after scroll`).toBe(3);
+         expect(await page.evaluate(() => document.querySelector('main')!.scrollTop), engine).toBe(mainBefore);
  
-+      // AMBIGUOUS TEXT IS HELD BY EVERY CLAIMANT: the custom term the piece's
-+      // «Darvish Khan» could mean counts it, cannot be deleted (that would hand
-+      // the piece to the built-in درویش‌خان), and is not stuck — it archives.
-+      await page.getByRole('button', { name: 'Composer / maestro' }).click();
-+      const mine = page.locator('.list-row', { hasText: 'درویش من' });
-+      expect(await mine.innerText()).toContain('1 piece');
-+      expect(await page.getByRole('button', { name: 'Delete درویش من' }).isDisabled()).toBe(true);
-+      await page.getByRole('button', { name: 'Archive درویش من' }).click();
-+      await until(app, (d) => d.musicTerms.find((t) => t.id === 'term-my-darvish')?.archived, (a) => a === true);
-+      await page.getByRole('button', { name: 'Dastgāh / Āvāz' }).click();
++        // SHELL BOXES: `overflow: hidden` stops the owner scrolling #root, not
++        // the browser — a reveal can scroll it, which LIFTS the bar while the
++        // document offset reads 0. A spacer makes #root scrollable so the
++        // lifted bar is real, not a number; it is removed afterwards.
++        const barBottom = () => page.evaluate(() => document.querySelector('.tabbar')!.getBoundingClientRect().bottom);
++        const rootScroll = () => page.evaluate(() => document.getElementById('root')!.scrollTop);
++        const restingBottom = await barBottom();
++        await page.evaluate(() => {
++          const spacer = document.createElement('div');
++          spacer.id = 'lift-spacer';
++          spacer.style.height = '2000px';
++          document.getElementById('root')!.append(spacer);
++          document.getElementById('root')!.scrollTop = 150;
++        });
++        expect(await barBottom(), `${engine}: bar lifted by #root`).toBe(restingBottom - 150);
++        await g.set(508, 1, 0);
++        await g.fire('resize');
++        expect([await g.restores(), await rootScroll()], `${engine}: shell, keyboard up`).toEqual([3, 150]);
++        await g.set(844, 1, 0);
++        await g.fire('resize');
++        expect([await g.restores(), await rootScroll(), await barBottom()], `${engine}: shell, keyboard gone`).toEqual([4, 0, restingBottom]);
++        expect(await page.evaluate(() => document.querySelector('main')!.scrollTop), engine).toBe(mainBefore);
++        await page.evaluate(() => document.getElementById('lift-spacer')!.remove());
 +
-       // RENAME A BUILT-IN: same id, former name kept as a spelling.
-       await page.getByRole('button', { name: 'Edit دستگاه شور' }).click();
-       await page.getByRole('textbox', { name: 'Name of دستگاه شور' }).fill('شورِ من');
-@@ -180,6 +206,9 @@ describe('musical terms, managed', () => {
-       expect(after.musicTerms.find((t) => t.id === 'dastgah:shur')!.name).toBe('شورِ من');
-       expect(after.musicTerms.find((t) => t.id === 'term-khatai')!.archived).toBe(true);
-       expect(after.items.find((i) => i.id === 'it-khatai')!.persian!.form).toEqual({ termId: 'term-khatai' });
-+      // …and the ambiguous piece still reads exactly as written, its term kept.
-+      expect(after.items.find((i) => i.id === 'it-ambiguous')!.persian!.composer).toBe('Darvish Khan');
-+      expect(after.musicTerms.find((t) => t.id === 'term-my-darvish')!.aliases).toEqual(['Darvish Khan']);
- 
-       // A FAILED WRITE never says Saved: the draft stays, and Try again writes
-       // what is on screen NOW.
-@@ -273,9 +302,33 @@ describe('musical terms, managed', () => {
-       await page.getByRole('button', { name: /Add default pathway: .*خنیاگر/ }).click();
-       await page.getByRole('button', { name: /آزاد میرزاپور/ }).first().click();
-       await page.getByRole('link', { name: 'Continue this stage' }).click();
-+      const tarItems = async () => (await db(app)).items.filter((i) => i.instrumentId === 'inst-tar').map((i) => i.id);
-+      const preexisting = new Set(await tarItems());
-       await page.locator('button[title="Add to your items"]').first().click();
-       const choice = page.getByRole('region', { name: 'Choose the study source' });
-       await choice.waitFor({ timeout: 10_000 });
-+      // THE QUESTION IS SAVED DATA, NOT THIS SCREEN'S MEMORY: put off, then
-+      // Play (practice starts at once, nothing blocks it), then come back —
-+      // and reload — and it is still asked.
-+      await expect.poll(async () => (await tarItems()).filter((id) => !preexisting.has(id)).length).toBe(1);
-+      const firstId = (await tarItems()).filter((id) => !preexisting.has(id));
-+      expect((await db(app)).items.find((i) => i.id === firstId[0])!.materialId).toBeUndefined();
-+      const stageUrl = page.url();
-+      await choice.getByRole('button', { name: 'Decide later' }).click();
-+      await expect.poll(() => choice.count()).toBe(0);
-+      await page.locator('button[aria-label^="Practise "]').first().click();
-+      await page.waitForURL(/#\/active/, { timeout: 10_000 });
-+      await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 10_000 });
-+      await page.goto(stageUrl);
-+      await choice.waitFor({ timeout: 10_000 });
-+      await reload(app);
-+      await choice.waitFor({ timeout: 10_000 });
-+      // A second Add while it is open joins the SAME question, which names both.
-+      await page.locator('button[title="Add to your items"]').first().click();
-+      await expect.poll(async () => (await tarItems()).filter((id) => !preexisting.has(id)).length).toBe(2);
-+      const waiting = (await tarItems()).filter((id) => !preexisting.has(id));
-+      const titles = (await db(app)).items.filter((i) => waiting.includes(i.id)).map((i) => i.title);
-+      for (const t of titles) expect(await choice.innerText()).toContain(t);
-       await breakStorage(page);
-       await choice.getByRole('button', { name: 'خنیاگر' }).first().click();
-       await choice.getByText(/Not saved/).waitFor({ timeout: 10_000 });
-@@ -288,6 +341,9 @@ describe('musical terms, managed', () => {
-         (d) => d.materials.filter((m) => m.instrumentId === 'inst-tar' && m.sourceKey).map((m) => m.id),
-         (ids) => ids.length === 1 && khon.includes(ids[0]),
-       );
-+      // …and the answer reached exactly the items it named.
-+      const keyed = (await db(app)).materials.find((m) => m.instrumentId === 'inst-tar' && m.sourceKey)!.id;
-+      expect((await db(app)).items.filter((i) => waiting.includes(i.id)).map((i) => i.materialId)).toEqual([keyed, keyed]);
-       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
-     } finally {
-       await app.close();
-diff --git a/tests/repertoire-families.test.ts b/tests/repertoire-families.test.ts
-index bf93575a37bfa16eb9bfda213135510cc077ef1c..b10c5353024b7300029b194df11bd93525f0c893 100644
---- a/tests/repertoire-families.test.ts
-+++ b/tests/repertoire-families.test.ts
-@@ -476,7 +476,7 @@ describe('Family A — administration is organisation, never practice evidence',
-     run('delete unused custom', () => expect(store().deleteTerm(added)).toBeNull());
-     // SOURCE administration.
-     run('edit a source', () => store().updateMaterial('mat-song', { title: 'Songbook', sourceType: 'song' }));
--    run('choose a course source', () => store().chooseCourseSource('it-cgs-chords', 'mat-cgs', 'cgs'));
-+    run('choose a course source', () => store().chooseCourseSource(['it-cgs-chords'], 'mat-cgs', 'cgs'));
-     // REFERENCE and PATHWAY administration.
-     run('link', () => expect(store().linkReference(SEED_PATHWAY_IDS.setar, catalogReferenceId('setar-radif-shur', 'daramad-e-shur'), 'it-daramad-a')).toBeNull());
-     run('unlink', () => store().unlinkReference('it-daramad-a', catalogReferenceId('setar-radif-shur', 'daramad-e-shur')));
-@@ -546,7 +546,7 @@ describe('Family A — administration is organisation, never practice evidence',
-     // source, or moving the keyed one onto an instrument that already holds
-     // the key, is refused — the other source is never silently un-keyed.
-     const copy = store().addMaterial({ instrumentId: 'inst-guitar', title: 'CGS notes', sourceType: 'course' });
--    unchanged('a second source for a keyed course', () => store().chooseCourseSource('it-cgs-chords', copy, 'cgs'), /already this course's study source/);
-+    unchanged('a second source for a keyed course', () => store().chooseCourseSource(['it-cgs-chords'], copy, 'cgs'), /already this course's study source/);
-     // (Adding from the pathway while it sat on Setar minted Setar's own keyed source.)
-     expect(store().db.materials.filter((m) => m.sourceKey === 'course:cgs').map((m) => m.instrumentId).sort()).toEqual(['inst-guitar', 'inst-setar']);
-     unchanged('keyed source moved onto a holder', () => store().updateMaterial('mat-cgs', { instrumentId: 'inst-setar' }), /already this course's study source/);
+         // ROUTE CHANGES tear nothing down twice and add nothing: still ONE guard.
+         for (const route of ['/', '/lessons', '/repertoire?view=paths', '/terms', '/start']) {
+           await goTo(app, route);
+@@ -151,7 +175,36 @@ describe('the iPhone keyboard, as geometry', () => {
+         // BACK FROM THE BACKGROUND with residual displacement: one restore.
+         await g.set(844, 1, 70);
+         await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+-        expect(await g.restores(), `${engine}: resume`).toBe(4);
++        expect(await g.restores(), `${engine}: resume`).toBe(5);
++
++        // THE OWNER'S TRACE (More → Keyboard trace) writes down what a device
++        // reports at each event, and changes nothing the guard does.
++        await goTo(app, '/more');
++        await page.locator('summary', { hasText: 'Keyboard trace' }).click();
++        await page.getByRole('button', { name: 'Start recording' }).click();
++        await g.set(508, 1, 120);
++        await g.fire('resize');
++        await g.set(844, 1, 120);
++        await g.fire('resize');
++        expect(await g.restores(), `${engine}: traced restore`).toBe(6);
++        await page.evaluate(() => {
++          const main = document.querySelector('main')!;
++          main.scrollTop = 40;
++          main.dispatchEvent(new Event('scroll'));
++        });
++        await page.getByRole('button', { name: 'Stop recording' }).click();
++        const lines = (await page.getByRole('textbox', { name: 'Keyboard trace' }).inputValue()).split('\n').map((l) => JSON.parse(l));
++        expect(lines[0], engine).toMatchObject({ ua: expect.any(String), secure: true, build: expect.any(String) });
++        expect(lines.some((l) => l.ev === 'vv:resize' && l.vvH === 508), `${engine}: keyboard-up sample`).toBe(true);
++        // Every line carries what the viewport units and insets RESOLVE to.
++        for (const key of ['vh', 'svh', 'lvh', 'dvh', 'pct', 'insetTop', 'insetBottom', 'screenH']) {
++          expect(typeof lines[1][key], `${engine}: probe ${key}`).toBe('number');
++        }
++        expect(await page.locator('body > div[aria-hidden="true"][style*="visibility"]').count(), `${engine}: probes removed`).toBe(0);
++        // <main>'s own scrolling is the owner's and never fills the trace.
++        expect(lines.some((l) => /main/.test(l.ev ?? '')), engine).toBe(false);
++        expect(lines.some((l) => l.ev === 'restore'), `${engine}: guard action recorded`).toBe(true);
++        expect(await g.listeners(), `${engine}: recorder torn down`).toBe(2);
+         expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
+       } finally {
+         await app.close();
 ```
 
 **Paths the rework touched:**
 
 - `AGENTS.md`
+- `DECISIONS.md`
+- `README.md`
 - `docs/repertoire-experience.md`
 - `src/components/ReferenceChoices.tsx`
 - `src/components/direction.test.ts`
+- `src/components/useViewportGuard.ts`
+- `src/components/viewport.test.ts`
+- `src/components/viewport.ts`
 - `src/domain/courseSeed.ts`
-- `src/domain/musicTerms.test.ts`
-- `src/domain/musicTerms.ts`
-- `src/domain/studySources.test.ts`
-- `src/pages/MusicTerms.tsx`
+- `src/domain/pathways.ts`
+- `src/domain/referenceCatalog.test.ts`
+- `src/pages/More.tsx`
 - `src/pages/StageDetail.tsx`
 - `src/store/useStore.ts`
+- `src/styles/global.css`
 - `tests/repertoire-experience.browser.test.ts`
-- `tests/repertoire-families.test.ts`
+- `tests/repertoire-viewport.browser.test.ts`
 
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
 
 ```
-31822af Rework: close the course-source and term-reclassification families
+b80b741 Rework: placed items vs. stage suggestions; measurable native keyboard shell
 
-Family 1 — a course's study-source question stays answerable on every Add
-and Start path.
-Invariant: while a course's source is ambiguous on an instrument, every item
-of that course with no source is waiting on the owner, and that fact is read
-from saved data, never held by a screen.
-Choke point: courseSourceQuestions (courseSeed.ts) derives the question —
-course read from the item's references, not its placement — and
-planChooseCourseSource writes the answer to exactly the items it named
-(a sourceless course item looks the same as one the owner cleared, so
-nothing unnamed is filled in; a retry restates the same answer).
+Family 1 — an owned item placed in a stage and the suggestion beside it must
+read as one clear, actionable relationship; Add must never mint a silent second
+copy. Invariant: placement decides no identity, so while an item placed in a
+stage answers none of its suggestions, the stage says so and Add there creates
+nothing until the owner links an item or explicitly asks for a new one. Title or
+gusheh equality is never used to merge rows (text is not identity).
+Choke point: `unlinkedInStage` (pathways.ts), read by both the rows and Add
+(`planStageAddition`, wrapping `planCatalogAddition`; `separate` = explicit
+"Add as a new item").
 Consumers:
-- findCourseSource / resolveCourseSource: detect ambiguity — unchanged, checked.
-- planCatalogAddition: created path and the bound (repeat Add) fast path both
-  return the derived candidates; the fast path still writes nothing. Fixed.
-- useStore.addFromCatalog: passes them through. Checked.
-- useStore.chooseCourseSource: now takes the named item ids, applies the pure
-  planner, keeps the sourceKeyClash/identityRefusal guard. Fixed.
-- StageDetail: the SourceChoice is rendered from the derived question, so
-  Play, "Decide later", leaving the page and reload lose nothing; a held copy
-  keeps a failed save and its Try again on screen. practise() starts at once
-  and the question waits on the stage. Fixed.
-- SourceChoice: names the items the answer goes to. Fixed.
-Proof: 'study sources clarify new choices without rewriting legacy meaning'
-(reload round trip, repeat Add, moved item, two items, answer/retry, only
-named items, cross-instrument refusal) and the ac-4 browser journey (Add,
-Decide later, Play, come back, reload, second Add joins, answer reaches both).
-
-Family 2 — a vocabulary edit never silently reclassifies an unedited item.
-Invariant: an update or delete may not change what any item's stored value
-means, except literal text gaining a term (what adding a spe
+- stageUnits — placed row flagged `unlinked` (fixed); hiddenUnits — unchanged,
+  a hidden suggestion's item answers it (checked clean)
+- stageProgress / nextUnitInStage / currentStage / pathwayProgress and the
+  Today, Repertoire and PathwayDetail progress readers — counts unchanged: an
+  unlinked item and an untaken suggestion are two units until linked (checked)
+- StageDetail Add and Play — routed through planStageAddition; new "Is “…”
+  already in this stage?" choice (Link / Add as a new item), Play starts the
+  linked or new item (fixed)
+- StageDetail placed row — "placed here · answers no suggestion" and "Link to a
+  suggestion…" (SuggestionChoice) (fixed)
+- Link / Unlink / Remove from pathway — unchanged planners (checked clean)
+- Item Detail placement (placeItemInStage → settleLegacyEvidence) — still
+  decides no identity; now surfaced on the stage instead of hidden (checked)
+- store addFromCatalog — passes `separate`, returns `placed` (fixed)
+Proof: ac-8 test (referenceCatalog.test.ts) §7 — placement, both rows, Add on
+two suggestions creates nothing, Link keeps every owner field and collapses to
+one row, re-Add reuses, Add-as-new creates one bound item and then reuses,
+Tar instance unaffected; ac-19 browser journey places a real item via 
 … (truncated)
+
+d23fafc Keyboard trace: label event sources, never drop lines silently, stamp the build
+
+The trace is what ac-24 rests on, so it must be able to name the mechanism:
+each line's event now names its source (vv/window/body/root/document), <main>'s
+own scrolling no longer fills it, a full trace says so on screen and in the
+text, and the header carries the build and isSecureContext so a pasted trace
+proves which app over which origin produced it. ac-20 asserts all three.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+59c00ca iPhone bar: trace shows a height flip; standalone shell candidate + unit probes
+
+The owner's first installed-app trace (iOS, standalone, http) falsified the
+scroll-displacement reading: in the lifted state every scroll offset is 0 and
+the guard correctly decides none. innerHeight — and so 100dvh, the shell
+height — flips between 852 (bar flush) and 793 (screen minus the 59px status
+bar, bar lifted by exactly that), and after rotation flips every frame for
+~1.8s; the base viewport height (clientHeight) is 793 on every portrait line.
+The recording started in the bad state, so the keyboard is not shown to cause
+it.
+
+- global.css: standalone-only shell height calc(100vh + safe-area-inset-top),
+  a CANDIDATE sized from the one stable reading instead of dvh. Browser tabs,
+  the guard and the interactive-widget meta are untouched so the next trace
+  isolates this one change. Not claimed fixed; ac-24 stays outstanding.
+- Keyboard trace: each line now records what 100vh/svh/lvh/dvh/100% and the
+  safe-area insets actually resolve to, plus screen.height (the candidate's two
+  unmeasured inputs). ac-20 asserts the probe fields and their removal.
+- Docs revised in place: the body/#root restore is a real blind spot but not
+  this defect; procedure asks for installed-app, Safari-tab and Chrome-tab
+  traces from a confirmed-good start.
+
+Playwright cannot emulate display-mode: standalone, so the CSS candidate has no
+browser proof; the device trace is the proof.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+b5ec595 iPhone bar: standalone shell sized 100vh, from measured units; warn on deploy-nas.sh
+
+The second round of owner traces (iOS 27.0; installed app, Safari tab,
+Chrome tab) measured what each unit resolves to. Installed app: 100vh =
+100lvh = 852 (the physical screen) on every portrait line, keyboard included,
+393 in landscape; 100dvh flips to 793 with the keyboard and lags into
+landscape; insets 59/34. The previous candidate calc(100vh + inset-top)
+therefore measured 911 and cut the bar off — refuted as predicted. Standalone
+now uses 100vh; browser tabs, which traced flush on 100dvh, are unchanged.
+The guard and the interactive-widget meta stay untouched.
+
+scripts/deploy-nas.sh runs rsync --delete on PC_DEPLOY_DIR and deleted the
+owner's Setar/Tar media when pointed at a folder holding them. The script is
+outside this lane's scope, so it is not changed here; AGENTS.md, README and
+the ac-24 procedure now warn instead of recommending it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ## Check against the contract
