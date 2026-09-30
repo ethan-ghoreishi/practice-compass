@@ -1,0 +1,11 @@
+{
+  "id": "20260928-unify-repertoire-discovery-musical-metad-1516",
+  "contractId": "20260928-unify-repertoire-discovery-musical-metad-1516",
+  "patchId": "0f9598b3c67ee86a7243d073f9a933eebe4b3ceb",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-09-30T18:00:09.413Z",
+  "algorithm": "ed25519",
+  "signature": "AfsoMoX5cdUBBj15Va3QSsw81JvIptxUpJi+VAJAMHtITOZzpZLsVaYVVfEaIJWvF/7PqZ/nGC+IxpUs9ddzAA==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}

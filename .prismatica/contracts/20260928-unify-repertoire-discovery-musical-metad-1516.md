@@ -5,7 +5,7 @@ title: Unify repertoire discovery, musical metadata and pathways around a calmer
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/39
 intent: 20260928-unify-repertoire-discovery-musical-metad-1516
 tier: heavy
-stage: review
+stage: accept
 baseline:
   commit: b6bef3418572340c22e93deed79204878d45dc6d
   branch: main
