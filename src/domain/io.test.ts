@@ -848,8 +848,10 @@ describe('the v14 source graph at the schema boundary', () => {
     expect(migrated.archiveSources).toEqual([]);
     // Every legacy field comes through unchanged apart from the schema number
     // and the new, empty collection.
-    const strip = (db: PracticeDB) => JSON.stringify({ ...db, schemaVersion: 0, archiveSources: [] });
-    expect(strip(migrated)).toBe(strip({ ...source, archiveSources: [] } as PracticeDB));
+    // (v15's equally additive, equally empty `musicTerms` is normalised away
+    // too; its own proof lives in repertoire-families.test.ts.)
+    const strip = (db: PracticeDB) => JSON.stringify({ ...db, schemaVersion: 0, archiveSources: [], musicTerms: [] });
+    expect(strip(migrated)).toBe(strip({ ...source, archiveSources: [], musicTerms: [] } as PracticeDB));
     expect(migrated.blocks).toEqual(source.blocks);
     expect(migrated.reviews).toEqual(source.reviews);
     expect(migrated.lessonAgenda).toEqual(source.lessonAgenda);

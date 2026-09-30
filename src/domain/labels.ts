@@ -156,7 +156,7 @@ export const RESULT_BUTTONS: BlockResult[] = [
 export const MATERIAL_SOURCE_LABELS: Record<MaterialSourceType, string> = {
   radif: 'Radif',
   method_book: 'Method book',
-  repertoire: 'Repertoire',
+  repertoire: 'Collection',
   piece: 'Piece',
   song: 'Song / tasnif',
   course: 'Course',

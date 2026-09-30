@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   buildSessionPlan,
-  currentStage,
+  pathwayPosition,
+  primaryPathway,
   MAX_BUDGET_MINUTES,
   MIN_BUDGET_MINUTES,
   planPreviewDayHasPassed,
@@ -30,6 +31,21 @@ const BUCKET_LABEL: Record<PlanBucket, string> = {
   deep: 'Focus',
   cooldown: 'Cool-down',
 };
+
+/**
+ * The items placed in the stage this instrument's route is at — read through
+ * the SAME selector Today and Repertoire use (visible, ordered, pinned), and
+ * shared by BOTH plan derivations below so the build and the editor can never
+ * follow two different routes. Which items count as "in the stage" is
+ * unchanged: placement, exactly as the plan engine has always been given.
+ */
+function currentStageItemIds(
+  db: Pick<ReturnType<typeof useStore.getState>['db'], 'pathways' | 'pathwayStages' | 'items'>,
+  instrumentId: string,
+): Set<string> {
+  const { stage } = pathwayPosition(db, primaryPathway(db.pathways, instrumentId));
+  return stage ? new Set(db.items.filter((i) => i.stageId === stage.id).map((i) => i.id)) : new Set<string>();
+}
 
 export default function SessionPlan() {
   const activePlan = useStore((s) => s.activePlan);
@@ -72,9 +88,10 @@ function PlanPreview() {
 
   const build = useMemo(() => {
     const preparationDates = preparationDatesByItem(db.lessonAgenda, db.lessons, now);
-    const pathway = db.pathways.find((p) => p.instrumentId === instrumentId);
-    const stage = pathway ? currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId) : null;
-    const stageItemIds = stage ? new Set(db.items.filter((i) => i.stageId === stage.id).map((i) => i.id)) : new Set<string>();
+    const stageItemIds = currentStageItemIds(
+      { pathways: db.pathways, pathwayStages: db.pathwayStages, items: db.items },
+      instrumentId,
+    );
     return buildSessionPlan({
       instrumentId,
       budgetMinutes: budget,
@@ -122,9 +139,10 @@ function PlanPreview() {
   const total = plan.segments.reduce((a, s) => a + s.minutes, 0);
   const editorArgs = () => {
     const preparationDates = preparationDatesByItem(db.lessonAgenda, db.lessons, now);
-    const pathway = db.pathways.find((p) => p.instrumentId === instrumentId);
-    const stage = pathway ? currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId) : null;
-    const stageItemIds = stage ? new Set(db.items.filter((i) => i.stageId === stage.id).map((i) => i.id)) : new Set<string>();
+    const stageItemIds = currentStageItemIds(
+      { pathways: db.pathways, pathwayStages: db.pathwayStages, items: db.items },
+      instrumentId,
+    );
     return {
       instrumentId,
       now,

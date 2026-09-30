@@ -57,56 +57,49 @@ export function hasPersianScript(s: string): boolean {
   return /[؀-ۿ]/.test(s);
 }
 
-// Latin transliteration aliases: map common Persian repertoire terms to their
-// Latin spellings so a user typing "shur" or "chahar mezrab" finds Farsi data.
-// This is a SEARCH aid only — the canonical display value stays Persian.
-const TRANSLIT_ALIASES: Record<string, string[]> = {
-  شور: ['shur', 'shour'],
-  ابوعطا: ['abuata', 'abu ata', "abu'ata"],
-  'بیات ترک': ['bayat tork', 'bayate tork'],
-  افشاری: ['afshari', 'afshar'],
-  'آواز افشاری': ['avaz afshari', 'afshari'],
-  دشتی: ['dashti'],
-  نوا: ['nava', 'nova'],
-  همایون: ['homayun', 'homayoun'],
-  'بیات اصفهان': ['bayat esfahan', 'esfahan', 'isfahan'],
-  سه‌گاه: ['segah', 'se gah'],
-  چهارگاه: ['chahargah', 'chahar gah'],
-  ماهور: ['mahur', 'mahoor'],
-  'راست‌پنجگاه': ['rast panjgah', 'rastpanjgah'],
-  چهارمضراب: ['chahar mezrab', 'chaharmezrab', 'chaharmizrab'],
-  'پیش‌درآمد': ['pish daramad', 'pishdaramad'],
+// Latin transliteration aliases for TITLE search: typing "shur" finds
+// «درآمد شور». A SEARCH aid only — the canonical display value stays Persian.
+//
+// Only the spellings unrelated to a musical term live here. Every dastgāh,
+// form and composer spelling comes from the ONE vocabulary (`musicTerms.ts`),
+// which hands its own table to `persianSearchMatch` — so a term's spellings
+// are written once, and a custom term's aliases search the same way.
+export const TITLE_SEARCH_ALIASES: Record<string, string[]> = {
   درآمد: ['daramad', 'dar amad'],
-  تصنیف: ['tasnif', 'tasnef'],
-  رنگ: ['reng', 'rang'],
-  ضربی: ['zarbi'],
-  'ابوالحسن صبا': ['saba', 'abolhasan saba'],
-  'درویش خان': ['darvish khan', 'darvishkhan'],
   'ردیف میرزا عبدالله': ['radif mirza abdollah', 'mirza abdollah'],
 };
 
-/** Latin alias strings for a Persian term (normalized), or [] if none known. */
-export function translitAliases(persian: string): string[] {
-  const norm = normalizePersian(persian);
-  for (const [key, aliases] of Object.entries(TRANSLIT_ALIASES)) {
-    if (normalizePersian(key) === norm) return aliases;
-  }
-  return [];
+/** A prepared alias table: normalised Farsi key → Latin spellings (lower case). */
+export type SearchAliasTable = { key: string; aliases: string[] }[];
+
+export function prepareAliasTable(table: Record<string, string[]>): SearchAliasTable {
+  return Object.entries(table).map(([key, aliases]) => ({
+    key: normalizePersian(key).toLowerCase(),
+    aliases: aliases.map((a) => a.toLowerCase()),
+  }));
+}
+
+const TITLE_TABLE = prepareAliasTable(TITLE_SEARCH_ALIASES);
+
+/** Latin alias strings for a Persian title term (normalized), or [] if none known. */
+export function translitAliases(persian: string, table: SearchAliasTable = TITLE_TABLE): string[] {
+  const norm = normalizePersian(persian).toLowerCase();
+  return table.find((row) => row.key === norm)?.aliases ?? [];
 }
 
 /**
  * Does `haystack` match `query`? Matches on the normalized Persian text OR any
  * Latin transliteration alias of a known term appearing anywhere in the
- * haystack, so "shur" finds "درآمد شور" and "کرشمه" finds "كرشمه".
+ * haystack, so "shur" finds "درآمد شور" and "کرشمه" finds "كرشمه". Pass the
+ * vocabulary's table (`searchAliasTable`) to include every term's spellings.
  */
-export function persianSearchMatch(haystack: string, query: string): boolean {
+export function persianSearchMatch(haystack: string, query: string, table: SearchAliasTable = TITLE_TABLE): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
   const normHay = normalizePersian(haystack).toLowerCase();
   if (normHay.includes(normalizePersian(query).toLowerCase())) return true;
-  for (const [key, aliases] of Object.entries(TRANSLIT_ALIASES)) {
-    const normKey = normalizePersian(key).toLowerCase();
-    if (normHay.includes(normKey) && aliases.some((a) => a.includes(q) || q.includes(a))) return true;
+  for (const row of table) {
+    if (normHay.includes(row.key) && row.aliases.some((a) => a.includes(q) || q.includes(a))) return true;
   }
   return false;
 }

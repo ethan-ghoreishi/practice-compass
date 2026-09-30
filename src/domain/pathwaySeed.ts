@@ -14,8 +14,9 @@ import type {
 } from './types';
 import { CGS_COURSE } from './courseData';
 import { normalizePersian } from './farsi';
-import { courseStageSeeds, type CourseStageSeed } from './courseSeed';
+import { catalogReferenceId, courseForPathway, courseStageId, courseStageSeeds, type CourseStageSeed } from './courseSeed';
 import { KHONYAGAR_COURSE, KHONYAGAR_PATHWAY } from './khonyagarData';
+import { MIRZA_ABDOLLAH_RADIF, type RadifDastgah } from './referenceCatalog';
 import { nowISO } from './util';
 
 // ---------------------------------------------------------------------------
@@ -231,16 +232,31 @@ const CGS: PathSeed = {
 const GUSHEH_ABOUT = (context: string) =>
   `گوشه‌ای از ${context}. پیش از نواختن، گوش بسپار به: شاهد (نتی که ملودی حول آن می‌گردد)، ایست (جایی که عبارت‌ها می‌آسایند) و شیوهٔ فرود آن به خانه. اول خط آغازین را زمزمه کن — پیش از آنکه دست‌ها حرکت کنند، بدان به کجا می‌رود.`;
 
-/** Each gushe as [Farsi display name, stable ascii key]. The key was the old
- *  slug of the English name, so existing catalog links stay valid. */
-const gusheh = (entries: [string, string][], context: string): StepSeed[] =>
-  entries.map(([title, key]) => ({
+/**
+ * One dastgāh of the SHARED Persian reference (`referenceCatalog.ts`) as a
+ * stage. Every pathway that presents it — the Setar pathway's own modal stages
+ * and both named reference pathways — gets the same keys, so the same
+ * references: a gusheh added in one is ADDED in the others on that instrument.
+ * Each gusheh arrives classified by its dastgāh term and named as a gusheh,
+ * which the factory used to leave empty.
+ */
+const radifStage = (d: RadifDastgah): StageSeed => ({
+  code: d.code,
+  slug: d.slug,
+  group: d.group,
+  title: d.title,
+  intro: d.intro,
+  steps: d.gushehs.map(([title, key]) => ({
     title,
     key,
     strand: 'radif' as StepStrand,
     kind: 'piece' as StepKind,
-    about: GUSHEH_ABOUT(context),
-  }));
+    about: GUSHEH_ABOUT(d.context),
+    persian: { dastgahAvaz: { termId: d.termId }, gusheh: title },
+  })),
+});
+
+const RADIF_STAGES: StageSeed[] = MIRZA_ABDOLLAH_RADIF.dastgahs.map(radifStage);
 
 const SETAR: PathSeed = {
   id: 'setar-radif',
@@ -290,211 +306,7 @@ const SETAR: PathSeed = {
         { title: 'زینت‌های تحریرگونه', key: 'tahrir-style-ornaments', strand: 'ornament', kind: 'drill' },
       ],
     },
-    {
-      code: 'شور',
-      slug: 'shur',
-      group: 'دستگاه شور و آوازهای آن',
-      title: 'دستگاه شور',
-      intro:
-        'شور سنگ‌بنای موسیقی ایرانی است و معمولاً آغازگاهِ هنرجویان — درون‌گرا، لطیف، و مادرِ چهار آواز. توجه کن که چگونه تقریباً همه‌چیز به شاهدِ آن بازمی‌گردد.',
-      steps: gusheh(
-        [
-          ['درآمد شور', 'daramad-e-shur'],
-          ['کرشمه', 'kereshmeh'],
-          ['رهاب', 'rohab'],
-          ['سلمک', 'salmak'],
-          ['گلریز', 'golriz'],
-          ['شهناز', 'shahnaz'],
-          ['قرچه', 'qarche'],
-          ['حسینی', 'hosseini'],
-          ['فرود', 'forud'],
-        ],
-        'شور',
-      ),
-    },
-    {
-      code: 'ابوعطا',
-      slug: 'abu-ata',
-      group: 'دستگاه شور و آوازهای آن',
-      title: 'آواز ابوعطا',
-      intro: 'آوازی از شور با رنگی سوزناک و مردمی. بشنو که چگونه بر شور تکیه می‌زند و به آن بازمی‌گردد.',
-      steps: gusheh(
-        [
-          ['درآمد', 'daramad'],
-          ['سیخی', 'sayakhi'],
-          ['حجاز', 'hejaz'],
-          ['چهارباغ', 'chaharbagh'],
-          ['فرود', 'forud'],
-        ],
-        'ابوعطا',
-      ),
-    },
-    {
-      code: 'بیات ترک',
-      slug: 'bayat-e-tork',
-      group: 'دستگاه شور و آوازهای آن',
-      title: 'آواز بیات ترک',
-      intro: 'آوازی از شور با نمایی روشن‌تر و بازتر — که بسیار در آواز مذهبی شنیده می‌شود.',
-      steps: gusheh(
-        [
-          ['درآمد', 'daramad'],
-          ['دوگاه', 'dogah'],
-          ['مهربانی', 'mehrabani'],
-          ['قطار', 'qatar'],
-          ['فرود', 'forud'],
-        ],
-        'بیات ترک',
-      ),
-    },
-    {
-      code: 'افشاری',
-      slug: 'afshari',
-      group: 'دستگاه شور و آوازهای آن',
-      title: 'آواز افشاری',
-      intro:
-        'آوازی از شور — جستجوگر و تلخ‌وشیرین، با کیفیتی سرگردان و ویژه. فرودِ آن به شور، لحظه‌ای است که باید به آن گوش سپرد.',
-      steps: gusheh(
-        [
-          ['درآمد', 'daramad'],
-          ['جامه‌دران', 'jamedaran'],
-          ['عراق', 'iraq'],
-          ['فرود', 'forud'],
-        ],
-        'افشاری',
-      ),
-    },
-    {
-      code: 'دشتی',
-      slug: 'dashti',
-      group: 'دستگاه شور و آوازهای آن',
-      title: 'آواز دشتی',
-      intro: 'آوازی از شور، غنایی و اندوهگین — صدای بسیاری از نغمه‌های محلی. شاهدِ آن به‌طرزی نامدار می‌لرزد.',
-      steps: gusheh(
-        [
-          ['درآمد', 'daramad'],
-          ['گیلکی', 'gilaki'],
-          ['بیات راجه', 'bayat-e-rajeh'],
-          ['فرود', 'forud'],
-        ],
-        'دشتی',
-      ),
-    },
-    {
-      code: 'همایون',
-      slug: 'homayun',
-      group: 'دیگر دستگاه‌ها',
-      title: 'دستگاه همایون',
-      intro: 'هم‌زمان باشکوه و سوگوار. به جهشِ آغازینِ ویژه‌اش و کششِ بیداد گوش بسپار.',
-      steps: gusheh(
-        [
-          ['درآمد همایون', 'daramad-e-homayun'],
-          ['چکاوک', 'chakavak'],
-          ['بیداد', 'bidad'],
-          ['نی‌داوود', 'ney-davud'],
-          ['فرود', 'forud'],
-        ],
-        'همایون',
-      ),
-    },
-    {
-      code: 'اصفهان',
-      slug: 'esfahan',
-      group: 'دیگر دستگاه‌ها',
-      title: 'آواز بیات اصفهان',
-      intro: 'آوازی از همایون — عاشقانه و گرم، نزدیک به رنگِ مینورِ هارمونیکِ غربی.',
-      steps: gusheh(
-        [
-          ['درآمد', 'daramad'],
-          ['جامه‌دران', 'jamedaran'],
-          ['بیات راجه', 'bayat-e-rajeh'],
-          ['فرود', 'forud'],
-        ],
-        'بیات اصفهان',
-      ),
-    },
-    {
-      code: 'سه‌گاه',
-      slug: 'segah',
-      group: 'دیگر دستگاه‌ها',
-      title: 'دستگاه سه‌گاه',
-      intro: 'اندوهگین و التماس‌گر، حول شاهدِ ربع‌پرده‌اش ساخته شده. مخالف اوجِ عاطفیِ آن است — به تغییرِ رجیستر توجه کن.',
-      steps: gusheh(
-        [
-          ['درآمد سه‌گاه', 'daramad-e-segah'],
-          ['زابل', 'zabol'],
-          ['مخالف', 'mokhalef'],
-          ['مقلوب', 'maqlub'],
-          ['فرود', 'forud'],
-        ],
-        'سه‌گاه',
-      ),
-    },
-    {
-      code: 'چهارگاه',
-      slug: 'chahargah',
-      group: 'دیگر دستگاه‌ها',
-      title: 'دستگاه چهارگاه',
-      intro: 'روشن، حماسی، جشن‌گونه — که اغلب با طلوعِ آفتاب مقایسه می‌شود. تقارنِ دانگ‌هایش را حول شاهد حس کن.',
-      steps: gusheh(
-        [
-          ['درآمد چهارگاه', 'daramad-e-chahargah'],
-          ['زابل', 'zabol'],
-          ['مخالف', 'mokhalef'],
-          ['منصوری', 'mansuri'],
-          ['فرود', 'forud'],
-        ],
-        'چهارگاه',
-      ),
-    },
-    {
-      code: 'ماهور',
-      slug: 'mahur',
-      group: 'دیگر دستگاه‌ها',
-      title: 'دستگاه ماهور',
-      intro: 'باز و شادمان — نزدیک‌ترین به گامِ ماژورِ غربی. دلکش گردشِ نامدار است: بشنو که چگونه رنگِ شور را وام می‌گیرد.',
-      steps: gusheh(
-        [
-          ['درآمد ماهور', 'daramad-e-mahur'],
-          ['داد', 'dad'],
-          ['خسروانی', 'khosravani'],
-          ['دلکش', 'delkash'],
-          ['فرود', 'forud'],
-        ],
-        'ماهور',
-      ),
-    },
-    {
-      code: 'نوا',
-      slug: 'nava',
-      group: 'دیگر دستگاه‌ها',
-      title: 'دستگاه نوا',
-      intro: 'آرام، مراقبه‌گون، متعادل — اغلب برای پاسی از شب نگه داشته می‌شود. خویشاوندِ شور؛ به مرکزِ آرام‌ترش توجه کن.',
-      steps: gusheh(
-        [
-          ['درآمد نوا', 'daramad-e-nava'],
-          ['گردانیه', 'gardaniyeh'],
-          ['نهفت', 'nahoft'],
-          ['فرود', 'forud'],
-        ],
-        'نوا',
-      ),
-    },
-    {
-      code: 'راست‌پنجگاه',
-      slug: 'rast-panjgah',
-      group: 'دیگر دستگاه‌ها',
-      title: 'دستگاه راست‌پنجگاه',
-      intro: 'کمیاب‌ترین دستگاه — باوقار، گسترده، و محبوب برای مدولاسیون میان مُدها.',
-      steps: gusheh(
-        [
-          ['درآمد راست‌پنجگاه', 'daramad-e-rast-panjgah'],
-          ['پروانه', 'parvaneh'],
-          ['قرچه', 'qarache'],
-          ['فرود', 'forud'],
-        ],
-        'راست‌پنجگاه',
-      ),
-    },
+    ...RADIF_STAGES,
     {
       code: 'فرم‌ها',
       slug: 'forms',
@@ -649,6 +461,39 @@ const KHONYAGAR: PathSeed = {
   stages: fromCourse(courseStageSeeds(KHONYAGAR_COURSE)),
 };
 
+// ===========================================================================
+// Setar and Tar · ردیف میرزا عبدالله — one shared reference, two instruments
+// ===========================================================================
+//
+// Two INDEPENDENT pathway instances of the same reference: the same stages and
+// the same references, never the same items — Setar's practice evidence stays
+// Setar's. Deliberately no foundations stage and no Forms stage: technique
+// stays in ordinary items and routines, and Forms is a LENS in My repertoire
+// over real works, never a pathway of generic «چهارمضراب» items.
+const radifNote = (instrument: string) =>
+  `گزیده‌ای ناقص از گوشه‌های ردیف میرزا عبدالله برای ${instrument} — نه همهٔ ردیف و نه ترتیبی قطعی؛ روایتِ استادت مرجع است. هر گوشه با دستگاهش افزوده می‌شود.`;
+
+const SETAR_RADIF_MIRZA: PathSeed = {
+  id: 'setar-radif-mirza',
+  instrumentKey: 'setar',
+  name: 'سه‌تار · ردیف میرزا عبدالله',
+  source: `${MIRZA_ABDOLLAH_RADIF.name} (گزیده)`,
+  description: radifNote('سه‌تار'),
+  note:
+    'گوشه‌هایی که پیش‌تر در «سه‌تار · ردیف و رپرتوار» افزوده‌ای اینجا هم افزوده دیده می‌شوند — چیزی دوباره ساخته نمی‌شود. هر وقت مسیر قدیمی را نخواستی، از صفحهٔ همان مسیر «بایگانی» را بزن: پنهان می‌شود و هیچ آیتمی از دست نمی‌رود.',
+  stages: RADIF_STAGES,
+};
+
+const TAR_RADIF_MIRZA: PathSeed = {
+  id: 'tar-radif-mirza',
+  instrumentKey: 'tar',
+  name: 'تار · ردیف میرزا عبدالله',
+  source: `${MIRZA_ABDOLLAH_RADIF.name} (گزیده)`,
+  description: radifNote('تار'),
+  note: 'همان گزیدهٔ سه‌تار، با تمرین و پیشرفتِ جداگانه برای تار. روش هنرستان و دورهٔ خنیاگر همان‌طور که بودند می‌مانند.',
+  stages: RADIF_STAGES,
+};
+
 // --- Expansion --------------------------------------------------------------
 //
 // Pathways/stages/routines are seeded as editable DATA. The per-stage entries
@@ -661,13 +506,46 @@ export interface SeededPathways {
   pathwayRoutines: PathwayRoutine[];
 }
 
-const ALL_SEEDS: { seed: PathSeed; key: 'guitar' | 'setar' | 'tar'; order: number }[] = [
+type SeedRow = { seed: PathSeed; key: 'guitar' | 'setar' | 'tar'; order: number };
+
+/**
+ * What `seedPathways` has always produced — for a pre-v3 database's legacy
+ * seed and every caller that relies on it. Unchanged by the reference work.
+ */
+const LEGACY_SEEDS: SeedRow[] = [
   { seed: SETAR, key: 'setar', order: 0 },
   { seed: TAR, key: 'tar', order: 1 },
   { seed: CGS, key: 'guitar', order: 2 },
   // Appended, so no existing pathway's order moves.
   { seed: KHONYAGAR, key: 'tar', order: 3 },
 ];
+
+/** Every default this build ships — what "Add default pathway" can offer. */
+const ALL_SEEDS: SeedRow[] = [
+  ...LEGACY_SEEDS,
+  { seed: SETAR_RADIF_MIRZA, key: 'setar', order: 4 },
+  { seed: TAR_RADIF_MIRZA, key: 'tar', order: 5 },
+];
+
+/**
+ * A NEW installation's defaults: Setar starts on the named reference pathway
+ * instead of the mixed one; Tar keeps Honarestān and Khonyagar. Everything not
+ * seeded here stays OFFERED by name, never added on its own.
+ */
+const INSTALL_SEEDS: SeedRow[] = [
+  { seed: SETAR_RADIF_MIRZA, key: 'setar', order: 0 },
+  { seed: TAR, key: 'tar', order: 1 },
+  { seed: CGS, key: 'guitar', order: 2 },
+  { seed: KHONYAGAR, key: 'tar', order: 3 },
+];
+
+/**
+ * The fixed timestamp a PRE-v3 database's legacy seed is stamped with. The
+ * migration chain may read no clock — two devices migrating the same old file
+ * on different days must produce identical bytes — and this is the date the
+ * first build (which shipped v2) was committed.
+ */
+export const LEGACY_SEED_TIME = new Date('2026-06-30T00:00:00.000Z');
 
 export function stageIdFor(pathwayId: string, code: string): string {
   return `${pathwayId}-${slug(code)}`;
@@ -710,17 +588,26 @@ function expand(seed: PathSeed, instrumentId: ID, pathOrder: number, now: Date):
   return { pathways: [pathway], pathwayStages: stages, pathwayRoutines: routines };
 }
 
-/** Build all seeded pathways for the given instrument ids. */
-export function seedPathways(
-  instrumentIds: { guitar: ID; setar: ID; tar: ID },
-  now: Date = new Date(),
-): SeededPathways {
-  const parts = ALL_SEEDS.map(({ seed, key, order }) => expand(seed, instrumentIds[key], order, now));
+function expandAll(rows: SeedRow[], instrumentIds: { guitar: ID; setar: ID; tar: ID }, now: Date): SeededPathways {
+  const parts = rows.map(({ seed, key, order }) => expand(seed, instrumentIds[key], order, now));
   return {
     pathways: parts.flatMap((p) => p.pathways),
     pathwayStages: parts.flatMap((p) => p.pathwayStages),
     pathwayRoutines: parts.flatMap((p) => p.pathwayRoutines),
   };
+}
+
+/** The legacy seeded pathways for the given instrument ids (see `LEGACY_SEEDS`). */
+export function seedPathways(
+  instrumentIds: { guitar: ID; setar: ID; tar: ID },
+  now: Date = new Date(),
+): SeededPathways {
+  return expandAll(LEGACY_SEEDS, instrumentIds, now);
+}
+
+/** A new installation's default pathways (see `INSTALL_SEEDS`). */
+export function installSeedPathways(instrumentIds: { guitar: ID; setar: ID; tar: ID }, now: Date): SeededPathways {
+  return expandAll(INSTALL_SEEDS, instrumentIds, now);
 }
 
 // --- Adding a missing default pathway to an existing database ----------------
@@ -753,7 +640,7 @@ export function seedInstrumentIds(instruments: Instrument[]): { guitar: ID; seta
 type PathwayCollections = Pick<PracticeDB, 'pathways' | 'pathwayStages' | 'pathwayRoutines'>;
 
 function missingDefaults(db: Pick<PracticeDB, 'instruments' | 'pathways'>, now: Date) {
-  const seeded = seedPathways(seedInstrumentIds(db.instruments), now);
+  const seeded = expandAll(ALL_SEEDS, seedInstrumentIds(db.instruments), now);
   const have = new Set(db.pathways.map((p) => p.id));
   // A default whose instrument this device does not have is not offered: it
   // would arrive as an unscoped pathway nothing on this device plays.
@@ -796,6 +683,44 @@ export function planDefaultPathways(
   };
 }
 
+/**
+ * The shipped stages a PRESENT default pathway lacks — the stage-level twin of
+ * `offeredDefaultPathways`, for every shipped pathway: the radif pathways,
+ * Honarestān, and a course pathway's own hand-authored stages (a course's
+ * LEVELS stay `offeredCourseLevels`', so nothing is offered twice). Keyed by
+ * the stage's deterministic id, never its title: a renamed stage is present and
+ * never offered; a deleted one is offered in a list and added only when chosen
+ * (`planDefaultStages`). Nothing here runs on load, import or sync.
+ */
+export function offeredDefaultStages(db: Pick<PracticeDB, 'pathways' | 'pathwayStages'>, pathwayId: string): PathwayStage[] {
+  const row = ALL_SEEDS.find((r) => r.seed.id === pathwayId);
+  if (!row || !db.pathways.some((p) => p.id === pathwayId)) return [];
+  const course = courseForPathway(pathwayId);
+  const levels = new Set(course ? course.groups.map((g) => courseStageId(course, g.key)) : []);
+  const have = new Set(db.pathwayStages.map((s) => s.id));
+  return expand(row.seed, '', 0, LEGACY_SEED_TIME).pathwayStages.filter((s) => !have.has(s.id) && !levels.has(s.id));
+}
+
+/**
+ * The stages collection with exactly the CHOSEN offered stages added, after
+ * the pathway's own (the order the owner set is kept). The stage only: its
+ * shipped routines are NOT recreated — deleting a stage keeps its routines
+ * (detached, same id), so a missing one is a routine the owner deleted. A
+ * choice that adds nothing returns the SAME array, so a no-op is detectable.
+ */
+export function planDefaultStages(
+  db: Pick<PracticeDB, 'pathways' | 'pathwayStages'>,
+  pathwayId: string,
+  stageIds: string[],
+  now: Date,
+): PathwayStage[] {
+  const chosen = offeredDefaultStages(db, pathwayId).filter((s) => stageIds.includes(s.id));
+  if (!chosen.length) return db.pathwayStages;
+  const ts = nowISO(now);
+  let order = db.pathwayStages.filter((s) => s.pathwayId === pathwayId).length;
+  return [...db.pathwayStages, ...chosen.map((s) => ({ ...s, order: order++, createdAt: ts, updatedAt: ts }))];
+}
+
 // --- Catalog (reference suggestions per stage) ------------------------------
 
 let catalogCache: Record<string, CatalogEntry[]> | null = null;
@@ -831,4 +756,47 @@ export function catalogForStage(stageId: string): CatalogEntry[] {
   return getCatalog()[stageId] ?? [];
 }
 
+let referenceCache: {
+  known: Set<string>;
+  byPathway: Map<string, Set<string>>;
+} | null = null;
+
+function references() {
+  if (!referenceCache) {
+    const known = new Set<string>();
+    const byPathway = new Map<string, Set<string>>();
+    for (const { seed } of ALL_SEEDS) {
+      const own = byPathway.get(seed.id) ?? new Set<string>();
+      for (const st of seed.stages) {
+        const stageId = stageIdFor(seed.id, st.slug ?? st.code);
+        for (const e of catalogForStage(stageId)) {
+          const ref = catalogReferenceId(stageId, e.key);
+          known.add(ref);
+          own.add(ref);
+        }
+      }
+      byPathway.set(seed.id, own);
+    }
+    referenceCache = { known, byPathway };
+  }
+  return referenceCache;
+}
+
+/** True when some shipped suggestion carries this reference id. */
+export function knownReference(refId: string): boolean {
+  return references().known.has(refId);
+}
+
+/**
+ * The references a pathway's SHIPPED definition presents, whatever the owner
+ * has since done to its stages — the scope a hidden suggestion may name. A
+ * pathway the owner made has none.
+ */
+export function pathwayReferenceIds(pathwayId: string): ReadonlySet<string> {
+  return references().byPathway.get(pathwayId) ?? new Set();
+}
+
 export const SEED_PATHWAY_IDS = { guitar: CGS.id, setar: SETAR.id, tar: TAR.id };
+
+/** The two named instances of the shared Persian reference. */
+export const RADIF_PATHWAY_IDS = { setar: SETAR_RADIF_MIRZA.id, tar: TAR_RADIF_MIRZA.id };

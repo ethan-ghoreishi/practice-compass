@@ -843,11 +843,18 @@ describe("the course's own study source", () => {
     expect(second.items[1].materialId).toBe(first.materials[0].id);
   });
 
-  it('matches on the source the owner may already have created by hand', () => {
+  it('asks about a source the owner may already have created by hand, rather than guessing either way', () => {
+    // Same title, but nothing proves it is the course's own: the owner chooses.
     const mine = createMaterial({ instrumentId: 'g', title: '  classical guitar shed ' }, NOW);
     const r = resolveCourseSource([mine], CGS_COURSE, 'g', NOW);
-    expect(r.materialId).toBe(mine.id);
-    expect(r.materials).toHaveLength(1);
+    expect(r.materialId).toBeUndefined();
+    expect(r.candidates?.map((m) => m.id)).toEqual([mine.id]);
+    expect(r.materials).toEqual([mine]);
+    // The course's own kind AND title is proof: it is adopted and keyed.
+    const proven = createMaterial({ instrumentId: 'g', title: 'Classical Guitar Shed', sourceType: 'course' }, NOW);
+    const p = resolveCourseSource([proven], CGS_COURSE, 'g', NOW);
+    expect(p.materialId).toBe(proven.id);
+    expect(p.materials[0]!.sourceKey).toBe('course:cgs');
   });
 
   it('mints a separate one per instrument, because a source belongs to one', () => {

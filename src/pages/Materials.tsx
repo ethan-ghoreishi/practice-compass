@@ -1,23 +1,26 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useRef, useState } from 'react';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import {
+  defaultSourceInstrument,
   MATERIAL_SOURCE_LABELS,
   MATERIAL_STATUS_LABELS,
+  NEW_SOURCE_KINDS,
+  sourceKindOptions,
   type Material,
   type MaterialSourceType,
   type MaterialStatus,
 } from '../domain';
 import { useStore } from '../store/useStore';
-import { EmptyState, Field } from '../components/ui';
+import { EmptyState, Field, SaveStatus, useAcknowledgedSaves } from '../components/ui';
 import { recordToOptions } from '../components/options';
 import { ArrowLeftIcon, FolderIcon, PlusIcon } from '../components/icons';
 
-// A source is deliberately simple: one name that says what it is and where it
-// came from ("Radif Mirzā Abdollāh", "Honarestān Book 2", "CGS Level 1"),
-// plus a kind, a status and a free note. Piece-level detail (dastgāh, gusheh,
-// composer, teacher's remarks…) lives on the items themselves, never here —
-// the old parent-title / section / teacher-source fields duplicated that and
-// made the flow confusing.
+// A study source is the named book, collection or radif edition, course or
+// teaching material a piece is studied FROM — not a person (Composer / maestro
+// classifies the work), not a pathway (organisation) and not a lesson (linked
+// separately). One name, a kind, a status and a free note. Fields this compact
+// editor does not show (source name, parent title, section, teacher) are kept
+// exactly as they are: a save only ever patches what is on screen.
 interface Draft {
   id?: string;
   instrumentId: string;
@@ -27,7 +30,6 @@ interface Draft {
   notes: string;
 }
 
-const SOURCE_OPTIONS = recordToOptions(MATERIAL_SOURCE_LABELS);
 const STATUS_OPTIONS = recordToOptions(MATERIAL_STATUS_LABELS);
 
 function emptyDraft(instrumentId: string): Draft {
@@ -51,24 +53,77 @@ export default function Materials() {
   const updateMaterial = useStore((s) => s.updateMaterial);
   const deleteMaterial = useStore((s) => s.deleteMaterial);
   const location = useLocation();
+  const [params] = useSearchParams();
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
   const from = (location.state as { from?: string } | null)?.from ?? '/repertoire';
+  // A new source starts on the instrument being browsed (or practised); never
+  // a required choice, and never written back anywhere.
+  const newSourceInstrument = defaultSourceInstrument(params.get('instrument') ?? sessionInstrumentId, db.instruments);
 
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraftState] = useState<Draft | null>(null);
+  // The live draft, readable when a write settles — a ref, never a render's copy.
+  const draftRef = useRef<Draft | null>(null);
+  const setDraft = (next: Draft | null) => {
+    draftRef.current = next;
+    setDraftState(next);
+  };
+  // "Saved." waits for IndexedDB and speaks only for the draft it wrote; the
+  // editor closes only then. A failed write keeps it open with Try again, a
+  // refusal (a course key already held there) says why. Deleted sources keep
+  // their outcome here, since their row is gone.
+  const saves = useAcknowledgedSaves();
+  const [deleted, setDeleted] = useState<Record<string, string>>({});
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
 
   const itemCount = (materialId: string) => db.items.filter((i) => i.materialId === materialId).length;
 
+  const draftKey = () => JSON.stringify(draftRef.current && { ...draftRef.current, id: undefined });
+
   function save() {
-    if (!draft || !draft.title.trim()) return;
-    const payload = {
-      instrumentId: draft.instrumentId,
-      title: draft.title.trim(),
-      sourceType: draft.sourceType,
-      status: draft.status,
-      notes: draft.notes.trim() || undefined,
-    };
-    if (draft.id) updateMaterial(draft.id, payload);
-    else addMaterial(payload);
-    setDraft(null);
+    const current = draftRef.current;
+    if (!current || !current.title.trim()) return;
+    const carried = draftKey();
+    saves.run(
+      'draft',
+      carried,
+      () => {
+        const payload = {
+          instrumentId: current.instrumentId,
+          title: current.title.trim(),
+          sourceType: current.sourceType,
+          status: current.status,
+          notes: current.notes.trim() || undefined,
+        };
+        if (current.id) return updateMaterial(current.id, payload);
+        // Created once: a retry, or a save of newer text, updates THIS source.
+        setDraft({ ...current, id: addMaterial(payload) });
+        return null;
+      },
+      {
+        current: draftKey,
+        again: save,
+        // Close the editor only once storage acknowledged exactly what it shows.
+        saved: () => {
+          setLastSaved(current.title.trim());
+          setDraft(null);
+        },
+      },
+    );
+  }
+  const ack = saves.states.draft;
+
+  function openDraft(next: Draft) {
+    saves.reset('draft');
+    setLastSaved(null);
+    setDraft(next);
+  }
+
+  function remove(m: Material) {
+    setDeleted((d) => ({ ...d, [m.id]: m.title }));
+    saves.run(m.id, 'delete', () => {
+      deleteMaterial(m.id);
+      return null;
+    });
   }
 
   return (
@@ -80,14 +135,36 @@ export default function Materials() {
       <header className="row between">
         <div>
           <h1 className="page-title">Study sources</h1>
-          <p className="page-sub">Where practice items come from — a radif, method book, collection, course or teacher handout. Nothing else lives here.</p>
+          <p className="page-sub">
+            The book, collection or radif edition, course or teaching material a piece is studied from. A composer or
+            maestro is set on the piece; a lesson is linked on its own.
+          </p>
         </div>
         {db.instruments.length > 0 && (
-          <button className="btn btn-primary" onClick={() => setDraft(emptyDraft(db.instruments[0].id))}>
+          <button className="btn btn-primary" onClick={() => openDraft(emptyDraft(newSourceInstrument))}>
             <PlusIcon /> New
           </button>
         )}
       </header>
+
+      {!draft && lastSaved && (
+        <p className="tiny" role="status" style={{ margin: 0 }}>
+          <span dir="auto">{lastSaved}</span> — Saved.
+        </p>
+      )}
+      {Object.entries(deleted).map(([id, title]) => (
+        <SaveStatus
+          key={id}
+          ack={saves.states[id]}
+          subject={<><span dir="auto">{title}</span> deleted — </>}
+          onRetry={() =>
+            saves.run(id, 'delete', () => {
+              deleteMaterial(id);
+              return null;
+            })
+          }
+        />
+      ))}
 
       {draft && (
         <div className="card stack">
@@ -95,6 +172,7 @@ export default function Materials() {
             <Field label="Instrument">
               <select
                 className="select"
+                aria-label="Instrument"
                 value={draft.instrumentId}
                 onChange={(e) => setDraft({ ...draft, instrumentId: e.target.value })}
               >
@@ -105,13 +183,17 @@ export default function Materials() {
                 ))}
               </select>
             </Field>
-            <Field label="Kind">
+            <Field
+              label="Kind"
+              hint={NEW_SOURCE_KINDS.find((k) => k.kind === draft.sourceType)?.example ?? 'An older kind, kept exactly as it was.'}
+            >
               <select
                 className="select"
+                aria-label="Kind"
                 value={draft.sourceType}
                 onChange={(e) => setDraft({ ...draft, sourceType: e.target.value as MaterialSourceType })}
               >
-                {SOURCE_OPTIONS.map((o) => (
+                {sourceKindOptions(draft.id ? db.materials.find((m) => m.id === draft.id)?.sourceType : undefined).map((o) => (
                   <option key={o.value} value={o.value}>
                     {o.label}
                   </option>
@@ -123,6 +205,7 @@ export default function Materials() {
             <input
               className="input"
               dir="auto"
+              aria-label="Source name"
               value={draft.title}
               autoFocus
               onChange={(e) => setDraft({ ...draft, title: e.target.value })}
@@ -145,13 +228,20 @@ export default function Materials() {
             <textarea className="textarea" dir="auto" value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
           </Field>
           <div className="row">
-            <button className="btn btn-primary grow" disabled={!draft.title.trim()} onClick={save}>
+            <button className="btn btn-primary grow" disabled={!draft.title.trim() || ack?.status === 'saving'} onClick={save}>
               {draft.id ? 'Save changes' : 'Create source'}
             </button>
-            <button className="btn" onClick={() => setDraft(null)}>
+            <button
+              className="btn"
+              onClick={() => {
+                saves.reset('draft');
+                setDraft(null);
+              }}
+            >
               Cancel
             </button>
           </div>
+          <SaveStatus ack={ack} current={draftKey()} onRetry={save} />
         </div>
       )}
 
@@ -186,14 +276,13 @@ export default function Materials() {
                         </span>
                       </div>
                     </div>
-                    <button className="btn btn-ghost btn-sm" onClick={() => setDraft(fromMaterial(m))}>
+                    <button className="btn btn-ghost btn-sm" onClick={() => openDraft(fromMaterial(m))}>
                       Edit
                     </button>
                     <button
                       className="btn btn-ghost btn-sm btn-danger"
                       onClick={() => {
-                        if (confirm(`Delete "${m.title}"? Items keep working — they just lose this source label.`))
-                          deleteMaterial(m.id);
+                        if (confirm(`Delete "${m.title}"? Items keep working — they just lose this source label.`)) remove(m);
                       }}
                     >
                       Delete

@@ -8,7 +8,7 @@ import {
   defaultModeForStatus,
   FOCUS_LABELS,
   ITEM_TYPE_LABELS,
-  archiveSearchAliases,
+  repertoireSearchTexts,
   itemMatchesSearch,
   type BlockMode,
   type FocusArea,
@@ -60,8 +60,10 @@ export default function StartBlock() {
 
   const items = useMemo(() => itemsForInstrument(db, instrumentId), [db, instrumentId]);
   // Farsi-aware: an Arabic kaf from the iOS keyboard finds a Persian kaf, and
-  // "daramad" finds درآمد.
-  const aliases = useMemo(() => archiveSearchAliases(db), [db]);
+  // "daramad" finds درآمد. The SAME findable text My repertoire and All
+  // practice items search (terms, maestros, gusheh, source, archive aliases);
+  // Start keeps its own eligibility — this instrument's items.
+  const aliases = useMemo(() => repertoireSearchTexts(db), [db]);
   const filtered = useMemo(
     () => items.filter((i) => itemMatchesSearch(i, search, aliases.get(i.id))),
     [items, search, aliases],

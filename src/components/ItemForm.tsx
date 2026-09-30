@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   FOCUS_LABELS,
   ITEM_STATUS_DESCRIPTIONS,
@@ -15,9 +15,9 @@ import {
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { materialLabel, materialsForInstrument } from '../store/lookups';
-import { Field, OptionPills, RatingInput } from './ui';
+import { Field, OptionPills, RatingInput, SaveStatus, useAcknowledgedSaves } from './ui';
 import { recordToOptions } from './options';
-import { DASTGAH_SUGGESTIONS, FORM_SUGGESTIONS } from './itemFields';
+import MusicalTermField from './MusicalTermField';
 import { fieldsForKind, kindFromItem, kindsForFamily, kindToItemType, type ItemKind } from './itemKinds';
 import type { ItemFormValues } from './itemFormValues';
 
@@ -45,12 +45,23 @@ export default function ItemForm({
 }) {
   const db = useStore((s) => s.db);
   const addMaterial = useStore((s) => s.addMaterial);
+  const updateMaterial = useStore((s) => s.updateMaterial);
   const [v, setV] = useState<ItemFormValues>(initial);
   const [kind, setKind] = useState<ItemKind>(() =>
     kindFromItem({ itemType: initial.itemType, persian: initial.persian, parentItemId: initial.parentItemId || undefined }),
   );
   const [showWorking, setShowWorking] = useState(Boolean(initial.notes));
-  const [newSourceName, setNewSourceName] = useState('');
+  const [newSourceName, setNewSourceNameState] = useState('');
+  // The inline "new study source" is saved like every other registry edit:
+  // the name stays on screen until IndexedDB acknowledged THAT name, a failed
+  // write offers Try again, and only then is the new source selected.
+  const sourceDraft = useRef('');
+  const setNewSourceName = (v: string) => {
+    sourceDraft.current = v;
+    setNewSourceNameState(v);
+  };
+  const createdSource = useRef<string | null>(null);
+  const saves = useAcknowledgedSaves();
 
   const set = (patch: Partial<ItemFormValues>) => setV((cur) => ({ ...cur, ...patch }));
 
@@ -86,10 +97,32 @@ export default function ItemForm({
 
   const creatingSource = v.materialId === '__new__';
   function createSource() {
-    if (!newSourceName.trim()) return;
-    const id = addMaterial({ instrumentId: v.instrumentId, title: newSourceName });
-    setNewSourceName('');
-    set({ materialId: id });
+    const title = sourceDraft.current.trim();
+    if (!title) return;
+    const instrumentId = v.instrumentId;
+    saves.run(
+      'source',
+      sourceDraft.current,
+      () => {
+        // Created once: a retry, or a newer name, updates THIS source.
+        if (createdSource.current) return updateMaterial(createdSource.current, { title });
+        createdSource.current = addMaterial({ instrumentId, title });
+        return null;
+      },
+      {
+        current: () => sourceDraft.current,
+        again: createSource,
+        saved: () => {
+          const id = createdSource.current!;
+          createdSource.current = null;
+          saves.reset('source');
+          setNewSourceName('');
+          // Selected only if the form still asks for a new source on the
+          // instrument it was created for.
+          setV((cur) => (cur.materialId === '__new__' && cur.instrumentId === instrumentId ? { ...cur, materialId: id } : cur));
+        },
+      },
+    );
   }
 
   return (
@@ -128,21 +161,13 @@ export default function ItemForm({
       {(fields.dastgah || fields.form || fields.composer || fields.gushehName) && (
         <div className="grid-2">
           {fields.dastgah && (
-            <Field label="Dastgāh / Āvāz">
-              <input
-                className="input"
-                dir="auto"
-                list="pc-dastgah-list"
-                placeholder="e.g. Afshāri"
-                value={v.persian.dastgahAvaz ?? ''}
-                onChange={(e) => set({ persian: { ...v.persian, dastgahAvaz: e.target.value } })}
-              />
-              <datalist id="pc-dastgah-list">
-                {DASTGAH_SUGGESTIONS.map((d) => (
-                  <option key={d} value={d} />
-                ))}
-              </datalist>
-            </Field>
+            <MusicalTermField
+              field="dastgahAvaz"
+              label="Dastgāh / Āvāz"
+              placeholder="e.g. افشاری"
+              value={v.persian.dastgahAvaz}
+              onChange={(dastgahAvaz) => set({ persian: { ...v.persian, dastgahAvaz } })}
+            />
           )}
           {fields.gushehName && (
             <Field label="Gusheh">
@@ -155,31 +180,22 @@ export default function ItemForm({
             </Field>
           )}
           {fields.form && (
-            <Field label="Form">
-              <input
-                className="input"
-                dir="auto"
-                list="pc-form-list"
-                placeholder="e.g. Chahārmezrāb"
-                value={v.persian.form ?? ''}
-                onChange={(e) => set({ persian: { ...v.persian, form: e.target.value } })}
-              />
-              <datalist id="pc-form-list">
-                {FORM_SUGGESTIONS.map((f) => (
-                  <option key={f} value={f} />
-                ))}
-              </datalist>
-            </Field>
+            <MusicalTermField
+              field="form"
+              label="Form"
+              placeholder="e.g. چهارمضراب"
+              value={v.persian.form}
+              onChange={(form) => set({ persian: { ...v.persian, form } })}
+            />
           )}
           {fields.composer && (
-            <Field label="Composer / maestro" hint="e.g. Sabā, Darvish Khān, Shahnāzi.">
-              <input
-                className="input"
-                dir="auto"
-                value={v.persian.composer ?? ''}
-                onChange={(e) => set({ persian: { ...v.persian, composer: e.target.value } })}
-              />
-            </Field>
+            <MusicalTermField
+              field="composer"
+              label="Composer / maestro"
+              placeholder="e.g. ابوالحسن صبا"
+              value={v.persian.composer}
+              onChange={(composer) => set({ persian: { ...v.persian, composer } })}
+            />
           )}
         </div>
       )}
@@ -253,9 +269,10 @@ export default function ItemForm({
             onChange={(e) => setNewSourceName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && createSource()}
           />
-          <button type="button" className="btn" disabled={!newSourceName.trim()} onClick={createSource}>
+          <button type="button" className="btn" disabled={!newSourceName.trim() || saves.states.source?.status === 'saving'} onClick={createSource}>
             Create
           </button>
+          <SaveStatus ack={saves.states.source} current={newSourceName} onRetry={createSource} />
         </div>
       )}
 

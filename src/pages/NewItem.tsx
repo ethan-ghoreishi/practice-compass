@@ -1,4 +1,5 @@
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { vocabulary } from '../domain';
 import { useStore } from '../store/useStore';
 import ItemForm from '../components/ItemForm';
 import { emptyItemValues, valuesToCreateInput, type ItemFormValues } from '../components/itemFormValues';
@@ -22,12 +23,23 @@ export default function NewItem() {
   const from = (location.state as { from?: string } | null)?.from ?? '/repertoire';
 
   const instruments = db.instruments.filter((i) => i.active);
+  // The instrument being BROWSED (Repertoire passes it) wins over the session
+  // one; neither is ever written back.
+  const browsed = params.get('instrument');
   const defaultInstrument =
+    (browsed && instruments.find((i) => i.id === browsed)?.id) ||
     (sessionInstrumentId !== 'all' && instruments.find((i) => i.id === sessionInstrumentId)?.id) ||
     instruments[0]?.id ||
     '';
 
   const initial = emptyItemValues(defaultInstrument);
+  // "Add a piece in this form" from the Forms lens: prefill the one field,
+  // only with a term that exists — a stale link prefills nothing.
+  const formParam = params.get('form');
+  if (formParam && vocabulary(db.musicTerms).byId.get(formParam)?.kind === 'form') {
+    initial.persian = { form: { termId: formParam } };
+    initial.itemType = 'full_piece';
+  }
   const stageParam = params.get('stage');
   if (stageParam && db.pathwayStages.some((s) => s.id === stageParam)) {
     initial.stageId = stageParam;

@@ -9,7 +9,9 @@ import {
   ITEM_TYPE_LABELS,
   RATING_LABELS,
   REVIEW_MODE_LABELS,
-  isLosslesslyRemovable,
+  hasValue,
+  valueLabel,
+  vocabulary,
   partsOf,
   pickNextPart,
   RESULT_LABELS,
@@ -108,7 +110,10 @@ export default function ItemDetail() {
 
   const material = getMaterial(db, item.materialId);
   const stage = item.stageId ? db.pathwayStages.find((s) => s.id === item.stageId) : undefined;
-  const persianEntries = PERSIAN_FIELDS.filter((f) => item.persian?.[f.key as keyof PersianFields]);
+  const vocab = vocabulary(db.musicTerms);
+  // One reader for every classifying value: a term's current name, or the
+  // owner's own text exactly as written.
+  const persianEntries = PERSIAN_FIELDS.filter((f) => hasValue(item.persian?.[f.key as keyof PersianFields]));
   const guitarEntries = GUITAR_FIELDS.filter((f) => item.guitar?.[f.key as keyof GuitarFields]);
   const trend = [...blocks].reverse(); // chronological
 
@@ -287,7 +292,7 @@ export default function ItemDetail() {
           <div className="section-label">Details</div>
           <div className="card grid-2">
             {persianEntries.map((f) => (
-              <FieldRow key={f.key} label={f.label} value={item.persian![f.key as keyof PersianFields]!} />
+              <FieldRow key={f.key} label={f.label} value={valueLabel(item.persian![f.key as keyof PersianFields], vocab)} />
             ))}
             {guitarEntries.map((f) => (
               <FieldRow key={f.key} label={f.label} value={item.guitar![f.key as keyof GuitarFields]!} />
@@ -532,15 +537,14 @@ function ItemFilesCrud({ itemId }: { itemId: string }) {
  */
 function ConnectedTo({ item }: { item: PracticeItem }) {
   const db = useStore((s) => s.db);
-  const removeCatalogItem = useStore((s) => s.removeCatalogItem);
-  const navigate = useNavigate();
+  const removeFromPathway = useStore((s) => s.removeFromPathway);
   const material = item.materialId ? db.materials.find((m) => m.id === item.materialId) : undefined;
   const stage = item.stageId ? db.pathwayStages.find((s) => s.id === item.stageId) : undefined;
   const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
   const lessons = db.lessons.filter((l) => (l.itemIds ?? []).includes(item.id)).sort((a, b) => b.date.localeCompare(a.date));
   const parent = item.parentItemId ? db.items.find((i) => i.id === item.parentItemId) : undefined;
-  const losslessInStage =
-    !!stage && isLosslesslyRemovable(item, db.blocks.filter((b) => b.practiceItemId === item.id));
+  // A refusal is about ONE item: tagged, so it never shows under another.
+  const [refusal, setRefusal] = useState<{ forItem: string; message: string | null } | null>(null);
 
   if (!material && !stage && lessons.length === 0 && !parent) return null;
 
@@ -588,17 +592,21 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
           </span>
         )}
       </div>
-      {losslessInStage && (
+      {stage && (
+        // Organisation, never deletion: the item leaves this pathway and stays
+        // in My repertoire with every note, file, link and history it has.
         <button
           className="link tiny"
-          style={{ background: 'none', border: 'none', width: 'fit-content', textAlign: 'left' }}
-          onClick={() => {
-            // Provably lossless (no practice logged): revert to a suggestion.
-            if (removeCatalogItem(item.id)) navigate(`/pathway/${stage!.pathwayId}/${stage!.id}`);
-          }}
+          style={{ background: 'none', border: 'none', width: 'fit-content', textAlign: 'start' }}
+          onClick={() => setRefusal({ forItem: item.id, message: removeFromPathway(item.id, stage.pathwayId) })}
         >
-          Remove from stage (no practice logged)
+          Remove from pathway (keeps this item)
         </button>
+      )}
+      {refusal?.forItem === item.id && refusal.message && (
+        <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
+          {refusal.message}
+        </p>
       )}
     </div>
   );
@@ -801,6 +809,7 @@ function ConnectionsSection({ item }: { item: PracticeItem }) {
   const placeItemInStage = useStore((s) => s.placeItemInStage);
   const linkItemToLesson = useStore((s) => s.linkItemToLesson);
   const unlinkItemFromLesson = useStore((s) => s.unlinkItemFromLesson);
+  const [refusal, setRefusal] = useState<{ forItem: string; message: string | null } | null>(null);
 
   const stages = useMemo(() => {
     const pathways = db.pathways.filter((p) => !p.instrumentId || p.instrumentId === item.instrumentId);
@@ -834,7 +843,7 @@ function ConnectionsSection({ item }: { item: PracticeItem }) {
             className="select"
             aria-label="Pathway stage this item belongs to"
             value={item.stageId ?? ''}
-            onChange={(e) => placeItemInStage(item.id, e.target.value || undefined)}
+            onChange={(e) => setRefusal({ forItem: item.id, message: placeItemInStage(item.id, e.target.value || undefined) })}
           >
             <option value="">Not in a pathway</option>
             {stages.map(({ stage, pathway }) => (
@@ -844,6 +853,11 @@ function ConnectionsSection({ item }: { item: PracticeItem }) {
               </option>
             ))}
           </select>
+          {refusal?.forItem === item.id && refusal.message && (
+            <span className="tiny" role="alert" style={{ color: 'var(--tone-alert)' }}>
+              {refusal.message}
+            </span>
+          )}
         </div>
 
         <div className="field">

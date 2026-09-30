@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { catalogForStage, getCatalog, SEED_PATHWAY_IDS, seedPathways, stageIdFor } from './pathwaySeed';
+import { catalogForStage, getCatalog, RADIF_PATHWAY_IDS, SEED_PATHWAY_IDS, seedPathways, stageIdFor } from './pathwaySeed';
+import { resolveCatalogReference, catalogReferenceId } from './courseSeed';
 import { createSeedDB } from './seed';
 import { hasPersianScript } from './farsi';
 
@@ -46,13 +47,19 @@ describe('Farsi seed migration safety', () => {
   });
 
   it('seeded Setar items still resolve to their stage and catalog entry', () => {
+    // A new install starts Setar on the named radif pathway; the demo gusheh
+    // sits there, BOUND to the shared reference — so the mixed pathway's own
+    // Afshārī stage (same key) shows it as added too.
     const db = createSeedDB(NOW);
-    const afshariStage = stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari');
+    const afshariStage = stageIdFor(RADIF_PATHWAY_IDS.setar, 'afshari');
     const iraq = db.items.find((i) => i.catalogKey === 'iraq');
     expect(iraq).toBeDefined();
     expect(iraq!.stageId).toBe(afshariStage);
-    // Its catalog key matches a real entry in that stage.
     expect(catalogForStage(afshariStage).some((e) => e.key === 'iraq')).toBe(true);
+    const mixed = stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari');
+    expect(catalogReferenceId(mixed, 'iraq')).toBe(catalogReferenceId(afshariStage, 'iraq'));
+    const r = resolveCatalogReference(catalogReferenceId(mixed, 'iraq'), iraq!.instrumentId, db.items);
+    expect(r.status === 'bound' && r.item.id).toBe(iraq!.id);
   });
 
   it('seeded Setar/Tar items carry Farsi titles', () => {

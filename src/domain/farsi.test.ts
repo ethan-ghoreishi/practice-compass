@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { faCollator, hasPersianScript, normalizePersian, persianSearchMatch, translitAliases } from './farsi';
+import { searchAliasTable } from './musicTerms';
 
 describe('normalizePersian', () => {
   it('folds Arabic yeh and kaf to Persian forms', () => {
@@ -48,21 +49,31 @@ describe('faCollator sorting', () => {
   });
 });
 
+// Term spellings come from the ONE vocabulary (`musicTerms.ts`), which hands
+// its table to these helpers; only title aliases unrelated to a term live here.
+const TERMS = searchAliasTable();
+
 describe('transliteration search aliases', () => {
-  it('maps canonical Persian terms to Latin aliases', () => {
-    expect(translitAliases('شور')).toContain('shur');
-    expect(translitAliases('چهارمضراب')).toContain('chaharmezrab');
-    expect(translitAliases('ابوالحسن صبا')).toContain('saba');
+  it('maps canonical Persian terms to Latin aliases — from the vocabulary', () => {
+    expect(translitAliases('شور', TERMS)).toContain('shur');
+    expect(translitAliases('چهارمضراب', TERMS)).toContain('chaharmezrab');
+    expect(translitAliases('ابوالحسن صبا', TERMS)).toContain('saba');
+  });
+
+  it('keeps only the title aliases unrelated to a term in its own table', () => {
+    expect(translitAliases('درآمد')).toContain('daramad');
+    expect(translitAliases('شور')).toEqual([]);
   });
 
   it('folds spelling variants before lookup (Arabic yeh)', () => {
-    expect(translitAliases('افشاري')).toContain('afshari');
+    expect(translitAliases('افشاري', TERMS)).toContain('afshari');
   });
 
   it('persianSearchMatch finds Farsi data by Latin query', () => {
-    expect(persianSearchMatch('شور', 'shur')).toBe(true);
-    expect(persianSearchMatch('چهارمضراب صبا', 'chahar mezrab')).toBe(true);
-    expect(persianSearchMatch('درآمد شور', 'nava')).toBe(false);
+    expect(persianSearchMatch('شور', 'shur', TERMS)).toBe(true);
+    expect(persianSearchMatch('چهارمضراب صبا', 'chahar mezrab', TERMS)).toBe(true);
+    expect(persianSearchMatch('درآمد شور', 'nava', TERMS)).toBe(false);
+    expect(persianSearchMatch('بیات ترک', 'bayate tork', TERMS)).toBe(true);
   });
 
   it('persianSearchMatch finds Farsi data by Farsi query (variant-insensitive)', () => {

@@ -1,6 +1,7 @@
 import type { PracticeBlock, PracticeDB, PracticeItem } from './types';
 import { SCHEMA_VERSION } from './types';
-import { SEED_PATHWAY_IDS, seedPathways, stageIdFor } from './pathwaySeed';
+import { installSeedPathways, RADIF_PATHWAY_IDS, SEED_PATHWAY_IDS, stageIdFor } from './pathwaySeed';
+import { catalogReferenceId } from './courseSeed';
 import {
   createBlock,
   createInstrument,
@@ -71,13 +72,17 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
   );
 
   // --- Items (stats filled in from blocks below) ---------------------------
+  // The two Setar gushehs sit in the named reference pathway a new install
+  // starts on, bound to their shared references.
+  const afshari = stageIdFor(RADIF_PATHWAY_IDS.setar, 'afshari');
   const iraq = createItem(
     {
       instrumentId: setar.id,
       materialId: mAfshari.id,
-      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari'),
+      stageId: afshari,
       strand: 'radif',
       catalogKey: 'iraq',
+      catalogRefs: [catalogReferenceId(afshari, 'iraq')],
       title: 'پایان‌بندیِ عبارتِ ۴ (عراق)',
       itemType: 'phrase',
       status: 'repairing',
@@ -145,9 +150,10 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     {
       instrumentId: setar.id,
       materialId: mAfshari.id,
-      stageId: stageIdFor(SEED_PATHWAY_IDS.setar, 'afshari'),
+      stageId: afshari,
       strand: 'radif',
       catalogKey: 'daramad',
+      catalogRefs: [catalogReferenceId(afshari, 'daramad')],
       title: 'درآمد افشاری (آغاز)',
       itemType: 'section',
       status: 'integrated',
@@ -241,7 +247,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     createReview({ practiceItemId: daramad.id, dueDate: reviewDates[daramad.id], reviewType: 'maintenance', reason: 'نگهداریِ معمول.' }, now),
   ];
 
-  const pathways = seedPathways({ guitar: guitar.id, setar: setar.id, tar: tar.id }, now);
+  const pathways = installSeedPathways({ guitar: guitar.id, setar: setar.id, tar: tar.id }, now);
 
   // --- Lessons (a monthly Setar class: last one + the next one) -------------
   const pastLesson = createLesson(
@@ -315,6 +321,7 @@ export function createSeedDB(now: Date = new Date()): PracticeDB {
     lessons,
     lessonAgenda,
     archiveSources: [],
+    musicTerms: [],
   };
 }
 
@@ -333,5 +340,6 @@ export function emptyDB(): PracticeDB {
     lessons: [],
     lessonAgenda: [],
     archiveSources: [],
+    musicTerms: [],
   };
 }

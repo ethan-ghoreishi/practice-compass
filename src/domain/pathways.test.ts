@@ -3,7 +3,9 @@ import { itemFromCatalogEntry } from './factories';
 import {
   catalogForStage,
   offeredDefaultPathways,
+  offeredDefaultStages,
   planDefaultPathways,
+  planDefaultStages,
   SEED_PATHWAY_IDS,
   seedInstrumentIds,
   seedPathways,
@@ -12,7 +14,6 @@ import {
 import {
   currentStage,
   groupStages,
-  isLosslesslyRemovable,
   itemStageState,
   nextUnitInStage,
   pathwayProgress,
@@ -165,31 +166,6 @@ describe('itemFromCatalogEntry', () => {
   });
 });
 
-describe('isLosslesslyRemovable', () => {
-  const fresh = itemIn(AFSHARI, 'iraq', { status: 'new', timesPractised: 0 });
-
-  it('is true for a fresh catalog item with no blocks', () => {
-    expect(isLosslesslyRemovable(fresh, [])).toBe(true);
-  });
-
-  it('is false once any block is logged against it', () => {
-    // A block existing is enough even if stats weren't recomputed.
-    expect(isLosslesslyRemovable(fresh, [{ practiceItemId: fresh.id } as never])).toBe(false);
-  });
-
-  it('is false once it has been practised (timesPractised > 0)', () => {
-    expect(isLosslesslyRemovable({ ...fresh, timesPractised: 1 }, [])).toBe(false);
-  });
-
-  it('is false once its status has moved on', () => {
-    expect(isLosslesslyRemovable({ ...fresh, status: 'fragile' }, [])).toBe(false);
-  });
-
-  it('is false for a hand-made item (no catalogKey)', () => {
-    expect(isLosslesslyRemovable(itemIn(AFSHARI, undefined, { status: 'new' }), [])).toBe(false);
-  });
-});
-
 // ---------------------------------------------------------------------------
 // ac-15 — the course import adds keys, it never renames one.
 //
@@ -297,7 +273,10 @@ describe('adding a missing shipped default pathway to an existing database', () 
   const KHONYAGAR = 'tar-khonyagar';
 
   function existingDb(missing: string[] = [KHONYAGAR]): PracticeDB {
-    const shipped = createSeedDB(NOW);
+    // A new install, then every other shipped default added — so `missing`
+    // alone decides what is absent.
+    const fresh = createSeedDB(NOW);
+    const shipped = { ...fresh, ...planDefaultPathways(fresh, [SEED_PATHWAY_IDS.setar, 'tar-radif-mirza'], NOW) };
     const tar = shipped.instruments.find((i) => i.name === 'Tar')!;
     const ts = NOW.toISOString();
     return {
@@ -571,5 +550,210 @@ describe('adding a missing shipped default pathway to an existing database', () 
     expect(on(SEED_PATHWAY_IDS.guitar)).toBe('i-guitar');
     expect(on(SEED_PATHWAY_IDS.tar)).toBe('i-tar');
     expect(on(KHONYAGAR)).toBe('i-tar');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-10 / ac-14 — explicit additive restoration, and ONE pathway context for
+// every screen that follows a route.
+// ---------------------------------------------------------------------------
+import { planCourseLevels, offeredCourseLevels, courseForPathway, planCatalogAddition } from './courseSeed';
+import { pathwayPosition, pathwayStageContext, planSetReferenceHidden, primaryPathway, visiblePathways } from './pathways';
+import { buildSessionPlan } from './plan';
+import { clampSchedulingParams } from './scheduling';
+import { RADIF_PATHWAY_IDS } from './pathwaySeed';
+import TODAY_SRC from '../pages/Today.tsx?raw';
+import SESSION_PLAN_SRC from '../pages/SessionPlan.tsx?raw';
+import REPERTOIRE_SRC from '../pages/Repertoire.tsx?raw';
+import PATHWAY_DETAIL_SRC from '../pages/PathwayDetail.tsx?raw';
+import STAGE_DETAIL_SRC from '../pages/StageDetail.tsx?raw';
+import type { Pathway } from './types';
+
+describe('restoring shipped pathways', () => {
+  it('pathway restoration remains explicit additive and lossless', () => {
+    const LATER = new Date('2026-09-28T12:00:00.000Z');
+    // An upgraded install: the legacy defaults, lived in.
+    const fresh = createSeedDB(NOW);
+    const lived: PracticeDB = {
+      ...fresh,
+      ...planDefaultPathways(fresh, [SEED_PATHWAY_IDS.setar], NOW),
+    };
+    const edited: PracticeDB = {
+      ...lived,
+      pathways: lived.pathways.map((p) => (p.id === SEED_PATHWAY_IDS.setar ? { ...p, name: 'Edited', currentStageId: AFSHARI } : p)),
+      pathwayStages: lived.pathwayStages
+        .filter((s) => s.id !== stageIdFor(SEED_PATHWAY_IDS.setar, 'shur'))
+        .map((s) => (s.id === AFSHARI ? { ...s, title: 'Edited stage' } : s)),
+    };
+
+    // 1. LOADING never reseeds: a database missing defaults and a stage comes
+    //    through every inbound door exactly as it was.
+    const loaded = validateDB(JSON.parse(JSON.stringify(edited)));
+    expect(loaded.pathways.map((p) => p.id)).toEqual(edited.pathways.map((p) => p.id));
+    expect(loaded.pathwayStages.map((s) => s.id)).toEqual(edited.pathwayStages.map((s) => s.id));
+    expect(loaded.pathways.find((p) => p.id === SEED_PATHWAY_IDS.setar)!.name).toBe('Edited');
+
+    // 2. Only the CHOSEN missing default is added; edited rows, pins, routines
+    //    and the deliberately deleted stage are untouched.
+    const offered = offeredDefaultPathways(loaded, LATER).map((p) => p.id);
+    expect(offered).toEqual([RADIF_PATHWAY_IDS.tar]);
+    const plan = planDefaultPathways(loaded, [RADIF_PATHWAY_IDS.tar], LATER);
+    expect(plan.pathways.slice(0, loaded.pathways.length)).toEqual(loaded.pathways);
+    plan.pathways.slice(0, loaded.pathways.length).forEach((p, i) => expect(p).toBe(loaded.pathways[i]));
+    expect(plan.pathways.slice(loaded.pathways.length).map((p) => p.id)).toEqual([RADIF_PATHWAY_IDS.tar]);
+    expect(plan.pathwayRoutines).toBe(loaded.pathwayRoutines);
+    expect(plan.pathwayStages.some((s) => s.id === stageIdFor(SEED_PATHWAY_IDS.setar, 'shur'))).toBe(false);
+    const installed = { ...loaded, ...plan };
+    // Repeating the same explicit action is a no-op by identity.
+    const again = planDefaultPathways(installed, [RADIF_PATHWAY_IDS.tar], LATER);
+    expect([again.pathways, again.pathwayStages, again.pathwayRoutines]).toEqual([installed.pathways, installed.pathwayStages, installed.pathwayRoutines]);
+    expect(again.pathways).toBe(installed.pathways);
+
+    // 3. A missing STAGE comes back only through the course's explicit level
+    //    action — never by reseeding the whole pathway.
+    const cgs = courseForPathway('cgs')!;
+    const without2b = installed.pathwayStages.filter((s) => s.id !== 'cgs-2b');
+    expect(offeredCourseLevels(cgs, without2b).map((o) => o.groupKey)).toEqual(['2b']);
+    const restored = planCourseLevels(cgs, without2b, ['2b'], LATER);
+    expect(restored.slice(0, without2b.length)).toEqual(without2b);
+    expect(restored.slice(without2b.length).map((s) => s.id)).toEqual(['cgs-2b']);
+    expect(planCourseLevels(cgs, restored, ['2b'], LATER)).toBe(restored);
+
+    // 3b. EVERY shipped pathway that is not a course restores a missing stage
+    //     the same explicit way — the mixed Setar radif, both named radif
+    //     pathways and Honarestān — keeping the pathway, its edits and routines.
+    //     (Hand-authored expectations: the deleted stage's own seeded id comes
+    //     back and nothing else does.)
+    const shurId = stageIdFor(SEED_PATHWAY_IDS.setar, 'shur');
+    expect(offeredDefaultStages(installed, SEED_PATHWAY_IDS.setar).map((s) => s.id)).toEqual([shurId]);
+    // The RENAMED stage (Afshari, "Edited stage") is present, so never offered.
+    expect(offeredDefaultStages(installed, SEED_PATHWAY_IDS.setar).some((s) => s.id === AFSHARI)).toBe(false);
+    const withShur = planDefaultStages(installed, SEED_PATHWAY_IDS.setar, [shurId], LATER);
+    expect(withShur.slice(0, installed.pathwayStages.length)).toEqual(installed.pathwayStages);
+    withShur.slice(0, installed.pathwayStages.length).forEach((st, i) => expect(st).toBe(installed.pathwayStages[i]));
+    const back = withShur.slice(installed.pathwayStages.length);
+    expect(back.map((st) => [st.id, st.pathwayId, st.code])).toEqual([[shurId, SEED_PATHWAY_IDS.setar, 'شور']]);
+    // Its suggestions come back with it, because the id is the shipped one.
+    expect(catalogForStage(back[0].id).length).toBeGreaterThan(0);
+    expect(planDefaultStages({ ...installed, pathwayStages: withShur }, SEED_PATHWAY_IDS.setar, [shurId], LATER)).toBe(withShur);
+    expect(planDefaultStages(installed, SEED_PATHWAY_IDS.setar, [], LATER)).toBe(installed.pathwayStages);
+    for (const pathwayId of [RADIF_PATHWAY_IDS.setar, RADIF_PATHWAY_IDS.tar, SEED_PATHWAY_IDS.tar]) {
+      const own = installed.pathwayStages.filter((st) => st.pathwayId === pathwayId);
+      expect(own.length, pathwayId).toBeGreaterThan(1);
+      const gone = own[1];
+      const lacking = { ...installed, pathwayStages: installed.pathwayStages.filter((st) => st.id !== gone.id) };
+      expect(offeredDefaultStages(lacking, pathwayId).map((st) => st.id), pathwayId).toEqual([gone.id]);
+      const put = planDefaultStages(lacking, pathwayId, [gone.id], LATER);
+      expect(put.slice(0, lacking.pathwayStages.length), pathwayId).toEqual(lacking.pathwayStages);
+      expect(put.slice(lacking.pathwayStages.length).map((st) => [st.id, st.code, st.title]), pathwayId).toEqual([[gone.id, gone.code, gone.title]]);
+      expect(put.some((st) => st.pathwayId === pathwayId && st.id === gone.id)).toBe(true);
+    }
+    // A course's LEVELS are offered by the course action only — never twice.
+    expect(offeredDefaultStages({ ...installed, pathwayStages: without2b }, 'cgs').some((st) => st.id === 'cgs-2b')).toBe(false);
+    // An absent pathway offers no stages (that is `offeredDefaultPathways`' job).
+    expect(offeredDefaultStages({ ...installed, pathways: installed.pathways.filter((p) => p.id !== SEED_PATHWAY_IDS.tar) }, SEED_PATHWAY_IDS.tar)).toEqual([]);
+
+    // 4. ARCHIVE / RESTORE use the existing field; both directions are
+    //    idempotent, and hiding a suggestion twice changes nothing.
+    const archive = (ps: Pathway[], id: string, archived: boolean) => ps.map((p) => (p.id === id ? { ...p, archived } : p));
+    const archived = archive(installed.pathways, SEED_PATHWAY_IDS.setar, true);
+    expect(visiblePathways(archived, fresh.instruments[0].id).map((p) => p.id)).not.toContain(SEED_PATHWAY_IDS.setar);
+    expect(archive(archived, SEED_PATHWAY_IDS.setar, true)).toEqual(archived);
+    expect(archive(archived, SEED_PATHWAY_IDS.setar, false)).toEqual(archive(installed.pathways, SEED_PATHWAY_IDS.setar, false));
+    const hideRef = 'radif:mirza-abdollah:shur:rohab';
+    const hidden = planSetReferenceHidden(installed.pathways, RADIF_PATHWAY_IDS.setar, hideRef, true, LATER);
+    const hiddenAgain = hidden.ok ? planSetReferenceHidden(hidden.pathways, RADIF_PATHWAY_IDS.setar, hideRef, true, LATER) : null;
+    expect(hiddenAgain?.ok && hidden.ok && hiddenAgain.pathways).toBe(hidden.ok && hidden.pathways);
+  });
+});
+
+describe('the route every screen follows', () => {
+  it('pathway context readers agree on visible routes and pinned stages', () => {
+    const at = NOW.toISOString();
+    const base = createSeedDB(NOW);
+    const setarId = base.instruments.find((i) => i.name === 'Setar')!.id;
+    const mk = (id: string, order: number, extra: Partial<Pathway> = {}): Pathway => ({
+      id,
+      instrumentId: setarId,
+      name: id,
+      order,
+      createdAt: at,
+      updatedAt: at,
+      ...extra,
+    });
+
+    // 1. ARCHIVED pathways are never followed; EQUAL ORDERS tie-break by id,
+    //    never by array position.
+    const ps = [mk('zeta', 1), mk('alpha', 1), mk('archived-first', 0, { archived: true }), mk('beta', 2)];
+    expect(visiblePathways(ps, setarId).map((p) => p.id)).toEqual(['alpha', 'zeta', 'beta']);
+    expect(primaryPathway(ps, setarId)?.id).toBe('alpha');
+    expect(primaryPathway([...ps].reverse(), setarId)?.id).toBe('alpha');
+
+    // 2. The PIN wins while its stage exists; a deleted pin falls back to the
+    //    first incomplete stage; a pin inside an archived pathway is not followed.
+    const radif = base.pathways.find((p) => p.id === RADIF_PATHWAY_IDS.setar)!;
+    const esfahan = stageIdFor(RADIF_PATHWAY_IDS.setar, 'esfahan');
+    const pinned = { ...radif, currentStageId: esfahan };
+    expect(pathwayPosition(base, pinned).stage?.id).toBe(esfahan);
+    const dangling = { ...radif, currentStageId: 'deleted-stage' };
+    expect(pathwayPosition(base, dangling).stage?.id).toBe(stageIdFor(RADIF_PATHWAY_IDS.setar, 'shur'));
+    const withArchivedPin: PracticeDB = {
+      ...base,
+      pathways: [...base.pathways.map((p) => (p.id === radif.id ? { ...pinned, archived: true } : p)), mk('mine', 9)],
+    };
+    expect(primaryPathway(withArchivedPin.pathways, setarId)?.id).toBe('mine');
+
+    // 3. EVERY reader goes through the one selector — Today, BOTH Session Plan
+    //    derivations, Repertoire's cards and the pathway page — and none keeps
+    //    the old "first pathway that matches" lookup.
+    const firstMatch = /pathways\.find\(\(p\) => p\.instrumentId === instrumentId\)/;
+    for (const [name, src] of [
+      ['Today', TODAY_SRC],
+      ['SessionPlan', SESSION_PLAN_SRC],
+      ['Repertoire', REPERTOIRE_SRC],
+      ['PathwayDetail', PATHWAY_DETAIL_SRC],
+    ] as const) {
+      expect(firstMatch.test(src), name).toBe(false);
+      expect(/pathwayPosition\(/.test(src), name).toBe(true);
+    }
+    expect(/primaryPathway\(/.test(TODAY_SRC) && /primaryPathway\(/.test(SESSION_PLAN_SRC)).toBe(true);
+    expect(SESSION_PLAN_SRC.match(/currentStageItemIds\(/g)?.length).toBe(3); // definition + both derivations
+    expect(/pathwayStageContext\(pathway\)/.test(STAGE_DETAIL_SRC)).toBe(true);
+
+    // 4. WITHOUT CHANGING SCHEDULING DECISIONS: on a single visible pathway the
+    //    shared selector gives the Session Plan exactly the stage items the old
+    //    lookup did, so the plan is byte-identical.
+    const oldWay = (db: PracticeDB) => {
+      const p = db.pathways.find((x) => x.instrumentId === setarId);
+      const s = p ? currentStage(db.pathwayStages, db.items, p.id, p.currentStageId) : null;
+      return s ? new Set(db.items.filter((i) => i.stageId === s.id).map((i) => i.id)) : new Set<string>();
+    };
+    const newWay = (db: PracticeDB) => {
+      const { stage } = pathwayPosition(db, primaryPathway(db.pathways, setarId));
+      return stage ? new Set(db.items.filter((i) => i.stageId === stage.id).map((i) => i.id)) : new Set<string>();
+    };
+    const pinnedDb = { ...base, pathways: base.pathways.map((p) => (p.id === radif.id ? { ...p, currentStageId: stageIdFor(RADIF_PATHWAY_IDS.setar, 'afshari') } : p)) };
+    expect([...newWay(pinnedDb)]).toEqual([...oldWay(pinnedDb)]);
+    expect(newWay(pinnedDb).size).toBeGreaterThan(0);
+    const plan = (stageItemIds: Set<string>) =>
+      buildSessionPlan({
+        instrumentId: setarId,
+        budgetMinutes: 20,
+        now: NOW,
+        items: pinnedDb.items,
+        blocks: pinnedDb.blocks,
+        reviews: pinnedDb.reviews,
+        preparationDates: new Map(),
+        stageItemIds,
+        params: clampSchedulingParams(pinnedDb.settings),
+      });
+    expect(JSON.stringify(plan(newWay(pinnedDb)))).toBe(JSON.stringify(plan(oldWay(pinnedDb))));
+    // The stage context readers share also sees the same visible units.
+    const ctx = pathwayStageContext(radif);
+    const s = pathwayPosition(base, radif).stage!;
+    expect(stageUnits(s, base.items, ctx).map((u) => u.key)).toEqual(stageUnits(s, base.items, { instrumentId: setarId, hidden: new Set() }).map((u) => u.key));
+    // Adding through that context resolves on the pathway's instrument.
+    const added = planCatalogAddition(base, s.id, catalogForStage(s.id)[0].key, catalogForStage(s.id)[0], setarId, NOW);
+    expect(added.items.find((i) => i.id === added.itemId)!.instrumentId).toBe(setarId);
   });
 });

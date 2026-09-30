@@ -13,6 +13,16 @@ import type {
   StepStrand,
 } from './types';
 import { newId, nowISO } from './util';
+import {
+  courseReferenceId,
+  radifDastgahForStage,
+  radifReferenceId,
+  referencesOfItem,
+  resolveReference,
+  stageReferenceId,
+  type ReferenceResolution,
+} from './referenceCatalog';
+import { courseSourceKey, findCourseSource, withCourseSourceKey } from './studySources';
 
 // ---------------------------------------------------------------------------
 // A COURSE the owner already owns, read as reference data in code.
@@ -385,16 +395,69 @@ export function courseFilesFor(stageId: string, catalogKey: string): CourseFile[
   return out;
 }
 
+/**
+ * The course files one REFERENCE stands for — read from the reference itself,
+ * never from where the item that holds it currently sits. That is what keeps a
+ * section's videos and scores on the item after it is moved to another stage,
+ * detached from its pathway, or its stage is deleted.
+ */
+export function courseFilesForReference(refId: string): CourseFile[] {
+  if (refId.startsWith('stage:')) {
+    const rest = refId.slice('stage:'.length);
+    const cut = rest.lastIndexOf(':');
+    return cut > 0 ? courseFilesFor(rest.slice(0, cut), rest.slice(cut + 1)) : [];
+  }
+  const work = /^course:([^:]+):work:(.+)$/.exec(refId);
+  if (!work) return [];
+  const course = courseById(work[1]);
+  if (!course) return [];
+  for (const group of course.groups) {
+    const stageId = courseStageId(course, group.key);
+    for (const u of group.units) if (u.workKey === work[2]) return courseFilesFor(stageId, u.key);
+    for (const w of group.works) if ((w.workKey ?? w.key) === work[2]) return courseFilesFor(stageId, w.key);
+  }
+  return [];
+}
+
+// --- reference identity ------------------------------------------------------
+
+/**
+ * THE REFERENCE ID a (stage, key) pair stands for (see `referenceCatalog.ts`):
+ * a course's shared WORK where the course declares one (`courseWorkKey`), a
+ * gusheh of the shared Persian reference on a radif stage, otherwise the
+ * pair's own stage-scoped id. It is FORMED, never looked up: whether a
+ * catalogue entry actually carries it is checked by whoever needs it to exist
+ * (`knownReference` — validation and the migration), so a stray legacy key
+ * forms an id no suggestion ever asks for.
+ */
+export function catalogReferenceId(stageId: ID, key: string): string {
+  const found = courseStage(stageId);
+  const identity = found && courseWorkKey(found, stageId, key);
+  if (found && identity) return courseReferenceId(found.course.id, identity);
+  if (radifDastgahForStage(stageId)) return radifReferenceId(stageId, key) ?? stageReferenceId(stageId, key);
+  return stageReferenceId(stageId, key);
+}
+
+/** The reference an item's OLD placement evidence names, if any. */
+export function legacyReferenceOf(item: PracticeItem): string | undefined {
+  return item.stageId && item.catalogKey ? catalogReferenceId(item.stageId, item.catalogKey) : undefined;
+}
+
+/** The one resolver, bound to this catalogue's legacy evidence. */
+export function resolveCatalogReference(refId: string, instrumentId: ID | undefined, items: PracticeItem[]): ReferenceResolution {
+  return resolveReference(refId, instrumentId, items, legacyReferenceOf);
+}
+
+/** Every reference an item stands for — its decided binding, or its legacy evidence. */
+export function itemReferences(item: PracticeItem): string[] {
+  return referencesOfItem(item, legacyReferenceOf);
+}
+
 // --- routines ----------------------------------------------------------------
 
 /** A course segment bound to the item the owner created from its unit, if any. */
-function toSegment(
-  seg: CourseRoutineSegment,
-  stageId: string,
-  itemsByKey: Map<string, PracticeItem>,
-  items: PracticeItem[],
-): RoutineSegment {
-  const item = unitItem(stageId, seg.unitKey, itemsByKey, items);
+function toSegment(seg: CourseRoutineSegment, stageId: string, items: PracticeItem[]): RoutineSegment {
+  const item = unitItem(stageId, seg.unitKey, items);
   return {
     label: seg.label,
     minutes: seg.minutes,
@@ -404,45 +467,22 @@ function toSegment(
 }
 
 /**
- * A SEGMENT IS JOINED TO ITS ITEM BY STAGE AND CATALOGUE KEY TOGETHER.
- * `CatalogEntry.key` is unique per stage, not globally — `chords` exists in
- * every level — and a position routine spans two stages by construction, so a
- * key-only lookup would silently bind the wrong level's item.
- */
-function itemsByStageAndKey(items: PracticeItem[]): Map<string, PracticeItem> {
-  const out = new Map<string, PracticeItem>();
-  for (const i of items) {
-    if (i.stageId && i.catalogKey) out.set(`${i.stageId}\u0000${i.catalogKey}`, i);
-  }
-  return out;
-}
-
-/**
  * The item a course unit's segment binds to: the one created from the unit's
  * own key, else — for a hand-authored stage — the first of the legacy keys it
  * stands for that has one. ONE resolution, used by every routine this module
  * builds, so a level whose catalogue predates the course is not a level whose
  * carried-forward essentials can never bind.
  */
-function unitItem(
-  stageId: string,
-  unitKey: string,
-  itemsByKey: Map<string, PracticeItem>,
-  items: PracticeItem[],
-): PracticeItem | undefined {
-  const direct = itemsByKey.get(`${stageId}\u0000${unitKey}`);
-  if (direct) return direct;
-  for (const legacy of legacyKeysFor(stageId, unitKey)) {
-    const item = itemsByKey.get(`${stageId}\u0000${legacy}`);
-    if (item) return item;
+function unitItem(stageId: string, unitKey: string, items: PracticeItem[]): PracticeItem | undefined {
+  // The unit's own reference first — for a Piece section that IS a work this
+  // is the work's identity, so a study taken from the later level that
+  // re-lists it binds here too — then, for a hand-authored stage, the first of
+  // the legacy keys it stands for that has an item.
+  for (const key of [unitKey, ...legacyKeysFor(stageId, unitKey)]) {
+    const r = resolveCatalogReference(catalogReferenceId(stageId, key), undefined, items);
+    if (r.status === 'bound') return r.item;
   }
-  // A Piece section that IS a work resolves by that work's IDENTITY too, so a
-  // study taken from the later level that re-lists it still binds here. The
-  // stage ROW already shows that item as added; a segment that left it out
-  // would be the same split resolution `carriedCourseWorkItem`'s own docstring
-  // exists to refuse, one surface further on. An ordinary section carries no
-  // identity, so nothing else widens.
-  return carriedCourseWorkItem(stageId, unitKey, items);
+  return undefined;
 }
 
 /** The level's own routine, exactly as its syllabus states it. */
@@ -454,8 +494,7 @@ export function buildLevelRoutine(
   const group = course.groups.find((g) => g.key === groupKey);
   if (!group) return [];
   const stageId = courseStageId(course, groupKey);
-  const byKey = itemsByStageAndKey(items);
-  return group.routine.map((s) => toSegment(s, stageId, byKey, items));
+  return group.routine.map((s) => toSegment(s, stageId, items));
 }
 
 /**
@@ -480,20 +519,19 @@ export function buildPositionRoutine(
 ): RoutineSegment[] {
   const index = course.groups.findIndex((g) => g.key === groupKey);
   if (index < 0) return [];
-  const byKey = itemsByStageAndKey(items);
   const out: RoutineSegment[] = [];
 
   const previous = course.groups[index - 1];
   if (previous) {
     const prevStageId = courseStageId(course, previous.key);
     for (const s of previous.routine) {
-      if (s.essential) out.push(toSegment(s, prevStageId, byKey, items));
+      if (s.essential) out.push(toSegment(s, prevStageId, items));
     }
   }
 
   const stageId = courseStageId(course, groupKey);
   for (const s of course.groups[index].routine) {
-    if (unitItem(stageId, s.unitKey, byKey, items)) out.push(toSegment(s, stageId, byKey, items));
+    if (unitItem(stageId, s.unitKey, items)) out.push(toSegment(s, stageId, items));
   }
   return out;
 }
@@ -531,19 +569,24 @@ export function courseRoutine(
 // --- the study source --------------------------------------------------------
 
 export interface CourseSourceResolution {
-  /** The materials collection to install — the SAME array when none was minted. */
+  /** The materials collection to install — the SAME array when nothing changed. */
   materials: Material[];
-  materialId: ID;
+  /** Absent only when two candidate sources need the owner's choice. */
+  materialId?: ID;
+  /** The candidates to ask about, when the origin is not uniquely proven. */
+  candidates?: Material[];
 }
 
 /**
- * The course's own study source, FOUND OR CREATED — never a duplicate.
+ * The course's own study source, FOUND OR CREATED — never a duplicate, and
+ * never a guess.
  *
- * A second item created from the same course must group under the same "Classical
- * Guitar Shed" source in My repertoire, so this returns the existing Material
- * whenever one already matches (same instrument, same title) and mints one only
- * when none does. The caller installs `materials` in the SAME `set()` as the
- * item, so the two can never be applied apart.
+ * The source carrying the course's key IS it, whatever the owner has renamed it
+ * to. Failing that, the one unkeyed source PROVEN to be it (the course's own
+ * title and kind) is adopted and keyed. Two such candidates are a question for
+ * the owner — nothing is picked — and none at all mints a keyed source. The
+ * caller installs `materials` in the SAME `set()` as the item, so the two can
+ * never be applied apart.
  */
 export function resolveCourseSource(
   materials: Material[],
@@ -551,15 +594,16 @@ export function resolveCourseSource(
   instrumentId: ID,
   now: Date,
 ): CourseSourceResolution {
-  const title = course.sourceName.trim().toLowerCase();
-  const existing = materials.find(
-    (m) => m.instrumentId === instrumentId && m.title.trim().toLowerCase() === title,
-  );
-  if (existing) return { materials, materialId: existing.id };
-  const mat = createMaterial(
-    { instrumentId, title: course.sourceName, sourceType: 'course', sourceName: course.name },
-    now,
-  );
+  const found = findCourseSource(materials, course, instrumentId);
+  if (found.status === 'keyed') return { materials, materialId: found.material.id };
+  if (found.status === 'proven') {
+    return { materials: withCourseSourceKey(materials, found.material.id, course), materialId: found.material.id };
+  }
+  if (found.status === 'ambiguous') return { materials, candidates: found.candidates };
+  const mat = {
+    ...createMaterial({ instrumentId, title: course.sourceName, sourceType: 'course', sourceName: course.name }, now),
+    sourceKey: courseSourceKey(course),
+  };
   return { materials: [...materials, mat], materialId: mat.id };
 }
 
@@ -568,16 +612,31 @@ export function resolveCourseSource(
 export interface CatalogAddition {
   items: PracticeItem[];
   materials: Material[];
+  /** The item the suggestion now IS — empty only when `candidates` is set. */
   itemId: ID;
   /**
    * Whether this addition actually CREATED the item, or handed back one that
-   * already existed. An Undo may only ever reach a created one: an item the
-   * owner added at an earlier level is not this tap's to delete.
+   * already existed. Nothing may ever delete an item on the strength of this:
+   * it only says what the tap did.
    */
   created: boolean;
+  /**
+   * Set when two of the owner's items both answer to this suggestion (legacy
+   * duplicates): nothing is created and nothing is picked — the owner links
+   * one explicitly.
+   */
+  candidates?: PracticeItem[];
+  /**
+   * Set by `planStageAddition` (`pathways.ts`) when items placed in the stage
+   * answer no suggestion: nothing is created until the owner links one or asks
+   * for a new item.
+   */
+  placed?: PracticeItem[];
+  /** Set when the course's own study source needs the owner's choice. */
+  sourceCandidates?: Material[];
 }
 
-interface CatalogAdditionDB {
+export interface CatalogAdditionDB {
   items: PracticeItem[];
   materials: Material[];
 }
@@ -608,30 +667,120 @@ export function planCatalogAddition(
   instrumentId: ID,
   now: Date,
 ): CatalogAddition {
-  // Reuse an existing item already created from this catalogue entry — at this
-  // stage, or, for a work the course carries across levels, wherever in the
-  // same course it was first added.
-  const existing =
-    db.items.find((i) => i.stageId === stageId && i.catalogKey === entryKey) ??
-    carriedCourseWorkItem(stageId, entryKey, db.items);
-  if (existing) {
-    return { items: db.items, materials: db.materials, itemId: existing.id, created: false };
+  // THE ONE RESOLVER decides reuse: the item bound to this reference ON THIS
+  // INSTRUMENT, wherever it now sits — so Add after a move, a detach or a
+  // reload hands back the same item instead of minting a second. A work a
+  // course carries across levels is one reference, so it is one item.
+  const ref = catalogReferenceId(stageId, entryKey);
+  const resolved = resolveCatalogReference(ref, instrumentId, db.items);
+  if (resolved.status === 'bound') {
+    // Reuse writes nothing — but a source question the item is still waiting
+    // on is asked again, so no tap, cancel or page left behind can lose it.
+    const asked = pendingSourceCandidates(db, resolved.item);
+    return {
+      items: db.items,
+      materials: db.materials,
+      itemId: resolved.item.id,
+      created: false,
+      ...(asked ? { sourceCandidates: asked } : {}),
+    };
+  }
+  if (resolved.status === 'ambiguous') {
+    return { items: db.items, materials: db.materials, itemId: '', created: false, candidates: resolved.candidates };
   }
 
   const found = courseStage(stageId);
-  const created = entry
+  const made = entry
     ? itemFromCatalogEntry(entry, instrumentId, now)
     : createItem({ instrumentId, title: 'New item', stageId }, now);
   // A section that is one part of a work is created as THE WORK: whichever of
   // its sections is added first, the item is titled with the work's own name.
   const workTitle = found?.group.units.find((u) => u.key === entryKey)?.workTitle;
-  const base = workTitle ? { ...created, title: workTitle } : created;
+  const base: PracticeItem = { ...made, ...(workTitle ? { title: workTitle } : {}), catalogRefs: [ref] };
 
   if (!found) return { items: [...db.items, base], materials: db.materials, itemId: base.id, created: true };
 
   const source = resolveCourseSource(db.materials, found.course, instrumentId, now);
-  const item = { ...base, materialId: source.materialId };
-  return { items: [...db.items, item], materials: source.materials, itemId: item.id, created: true };
+  const item = source.materialId ? { ...base, materialId: source.materialId } : base;
+  const next = { items: [...db.items, item], materials: source.materials };
+  const asked = pendingSourceCandidates(next, item);
+  return { ...next, itemId: item.id, created: true, ...(asked ? { sourceCandidates: asked } : {}) };
+}
+
+// --- the course's study source, when the owner must say which it is ----------
+
+/** The course a reference belongs to: a course work, or a section of a course stage. */
+export function courseOfReference(refId: string): CourseData | undefined {
+  const work = /^course:([^:]+):work:/.exec(refId);
+  if (work) return courseById(work[1]);
+  if (!refId.startsWith('stage:')) return undefined;
+  const rest = refId.slice('stage:'.length);
+  const cut = rest.lastIndexOf(':');
+  return cut > 0 ? courseStage(rest.slice(0, cut))?.course : undefined;
+}
+
+export interface CourseSourceQuestion {
+  course: CourseData;
+  instrumentId: ID;
+  /** The owner's sources that could each be this course's. */
+  candidates: Material[];
+  /** Every item waiting on the answer — named on screen, and the only ones it is written to. */
+  items: PracticeItem[];
+}
+
+/**
+ * WHICH STUDY SOURCE IS THIS COURSE — DERIVED FROM SAVED DATA, NEVER HELD BY A
+ * SCREEN. The question stands, per instrument, while the course's source is
+ * ambiguous (`findCourseSource`) and some item of that course — by the
+ * references it answers, never its placement, so a moved or detached item is
+ * still asked — has no source. Nothing ephemeral carries it, so leaving the
+ * page, "Decide later", Play instead of Add and a reload all leave it exactly
+ * as answerable as before; it ends only when the owner answers it (or gives
+ * each item a source themselves).
+ */
+export function courseSourceQuestions(db: CatalogAdditionDB, course: CourseData): CourseSourceQuestion[] {
+  const out: CourseSourceQuestion[] = [];
+  const waiting = db.items.filter((i) => !i.materialId && itemReferences(i).some((r) => courseOfReference(r)?.id === course.id));
+  for (const instrumentId of [...new Set(waiting.map((i) => i.instrumentId))]) {
+    const found = findCourseSource(db.materials, course, instrumentId);
+    if (found.status !== 'ambiguous') continue;
+    out.push({ course, instrumentId, candidates: found.candidates, items: waiting.filter((i) => i.instrumentId === instrumentId) });
+  }
+  return out;
+}
+
+/** The candidates one item is still waiting on the owner to choose between, if any. */
+function pendingSourceCandidates(db: CatalogAdditionDB, item: PracticeItem): Material[] | undefined {
+  for (const ref of itemReferences(item)) {
+    const course = courseOfReference(ref);
+    const q = course && courseSourceQuestions(db, course).find((x) => x.items.some((i) => i.id === item.id));
+    if (q) return q.candidates;
+  }
+  return undefined;
+}
+
+/**
+ * The owner's answer: key the chosen source as the course's, and give it to
+ * exactly the items the question NAMED that still have none. A course item
+ * without a source is indistinguishable from one whose source the owner
+ * cleared, so nothing the question did not name is ever filled in. Choosing
+ * again (a retry) re-states the same answer and changes nothing further.
+ */
+export function planChooseCourseSource(
+  db: CatalogAdditionDB,
+  course: CourseData,
+  materialId: ID,
+  itemIds: ID[],
+  now: Date,
+): { ok: true; items: PracticeItem[]; materials: Material[] } | { ok: false; reason: string } {
+  const material = db.materials.find((m) => m.id === materialId);
+  const named = new Set(itemIds);
+  const targets = db.items.filter((i) => named.has(i.id));
+  if (!material || !targets.length) return { ok: false, reason: 'That item or study source no longer exists.' };
+  if (targets.some((i) => i.instrumentId !== material.instrumentId)) return { ok: false, reason: 'That study source belongs to another instrument.' };
+  const materials = withCourseSourceKey(db.materials, materialId, course);
+  const items = db.items.map((i) => (named.has(i.id) && !i.materialId ? { ...i, materialId, updatedAt: nowISO(now) } : i));
+  return { ok: true, items, materials };
 }
 
 /**
@@ -659,22 +808,15 @@ export function carriedCourseWorkItem(
   stageId: ID,
   entryKey: string,
   items: PracticeItem[],
+  instrumentId?: ID,
 ): PracticeItem | undefined {
   const found = courseStage(stageId);
   const identity = found && courseWorkKey(found, stageId, entryKey);
   // The identity check comes FIRST, so an ordinary per-stage key — `chords`,
-  // which every level has — never reaches the item scan at all.
+  // which every level has — never resolves across stages at all.
   if (!found || !identity) return undefined;
-  // The course's own stage ids, as a set built once rather than resolving every
-  // item's stage through `courseStage` again.
-  const ofThisCourse = new Set(found.course.groups.map((g) => courseStageId(found.course, g.key)));
-  return items.find(
-    (i) =>
-      !!i.stageId &&
-      !!i.catalogKey &&
-      ofThisCourse.has(i.stageId) &&
-      courseWorkKey(courseStage(i.stageId)!, i.stageId, i.catalogKey) === identity,
-  );
+  const r = resolveCatalogReference(courseReferenceId(found.course.id, identity), instrumentId, items);
+  return r.status === 'bound' ? r.item : undefined;
 }
 
 /**

@@ -267,6 +267,14 @@ export async function openPracticeApp(options: {
   /** Which engine to drive. Defaults to Chromium; ac-14 drives both. */
   engine?: Engine;
   /**
+   * A script run before any of the app's own code on every document — used
+   * to install geometry fixtures (a scripted visual viewport) the real
+   * browser cannot produce without a physical keyboard.
+   */
+  initScript?: string;
+  /** Emulated `prefers-color-scheme`. Defaults to the browser's. */
+  colorScheme?: 'light' | 'dark';
+  /**
    * Serve a DIFFERENT checkout of this app — used to stand up a disposable
    * copy of an older release (a git worktree at an earlier commit) so a
    * rollback can be tested against the app that actually wrote the backup,
@@ -324,7 +332,9 @@ export async function openPracticeApp(options: {
       viewport: options.viewport ?? { width: 390, height: 844 },
       // The owner's phone. Deliberately the constraint the product is held to.
       deviceScaleFactor: 2,
+      ...(options.colorScheme ? { colorScheme: options.colorScheme } : {}),
     });
+    if (options.initScript) await context.addInitScript(options.initScript);
     page = await context.newPage();
     // ONE handler for the whole journey. The app's destructive actions ask
     // first with confirm(); an unanswered dialog blocks every later command,
@@ -576,6 +586,34 @@ export async function persistedUntil<T>(
     }
     await app.page.waitForTimeout(50);
   }
+}
+
+/**
+ * Every attachment blob this device holds, as `id → ownerId:size` — read from
+ * IndexedDB's own `attachments` store, so "the bytes are untouched" is checked
+ * against the storage itself rather than against the app's view of it.
+ */
+export async function blobProjection(app: PracticeApp): Promise<Record<string, string>> {
+  return app.page.evaluate(
+    () =>
+      new Promise<Record<string, string>>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const all = db.transaction('attachments', 'readonly').objectStore('attachments').getAll();
+          all.onsuccess = () => {
+            db.close();
+            const out: Record<string, string> = {};
+            for (const row of all.result as { id: string; ownerId: string; blob: Blob }[]) {
+              out[row.id] = `${row.ownerId}:${row.blob?.size ?? 'none'}`;
+            }
+            resolve(out);
+          };
+          all.onerror = () => reject(all.error);
+        };
+      }),
+  );
 }
 
 /** The database as the app has actually PERSISTED it, not as it is rendering it. */

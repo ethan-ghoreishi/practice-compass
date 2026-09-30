@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
-  currentStage,
-  defaultInstrumentFilter,
-  formsPresent,
-  groupBlocksByItem,
-  groupByDastgah,
-  isDue,
   archiveSearchAliases,
+  browseParams,
+  clearBrowseFilters,
+  discoverRepertoire,
+  groupBlocksByItem,
+  hasBrowseFilters,
+  isDue,
   itemMatchesSearch,
   ITEM_STATUS_LABELS,
   ITEM_STATUS_ORDER,
@@ -15,19 +15,29 @@ import {
   neglectedScore,
   offeredDefaultPathways,
   overworkedItems,
+  pathwayPosition,
   pathwayProgress,
   pathwaysForInstrumentFilter,
+  readBrowseState,
+  repertoireSearchTexts,
   scoreItems,
   stageProgress,
   stageUnits,
-  repertoireWorks,
-  UNCLASSIFIED_DASTGAH,
+  unclassifiedLabel,
+  valueLabel,
+  visiblePathways,
+  vocabulary,
+  itemsWithOpenQuestion,
+  preparationDatesByItem,
+  type BrowseState,
+  type DiscoveredWork,
+  type FacetField,
   type ItemStatus,
   type ItemType,
   type Pathway as PathwayT,
-  type RepertoireWork,
-  itemsWithOpenQuestion,
-  preparationDatesByItem,
+  type RepertoireGroupParam,
+  type RepertoireView,
+  type Vocabulary,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { instrumentName } from '../store/lookups';
@@ -39,216 +49,293 @@ import { relativeFromDateTime } from '../components/format';
 import { ChevronRightIcon, ItemsIcon, PathIcon, PlusIcon } from '../components/icons';
 import { EmptyState } from '../components/ui';
 
-type View = 'paths' | 'works' | 'all';
+type DB = ReturnType<typeof useStore.getState>['db'];
+
+type Quick = 'due' | 'lesson' | 'fragile' | 'neglected' | 'overworked' | 'teacher';
+
+const QUICK: { key: Quick; label: string }[] = [
+  { key: 'due', label: 'Due today' },
+  { key: 'lesson', label: 'For class' },
+  { key: 'fragile', label: 'Fragile' },
+  { key: 'neglected', label: 'Neglected' },
+  { key: 'overworked', label: 'Overworked' },
+  { key: 'teacher', label: 'Teacher Q' },
+];
+
+const TYPE_OPTIONS = recordToOptions(ITEM_TYPE_LABELS);
+
+const VIEWS: { key: RepertoireView; label: string }[] = [
+  { key: 'works', label: 'My repertoire' },
+  { key: 'paths', label: 'Pathways' },
+  // "Practice list" is the view's canonical name: every practice item.
+  { key: 'all', label: 'Practice list' },
+];
+
+/**
+ * ONE browse context for the three peer views, held in the URL: view,
+ * instrument, query and filters survive opening an item and coming back, and
+ * browser back/forward walk through them. Opening an instrument here never
+ * changes the instrument Today is practising.
+ */
+function useBrowseState(): [BrowseState, (next: BrowseState, opts?: { replace?: boolean }) => void, string] {
+  const [params, setParams] = useSearchParams();
+  const location = useLocation();
+  const db = useStore((s) => s.db);
+  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
+  const active = db.instruments.filter((i) => i.active);
+  const state = readBrowseState(params, active, sessionInstrumentId, {
+    statuses: ITEM_STATUS_ORDER,
+    types: Object.keys(ITEM_TYPE_LABELS),
+    quick: QUICK.map((q) => q.key),
+  });
+  const update = (next: BrowseState, opts?: { replace?: boolean }) =>
+    setParams(browseParams(next), { replace: opts?.replace ?? false });
+  return [state, update, `${location.pathname}?${browseParams(state).toString()}`];
+}
 
 export default function Repertoire() {
-  const [view, setView] = useState<View>('paths');
-  const navigate = useNavigate();
+  const db = useStore((s) => s.db);
+  const [state, update, here] = useBrowseState();
+  const active = db.instruments.filter((i) => i.active);
+
+  // The one primary action: add a practice item — on the instrument being
+  // browsed, and in the form being browsed, when there is one.
+  const addParams = new URLSearchParams();
+  if (state.instrumentId) addParams.set('instrument', state.instrumentId);
+  if (state.form?.startsWith('term:')) addParams.set('form', state.form.slice('term:'.length));
+  const addHref = `/items/new${addParams.toString() ? `?${addParams}` : ''}`;
 
   return (
     <div className="stack-lg">
       <header className="stack-sm">
-        <div className="row between">
+        <div className="row between" style={{ flexWrap: 'wrap', rowGap: 8 }}>
           <h1 className="page-title">Repertoire</h1>
-          <div className="row" style={{ gap: 8 }}>
-            <Link to="/materials" state={{ from: '/repertoire' }} className="btn btn-ghost btn-sm">
-              Study sources
-            </Link>
-            <button className="btn btn-primary btn-sm" onClick={() => navigate('/items/new', { state: { from: '/repertoire' } })}>
-              <PlusIcon /> Add practice item
-            </button>
-          </div>
+          <Link to={addHref} state={{ from: here }} className="btn btn-primary">
+            <PlusIcon /> Add practice item
+          </Link>
         </div>
-        <p className="page-sub" style={{ margin: 0 }}>
-          Practice items are what you do. Pathways, study sources and lessons simply connect the same items in
-          different ways.
-        </p>
+        <nav className="row-wrap tiny" aria-label="Repertoire tools" style={{ gap: 14 }}>
+          {/* The browsed instrument travels with it: a new source starts there. */}
+          <Link to={state.instrumentId ? `/materials?instrument=${encodeURIComponent(state.instrumentId)}` : '/materials'} state={{ from: here }} className="link">
+            Study sources
+          </Link>
+          <Link to="/terms" state={{ from: here }} className="link">
+            Musical terms
+          </Link>
+        </nav>
         <div className="options" role="group" aria-label="Repertoire view">
-          <button className={`option${view === 'paths' ? ' selected' : ''}`} aria-pressed={view === 'paths'} onClick={() => setView('paths')}>
-            Pathways
-          </button>
-          <button
-            className={`option${view === 'works' ? ' selected' : ''}`}
-            aria-pressed={view === 'works'}
-            onClick={() => setView('works')}
-          >
-            My repertoire
-          </button>
-          <button className={`option${view === 'all' ? ' selected' : ''}`} aria-pressed={view === 'all'} onClick={() => setView('all')}>
-            Practice list
-          </button>
+          {VIEWS.map((v) => (
+            <button
+              key={v.key}
+              className={`option${state.view === v.key ? ' selected' : ''}`}
+              aria-pressed={state.view === v.key}
+              onClick={() => update({ ...state, view: v.key })}
+            >
+              {v.label}
+            </button>
+          ))}
         </div>
+        {active.length > 1 && (
+          <div className="options" role="group" aria-label="Instrument">
+            <button
+              className={`option${!state.instrumentId ? ' selected' : ''}`}
+              aria-pressed={!state.instrumentId}
+              onClick={() => update({ ...clearBrowseFilters(state), q: state.q, instrumentId: '' })}
+            >
+              All
+            </button>
+            {active.map((i) => (
+              <button
+                key={i.id}
+                className={`option${state.instrumentId === i.id ? ' selected' : ''}`}
+                aria-pressed={state.instrumentId === i.id}
+                onClick={() => update({ ...clearBrowseFilters(state), q: state.q, instrumentId: i.id })}
+              >
+                <span dir="auto">{i.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
-      {view === 'paths' ? <PathwaysView /> : view === 'works' ? <MyRepertoireView /> : <AllItemsView />}
+      {state.view === 'works' ? (
+        <MyRepertoireView db={db} state={state} update={update} here={here} />
+      ) : state.view === 'paths' ? (
+        <PathwaysView db={db} state={state} here={here} />
+      ) : (
+        <AllItemsView db={db} state={state} update={update} here={here} />
+      )}
     </div>
+  );
+}
+
+// --- the shared search box -----------------------------------------------------
+
+function SearchBox({
+  label,
+  placeholder,
+  state,
+  update,
+}: {
+  label: string;
+  placeholder: string;
+  state: BrowseState;
+  update: (n: BrowseState, o?: { replace?: boolean }) => void;
+}) {
+  return (
+    <input
+      className="input"
+      type="search"
+      dir="auto"
+      aria-label={label}
+      placeholder={placeholder}
+      value={state.q}
+      onChange={(e) => update({ ...state, q: e.target.value }, { replace: true })}
+    />
+  );
+}
+
+function ClearFilters({ state, update }: { state: BrowseState; update: (n: BrowseState) => void }) {
+  if (!hasBrowseFilters(state)) return null;
+  return (
+    <button className="btn btn-ghost btn-sm" style={{ width: 'fit-content' }} onClick={() => update(clearBrowseFilters(state))}>
+      Clear filters
+    </button>
   );
 }
 
 // --- My repertoire: the works you actually play -------------------------------
 //
 // A LENS over ordinary practice items (domain/repertoire.ts) — never a
-// parallel database. Persian instruments group by dastgāh/āvāz with radif
-// gushehs and composed maestro pieces side by side (a chahārmezrāb of Sabā in
-// Afshāri is repertoire, not a stage); other instruments group by study
-// source. Parent works appear once; parts stay nested beneath them.
+// parallel database. Every eligible work appears exactly once: parts stay
+// under their parent (a matching part shows its parent), and a work nobody has
+// classified yet sits under "No dastgāh yet" instead of vanishing. Facets come
+// only from the owner's own works.
 
-function MyRepertoireView() {
-  const db = useStore((s) => s.db);
-  const navigate = useNavigate();
+const FACET_LABELS: Record<FacetField, string> = {
+  dastgah: 'Dastgāh / Āvāz',
+  form: 'Form',
+  composer: 'Composer / maestro',
+};
+
+const GROUP_LABELS: Record<RepertoireGroupParam, string> = {
+  dastgah: 'Dastgāh / Āvāz',
+  form: 'Form',
+  composer: 'Composer / maestro',
+  source: 'Study source',
+};
+
+function MyRepertoireView({
+  db,
+  state,
+  update,
+  here,
+}: {
+  db: DB;
+  state: BrowseState;
+  update: (n: BrowseState, o?: { replace?: boolean }) => void;
+  here: string;
+}) {
   const now = useMemo(() => new Date(), []);
-
-  const activeInstruments = db.instruments.filter((i) => i.active);
-  // Open on the instrument you are actually practising; the dropdown still
-  // widens to all. This never writes sessionInstrumentId back — browsing
-  // another instrument must not change what Today recommends.
-  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
-  const [instrumentId, setInstrumentId] = useState(() =>
-    defaultInstrumentFilter(sessionInstrumentId, activeInstruments),
+  const vocab = useMemo(() => vocabulary(db.musicTerms), [db.musicTerms]);
+  const aliases = useMemo(() => archiveSearchAliases(db), [db]);
+  const found = useMemo(
+    () =>
+      discoverRepertoire(
+        db,
+        {
+          text: state.q,
+          instrumentId: state.instrumentId,
+          dastgah: state.dastgah,
+          form: state.form,
+          composer: state.composer,
+          groupBy: state.group,
+        },
+        aliases,
+      ),
+    [db, state, aliases],
   );
-  const [formFilter, setFormFilter] = useState('');
-
-  const scope = useMemo(
-    () => db.items.filter((i) => !instrumentId || i.instrumentId === instrumentId),
-    [db.items, instrumentId],
-  );
-  const works = useMemo(() => repertoireWorks(scope), [scope]);
-  const forms = useMemo(() => formsPresent(works), [works]);
-
-  const filtered = useMemo(
-    () => (formFilter ? works.filter((w) => (w.work.persian?.form ?? '').toLowerCase() === formFilter.toLowerCase()) : works),
-    [works, formFilter],
-  );
-
-  const persianIds = useMemo(
-    () => new Set(db.instruments.filter((i) => i.family === 'Persian').map((i) => i.id)),
-    [db.instruments],
-  );
-  const persianWorks = filtered.filter((w) => persianIds.has(w.work.instrumentId));
-  const otherWorks = filtered.filter((w) => !persianIds.has(w.work.instrumentId));
-
-  // Persian works by dastgāh (works only — parts are attached to each work).
-  const dastgahGroups = useMemo(() => {
-    const byId = new Map(persianWorks.map((w) => [w.work.id, w]));
-    return groupByDastgah(persianWorks.map((w) => w.work)).map((g) => ({
-      dastgah: g.dastgah,
-      works: g.items.map((i) => byId.get(i.id)!),
-    }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, instrumentId]);
-
-  // Other instruments (e.g. Classical Guitar): group by study source.
-  const sourceGroups = useMemo(() => {
-    const map = new Map<string, typeof otherWorks>();
-    for (const w of otherWorks) {
-      const key = w.work.materialId ?? '';
-      map.set(key, [...(map.get(key) ?? []), w]);
-    }
-    return [...map.entries()]
-      .map(([materialId, ws]) => ({
-        label: materialId ? (db.materials.find((m) => m.id === materialId)?.title ?? 'Unknown source') : 'No study source yet',
-        works: ws,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered, instrumentId, db.materials]);
 
   return (
     <div className="stack">
-      <p className="page-sub" style={{ marginTop: -8 }}>
-        The works and gushehs you play. Radif and composed maestro pieces sit together under their dastgāh; parts stay
-        under their parent work.
-      </p>
-
-      {activeInstruments.length > 1 && (
-        <div className="options" role="group" aria-label="Instrument">
-          <button className={`option${!instrumentId ? ' selected' : ''}`} aria-pressed={!instrumentId} onClick={() => setInstrumentId('')}>
-            All
-          </button>
-          {activeInstruments.map((i) => (
-            <button
-              key={i.id}
-              className={`option${instrumentId === i.id ? ' selected' : ''}`}
-              aria-pressed={instrumentId === i.id}
-              onClick={() => setInstrumentId(i.id)}
+      <div className="stack-sm">
+        <SearchBox label="Search my repertoire" placeholder="Search by title, dastgāh, form, maestro, source…" state={state} update={update} />
+        <div className="grid-2">
+          {(['dastgah', 'form', 'composer'] as FacetField[]).map((facet) =>
+            found.facets[facet].length > 0 ? (
+              <Field key={facet} label={FACET_LABELS[facet]}>
+                <select
+                  className="select"
+                  aria-label={FACET_LABELS[facet]}
+                  value={found.applied[facet] ?? ''}
+                  onChange={(e) => update({ ...state, [facet]: e.target.value || undefined })}
+                >
+                  <option value="">Any</option>
+                  {found.facets[facet].map((o) => (
+                    <option key={o.key} value={o.key}>
+                      {o.label} ({o.count})
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            ) : null,
+          )}
+          <Field label="Group by">
+            <select
+              className="select"
+              aria-label="Group by"
+              value={state.group ?? ''}
+              onChange={(e) => update({ ...state, group: (e.target.value || undefined) as RepertoireGroupParam | undefined })}
             >
-              {i.name}
-            </button>
-          ))}
+              <option value="">Dastgāh or source</option>
+              {(Object.keys(GROUP_LABELS) as RepertoireGroupParam[]).map((g) => (
+                <option key={g} value={g}>
+                  {GROUP_LABELS[g]}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
-      )}
+        <ClearFilters state={state} update={update} />
+      </div>
 
-      {forms.length > 1 && (
-        <div className="row-wrap" role="group" aria-label="Filter by form">
-          {forms.map((f) => (
-            <button
-              key={f}
-              className={`chip${formFilter.toLowerCase() === f.toLowerCase() ? ' tone-progress' : ''}`}
-              style={{ cursor: 'pointer' }}
-              aria-pressed={formFilter.toLowerCase() === f.toLowerCase()}
-              onClick={() => setFormFilter((cur) => (cur.toLowerCase() === f.toLowerCase() ? '' : f))}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {filtered.length === 0 && (
+      {found.scopeCount === 0 ? (
         <div className="card">
           <EmptyState icon={<ItemsIcon />} title="No works here yet">
-            Add a gusheh or a composed piece (with its dastgāh, form, composer) — or a guitar piece — and it appears
-            here. Technique drills stay in the Practice list.
+            Add a gusheh or a composed piece — or any full piece — and it appears here. Technique drills stay in All
+            practice items.
           </EmptyState>
         </div>
+      ) : found.matchCount === 0 ? (
+        <div className="card" role="status">
+          <EmptyState icon={<ItemsIcon />} title="No works match">
+            Nothing in your repertoire matches this search and these filters. Clear filters to see everything again.
+          </EmptyState>
+        </div>
+      ) : (
+        <p className="tiny faint" role="status" style={{ margin: 0 }}>
+          {found.matchCount === found.scopeCount
+            ? `${found.scopeCount} work${found.scopeCount === 1 ? '' : 's'}`
+            : `${found.matchCount} of ${found.scopeCount} works`}
+        </p>
       )}
 
-      {dastgahGroups.map((g) => (
-        <section key={g.dastgah} className="stack-sm" dir="auto">
+      {found.groups.map((g) => (
+        <section key={g.key} className="stack-sm" dir="auto">
           <div className="row between">
-            <h2 className="title-md">
-              {g.dastgah === UNCLASSIFIED_DASTGAH ? 'No dastgāh yet' : g.dastgah}
-            </h2>
-            {/* Generated English metadata, never user text — its own
-                dir="ltr" isolate keeps it from inheriting the dastgāh
-                heading's RTL base. */}
+            <h2 className="title-md">{g.unclassified ? unclassifiedLabel(g.grouping) : g.label}</h2>
+            {/* Generated English metadata, never user text. */}
             <span className="tiny faint" dir="ltr">
               {g.works.length} work{g.works.length === 1 ? '' : 's'}
             </span>
           </div>
           <div className="card card-flush list">
             {g.works.map((w) => (
-              <WorkRow key={w.work.id} entry={w} db={db} now={now} />
+              <WorkRow key={w.work.id} entry={w} db={db} vocab={vocab} now={now} here={here} />
             ))}
           </div>
         </section>
       ))}
-
-      {otherWorks.length > 0 &&
-        sourceGroups.map((g) => (
-          <section key={g.label} className="stack-sm" dir="auto">
-            <div className="row between">
-              <h2 className="title-md">
-                {g.label}
-              </h2>
-              {/* Generated English metadata, never user text — its own
-                  dir="ltr" isolate keeps it from inheriting the group
-                  heading's RTL base. */}
-              <span className="tiny faint" dir="ltr">
-                {g.works.length} work{g.works.length === 1 ? '' : 's'}
-              </span>
-            </div>
-            <div className="card card-flush list">
-              {g.works.map((w) => (
-                <WorkRow key={w.work.id} entry={w} db={db} now={now} />
-              ))}
-            </div>
-          </section>
-        ))}
-
-      <button className="btn" style={{ width: 'fit-content' }} onClick={() => navigate('/items/new', { state: { from: '/repertoire' } })}>
-        <PlusIcon /> Add practice item
-      </button>
     </div>
   );
 }
@@ -256,33 +343,33 @@ function MyRepertoireView() {
 function WorkRow({
   entry,
   db,
+  vocab,
   now,
+  here,
 }: {
-  entry: RepertoireWork;
-  db: ReturnType<typeof useStore.getState>['db'];
+  entry: DiscoveredWork;
+  db: DB;
+  vocab: Vocabulary;
   now: Date;
+  here: string;
 }) {
-  const { work, parts } = entry;
+  const { work, parts, matchedParts } = entry;
   const [open, setOpen] = useState(false);
+  const form = valueLabel(work.persian?.form, vocab);
+  const composer = valueLabel(work.persian?.composer, vocab);
+  const showParts = open || matchedParts.length > 0;
   return (
     <div className="list-row" style={{ flexWrap: 'wrap' }}>
-      <Link to={`/items/${work.id}`} state={{ from: '/repertoire' }} className="grow row" style={{ minWidth: 0, gap: 10 }}>
+      <Link to={`/items/${work.id}`} state={{ from: here }} className="grow row" style={{ minWidth: 0, gap: 10 }}>
         <div className="grow" dir="auto" style={{ minWidth: 0 }}>
-          <div className="truncate">
-            {work.title}
-          </div>
-          {/* form/composer/gusheh and the instrument name are all authored
-              independently of the work's own title (their own dir="auto"
-              isolates — the instrument name is the owner's own editable
-              text, renameable in Settings, Farsi included, never generated
-              copy); the last-practised phrase is generated metadata (its own
-              dir="ltr" isolate) — never one isolate speaking for all of
-              them, and never joined into one bare string that inherits
-              whichever direction the title happened to resolve. */}
-          <div className="tiny faint truncate">
+          <div className="row-title">{work.title}</div>
+          {/* form/composer/gusheh and the instrument name are each authored
+              independently of the title (their own dir="auto" isolates); the
+              last-practised phrase is generated metadata (dir="ltr"). */}
+          <div className="tiny faint">
             {[
-              work.persian?.form ? <span dir="auto">{work.persian.form}</span> : null,
-              work.persian?.composer ? <span dir="auto">{work.persian.composer}</span> : null,
+              form ? <span dir="auto">{form}</span> : null,
+              composer ? <span dir="auto">{composer}</span> : null,
               work.persian?.gusheh ? (
                 <span>
                   gusheh: <span dir="auto">{work.persian.gusheh}</span>
@@ -295,9 +382,13 @@ function WorkRow({
             ]
               .filter(Boolean)
               .map((node, i) => (
+                // Each piece stays whole (in an RTL row a wrapped "last
+                // yesterday" otherwise lands on two lines in reverse); the
+                // separator stays OUTSIDE it, so the line can still break
+                // between pieces instead of overflowing.
                 <span key={i}>
                   {i > 0 ? ' · ' : ''}
-                  {node}
+                  <span style={{ whiteSpace: 'nowrap' }}>{node}</span>
                 </span>
               ))}
           </div>
@@ -307,20 +398,18 @@ function WorkRow({
       {parts.length > 0 && (
         <>
           <button
-            className="link tiny"
-            style={{ background: 'none', border: 'none', flex: 'none' }}
-            aria-expanded={open}
+            className="btn btn-ghost btn-sm"
+            style={{ flex: 'none' }}
+            aria-expanded={showParts}
             onClick={() => setOpen((o) => !o)}
           >
-            {open ? '− parts' : `${parts.length} part${parts.length === 1 ? '' : 's'} ›`}
+            {showParts ? 'Hide parts' : `${parts.length} part${parts.length === 1 ? '' : 's'}`}
           </button>
-          {open && (
-            <div className="stack-sm" style={{ width: '100%', paddingLeft: 14, marginTop: 6 }}>
-              {parts.map((p) => (
-                <Link key={p.id} to={`/items/${p.id}`} state={{ from: '/repertoire' }} className="row between small card-link" dir="auto" style={{ minWidth: 0 }}>
-                  <span className="truncate dim">
-                    {p.title}
-                  </span>
+          {showParts && (
+            <div className="stack-sm" style={{ width: '100%', paddingInlineStart: 14, marginTop: 6 }}>
+              {(open ? parts : matchedParts).map((p) => (
+                <Link key={p.id} to={`/items/${p.id}`} state={{ from: here }} className="row between small card-link" dir="auto" style={{ minWidth: 0 }}>
+                  <span className="dim">{p.title}</span>
                   <StatusBadge status={p.status} />
                 </Link>
               ))}
@@ -332,42 +421,30 @@ function WorkRow({
   );
 }
 
-// --- By pathway --------------------------------------------------------------
+// --- Pathways ------------------------------------------------------------------
 
-function PathwaysView() {
-  const db = useStore((s) => s.db);
+function PathwaysView({ db, state, here }: { db: DB; state: BrowseState; here: string }) {
   const addPathway = useStore((s) => s.addPathway);
+  const updatePathway = useStore((s) => s.updatePathway);
   const reseedDefaultPathways = useStore((s) => s.reseedDefaultPathways);
   const navigate = useNavigate();
 
-  const activeInstruments = db.instruments.filter((i) => i.active);
-  // Open on the instrument you are actually practising; the toggle still
-  // widens to all. This never writes sessionInstrumentId back — browsing
-  // another instrument must not change what Today recommends.
-  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
-  const [filterInstrumentId, setFilterInstrumentId] = useState(() =>
-    defaultInstrumentFilter(sessionInstrumentId, activeInstruments),
-  );
-
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
-  const [instrumentId, setInstrumentId] = useState(db.instruments[0]?.id ?? '');
+  const [instrumentId, setInstrumentId] = useState(state.instrumentId || db.instruments[0]?.id || '');
 
-  const pathways = useMemo(
-    () => pathwaysForInstrumentFilter(db.pathways, filterInstrumentId).slice().sort((a, b) => a.order - b.order),
-    [db.pathways, filterInstrumentId],
-  );
-  // Each shipped default this install lacks, as its own named choice — a
-  // default the owner deleted is absent in the same way as a newly shipped
-  // one, so nothing is added without a tap naming it. Filtered by the SAME
-  // selector as the cards, so what is shown is exactly what can be added.
+  // The SAME ordered, archive-aware list every other screen follows; General
+  // pathways only in the every-instrument view.
+  const scoped = useMemo(() => pathwaysForInstrumentFilter(db.pathways, state.instrumentId), [db.pathways, state.instrumentId]);
+  const pathways = visiblePathways(scoped, undefined);
+  const archived = scoped.filter((p) => p.archived);
   const offeredDefaults = useMemo(
     () =>
       pathwaysForInstrumentFilter(
         offeredDefaultPathways({ instruments: db.instruments, pathways: db.pathways }, new Date()),
-        filterInstrumentId,
+        state.instrumentId,
       ),
-    [db.instruments, db.pathways, filterInstrumentId],
+    [db.instruments, db.pathways, state.instrumentId],
   );
 
   function create() {
@@ -375,40 +452,25 @@ function PathwaysView() {
     const id = addPathway({ name, instrumentId: instrumentId || undefined });
     setName('');
     setCreating(false);
-    navigate(`/pathway/${id}`);
+    navigate(`/pathway/${id}`, { state: { from: here } });
   }
 
   return (
     <div className="stack">
-      <p className="page-sub" style={{ marginTop: -8 }}>
-        Your items, organised along the routes you trust. Add pieces from each stage's list, at your own pace.
+      <p className="page-sub" style={{ margin: 0 }}>
+        Routes you trust, laid over your own items. A suggestion becomes yours with one tap — and never twice.
       </p>
 
-      {activeInstruments.length > 1 && (
-        <div className="options" role="group" aria-label="Instrument">
-          <button
-            className={`option${!filterInstrumentId ? ' selected' : ''}`}
-            aria-pressed={!filterInstrumentId}
-            onClick={() => setFilterInstrumentId('')}
-          >
-            All
-          </button>
-          {activeInstruments.map((i) => (
-            <button
-              key={i.id}
-              className={`option${filterInstrumentId === i.id ? ' selected' : ''}`}
-              aria-pressed={filterInstrumentId === i.id}
-              onClick={() => setFilterInstrumentId(i.id)}
-            >
-              {i.name}
-            </button>
-          ))}
+      {pathways.map((p) => (
+        <PathwayCard key={p.id} pathway={p} db={db} onOpen={() => navigate(`/pathway/${p.id}`, { state: { from: here } })} />
+      ))}
+      {pathways.length === 0 && (
+        <div className="card">
+          <EmptyState icon={<PathIcon />} title="No pathways here">
+            Add one of the shipped pathways below, or make your own.
+          </EmptyState>
         </div>
       )}
-
-      {pathways.map((p) => (
-        <PathwayCard key={p.id} pathway={p} db={db} onOpen={() => navigate(`/pathway/${p.id}`)} />
-      ))}
 
       {creating ? (
         <div className="card stack-sm">
@@ -446,51 +508,54 @@ function PathwaysView() {
           ))}
         </div>
       )}
+
+      {archived.length > 0 && (
+        <details className="card card-quiet">
+          <summary className="small">
+            Archived pathways ({archived.length})
+          </summary>
+          <div className="stack-sm" style={{ marginTop: 10 }}>
+            {archived.map((p) => (
+              <div key={p.id} className="row between" style={{ gap: 8 }}>
+                <span className="small" dir="auto">
+                  {p.name}
+                </span>
+                <button className="btn btn-sm" onClick={() => updatePathway(p.id, { archived: false })} aria-label={`Restore ${p.name}`}>
+                  Restore
+                </button>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
 
-function PathwayCard({
-  pathway,
-  db,
-  onOpen,
-}: {
-  pathway: PathwayT;
-  db: ReturnType<typeof useStore.getState>['db'];
-  onOpen: () => void;
-}) {
-  const stage = currentStage(db.pathwayStages, db.items, pathway.id);
-  const prog = pathwayProgress(db.pathwayStages, db.items, pathway.id);
-  const sp = stage ? stageProgress(stageUnits(stage, db.items)) : null;
+function PathwayCard({ pathway, db, onOpen }: { pathway: PathwayT; db: DB; onOpen: () => void }) {
+  // The pinned stage when it still exists — the same position Today and the
+  // Session Plan follow — then progress over the same visible units.
+  const { stage, ctx } = pathwayPosition(db, pathway);
+  const prog = pathwayProgress(db.pathwayStages, db.items, pathway.id, ctx);
+  const sp = stage ? stageProgress(stageUnits(stage, db.items, ctx)) : null;
 
   return (
     <button className="card card-link stack-sm" style={{ width: '100%', textAlign: 'left' }} onClick={onOpen}>
-      {/* The pathway's own name and the line of metadata under it are ONE
-          group, carrying the direction, so a Farsi name and its own caption
-          read as one right-aligned block — the rule the rest of this app
-          already follows. The group sits INSIDE the button rather than on
-          it (the Balance-row precedent: the chevron's `row between` and the
-          progress bar below are layout, not text, and giving them a
-          resolved RTL direction would swap the bar and the counter), and it
-          re-declares textAlign:'start' because the button pins
-          textAlign:'left' — a resolved direction that never reaches the
-          alignment leaves a Persian title pinned left exactly as before.
-          The instrument name keeps its own inline dir="auto" isolate for
-          the reason PathwayDetail's identical line does: it is the owner's
-          own editable text and need not share the pathway name's language.
-          stage.code/title stay bare — it's the stage's own compound label,
-          not a foreign caption. */}
+      {/* The name and its caption are ONE group carrying the direction, with
+          textAlign re-declared as 'start' because the button pins 'left'. */}
       <div className="stack-sm" dir="auto" style={{ textAlign: 'start', minWidth: 0 }}>
         <div className="row between">
           <div className="row" style={{ gap: 8, minWidth: 0 }}>
             <PathIcon width={16} height={16} style={{ color: 'var(--accent)', flex: 'none' }} />
-            <span className="title-md truncate">{pathway.name}</span>
+            <span className="title-md">{pathway.name}</span>
           </div>
           <ChevronRightIcon width={16} height={16} className="faint" style={{ flex: 'none' }} />
         </div>
-        <div className="tiny faint truncate">
+        <div className="tiny faint">
           <span dir="auto">{pathway.instrumentId ? instrumentName(db, pathway.instrumentId) : 'General'}</span>
-          {stage ? ` · now: ${stage.code}${stage.title !== stage.code ? ` — ${stage.title}` : ''}` : ''}
+          {stage
+            ? ` · now: ${stage.code}${stage.title !== stage.code ? ` — ${stage.title}` : ''}${pathway.currentStageId === stage.id ? ' (pinned)' : ''}`
+            : ''}
         </div>
       </div>
       <div className="row" style={{ gap: 8 }}>
@@ -505,35 +570,20 @@ function PathwayCard({
   );
 }
 
-// --- All items ---------------------------------------------------------------
+// --- All practice items ------------------------------------------------------
 
-type Quick = 'due' | 'lesson' | 'fragile' | 'neglected' | 'overworked' | 'teacher';
-
-const QUICK: { key: Quick; label: string }[] = [
-  { key: 'due', label: 'Due today' },
-  { key: 'lesson', label: 'For class' },
-  { key: 'fragile', label: 'Fragile' },
-  { key: 'neglected', label: 'Neglected' },
-  { key: 'overworked', label: 'Overworked' },
-  { key: 'teacher', label: 'Teacher Q' },
-];
-
-const TYPE_OPTIONS = recordToOptions(ITEM_TYPE_LABELS);
-
-function AllItemsView() {
-  const db = useStore((s) => s.db);
-
+function AllItemsView({
+  db,
+  state,
+  update,
+  here,
+}: {
+  db: DB;
+  state: BrowseState;
+  update: (n: BrowseState, o?: { replace?: boolean }) => void;
+  here: string;
+}) {
   const now = useMemo(() => new Date(), []);
-  const [search, setSearch] = useState('');
-  // Seeded from the session instrument (never written back) against the same
-  // list the dropdown below renders.
-  const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
-  const [instrumentId, setInstrumentId] = useState(() =>
-    defaultInstrumentFilter(sessionInstrumentId, db.instruments),
-  );
-  const [status, setStatus] = useState<ItemStatus | ''>('');
-  const [type, setType] = useState<ItemType | ''>('');
-  const [quick, setQuick] = useState<Set<Quick>>(new Set());
 
   // The agenda is the one source of "committed for a class" and "has an open
   // question" — both were item fields that could only ever hold one answer.
@@ -555,25 +605,25 @@ function AllItemsView() {
     [db.items, db.blocks, now],
   );
 
-  // Literal historical spellings, so an old name still finds the piece. Search
-  // only — never identity.
-  const aliases = useMemo(() => archiveSearchAliases(db), [db]);
+  // The SAME findable text My repertoire and Start search — terms, maestros,
+  // gusheh, source and archive aliases. Search only — never identity.
+  const texts = useMemo(() => repertoireSearchTexts(db), [db]);
+  const quick = new Set(state.quick as Quick[]);
 
-  const toggleQuick = (k: Quick) =>
-    setQuick((s) => {
-      const next = new Set(s);
-      if (next.has(k)) next.delete(k);
-      else next.add(k);
-      return next;
-    });
+  const toggleQuick = (k: Quick) => {
+    const next = new Set(quick);
+    if (next.has(k)) next.delete(k);
+    else next.add(k);
+    update({ ...state, quick: QUICK.map((q) => q.key).filter((key) => next.has(key)) });
+  };
 
   const visible = scored
     .map((s) => s.item)
     .filter((item) => {
-      if (!itemMatchesSearch(item, search, aliases.get(item.id))) return false;
-      if (instrumentId && item.instrumentId !== instrumentId) return false;
-      if (status && item.status !== status) return false;
-      if (type && item.itemType !== type) return false;
+      if (!itemMatchesSearch(item, state.q, texts.get(item.id))) return false;
+      if (state.instrumentId && item.instrumentId !== state.instrumentId) return false;
+      if (state.status && item.status !== state.status) return false;
+      if (state.type && item.itemType !== state.type) return false;
       if (quick.has('due') && !isDue(item, now)) return false;
       if (quick.has('lesson') && !committedItemIds.has(item.id)) return false;
       if (quick.has('fragile') && item.status !== 'fragile' && item.status !== 'repairing') return false;
@@ -588,17 +638,14 @@ function AllItemsView() {
       <QuickAdd />
 
       <div className="stack-sm">
-        <input className="input" dir="auto" placeholder="Search items…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <SearchBox label="Search practice items" placeholder="Search items…" state={state} update={update} />
         <div className="row" style={{ gap: 8 }}>
-          <select className="select" value={instrumentId} onChange={(e) => setInstrumentId(e.target.value)}>
-            <option value="">All instruments</option>
-            {db.instruments.map((i) => (
-              <option key={i.id} value={i.id}>
-                {i.name}
-              </option>
-            ))}
-          </select>
-          <select className="select" value={status} onChange={(e) => setStatus(e.target.value as ItemStatus | '')}>
+          <select
+            className="select"
+            aria-label="Status"
+            value={state.status ?? ''}
+            onChange={(e) => update({ ...state, status: (e.target.value as ItemStatus | '') || undefined })}
+          >
             <option value="">Any status</option>
             {ITEM_STATUS_ORDER.map((s) => (
               <option key={s} value={s}>
@@ -606,7 +653,12 @@ function AllItemsView() {
               </option>
             ))}
           </select>
-          <select className="select" value={type} onChange={(e) => setType(e.target.value as ItemType | '')}>
+          <select
+            className="select"
+            aria-label="Type"
+            value={state.type ?? ''}
+            onChange={(e) => update({ ...state, type: (e.target.value as ItemType | '') || undefined })}
+          >
             <option value="">Any type</option>
             {TYPE_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>
@@ -615,22 +667,24 @@ function AllItemsView() {
             ))}
           </select>
         </div>
-        <div className="row-wrap">
+        <div className="row-wrap" role="group" aria-label="Quick filters">
           {QUICK.map((q) => (
             <button
               key={q.key}
               className={`chip${quick.has(q.key) ? ' tone-progress' : ''}`}
               style={{ cursor: 'pointer' }}
+              aria-pressed={quick.has(q.key)}
               onClick={() => toggleQuick(q.key)}
             >
               {q.label}
             </button>
           ))}
         </div>
+        <ClearFilters state={state} update={update} />
       </div>
 
       {visible.length === 0 ? (
-        <div className="card">
+        <div className="card" role="status">
           <EmptyState icon={<ItemsIcon />} title="No items match">
             Try clearing a filter, or add one above — just a title is enough.
           </EmptyState>
@@ -638,7 +692,7 @@ function AllItemsView() {
       ) : (
         <div className="stack">
           {visible.map((item) => (
-            <ItemCard key={item.id} item={item} now={now} />
+            <ItemCard key={item.id} item={item} now={now} from={here} />
           ))}
         </div>
       )}

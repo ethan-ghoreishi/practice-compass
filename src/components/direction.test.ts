@@ -37,7 +37,7 @@ const SOURCES: Record<string, string> = {
 };
 
 /** Classes that mark an element as a TITLE — direction may not sit on these. */
-const TITLE_CLASSES = ['truncate', 'title-md', 'page-title', 'stage-unit-title'];
+const TITLE_CLASSES = ['truncate', 'title-md', 'page-title', 'stage-unit-title', 'row-title'];
 
 /** Native controls own their own text; direction on them is a FIELD, not a group. */
 const FIELD_TAGS = ['input', 'textarea', 'select'];
@@ -60,6 +60,7 @@ const SURFACES = [
   'pages/SessionPlan.tsx',
   'pages/RoutineRunner.tsx',
   'pages/Materials.tsx',
+  'pages/MusicTerms.tsx',
   'pages/Insights.tsx',
   'pages/TeacherReport.tsx',
   'components/ItemCard.tsx',
@@ -67,6 +68,7 @@ const SURFACES = [
   'components/ClassQuestions.tsx',
   'components/LessonAgenda.tsx',
   'components/Attachments.tsx',
+  'components/ReferenceChoices.tsx',
 ];
 
 /**
@@ -166,6 +168,16 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "small" },
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
+  // A term field's resolution line: the term's own (possibly Farsi) name.
+  { file: "components/MusicalTermField.tsx", tagName: "span", classValue: "" },
+  // Link existing / which item is it / which source: each candidate's own title.
+  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+  // SuggestionChoice: the item's title, then each suggestion's.
+  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+  { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
@@ -192,8 +204,15 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/Lessons.tsx", tagName: "div", classValue: "grow" },
   { file: "pages/Lessons.tsx", tagName: "div", classValue: "tiny dim" },
   { file: "pages/Lessons.tsx", tagName: "link", classValue: "grow" },
+  // A saved or deleted source's own title, isolated inside its status line.
+  { file: "pages/Materials.tsx", tagName: "span", classValue: "" },
+  { file: "pages/Materials.tsx", tagName: "span", classValue: "" },
   { file: "pages/Materials.tsx", tagName: "section", classValue: "stack-sm" },
   { file: "pages/Materials.tsx", tagName: "div", classValue: "grow" },
+  // A deleted term's own name, isolated inside its save status.
+  { file: "pages/MusicTerms.tsx", tagName: "span", classValue: "" },
+  // A musical term's name with its spellings and generated caption.
+  { file: "pages/MusicTerms.tsx", tagName: "div", classValue: "grow" },
   { file: "pages/PathwayDetail.tsx", tagName: "header", classValue: "stack-sm" },
   { file: "pages/PathwayDetail.tsx", tagName: "span", classValue: "" },
   { file: "pages/PathwayDetail.tsx", tagName: "span", classValue: "" },
@@ -202,7 +221,12 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "small dim" },
   { file: "pages/PathwayDetail.tsx", tagName: "button", classValue: "grow" },
   { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "" },
-  { file: "pages/Repertoire.tsx", tagName: "section", classValue: "stack-sm" },
+  // A shipped stage offered for restoring (Farsi for Setar and Tar).
+  { file: "pages/PathwayDetail.tsx", tagName: "span", classValue: "" },
+  // The shared instrument selector's own (owner-editable) instrument names.
+  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
+  // ONE group per discovered heading (dastgāh, form, maestro or source) —
+  // the old separate dastgāh and source sections are one grouping now.
   { file: "pages/Repertoire.tsx", tagName: "section", classValue: "stack-sm" },
   { file: "pages/Repertoire.tsx", tagName: "div", classValue: "grow" },
   { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
@@ -212,6 +236,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/Repertoire.tsx", tagName: "link", classValue: "row between small card-link" },
   // The offered default pathway's name, after the fixed "Add default pathway: " label.
   { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
+  // An archived pathway's own name, beside its Restore control.
+  { file: "pages/Repertoire.tsx", tagName: "span", classValue: "small" },
   { file: "pages/Repertoire.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "row between" },
@@ -222,7 +248,9 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
-  { file: "pages/StageDetail.tsx", tagName: "div", classValue: "card card-quiet row between small" },
+  // A hidden suggestion's own title, beside its Restore control (the old
+  // Undo banner that deleted an item is gone).
+  { file: "pages/StageDetail.tsx", tagName: "span", classValue: "small" },
   { file: "pages/StageDetail.tsx", tagName: "button", classValue: "stage-unit-text" },
   { file: "pages/StageDetail.tsx", tagName: "div", classValue: "" },
   { file: "pages/StartBlock.tsx", tagName: "div", classValue: "grow" },
@@ -594,8 +622,14 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
   { file: 'pages/RoutineRunner.tsx', snippet: '<div className="tiny faint" dir="auto">' },
   { file: 'pages/RoutineRunner.tsx', snippet: 'Next: <span dir="auto">{next.label}</span>' },
-  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.form}</span>' },
-  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.composer}</span>' },
+  // Form and composer render through the ONE vocabulary reader (`valueLabel`):
+  // a term's current name or the owner's own text, never the stored object.
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{form}</span>' },
+  { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{composer}</span>' },
+  { file: 'components/MusicalTermField.tsx', snippet: '<span dir="auto">{r.term.name}</span>' },
+  { file: 'components/ReferenceChoices.tsx', snippet: '<span dir="auto">{i.title}</span>' },
+  { file: 'components/ReferenceChoices.tsx', snippet: '<span dir="auto">{m.title}</span>' },
+  { file: 'components/ReferenceChoices.tsx', snippet: 'Which study source is <span dir="auto">{courseName}</span>?' },
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{work.persian.gusheh}</span>' },
   { file: 'pages/Repertoire.tsx', snippet: 'Add default pathway: <span dir="auto">{p.name}</span>' },
   {
@@ -692,9 +726,10 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>' },
   { file: 'pages/SessionPlan.tsx', snippet: '<span dir="ltr">{seg.reason}</span>' },
   { file: 'pages/CloseBlock.tsx', snippet: '<span dir="ltr">A few seconds to capture what happened.</span>' },
-  { file: 'pages/StageDetail.tsx', snippet: '<span className="truncate" dir="ltr">' },
   { file: 'pages/StageDetail.tsx', snippet: '{routine.segments.length} segments · {total} min{bound' },
   { file: 'pages/StageDetail.tsx', snippet: '<span dir="ltr">{meta.join(\' · \')}</span>' },
+  { file: 'components/ReferenceChoices.tsx', snippet: "<span className=\"tiny faint\" dir=\"ltr\">\n              {sameTitle?.(i) ? 'same title · ' : ''}" },
+  { file: 'pages/MusicTerms.tsx', snippet: "<span dir=\"ltr\">\n            {builtIn ? 'built-in' : 'yours'} · {term.aliases.length} other spelling" },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
   { file: 'pages/PathwayDetail.tsx', snippet: "<span className=\"badge tone-progress\" dir=\"ltr\">{isPinned ? 'Current · pinned' : 'Current'}</span>" },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span className="badge tone-good" dir="ltr">Done</span>' },

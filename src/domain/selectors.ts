@@ -12,7 +12,8 @@ import type {
 } from './types';
 import { daysSinceTouched, groupBlocksByItem, isSaturated, overdueDays } from './scoring';
 import { isUpcomingLesson } from './sourceArchive';
-import { persianSearchMatch } from './farsi';
+import { searchMatch, vocabulary, type Vocabulary } from './musicTerms';
+import { itemSearchTexts } from './repertoire';
 import { isOpenQuestion, itemsPreparedForLesson } from './lessonAgenda';
 import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISODate } from './util';
 
@@ -28,12 +29,26 @@ import { addDaysISODate, dayDiff, hoursSince, parseISODate, toISODate, todayISOD
  * is the WIRING that was missing, not a second matcher.
  */
 export function itemMatchesSearch(item: Pick<PracticeItem, 'title'>, query: string, aliases?: string[]): boolean {
-  if (persianSearchMatch(item.title, query)) return true;
-  // A piece the archive knows carries the literal spellings it used to be
-  // filed under, so typing an old name still finds it. SEARCH ONLY — an alias
-  // is never consulted to decide WHICH piece a record is; that is identity,
-  // and identity is byte-exact (see `planArchiveImport`).
-  return (aliases ?? []).some((a) => persianSearchMatch(a, query));
+  if (searchMatch(item.title, query)) return true;
+  // The item's other findable text — its gusheh, its classifying values and
+  // their terms' spellings, its study source, and (for a piece the archive
+  // knows) the literal spellings it used to be filed under. SEARCH ONLY —
+  // none of it is ever consulted to decide WHICH piece a record is; that is
+  // identity, and identity is exact (`musicTerms.ts`, `planArchiveImport`).
+  return (aliases ?? []).some((a) => searchMatch(a, query));
+}
+
+/**
+ * Every string beyond its title each item can be found by — the ONE text
+ * source My repertoire, All practice items and Start share, so a term, a
+ * maestro, a source or an archive alias finds the same item on every screen
+ * (each screen keeps its own eligibility rules).
+ */
+export function repertoireSearchTexts(db: PracticeDB, vocab: Vocabulary = vocabulary(db.musicTerms)): Map<ID, string[]> {
+  const archive = archiveSearchAliases(db);
+  const out = new Map<ID, string[]>();
+  for (const item of db.items) out.set(item.id, itemSearchTexts(item, db, vocab, archive.get(item.id)).slice(1));
+  return out;
 }
 
 /**
@@ -353,4 +368,97 @@ export function practiceTotalsByInstrument(
       ),
     }))
     .sort((a, b) => b.allTime.minutes - a.allTime.minutes);
+}
+
+// --- Repertoire browse context, carried in the URL --------------------------------
+
+export type RepertoireView = 'works' | 'paths' | 'all';
+export const REPERTOIRE_VIEWS: RepertoireView[] = ['works', 'paths', 'all'];
+export type RepertoireGroupParam = 'dastgah' | 'form' | 'composer' | 'source';
+const GROUPINGS: RepertoireGroupParam[] = ['dastgah', 'form', 'composer', 'source'];
+
+/** Everything a Repertoire screen needs to reopen exactly where the owner left it. */
+export interface BrowseState {
+  view: RepertoireView;
+  /** '' = every instrument. */
+  instrumentId: ID | '';
+  q: string;
+  dastgah?: string;
+  form?: string;
+  composer?: string;
+  group?: RepertoireGroupParam;
+  status?: string;
+  type?: string;
+  quick: string[];
+}
+
+/**
+ * Read the browse context from the URL, VALIDATING every part: an unknown
+ * view, an instrument that no longer exists, a grouping or quick filter this
+ * build does not have are each ignored rather than trusted — a stale bookmark
+ * opens the nearest honest view, never an empty screen with no way out. With
+ * no instrument in the URL the session instrument seeds it, as before; the
+ * URL never writes the session instrument back.
+ */
+export function readBrowseState(
+  params: URLSearchParams,
+  instruments: Pick<Instrument, 'id'>[],
+  sessionInstrumentId: string | null | undefined,
+  known: { statuses: readonly string[]; types: readonly string[]; quick: readonly string[] },
+): BrowseState {
+  const view = params.get('view');
+  const inst = params.get('inst');
+  const group = params.get('group');
+  const pick = (key: string, allowed: readonly string[]) => {
+    const v = params.get(key);
+    return v && allowed.includes(v) ? v : undefined;
+  };
+  const facet = (key: string) => params.get(key) || undefined;
+  return {
+    view: REPERTOIRE_VIEWS.includes(view as RepertoireView) ? (view as RepertoireView) : 'works',
+    instrumentId:
+      inst === 'all' ? '' : inst && instruments.some((i) => i.id === inst) ? inst : defaultInstrumentFilter(sessionInstrumentId, instruments),
+    q: params.get('q') ?? '',
+    dastgah: facet('dastgah'),
+    form: facet('form'),
+    composer: facet('composer'),
+    group: GROUPINGS.includes(group as RepertoireGroupParam) ? (group as RepertoireGroupParam) : undefined,
+    status: pick('status', known.statuses),
+    type: pick('type', known.types),
+    quick: (params.get('quick') ?? '').split(',').filter((k) => known.quick.includes(k)),
+  };
+}
+
+/** The URL form of a browse state — only what differs from the defaults. */
+export function browseParams(state: BrowseState): URLSearchParams {
+  const p = new URLSearchParams();
+  if (state.view !== 'works') p.set('view', state.view);
+  p.set('inst', state.instrumentId || 'all');
+  if (state.q) p.set('q', state.q);
+  for (const key of ['dastgah', 'form', 'composer', 'group', 'status', 'type'] as const) {
+    const v = state[key];
+    if (v) p.set(key, v);
+  }
+  if (state.quick.length) p.set('quick', state.quick.join(','));
+  return p;
+}
+
+/**
+ * Where a pathway (or one of its stages) returns to when nothing handed it a
+ * browse context: the Pathways view, on the pathway's OWN instrument — so a
+ * Tar pathway opened while practising Setar comes back to Tar's pathways, not
+ * to the session instrument's repertoire. A General pathway returns to all.
+ */
+export function pathwaysReturnPath(pathwayInstrumentId: ID | undefined): string {
+  return `/repertoire?${browseParams({ view: 'paths', instrumentId: pathwayInstrumentId ?? '', q: '', quick: [] })}`;
+}
+
+/** True when anything beyond view and instrument narrows what is shown. */
+export function hasBrowseFilters(state: BrowseState): boolean {
+  return !!(state.q || state.dastgah || state.form || state.composer || state.status || state.type || state.quick.length);
+}
+
+/** The same view and instrument with every other filter cleared. */
+export function clearBrowseFilters(state: BrowseState): BrowseState {
+  return { view: state.view, instrumentId: state.instrumentId, q: '', group: state.group, quick: [] };
 }

@@ -1,15 +1,18 @@
 import { useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
-  currentStage,
   groupStages,
+  pathwayPosition,
   pathwayProgress,
+  type StageContext,
   routinesOfPathway,
   stageProgress,
   stagesOfPathway,
   stageUnits,
   courseForPathway,
   offeredCourseLevels,
+  offeredDefaultStages,
+  pathwaysReturnPath,
   type CourseLevelOffer,
   type PathwayRoutine,
   type PathwayStage,
@@ -27,11 +30,17 @@ export default function PathwayDetail() {
   const deletePathway = useStore((s) => s.deletePathway);
   const addStage = useStore((s) => s.addStage);
   const addCourseLevels = useStore((s) => s.addCourseLevels);
+  const addDefaultStages = useStore((s) => s.addDefaultStages);
   const moveStage = useStore((s) => s.moveStage);
   const renameSection = useStore((s) => s.renameSection);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const pathway = db.pathways.find((p) => p.id === pathwayId);
+  // Back to the browse context that opened this pathway; otherwise the
+  // Pathways view on the pathway's own instrument. Stages carry it onward.
+  const from = (location.state as { from?: string } | null)?.from ?? pathwaysReturnPath(pathway?.instrumentId);
+  const [refusal, setRefusal] = useState<string | null>(null);
   const stages = useMemo(() => (pathway ? stagesOfPathway(db.pathwayStages, pathway.id) : []), [db.pathwayStages, pathway]);
   // Routines placed on the pathway itself (no stage) — stage-scoped ones show on their stage instead.
   const pathwayRoutines = useMemo(
@@ -52,7 +61,7 @@ export default function PathwayDetail() {
   if (!pathway) {
     return (
       <div className="stack">
-        <Link to="/repertoire" className="link">
+        <Link to={from} className="link">
           ← Back to repertoire
         </Link>
         <div className="card">That pathway doesn’t exist.</div>
@@ -60,8 +69,11 @@ export default function PathwayDetail() {
     );
   }
 
-  const current = currentStage(db.pathwayStages, db.items, pathway.id, pathway.currentStageId);
-  const prog = pathwayProgress(db.pathwayStages, db.items, pathway.id);
+  // The SAME position Today, the Session Plan and Repertoire follow: the
+  // pinned stage while it exists, else the first incomplete — over the
+  // visible (unhidden) suggestions.
+  const { stage: current, ctx } = pathwayPosition(db, pathway);
+  const prog = pathwayProgress(db.pathwayStages, db.items, pathway.id, ctx);
   const grouped = groupStages(stages);
   const groupNames = [...new Set(stages.map((s) => s.group).filter((g): g is string => !!g))];
 
@@ -81,7 +93,7 @@ export default function PathwayDetail() {
 
   return (
     <div className="stack-lg">
-      <Link to="/repertoire" className="link row" style={{ gap: 4, width: 'fit-content' }}>
+      <Link to={from} className="link row" style={{ gap: 4, width: 'fit-content' }}>
         <ArrowLeftIcon width={16} height={16} /> Repertoire
       </Link>
 
@@ -126,23 +138,50 @@ export default function PathwayDetail() {
               {pathway.note}
             </div>
           )}
-          <div className="row" style={{ gap: 8, marginTop: 4 }}>
+        </header>
+      )}
+      {/* The pathway's own controls sit OUTSIDE its title group: fixed English
+          labels are not captions of the (possibly Farsi) name. */}
+      {!editing && (
+        <div className="stack-sm">
+          {pathway.archived && (
+            <p className="small" role="status" style={{ margin: 0 }}>
+              Archived — hidden from Today, the Session Plan and Repertoire. Every item in it is untouched.
+            </p>
+          )}
+          <div className="row-wrap" style={{ gap: 8, marginTop: 4 }}>
             <button className="btn btn-sm" onClick={() => setEditing(true)}>
               Edit
             </button>
             <button
+              className="btn btn-sm"
+              onClick={() => updatePathway(pathway.id, { archived: !pathway.archived })}
+            >
+              {pathway.archived ? 'Restore pathway' : 'Archive pathway'}
+            </button>
+            <button
               className="btn btn-sm btn-danger"
               onClick={() => {
-                if (confirm(`Delete the pathway “${pathway.name}” and all its stages? Your practice items are kept.`)) {
-                  deletePathway(pathway.id);
-                  navigate('/repertoire');
+                if (
+                  confirm(
+                    `Delete the pathway “${pathway.name}” and its stages?\n\nYour practice items are NOT deleted: they are detached from this pathway and stay in My repertoire with all their notes, files and history. Routines are kept, unplaced. To just hide it, choose Archive instead.`,
+                  )
+                ) {
+                  const refused = deletePathway(pathway.id);
+                  setRefusal(refused);
+                  if (!refused) navigate(from);
                 }
               }}
             >
-              Delete
+              Delete pathway
             </button>
           </div>
-        </header>
+          {refusal && (
+            <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
+              {refusal}
+            </p>
+          )}
+        </div>
       )}
 
       {current && (
@@ -157,7 +196,7 @@ export default function PathwayDetail() {
             {current.code}
             {current.title !== current.code ? ` · ${current.title}` : ''}
           </div>
-          <Link to={`/pathway/${pathway.id}/${current.id}`} className="btn btn-primary">
+          <Link to={`/pathway/${pathway.id}/${current.id}`} state={{ from }} className="btn btn-primary">
             Continue this stage
           </Link>
         </article>
@@ -199,6 +238,7 @@ export default function PathwayDetail() {
             onAdd={(keys) => addCourseLevels(pathway.id, keys)}
           />
         )}
+        <ShippedStages offers={offeredDefaultStages(db, pathway.id)} onAdd={(ids) => addDefaultStages(pathway.id, ids)} />
 
         {addingStage && (
           <div className="card stack-sm">
@@ -291,7 +331,8 @@ export default function PathwayDetail() {
                 db={db}
                 isCurrent={stage.id === current?.id}
                 isPinned={pathway.currentStageId === stage.id}
-                onOpen={() => navigate(`/pathway/${pathway.id}/${stage.id}`)}
+                ctx={ctx}
+                onOpen={() => navigate(`/pathway/${pathway.id}/${stage.id}`, { state: { from } })}
                 onMove={(d) => moveStage(stage.id, d)}
               />
             ))}
@@ -310,6 +351,7 @@ function StageRow({
   db,
   isCurrent,
   isPinned,
+  ctx,
   onOpen,
   onMove,
 }: {
@@ -318,10 +360,11 @@ function StageRow({
   db: ReturnType<typeof useStore.getState>['db'];
   isCurrent: boolean;
   isPinned: boolean;
+  ctx: StageContext;
   onOpen: () => void;
   onMove: (dir: -1 | 1) => void;
 }) {
-  const sp = stageProgress(stageUnits(stage, db.items));
+  const sp = stageProgress(stageUnits(stage, db.items, ctx));
   return (
     <div className={`card list-row${isCurrent ? ' card-accent' : ''}`} style={{ padding: 'var(--space-3) var(--space-4)' }}>
       <div
@@ -500,6 +543,64 @@ function CourseLevels({
           }}
         >
           Add {picked.length} level{picked.length === 1 ? '' : 's'}
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Restore shipped stages" — the same explicit, additive offer for a shipped
+ * stage this pathway no longer has (a radif dastgāh, a Honarestān stage): a
+ * list, never an automatic re-seed, and only what is ticked is added. Manual
+ * "Add stage" cannot do this — its new random id would not be the shipped
+ * stage, so none of its suggestions would come back with it.
+ */
+function ShippedStages({ offers, onAdd }: { offers: PathwayStage[]; onAdd: (stageIds: string[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<string[]>([]);
+  if (offers.length === 0) return null;
+  if (!open) {
+    return (
+      <button className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setOpen(true)}>
+        <PlusIcon /> Restore shipped stages ({offers.length})
+      </button>
+    );
+  }
+  return (
+    <div className="card stack-sm">
+      <div className="tiny faint" style={{ textAlign: 'start' }}>
+        {/* Fixed English page copy, never user text — inline LTR isolate. */}
+        <span dir="ltr">
+          Stages this pathway shipped with that it no longer has. Nothing is added unless you tick it; your own stages are
+          untouched.
+        </span>
+      </div>
+      {offers.map((o) => (
+        <label key={o.id} className="row" style={{ gap: 8 }}>
+          <input
+            type="checkbox"
+            checked={picked.includes(o.id)}
+            onChange={(e) => setPicked((p) => (e.target.checked ? [...p, o.id] : p.filter((k) => k !== o.id)))}
+          />
+          {/* Shipped stage names are Farsi for Setar and Tar: they resolve their own direction. */}
+          <span dir="auto">{o.title !== o.code ? `${o.code} · ${o.title}` : o.code}</span>
+        </label>
+      ))}
+      <div className="row" style={{ gap: 6 }}>
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={picked.length === 0}
+          onClick={() => {
+            onAdd(picked);
+            setPicked([]);
+            setOpen(false);
+          }}
+        >
+          Restore {picked.length} stage{picked.length === 1 ? '' : 's'}
         </button>
         <button className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>
           Cancel

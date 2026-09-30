@@ -1,0 +1,354 @@
+{
+  "app": "practice-compass",
+  "schemaVersion": 14,
+  "exportedAt": "2026-09-27T20:00:00.000Z",
+  "deviceName": "repertoire fixture (synthetic, hand-authored)",
+  "data": {
+    "schemaVersion": 14,
+    "instruments": [
+      { "id": "inst-setar", "name": "Setar", "family": "Persian", "active": true, "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" },
+      { "id": "inst-tar", "name": "Tar", "family": "Persian", "active": true, "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" },
+      { "id": "inst-guitar", "name": "Classical Guitar", "family": "Western", "active": true, "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" }
+    ],
+    "materials": [
+      {
+        "id": "mat-radif",
+        "instrumentId": "inst-setar",
+        "title": "ردیف میرزا عبدالله",
+        "sourceType": "radif",
+        "sourceName": "ردیف میرزا عبدالله — روایت برومند",
+        "parentTitle": "legacy parent title",
+        "section": "legacy section",
+        "teacherOrSource": "استاد",
+        "notes": "Owner note on the edition.",
+        "status": "active",
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      { "id": "mat-song", "instrumentId": "inst-setar", "title": "Tasnif songbook", "sourceType": "song", "status": "active", "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" },
+      {
+        "id": "mat-cgs",
+        "instrumentId": "inst-guitar",
+        "title": "Classical Guitar Shed",
+        "sourceType": "course",
+        "sourceName": "Classical Guitar Shed · The Woodshed",
+        "status": "active",
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      { "id": "mat-khon-1", "instrumentId": "inst-tar", "title": "خنیاگر", "sourceType": "course", "status": "active", "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" },
+      { "id": "mat-khon-2", "instrumentId": "inst-tar", "title": "خنیاگر", "sourceType": "course", "status": "active", "createdAt": "2026-07-02T09:00:00.000Z", "updatedAt": "2026-07-02T09:00:00.000Z" }
+    ],
+    "items": [
+      {
+        "id": "it-iraq",
+        "instrumentId": "inst-setar",
+        "materialId": "mat-radif",
+        "stageId": "setar-radif-afshari",
+        "strand": "radif",
+        "catalogKey": "iraq",
+        "title": "عراق",
+        "itemType": "gusheh",
+        "status": "repairing",
+        "importance": 4,
+        "difficulty": 4,
+        "notes": "Teacher: land the forud before the tahrir.",
+        "nextReviewDate": "2026-10-02",
+        "reviewMode": "auto",
+        "nextReviewSource": "auto",
+        "srReps": 2,
+        "srEase": 2.4,
+        "srIntervalDays": 6,
+        "srLastProgressDay": "2026-09-20",
+        "lastPractisedAt": "2026-09-20T18:30:00.000Z",
+        "lastResult": "slightly_better",
+        "timesPractised": 3,
+        "totalMinutes": 40,
+        "persian": { "dastgahAvaz": "افشاری", "gusheh": "عراق" },
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-09-20T18:30:00.000Z"
+      },
+      {
+        "id": "it-daramad-a",
+        "instrumentId": "inst-setar",
+        "stageId": "setar-radif-shur",
+        "strand": "radif",
+        "catalogKey": "daramad-e-shur",
+        "title": "درآمد شور",
+        "itemType": "gusheh",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 5,
+        "totalMinutes": 60,
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-daramad-b",
+        "instrumentId": "inst-setar",
+        "stageId": "setar-radif-shur",
+        "strand": "radif",
+        "catalogKey": "daramad-e-shur",
+        "title": "درآمد شور (copy)",
+        "itemType": "gusheh",
+        "status": "new",
+        "importance": 3,
+        "difficulty": 3,
+        "notes": "A second copy the owner made by hand.",
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "createdAt": "2026-07-03T09:00:00.000Z",
+        "updatedAt": "2026-07-03T09:00:00.000Z"
+      },
+      {
+        "id": "it-kereshmeh-moved",
+        "instrumentId": "inst-setar",
+        "stageId": "owner-stage",
+        "strand": "radif",
+        "catalogKey": "kereshmeh",
+        "title": "کرشمه",
+        "itemType": "gusheh",
+        "status": "fragile",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 1,
+        "totalMinutes": 10,
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-forms-chahar",
+        "instrumentId": "inst-setar",
+        "stageId": "setar-radif-forms",
+        "strand": "repertoire",
+        "catalogKey": "chahar-mezrab",
+        "title": "چهارمضراب",
+        "itemType": "full_piece",
+        "status": "new",
+        "importance": 3,
+        "difficulty": 3,
+        "notes": "Owner's notes on a never-practised item — must survive every removal.",
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-shur-latin",
+        "instrumentId": "inst-setar",
+        "materialId": "mat-song",
+        "title": "Pish-daramad in Shur",
+        "itemType": "full_piece",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 2,
+        "totalMinutes": 25,
+        "persian": { "dastgahAvaz": "Shur", "form": "Pish-darāmad", "composer": "Darvish Khan" },
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-shur-farsi",
+        "instrumentId": "inst-setar",
+        "title": "پیش‌درآمد شور",
+        "itemType": "full_piece",
+        "status": "integrated",
+        "importance": 4,
+        "difficulty": 3,
+        "timesPractised": 4,
+        "totalMinutes": 50,
+        "persian": { "dastgahAvaz": "شور", "form": "پیش-درامد", "composer": "درویش-خان" },
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-part",
+        "instrumentId": "inst-setar",
+        "parentItemId": "it-shur-farsi",
+        "title": "بخش دوم — the fast run",
+        "itemType": "phrase",
+        "status": "fragile",
+        "importance": 3,
+        "difficulty": 4,
+        "timesPractised": 1,
+        "totalMinutes": 8,
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-composite",
+        "instrumentId": "inst-setar",
+        "title": "دشتی و شور",
+        "itemType": "full_piece",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "persian": { "dastgahAvaz": "دشتی/شور", "composer": "هرمزی" },
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-title-only",
+        "instrumentId": "inst-setar",
+        "title": "Untitled tasnif",
+        "itemType": "full_piece",
+        "status": "new",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-tar-afshari",
+        "instrumentId": "inst-tar",
+        "title": "عراق (تار)",
+        "itemType": "gusheh",
+        "status": "fragile",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 1,
+        "totalMinutes": 12,
+        "persian": { "dastgahAvaz": "آواز افشاری", "gusheh": "عراق" },
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-cgs-chords",
+        "instrumentId": "inst-guitar",
+        "materialId": "mat-cgs",
+        "stageId": "cgs-1b",
+        "strand": "chords",
+        "catalogKey": "chords",
+        "title": "1B Chords",
+        "itemType": "exercise",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 6,
+        "totalMinutes": 70,
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-07-01T09:00:00.000Z"
+      },
+      {
+        "id": "it-cgs-on-setar",
+        "instrumentId": "inst-setar",
+        "stageId": "cgs-1b",
+        "strand": "chords",
+        "catalogKey": "chords",
+        "title": "Chord shapes (moved to Setar)",
+        "itemType": "exercise",
+        "status": "new",
+        "importance": 3,
+        "difficulty": 2,
+        "timesPractised": 0,
+        "totalMinutes": 0,
+        "createdAt": "2026-07-02T09:00:00.000Z",
+        "updatedAt": "2026-07-02T09:00:00.000Z"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "blk-iraq",
+        "practiceItemId": "it-iraq",
+        "instrumentId": "inst-setar",
+        "startedAt": "2026-09-20T18:00:00.000Z",
+        "endedAt": "2026-09-20T18:30:00.000Z",
+        "durationMinutes": 30,
+        "mode": "repair",
+        "focus": "phrase_direction",
+        "result": "slightly_better",
+        "observation": "Forud clearer at half tempo.",
+        "nextAction": "Tahrir only after the landing.",
+        "createdReview": true,
+        "createdAt": "2026-09-20T18:30:00.000Z",
+        "updatedAt": "2026-09-20T18:30:00.000Z"
+      }
+    ],
+    "reviews": [
+      { "id": "rev-iraq", "practiceItemId": "it-iraq", "dueDate": "2026-10-02", "reviewType": "repair", "createdAt": "2026-09-20T18:30:00.000Z", "updatedAt": "2026-09-20T18:30:00.000Z" }
+    ],
+    "pathways": [
+      {
+        "id": "setar-radif",
+        "instrumentId": "inst-setar",
+        "name": "My Setar radif",
+        "source": "ردیف میرزا عبدالله + رپرتوار استاد",
+        "currentStageId": "setar-radif-afshari",
+        "order": 0,
+        "createdAt": "2026-07-01T09:00:00.000Z",
+        "updatedAt": "2026-08-01T09:00:00.000Z"
+      },
+      { "id": "tar-honarestan", "instrumentId": "inst-tar", "name": "تار · روش هنرستان", "order": 1, "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" },
+      { "id": "cgs", "instrumentId": "inst-guitar", "name": "Classical Guitar Shed · The Woodshed", "order": 2, "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" }
+    ],
+    "pathwayStages": [
+      { "id": "setar-radif-shur", "pathwayId": "setar-radif", "code": "شور", "title": "دستگاه شور", "order": 0, "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" },
+      { "id": "setar-radif-afshari", "pathwayId": "setar-radif", "code": "افشاری", "title": "My Afshari (renamed)", "order": 1, "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-08-01T09:00:00.000Z" },
+      { "id": "setar-radif-forms", "pathwayId": "setar-radif", "code": "فرم‌ها", "title": "فرم‌های ساخته‌شده و بداهه", "order": 2, "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" },
+      { "id": "owner-stage", "pathwayId": "setar-radif", "code": "Mine", "title": "Teacher extras", "order": 3, "createdAt": "2026-07-05T09:00:00.000Z", "updatedAt": "2026-07-05T09:00:00.000Z" },
+      { "id": "tar-honarestan-rh-basics", "pathwayId": "tar-honarestan", "code": "مبانی دست راست", "title": "مضرابِ دست راست روی سیم‌های باز", "order": 0, "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" },
+      { "id": "cgs-1b", "pathwayId": "cgs", "code": "1B", "title": "Level 1B", "order": 0, "createdAt": "2026-07-01T09:00:00.000Z", "updatedAt": "2026-07-01T09:00:00.000Z" }
+    ],
+    "pathwayRoutines": [
+      {
+        "id": "owner-routine",
+        "instrumentId": "inst-setar",
+        "pathwayId": "setar-radif",
+        "stageId": "setar-radif-forms",
+        "name": "My chaharmezrab warm-up",
+        "segments": [
+          { "label": "Chaharmezrab slow", "minutes": 5, "itemId": "it-forms-chahar" },
+          { "label": "Open strings", "minutes": 3 }
+        ],
+        "order": 0,
+        "createdAt": "2026-07-05T09:00:00.000Z",
+        "updatedAt": "2026-07-05T09:00:00.000Z"
+      }
+    ],
+    "attachments": [
+      { "id": "att-chahar", "ownerType": "item", "ownerId": "it-forms-chahar", "name": "chaharmezrab.txt", "mime": "text/plain", "size": 29, "kind": "other", "createdAt": "2026-07-02T09:00:00.000Z" }
+    ],
+    "lessons": [
+      {
+        "id": "les-1",
+        "instrumentId": "inst-setar",
+        "date": "2026-09-10",
+        "number": 12,
+        "notes": "Worked on عراق and the chaharmezrab.",
+        "itemIds": ["it-iraq", "it-forms-chahar"],
+        "recordings": [],
+        "createdAt": "2026-09-10T20:00:00.000Z",
+        "updatedAt": "2026-09-10T20:00:00.000Z"
+      }
+    ],
+    "lessonAgenda": [
+      {
+        "id": "q-daramad",
+        "kind": "question",
+        "text": "Which of my two daramad copies should I keep?",
+        "itemId": "it-daramad-a",
+        "instrumentId": "inst-setar",
+        "createdAt": "2026-09-12T09:00:00.000Z",
+        "updatedAt": "2026-09-12T09:00:00.000Z"
+      },
+      {
+        "id": "prep-chahar",
+        "kind": "preparation",
+        "itemId": "it-forms-chahar",
+        "instrumentId": "inst-setar",
+        "createdAt": "2026-09-12T09:00:00.000Z",
+        "updatedAt": "2026-09-12T09:00:00.000Z"
+      }
+    ],
+    "archiveSources": []
+  },
+  "files": [
+    { "id": "att-chahar", "ownerId": "it-forms-chahar", "mime": "text/plain", "name": "chaharmezrab.txt", "data": "cmVwZXJ0b2lyZSBmaXh0dXJlIGF0dGFjaG1lbnQ=" }
+  ]
+}

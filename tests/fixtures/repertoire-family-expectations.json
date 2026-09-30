@@ -1,0 +1,99 @@
+{
+  "_about": "Hand-authored from the rules in docs/repertoire-experience.md, never produced by running the implementation. Each value is what the rule says must happen to the two fixtures beside this file.",
+  "legacy": {
+    "schemaVersion": 15,
+    "musicTerms": [],
+    "bindings": {
+      "it-iraq": ["radif:mirza-abdollah:afshari:iraq"],
+      "it-forms-chahar": ["stage:setar-radif-forms:chahar-mezrab"],
+      "it-cgs-chords": ["stage:cgs-1b:chords"]
+    },
+    "undecided": [
+      "it-cgs-on-setar",
+      "it-composite",
+      "it-daramad-a",
+      "it-daramad-b",
+      "it-kereshmeh-moved",
+      "it-part",
+      "it-shur-farsi",
+      "it-shur-latin",
+      "it-tar-afshari",
+      "it-title-only"
+    ],
+    "ambiguous": {
+      "radif:mirza-abdollah:shur:daramad-e-shur": ["it-daramad-a", "it-daramad-b"]
+    },
+    "sourceKeys": { "mat-cgs": "course:cgs" },
+    "unkeyedSources": ["mat-khon-1", "mat-khon-2", "mat-radif", "mat-song"],
+    "verbatimPersian": {
+      "it-shur-latin": { "dastgahAvaz": "Shur", "form": "Pish-darāmad", "composer": "Darvish Khan" },
+      "it-shur-farsi": { "dastgahAvaz": "شور", "form": "پیش-درامد", "composer": "درویش-خان" },
+      "it-composite": { "dastgahAvaz": "دشتی/شور", "composer": "هرمزی" },
+      "it-tar-afshari": { "dastgahAvaz": "آواز افشاری", "gusheh": "عراق" }
+    },
+    "setarDiscovery": {
+      "scopeCount": 9,
+      "groups": [
+        { "key": "dastgah:term:dastgah:shur", "label": "شور", "unclassified": false, "works": ["it-shur-farsi", "it-shur-latin"] },
+        { "key": "dastgah:term:dastgah:afshari", "label": "افشاری", "unclassified": false, "works": ["it-iraq"] },
+        { "key": "dastgah:literal:دشتی/شور", "label": "دشتی/شور", "unclassified": false, "works": ["it-composite"] },
+        {
+          "key": "dastgah:none",
+          "label": "No dastgāh yet",
+          "unclassified": true,
+          "works": ["it-daramad-a", "it-daramad-b", "it-forms-chahar", "it-kereshmeh-moved", "it-title-only"]
+        }
+      ],
+      "partsOf": { "it-shur-farsi": ["it-part"] },
+      "facets": {
+        "dastgah": [["term:dastgah:shur", 2], ["term:dastgah:afshari", 1], ["literal:دشتی/شور", 1], ["none", 5]],
+        "form": [["term:form:pish-daramad", 2], ["none", 7]],
+        "composer": [["term:composer:darvish-khan", 2], ["literal:هرمزی", 1], ["none", 6]]
+      },
+      "searches": [
+        { "q": "shur", "works": ["it-composite", "it-daramad-a", "it-daramad-b", "it-shur-farsi", "it-shur-latin"] },
+        { "q": "darvish", "works": ["it-shur-farsi", "it-shur-latin"] },
+        { "q": "songbook", "works": ["it-shur-latin"] },
+        { "q": "pish daramad", "works": ["it-daramad-a", "it-daramad-b", "it-shur-farsi", "it-shur-latin"], "_why": "broad search: a query CONTAINING the title alias 'daramad' also finds «درآمد…» titles (farsi.ts persianSearchMatch rule)" },
+        { "q": "fast run", "works": ["it-shur-farsi"], "matchedParts": { "it-shur-farsi": ["it-part"] } },
+        { "q": "zzz-nothing", "works": [] }
+      ],
+      "facetFilters": [
+        { "dastgah": "term:dastgah:shur", "form": "term:form:pish-daramad", "composer": "term:composer:darvish-khan", "works": ["it-shur-farsi", "it-shur-latin"] },
+        { "dastgah": "none", "works": ["it-daramad-a", "it-daramad-b", "it-forms-chahar", "it-kereshmeh-moved", "it-title-only"] },
+        { "composer": "literal:هرمزی", "works": ["it-composite"] }
+      ]
+    }
+  },
+  "current": {
+    "schemaVersion": 15,
+    "bindings": {
+      "it-iraq": ["radif:mirza-abdollah:afshari:iraq"],
+      "it-daramad-b": ["radif:mirza-abdollah:shur:daramad-e-shur"],
+      "it-unlinked": [],
+      "it-tar-afshari": ["radif:mirza-abdollah:afshari:iraq"],
+      "it-cgs-chords": ["stage:cgs-1b:chords"]
+    },
+    "undecided": ["it-daramad-a", "it-khatai"],
+    "resolve": [
+      { "ref": "radif:mirza-abdollah:afshari:iraq", "instrument": "inst-setar", "item": "it-iraq" },
+      { "ref": "radif:mirza-abdollah:afshari:iraq", "instrument": "inst-tar", "item": "it-tar-afshari" },
+      { "ref": "radif:mirza-abdollah:shur:daramad-e-shur", "instrument": "inst-setar", "item": "it-daramad-b" },
+      { "ref": "radif:mirza-abdollah:shur:daramad-e-shur", "instrument": "inst-tar", "item": null },
+      { "ref": "radif:mirza-abdollah:shur:kereshmeh", "instrument": "inst-setar", "item": null },
+      { "ref": "stage:cgs-1b:chords", "instrument": "inst-guitar", "item": "it-cgs-chords" },
+      { "ref": "stage:cgs-2b:chords", "instrument": "inst-guitar", "item": null }
+    ],
+    "labels": {
+      "it-khatai": { "dastgahAvaz": "دستگاه شور", "form": "ختایی", "composer": "مرتضی محجوبی" },
+      "it-tar-afshari": { "dastgahAvaz": "افشاری", "form": "", "composer": "" }
+    },
+    "primaryPathway": { "inst-setar": "setar-radif-mirza", "inst-tar": "tar-radif-mirza", "inst-guitar": "cgs" },
+    "currentStage": { "inst-setar": "setar-radif-mirza-shur", "inst-tar": "tar-radif-mirza-afshari", "inst-guitar": "cgs-1b" },
+    "visibleUnits": {
+      "setar-radif-mirza-shur": { "count": 8, "hidden": ["rohab"], "boundItems": { "daramad-e-shur": "it-daramad-b" } },
+      "tar-radif-mirza-afshari": { "count": 4, "boundItems": { "iraq": "it-tar-afshari" } }
+    },
+    "courseSource": { "inst-guitar": "mat-cgs" }
+  }
+}

@@ -27,6 +27,7 @@ const SessionPlan = lazy(() => import('./pages/SessionPlan'));
 const TeacherReport = lazy(() => import('./pages/TeacherReport'));
 const Settings = lazy(() => import('./pages/Settings'));
 const More = lazy(() => import('./pages/More'));
+const MusicTerms = lazy(() => import('./pages/MusicTerms'));
 
 /**
  * The one recovery action reachable from a refused COLD-START hydration
@@ -226,6 +227,7 @@ export default function App() {
         <Route path="report" element={<TeacherReport />} />
         <Route path="settings" element={<Settings />} />
         <Route path="more" element={<More />} />
+        <Route path="terms" element={<MusicTerms />} />
         <Route path="*" element={<Today />} />
       </Route>
       </Routes>

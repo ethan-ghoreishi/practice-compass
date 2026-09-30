@@ -1,9 +1,9 @@
 import type { GuitarFields, PersianFields } from '../domain';
 
 /** What the piece IS — filled in when creating it. */
-export const PERSIAN_IDENTITY_FIELDS: { key: keyof PersianFields; label: string; suggestions?: string[] }[] = [
-  { key: 'dastgahAvaz', label: 'Dastgāh / Āvāz', suggestions: [] },
-  { key: 'form', label: 'Form', suggestions: [] },
+export const PERSIAN_IDENTITY_FIELDS: { key: keyof PersianFields; label: string }[] = [
+  { key: 'dastgahAvaz', label: 'Dastgāh / Āvāz' },
+  { key: 'form', label: 'Form' },
   { key: 'composer', label: 'Composer / maestro' },
   { key: 'gusheh', label: 'Gusheh (radif only)' },
 ];
@@ -25,33 +25,6 @@ export const GUITAR_IDENTITY_FIELDS: { key: keyof GuitarFields; label: string }[
 
 export const GUITAR_FIELDS: { key: keyof GuitarFields; label: string }[] = GUITAR_IDENTITY_FIELDS;
 
-/**
- * Reference suggestions (never required, free text always allowed) — the
- * twelve standard dastgāh/āvāz of Persian classical music, and common forms.
- */
-export const DASTGAH_SUGGESTIONS = [
-  'Shur',
-  'Abu’atā',
-  'Bayāt-e Tork',
-  'Afshāri',
-  'Dashti',
-  'Navā',
-  'Homāyun',
-  'Bayāt-e Esfahān',
-  'Segāh',
-  'Chahārgāh',
-  'Māhur',
-  'Rāst-Panjgāh',
-];
-
-export const FORM_SUGGESTIONS = [
-  'Pish-darāmad',
-  'Chahār-mezrāb',
-  'Zarbi',
-  'Tasnif',
-  'Rang',
-  'Ghet’e',
-  'Āvāz (improvisation)',
-  'Radif gusheh',
-  'Étude / exercise',
-];
+// The dastgāh/āvāz and form suggestions that used to be listed here now come
+// from the ONE shared vocabulary (`domain/musicTerms.ts`), which the form's
+// fields read through `MusicalTermField`.

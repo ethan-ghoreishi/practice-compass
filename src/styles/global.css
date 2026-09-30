@@ -209,6 +209,22 @@ body,
     height: 100dvh;
   }
 }
+/* INSTALLED APP ONLY. Measured on the owner's iPhone (iOS 27, standalone,
+   docs/repertoire-experience.md): `100dvh` flips between the full screen
+   (852) and the screen minus the status bar (793) — during the keyboard, after
+   rotation, and sometimes stuck there, which is the lifted bar — while `100vh`
+   (= `100lvh`) resolved to the full screen on every portrait line, keyboard
+   included, and to the landscape height after rotation. So the installed app
+   is sized from `vh`. (`100vh + safe-area-inset-top` was tried and measured
+   911: the bar cut off.) Browser tabs never match this query and keep `dvh`,
+   which traced correctly there. */
+@media (display-mode: standalone) {
+  html,
+  body,
+  #root {
+    height: 100vh;
+  }
+}
 
 .app {
   height: 100%;
@@ -369,22 +385,43 @@ body,
 }
 
 /* ---- Pathway catalogue row -----------------------------------------------
-   A stable 3-column grid: leading state icon · flexible text · ONE fixed
-   44×44 action. Adding a suggestion only swaps the action's icon (+ → ▶) — the
-   text column never narrows or reflows, because the action slot is the same
-   size in both states. */
+   A stable grid: leading state icon · flexible text · a fixed 44×44 "more"
+   menu · ONE fixed 44×44 primary action. Adding a suggestion only swaps the
+   primary action's icon (+ → ▶) — the text column never narrows or reflows,
+   because both slots are the same size in every state. */
 .stage-unit {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) var(--tap);
+  grid-template-columns: 34px minmax(0, 1fr) auto var(--tap);
   align-items: center;
-  gap: var(--space-3);
-}
-/* A freshly-added catalog item gains a lossless Remove: a second fixed 44×44
-   slot appears beside the play action. The text column still uses minmax(0,1fr)
-   so it shrinks by exactly the extra slot — it never overflows. */
-.stage-unit--removable {
-  grid-template-columns: 34px minmax(0, 1fr) var(--tap) var(--tap);
   gap: var(--space-2);
+}
+.stage-unit-menu {
+  position: relative;
+}
+.stage-unit-menu > summary {
+  list-style: none;
+}
+.stage-unit-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.stage-unit-menu-list {
+  position: absolute;
+  inset-inline-end: 0;
+  top: calc(var(--tap) + 4px);
+  z-index: 5;
+  min-width: 240px;
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-shadow: var(--shadow-2);
+}
+/* A row title that WRAPS instead of truncating — a Farsi name is the one
+   thing its row exists to identify. */
+.row-title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 .stage-unit-text {
   min-width: 0;
@@ -687,6 +724,10 @@ body,
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  /* A grid/flex child sizes to its content by default: a <select> whose
+     longest option is wide would push its column (and the page) sideways in
+     WebKit. The field may shrink; the control fills what it is given. */
+  min-width: 0;
 }
 .field-label {
   font-size: 0.82rem;
@@ -701,6 +742,8 @@ body,
 .textarea,
 .select {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: var(--tap);
   padding: 10px var(--space-3);
   border-radius: var(--radius-sm);
@@ -966,6 +1009,14 @@ body,
   .textarea {
     min-height: 160px;
   }
+}
+
+/* ---- Keyboard focus: one visible ring for every control ------------------
+   Pointer taps show nothing extra; keyboard focus always shows the accent
+   ring, on buttons, links, disclosures and the options/chips alike. */
+:where(a, button, summary, [role='button'], .option, .chip):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {
