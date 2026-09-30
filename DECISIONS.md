@@ -45,9 +45,10 @@ and the proof route.
   Keyboard trace (memory only) records what the device reports. The first installed-app trace
   showed a HEIGHT flip (`innerHeight`/`100dvh` 852↔793, all scroll offsets 0), so the guard's
   scroll restore cannot be the fix. The standalone-only shell height `calc(100vh +
-  env(safe-area-inset-top))` is a candidate chosen because the base viewport height was the one
-  stable reading; it changes nothing else (guard and `interactive-widget` untouched) so the next
-  trace — which now records what each unit resolves to — can confirm or refute exactly it.
+  env(safe-area-inset-top))` was a candidate built on UNMEASURED readings, and the next trace
+  refuted it (911, bar cut off). With every unit measured, `100vh` was the full screen on every
+  installed-app line while `dvh` flipped, so standalone uses `100vh`; tabs keep `dvh`, which
+  traced correctly. One change per trace, guard and `interactive-widget` untouched.
 - **The Undo that deleted a "fresh" item is gone.** "Not practised yet" never proved an item was
   empty — notes, files, class links and commitments all arrive before a first block.
   `removeCatalogItem` stays only because an out-of-scope test calls it; it no longer deletes.

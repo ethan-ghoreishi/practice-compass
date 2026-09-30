@@ -87,14 +87,21 @@ and it only reached 852 after rotation; returning to portrait flipped 852↔793 
 ~1.8 s and settled on either. So the keyboard is not shown to CAUSE the bad state here.
 
 The guard's `body`/`#root` restore (a real, fixture-proved blind spot) never fired in this trace
-and is not the fix for this defect. The **candidate** now shipping — standalone only, browser
-tabs untouched — sizes the shell as `calc(100vh + env(safe-area-inset-top))` instead of from
-`dvh`. It rests on two readings the trace did not measure directly (that `100vh` resolves to 793
-and the top inset to 59), so each trace line now also records what `100vh`/`svh`/`lvh`/`dvh`/`100%`
-and both insets RESOLVE to, plus `screen.height`. If the candidate is wrong the bar is partly cut
-off at the bottom; if right it stays flush and sits behind the keyboard while typing rather
-than above it. Nothing is claimed fixed; ac-24 remains outstanding, and Safari/Chrome tabs have
-no trace yet. The old "scroll the focused field into view after 300 ms" behaviour was removed,
+and is not the fix for this defect.
+
+**Second round (2026-09-30, iOS 27.0; installed app, Safari tab, Chrome tab; plain http).** The
+traces now record what each unit RESOLVES to. Installed app: `100vh` = `100lvh` = 852 (the full
+screen) on every portrait line, keyboard included, and 393 in landscape; `100svh` = 793;
+`100dvh` = 852 at rest but 793 while the keyboard is up (and lagging at 793 into landscape);
+top inset 59, bottom 34. So the first candidate, `calc(100vh + inset-top)`, measured **911** —
+the bar cut off, exactly as the owner saw — and is replaced: the installed app now sizes the
+shell `100vh`, the one reading that was the physical screen height throughout. Safari and
+Chrome tabs: the bar was flush and stayed so (`100dvh` = `innerH` at rest, 695 and 665); tabs
+never match the standalone query and are unchanged. The installed-app guard DID act once per
+dismissal here (`scrollY` 59 → 0), which was the 59 px of document the 911 shell made
+scrollable. `100vh` in standalone is still a reading from one device and one iOS version, and
+the "more persistent" report stays unexplained; ac-24 closes on the owner's confirmation, not
+on this page. The old "scroll the focused field into view after 300 ms" behaviour was removed,
 not replaced.
 
 **Capturing the trace (ac-24).** Three recordings — the installed app, a Safari tab, a Chrome
@@ -102,9 +109,10 @@ tab — each started with the bar confirmed flush at the bottom (cold-start the 
 More → Keyboard trace → Start recording; focus a field and type, tap Done without touching
 anything else, then tap away, rotate once and back; return to More → Stop recording → Copy
 trace. Note the iOS version from Settings → General → About: the user agent freezes it. The first line names the device, iOS
-(user agent), whether it ran standalone, the build and `secure` (it must be `true`: the trace
-has to come from this build served over HTTPS — the NAS mirror via `scripts/deploy-nas.sh` for
-the installed-app half, since GitHub Pages publishes only `main`). Each further line is one
+(user agent), whether it ran standalone, the build and `secure`. Layout geometry does not need
+HTTPS, so these traces were taken over plain http; the installed app's offline half of ac-24
+does, and needs a safe HTTPS route the owner chooses (never `scripts/deploy-nas.sh` aimed at a
+folder holding media — its `rsync --delete` deletes everything else there). Each further line is one
 event, labelled by its source (`vv:resize`, `window:scroll`, `root:scroll`, `document:focusout`…;
 `<main>`'s own scrolling is not an event), with both viewports
 (`innerH`, `vvH`, `vvTop`, `scale`), every shell offset (`scrollY`, `html`, `body`, `root`,

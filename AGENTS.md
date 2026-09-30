@@ -538,7 +538,7 @@ MEASURED, on the owner's own network (2026‑09‑18): `http://192.168.0.113:417
 `https://192.168.0.20:...` gives `isSecureContext: true` with `crypto.subtle` present,
 self-signed Synology certificate and all — **HTTPS is a secure context whether or not the
 certificate is trusted**, so a LAN NAS route needs no public certificate to work. A build
-mirrored by `scripts/deploy-nas.sh` and opened over that HTTPS origin is the genuine route;
+served over that HTTPS origin is the genuine route;
 `http://localhost` also qualifies, because browsers privilege localhost deliberately, which
 is exactly why no test here can see any of this.
 
@@ -3004,7 +3004,10 @@ the app or data private). Prod base `/practice-compass/` (override with `PC_BASE
 matches the Pages project path. CI (`ci.yml`) still gates lint + tests + build. The
 installed PWA works fully offline; hosting reliability only affects updates.
 `scripts/deploy-nas.sh` remains an OPTIONAL LAN mirror — never the primary, and no
-Tailscale requirement in the main flow.
+Tailscale requirement in the main flow. **It is DESTRUCTIVE:** `rsync --delete` empties
+`PC_DEPLOY_DIR` of everything that is not the build — pointed at a folder that also holds
+media, it deleted the owner's Setar and Tar files (2026-09-30). Never recommend it without
+naming the exact, app-only destination; guarding the script needs its own lane.
 
 **Devices sync via the user's GitHub data repo** (Settings → Sync): on app open, after
 30 quiet seconds following changes (rev-driven), on returning online, and manually.
@@ -3042,10 +3045,11 @@ while it is short (intentional reveal) or zoomed, and never touching `<main>`'s 
 `useViewportGuard` is the thin adapter (visual-viewport resize/scroll and visibility, no timers,
 full teardown, no-op without `visualViewport`). **THE OWNER'S LIFTED BAR IS NOT THAT:** the first
 iPhone trace (installed app) showed every scroll offset at 0 while `innerHeight` — so `100dvh` —
-flipped between the full screen and the screen minus the status bar. The standalone-only shell
-height in `global.css` is a CANDIDATE for that, unverified; browser tabs are untraced. More →
-Keyboard trace (memory only) records geometry plus what each viewport unit and inset resolves
-to; diagnose from traces, never by adding guesses to the guard. Five EQUAL nav tabs
+flipped between the full screen and the screen minus the status bar. MEASURED on iOS 27, the
+installed app's `100vh` stayed the full screen, so standalone sizes the shell `100vh`; browser
+tabs traced correctly on `100dvh` and keep it. Confirmed on one device only — ac-24 is the
+owner's. More → Keyboard trace (memory only) records geometry and what each unit and inset
+resolves to; diagnose from traces, never by adding guesses to the guard. Five EQUAL nav tabs
 (no raised centre button — Today owns the primary Start
 action); route changes scroll `<main>` to top; per-route page widths (narrow for focused
 practice, wide ~1100px for browsing/notes on desktop); serif is for headings only,
