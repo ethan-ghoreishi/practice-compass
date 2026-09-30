@@ -65,7 +65,8 @@ and the proof route.
   focused, so "Done" with focus retained never restored the lifted shell, and it scrolled with
   timers. `viewport.ts` restores the document scroll only once the visual viewport is full height
   at scale 1, never touches `<main>`, and has no timers. It is proved against scripted geometry
-  in both engines; the native iPhone trace (ac-24) is outstanding until the owner records it.
+  in both engines. The native iPhone fix (standalone shell `100vh`) PASSED the owner's ac-24
+  check on build b5ec595, installed PWA and Safari, 2026-09-30 (docs/repertoire-experience.md).
 - **"Practice list" keeps its name.** The plan spoke of "All practice items"; three existing
   journeys and AGENTS.md's canonical names use "Practice list", so the view kept it.
 

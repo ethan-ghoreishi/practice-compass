@@ -3047,8 +3047,8 @@ full teardown, no-op without `visualViewport`). **THE OWNER'S LIFTED BAR IS NOT 
 iPhone trace (installed app) showed every scroll offset at 0 while `innerHeight` — so `100dvh` —
 flipped between the full screen and the screen minus the status bar. MEASURED on iOS 27, the
 installed app's `100vh` stayed the full screen, so standalone sizes the shell `100vh`; browser
-tabs traced correctly on `100dvh` and keep it. Confirmed on one device only — ac-24 is the
-owner's. More → Keyboard trace (memory only) records geometry and what each unit and inset
+tabs traced correctly on `100dvh` and keep it. Owner-passed (ac-24, b5ec595) on one iPhone,
+iOS 27 only. More → Keyboard trace (memory only) records geometry and what each unit and inset
 resolves to; diagnose from traces, never by adding guesses to the guard. Five EQUAL nav tabs
 (no raised centre button — Today owns the primary Start
 action); route changes scroll `<main>` to top; per-route page widths (narrow for focused

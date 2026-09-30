@@ -100,9 +100,19 @@ Chrome tabs: the bar was flush and stayed so (`100dvh` = `innerH` at rest, 695 a
 never match the standalone query and are unchanged. The installed-app guard DID act once per
 dismissal here (`scrollY` 59 → 0), which was the 59 px of document the 911 shell made
 scrollable. `100vh` in standalone is still a reading from one device and one iOS version, and
-the "more persistent" report stays unexplained; ac-24 closes on the owner's confirmation, not
-on this page. The old "scroll the focused field into view after 300 ms" behaviour was removed,
-not replaced.
+the "more persistent" report stays unexplained. The old "scroll the focused field into view
+after 300 ms" behaviour was removed, not replaced.
+
+**ac-24 — PASSED on the owner's own iPhone, final build `b5ec595` (owner report, 2026-09-30).**
+Tested in BOTH the installed Practice Compass PWA and a Safari tab, each covering: typing in a
+field near the bottom, tapping Done with focus retained, repeated keyboard open/close cycles,
+scrolling, portrait/landscape rotation, route/tab changes, background/resume, and zoom where
+available. In every case the bottom navigation returned to, or stayed, flush with the physical
+bottom; no field became unusable or problematically obscured; typed text was retained. The
+device and iOS version (27.0) are those of the second-round traces above; the final-build pass is
+the owner's observation, not a further trace. Scope of the claim: plain-http layout on this one
+device and iOS version. The installed app's OFFLINE behaviour over HTTPS is not part of this
+report.
 
 **Capturing the trace (ac-24).** Three recordings — the installed app, a Safari tab, a Chrome
 tab — each started with the bar confirmed flush at the bottom (cold-start the installed app):
