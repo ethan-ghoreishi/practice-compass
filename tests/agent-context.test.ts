@@ -9,7 +9,7 @@
 // stays the authority on committed bytes and other import shapes.
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 
@@ -61,68 +61,147 @@ const APP_RULE_IDS = [
 
 const PATH_ROOTS = ['src/', 'tests/', 'scripts/', 'docs/', 'public/', '.github/'];
 
-// A code span (or fence) is a backtick run closed by a run of the same length.
-const CODE_SPAN = /(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
-// Where a link destination starts: an inline link or image `](`, or a reference definition
-// `]:` read anywhere, so one inside a block quote, a list or any indent is never missed
-// (reading one that is not a definition only checks one more path).
-const DESTINATION_START = /\]\(\s*|\]:\s*/g;
-// An HTML target, quoted or not, in any case; srcset lists several.
-const HTML_TARGET = /\b(href|src|srcset|poster)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
+// Markdown and HTML both separate on ASCII whitespace only: JavaScript's `\s` also matches
+// U+00A0 and would end a destination early, leaving an existing prefix to be checked.
+const SPACE = /[ \t\n\f\r]/;
+const PUNCTUATION = /[!-/:-@[-`{-~]/;
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+// What may follow an inline destination (an optional title, then the closing parenthesis),
+// and a reference definition's (an optional title, then the end of its line).
+const TITLE = String.raw`(?:"(?:\\[^]|[^"\\])*"|'(?:\\[^]|[^'\\])*'|\((?:\\[^]|[^()\\])*\))`;
+const INLINE_TAIL = new RegExp(String.raw`[ \t\n]*(?:${TITLE}[ \t\n]*)?\)`, 'y');
+const DEFINITION_TAIL = new RegExp(String.raw`(?:[ \t]*\n?[ \t]*${TITLE})?[ \t]*(?:\n|$)`, 'y');
+// Raw HTML as CommonMark reads it; it binds tighter than code spans and links.
+const ATTRIBUTE = String.raw`[ \t\n]+([A-Za-z_:][\w.:-]*)(?:[ \t\n]*=[ \t\n]*(?:([^ \t\n"'=<>` + '`' + String.raw`]+)|'([^']*)'|"([^"]*)"))?`;
+const OPEN_TAG = new RegExp(String.raw`<[A-Za-z][A-Za-z0-9-]*(?:${ATTRIBUTE})*[ \t\n]*\/?>`, 'y');
+const OTHER_HTML = /<\/[A-Za-z][A-Za-z0-9-]*[ \t\n]*>|<!--[^]*?-->|<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<> \t\n]*>/y;
 
-/** The link destination at `i`: `<...>`, or a run without spaces whose parentheses balance. */
-function destinationAt(text: string, i: number): string {
-  if (text[i] === '<') return /^<([^>\n]*)>/.exec(text.slice(i))?.[1] ?? '';
-  let depth = 0;
-  let end = i;
-  for (; end < text.length && !/\s/.test(text[end]); end++) {
-    if (text[end] === '\\') end++; // an escaped character never opens or closes
-    else if (text[end] === '(') depth++;
-    else if (text[end] === ')' && --depth < 0) break;
-  }
-  return text.slice(i, end);
-}
-
-/** A link target as the path it names: escapes and entities decoded, anchor and query dropped. */
-function targetPath(target: string): string {
-  const unescaped = target.replace(/\\([!-/:-@[-`{-~])|&(#x[0-9a-f]+|#\d+|\w+);/gi, (all, escaped, entity: string) => {
-    if (escaped) return escaped;
+/** Character references (and, in Markdown, backslash escapes) decoded; an unknown one throws. */
+function decode(text: string, markdown: boolean): string {
+  return text.replace(/\\([!-/:-@[-`{-~])|&(#x[0-9a-f]+|#\d+|\w+);/gi, (all, escaped, entity: string) => {
+    if (escaped) return markdown ? escaped : all;
     if (entity[0] === '#') return String.fromCodePoint(entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1)));
     if (entity in ENTITIES) return ENTITIES[entity];
-    throw new Error(`undecoded entity ${all} in ${target}`);
+    throw new Error(`undecoded entity ${all} in ${text}`);
   });
-  const path = unescaped.replace(/[#?].*$/, '');
+}
+
+/** A link target as the repository path it names: anchor and query dropped, percent-decoded. */
+function targetPath(target: string): string {
+  const path = target.replace(/[#?][^]*$/, '');
   try {
-    return decodeURI(path);
+    return decodeURIComponent(path);
   } catch {
     return path;
   }
 }
 
+/** The whole destination at `i` and where it ends: `<...>`, or a run whose parentheses balance. */
+function destinationAt(text: string, i: number): [string, number] {
+  let j = i;
+  if (text[i] === '<') {
+    for (j++; text[j] !== '>'; j++) {
+      if (j >= text.length || text[j] === '\n' || text[j] === '<') throw new Error(`unreadable link near: ${text.slice(i, i + 60)}`);
+      if (text[j] === '\\') j++;
+    }
+    return [text.slice(i + 1, j), j + 1];
+  }
+  for (let depth = 0; j < text.length && text[j] > ' ' && text[j] !== '\x7f'; j++) {
+    if (text[j] === '\\' && PUNCTUATION.test(text[j + 1] ?? '')) j++; // never opens or closes
+    else if (text[j] === '(') depth++;
+    else if (text[j] === ')' && --depth < 0) break;
+  }
+  return [text.slice(i, j), j];
+}
+
+/** The URLs of a srcset, by the HTML candidate grammar: a comma inside a URL is part of it. */
+function srcsetUrls(value: string): string[] {
+  const urls: string[] = [];
+  for (let i = 0; ; ) {
+    while (i < value.length && (SPACE.test(value[i]) || value[i] === ',')) i++;
+    if (i >= value.length) return urls;
+    let j = i;
+    while (j < value.length && !SPACE.test(value[j])) j++;
+    const url = value.slice(i, j);
+    urls.push(url.replace(/,+$/, ''));
+    i = j;
+    if (url.endsWith(',')) continue;
+    for (let depth = 0; i < value.length && (value[i] !== ',' || depth > 0); i++) {
+      if (value[i] === '(') depth++;
+      else if (value[i] === ')' && depth > 0) depth--;
+    }
+  }
+}
+
 /**
- * Repository paths AGENTS.md names: every whitespace-separated token of a code span or
- * fence, and every link target (an inline link or image, a reference definition, an HTML
- * href/src/srcset/poster). Anchors, queries and, in code, line suffixes and trailing
- * punctuation are stripped BEFORE globs are skipped. A backtick left unpaired throws: it
- * would shift every span after it, so the text cannot be read reliably.
+ * Repository paths AGENTS.md names: every whitespace-separated token of a code span or fence,
+ * and every link target (an inline link or image, a reference definition, an HTML attribute
+ * value, each srcset URL). One left-to-right pass with CommonMark's precedence: block-quote
+ * markers are removed first so a destination can continue on the next line, then each
+ * construct is consumed WHOLE before anything after it is read, and the destination it
+ * yields is checked exactly as written. Text it cannot read whole (an unpaired or escaped
+ * backtick, an unclosed fence, a link or tag that does not parse) throws rather than being
+ * skipped. Anchors, queries and, in code, line suffixes are stripped BEFORE globs are
+ * skipped; only code is ever read as a glob. Nothing else is trimmed from a token.
  */
-function namedPaths(text: string): string[] {
-  const spans = [...text.matchAll(CODE_SPAN)];
-  const prose = text.replace(CODE_SPAN, ' ');
-  if (prose.includes('`')) throw new Error(`unpaired backtick near: ${prose.slice(prose.indexOf('`'), prose.indexOf('`') + 60)}`);
-  const inCode = spans
-    .flatMap(([, , span]) => span.split(/\s+/))
-    .map((t) => t.replace(/^[<('"]+|[>'"]+$/g, '').replace(/[#?].*$/, '').replace(/[),.;:]+$/, '').replace(/(:L?\d+(-L?\d+)?)+$/, ''));
-  const html = [...prose.matchAll(HTML_TARGET)].flatMap(([, name, ...values]) => {
-    const value = values.find((v) => v !== undefined) ?? '';
-    return name.toLowerCase() === 'srcset' ? value.split(',').map((c) => c.trim().split(/\s+/)[0]) : [value];
-  });
-  const linked = [...[...prose.matchAll(DESTINATION_START)].map((m) => destinationAt(prose, m.index + m[0].length)), ...html].map(targetPath);
-  const paths = [...inCode, ...linked]
-    .map((t) => t.replace(/^\.?\//, ''))
-    .filter((t) => PATH_ROOTS.some((root) => t.startsWith(root)) && !/[*{[]/.test(t));
-  return [...new Set(paths)];
+function namedPaths(markdown: string): string[] {
+  const lines = markdown.replace(/\r\n?/g, '\n').replace(/^(?:[ \t]*>)+/gm, '').split('\n');
+  const code: string[] = [];
+  const targets: string[] = [];
+  let fence: RegExp | undefined;
+  for (let i = 0; i < lines.length; i++) {
+    const open = /^[ \t]*(`{3,}(?=[^`]*$)|~{3,})/.exec(lines[i]);
+    if (fence?.test(lines[i])) fence = undefined;
+    else if (fence) code.push(lines[i]);
+    else if (open) fence = new RegExp(`^[ \\t]*\\${open[1][0]}{${open[1].length},}[ \\t]*$`);
+    else continue;
+    lines[i] = '';
+  }
+  if (fence) throw new Error('unclosed code fence');
+  const text = lines.join('\n');
+  const at = (pattern: RegExp, i: number) => ((pattern.lastIndex = i), pattern.exec(text));
+  let brackets = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\' && text[i + 1] === '`') throw new Error(`escaped backtick near: ${text.slice(i, i + 60)}`);
+    if (c === '\\' && PUNCTUATION.test(text[i + 1] ?? '')) i++;
+    else if (c === '`') {
+      const ticks = at(/`+/y, i)![0];
+      const close = at(new RegExp(`(?<!\`)${ticks}(?!\`)`, 'g'), i + ticks.length);
+      if (!close) throw new Error(`unpaired backtick near: ${text.slice(i, i + 60)}`);
+      code.push(text.slice(i + ticks.length, close.index));
+      i = close.index + ticks.length - 1;
+    } else if (c === '<' && at(OPEN_TAG, i)) {
+      const tag = OPEN_TAG.lastIndex;
+      for (const [, name, ...values] of text.slice(i, tag).matchAll(new RegExp(ATTRIBUTE, 'g'))) {
+        const value = values.find((v) => v !== undefined);
+        if (value !== undefined) targets.push(...(name.toLowerCase().endsWith('srcset') ? srcsetUrls(decode(value, false)) : [decode(value, false)]));
+      }
+      i = tag - 1;
+    } else if (c === '<' && at(OTHER_HTML, i)) i = OTHER_HTML.lastIndex - 1;
+    else if (c === '<' && /[A-Za-z!/?]/.test(text[i + 1] ?? '')) throw new Error(`unreadable HTML near: ${text.slice(i, i + 60)}`);
+    else if (c === '[') brackets++;
+    else if (c === ']' && brackets > 0) {
+      brackets--;
+      const tail = text[i + 1] === '(' ? INLINE_TAIL : text[i + 1] === ':' ? DEFINITION_TAIL : undefined;
+      if (!tail) continue;
+      const [destination, end] = destinationAt(text, i + 2 + at(/[ \t\n]*/y, i + 2)![0].length);
+      if (!at(tail, end)) throw new Error(`unreadable link near: ${text.slice(i, i + 60)}`);
+      targets.push(decode(destination, true));
+      i = tail.lastIndex - 1;
+    }
+  }
+  const inCode = code
+    .flatMap((span) => span.split(/[ \t\n\f\r]+/))
+    .map((t) => t.replace(/[#?].*$/, '').replace(/(:L?\d+(-L?\d+)?)+$/, ''))
+    .filter((t) => !/[*{[]/.test(t));
+  const paths = [...inCode, ...targets.map(targetPath)].map((t) => posix.normalize(t).replace(/^\/+/, ''));
+  return [...new Set(paths.filter((t) => PATH_ROOTS.some((root) => t.startsWith(root))))];
+}
+
+/** The repository paths `text` names that do not exist. */
+function missingPaths(text: string): string[] {
+  return namedPaths(text).filter((p) => !existsSync(join(ROOT, p)));
 }
 
 it('the instructions every agent session loads at the repository root fit in 32768 bytes', () => {
@@ -139,9 +218,9 @@ it('AGENTS.md states the core loop, every hard do-not and each owner-approved ap
 });
 
 it('every repository path AGENTS.md names exists', () => {
-  const paths = namedPaths(readFileSync(AGENTS, 'utf8'));
-  expect(paths.length).toBeGreaterThan(0);
-  expect(paths.filter((p) => !existsSync(join(ROOT, p)))).toEqual([]);
+  const text = readFileSync(AGENTS, 'utf8');
+  expect(namedPaths(text).length).toBeGreaterThan(0);
+  expect(missingPaths(text)).toEqual([]);
 });
 
 // The proof route for namedPaths: one Markdown form per row, each expectation written
@@ -192,17 +271,74 @@ it('namedPaths reads a repository path out of every Markdown form that can name 
     // Entities and backslash escapes decode before the path is read.
     ['[t](docs&#47;a.md) <a href="docs&#x2F;b.md">', ['docs/a.md', 'docs/b.md']],
     ['[t](docs/a&amp;b.md) [u](docs/\\_c.md)', ['docs/a&b.md', 'docs/_c.md']],
-    // The 2026-10-01 review's counterexamples, each naming a file that is not the existing prefix.
+    // Code fences of either kind, inside a block quote too; a destination keeps its backticks.
+    ['~~~\nscripts/run.mjs\n~~~', ['scripts/run.mjs']],
+    ['> ```\n> docs/a.md\n> ```', ['docs/a.md']],
+    ['[t](docs/`a`.md) `src/x.ts`', ['src/x.ts', 'docs/`a`.md']],
+    // HTML binds tighter than code; autolinks and comments name no repository path.
+    ['<a title="`docs/a.md`" href="docs/b.md">', ['docs/b.md']],
+    ['<https://example.com/docs/a.md> <!-- [t](docs/a.md) -->', []],
+    // A link target is a URL, never a glob, and its percent-encoding decodes whole.
+    ['[t](docs/a[1].md) [u](docs%2Fb.md)', ['docs/a[1].md', 'docs/b.md']],
+    ['<img srcset="public/a.png, public/b.png,, public/c(1).png 2x">', ['public/a.png', 'public/b.png', 'public/c(1).png']],
+  ];
+  for (const [markdown, expected] of cases) expect(namedPaths(markdown), markdown).toEqual(expected);
+  expect(() => namedPaths('`docs/a.md` and a stray ` tick')).toThrow(/unpaired backtick/);
+  expect(() => namedPaths('[t](docs&sol;a.md)')).toThrow(/undecoded entity/);
+  expect(() => namedPaths('\\`docs/a.md\\`')).toThrow(/escaped backtick/);
+  expect(() => namedPaths('```\ndocs/a.md')).toThrow(/unclosed code fence/);
+  expect(() => namedPaths('[t](docs/a.md extra)')).toThrow(/unreadable link/);
+  expect(() => namedPaths('[t](<docs/a.md)')).toThrow(/unreadable link/);
+  expect(() => namedPaths('<img src="public/i.png"')).toThrow(/unreadable HTML/);
+});
+
+// Every counterexample a review of this lane has raised against ac-3, each appended to the
+// real AGENTS.md and run through the same check ac-3 runs: the check must fail (a missing
+// path or a refusal). `expected` is the whole destination each one names, so a reader can see
+// the extraction did not stop at an existing prefix.
+it('every reviewer counterexample appended to AGENTS.md fails the path check', () => {
+  const NBSP = '\u00A0';
+  const cases: [string, string[]][] = [
+    // Round 1: titled and angle-bracket links, and an anchor read as a glob.
+    ['[missing](docs/reviewer-missing.md "Guide")', ['docs/reviewer-missing.md']],
+    ['[missing](<docs/reviewer-missing.md>)', ['docs/reviewer-missing.md']],
+    ['`docs/reviewer-missing.md#part[0]`', ['docs/reviewer-missing.md']],
+    // Round 2: parentheses inside a destination, container definitions, unquoted HTML.
     ['[missing](docs/(reviewer-missing).md)', ['docs/(reviewer-missing).md']],
     ['[missing]: docs/(reviewer-missing).md', ['docs/(reviewer-missing).md']],
     ['![missing](public/(reviewer-missing).png)', ['public/(reviewer-missing).png']],
     ['[missing](docs/cgs-course.md(reviewer-missing))', ['docs/cgs-course.md(reviewer-missing)']],
     ['> [missing]: docs/reviewer-missing.md', ['docs/reviewer-missing.md']],
-    ['<a href=docs/reviewer-missing.md> <img src=public/reviewer-missing.png>', ['docs/reviewer-missing.md', 'public/reviewer-missing.png']],
+    ['- [missing]: docs/reviewer-missing.md', ['docs/reviewer-missing.md']],
+    ['<a href=docs/reviewer-missing.md>', ['docs/reviewer-missing.md']],
+    ['<img src=public/reviewer-missing.png>', ['public/reviewer-missing.png']],
+    // Round 3: block-quote continuations, U+00A0 inside a destination, backticks inside a
+    // destination or attribute, and a comma inside a srcset URL.
+    ['> [missing]:\n> docs/reviewer-missing.md\n>\n> [missing]', ['docs/reviewer-missing.md']],
+    ['> [missing](\n> docs/reviewer-missing.md)', ['docs/reviewer-missing.md']],
+    ['> ![missing](\n> public/reviewer-missing.png)', ['public/reviewer-missing.png']],
+    [`[missing](docs/cgs-course.md${NBSP}reviewer-missing)`, [`docs/cgs-course.md${NBSP}reviewer-missing`]],
+    [`[missing]: docs/cgs-course.md${NBSP}reviewer-missing`, [`docs/cgs-course.md${NBSP}reviewer-missing`]],
+    [`![missing](public/icon.svg${NBSP}reviewer-missing)`, [`public/icon.svg${NBSP}reviewer-missing`]],
+    [`\`docs/cgs-course.md${NBSP}reviewer-missing\``, [`docs/cgs-course.md${NBSP}reviewer-missing`]],
+    ['[missing](docs/cgs-course.md`reviewer-missing`)', ['docs/cgs-course.md`reviewer-missing`']],
+    ['[missing]: docs/cgs-course.md`reviewer-missing`', ['docs/cgs-course.md`reviewer-missing`']],
+    ['![missing](public/icon.svg`reviewer-missing`)', ['public/icon.svg`reviewer-missing`']],
+    ['<img srcset="public/icon.svg`reviewer-missing` 1x">', ['public/icon.svg`reviewer-missing`']],
+    ['<a href="docs/cgs-course.md`reviewer-missing`">', ['docs/cgs-course.md`reviewer-missing`']],
+    ['<img srcset="public/icon.svg,reviewer-missing.png 1x">', ['public/icon.svg,reviewer-missing.png']],
+    [`<img srcset="public/icon.svg${NBSP}reviewer-missing.png 1x">`, [`public/icon.svg${NBSP}reviewer-missing.png`]],
   ];
+  const agents = readFileSync(AGENTS, 'utf8');
+  const stillPassing = (markdown: string) => {
+    try {
+      return missingPaths(`${agents}\n\n${markdown}\n`).length === 0;
+    } catch {
+      return false;
+    }
+  };
   for (const [markdown, expected] of cases) expect(namedPaths(markdown), markdown).toEqual(expected);
-  expect(() => namedPaths('`docs/a.md` and a stray ` tick')).toThrow(/unpaired backtick/);
-  expect(() => namedPaths('[t](docs&sol;a.md)')).toThrow(/undecoded entity/);
+  expect(cases.map(([markdown]) => markdown).filter(stillPassing)).toEqual([]);
 });
 
 // Every agent-facing prohibition the 2026-10-01 reworks restored from the baseline
