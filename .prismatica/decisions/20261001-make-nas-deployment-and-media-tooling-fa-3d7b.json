@@ -1,0 +1,11 @@
+{
+  "id": "20261001-make-nas-deployment-and-media-tooling-fa-3d7b",
+  "contractId": "20261001-make-nas-deployment-and-media-tooling-fa-3d7b",
+  "patchId": "9599b39b8963691744ed80ece35a83b6572ccffe",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-10-01T15:08:42.857Z",
+  "algorithm": "ed25519",
+  "signature": "/FR5QXPP947P+PWElKgLgTthMjdv1RsGL0W/BNwbEp7iMik9x8+LuUVaQfApURm+gf05qXqSoF6QkrMmFC0TAg==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}
