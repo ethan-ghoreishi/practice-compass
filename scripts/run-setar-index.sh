@@ -45,10 +45,15 @@ export PC_INDEX_REPO PC_INDEX_TOKEN
 HERE=$(cd "$(dirname "$0")" && pwd)
 NODE="${PC_NODE:-node}"
 # The scratch index lives in the RUNTIME directory, never inside the archive.
+# This job creates no folder: a missing one is a configuration error, and a
+# guessed one could land anywhere a mount happens to resolve.
 WORK="${PC_INDEX_WORKDIR:-$(dirname "$CONFIG")}"
 OUT="$WORK/setar-index.json"
 
-mkdir -p "$WORK"
+if [ ! -d "$WORK" ]; then
+  echo "Work directory $WORK does not exist; nothing was scanned or published." >&2
+  exit 2
+fi
 
 # Scan first. If it fails, stop here: the published index is still the good one.
 "$NODE" "$HERE/scan-setar-classes.mjs" --root "$PC_ARCHIVE_ROOT" --out "$OUT"

@@ -332,21 +332,23 @@ describe('Family B — reference suggestions', () => {
     store().unlinkReference('it-iraq', 'radif:mirza-abdollah:afshari:iraq');
     const iraq = store().db.items.find((i) => i.id === 'it-iraq')!;
     expect([iraq.stageId, iraq.catalogRefs]).toEqual(['setar-radif-afshari', []]);
-    // The OLD catalogue shortcut no longer deletes anything, ever — and while
+    // Removing from a pathway never deletes anything, ever — and while
     // it-daramad-b is one of two UNDECIDED candidates for «درآمد شور», nothing
     // may move it out of its stage: that would hand the suggestion to the
     // other candidate without the owner choosing.
     const daramad = catalogReferenceId('setar-radif-shur', 'daramad-e-shur');
-    expect(store().removeCatalogItem('it-daramad-b')).toBe(false);
+    const daramadB = () => store().db.items.find((i) => i.id === 'it-daramad-b')!;
+    const undecided = daramadB();
     expect(store().removeFromPathway('it-daramad-b', SEED_PATHWAY_IDS.setar)).toMatch(/Choose which one/);
+    expect(daramadB()).toEqual(undecided);
     expect(store().placeItemInStage('it-daramad-b', undefined)).toMatch(/Choose which one/);
     expect(store().deleteStage('setar-radif-shur')).toMatch(/Choose which one/);
     expect(store().deletePathway(SEED_PATHWAY_IDS.setar)).toMatch(/Choose which one/);
     expect(store().db.pathwayStages.some((st) => st.id === 'setar-radif-shur')).toBe(true);
     // Once the owner chooses the OTHER one, it leaves freely — kept whole.
     expect(store().linkReference(SEED_PATHWAY_IDS.setar, daramad, 'it-daramad-a')).toBeNull();
-    expect(store().removeCatalogItem('it-daramad-b')).toBe(true);
-    expect(store().db.items.some((i) => i.id === 'it-daramad-b')).toBe(true);
+    expect(store().removeFromPathway('it-daramad-b', SEED_PATHWAY_IDS.setar)).toBeNull();
+    expect(daramadB().stageId).toBeUndefined();
     // Removing a PARENT work from its pathway keeps its parts under it.
     store().removeFromPathway('it-shur-farsi', SEED_PATHWAY_IDS.setar);
 

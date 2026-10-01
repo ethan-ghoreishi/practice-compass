@@ -639,8 +639,7 @@ own pace, on a route they trust. Protect that:
   a radif reference is shared by the mixed and the named Setar pathways, and unbinding would
   make the other offer a duplicate. **Hide/Restore** is visibility only: hidden suggestions
   count for nothing, and an empty stage is never complete. The old lossless-Undo delete is
-  gone (`removeCatalogItem` survives only as a non-deleting alias); Delete practice item stays
-  the one destructive action. **Undecided legacy evidence is never promoted or lost**: any
+  gone; Delete practice item stays the one destructive action. **Undecided legacy evidence is never promoted or lost**: any
   write moving it (link elsewhere, new stage/key/instrument, Remove from pathway, a deleted
   stage/pathway) settles it first (`settleLegacyEvidence`) — the unique answer is decided, one
   of several candidates REFUSES until the owner chooses; the migration binds only evidence in
@@ -2648,7 +2647,7 @@ section records only what differs. `docs/khonyagar-course.md` is the runbook, th
 authored tables' evidence and the open questions.
 
 **A STORED PATH IS THE REAL FILENAME, NFC-NORMALISED — THE FORM THE NAS SERVES.**
-78 of the 259 filenames are decomposed on the local disk, and the decomposed name
+A local copy may hold decomposed names (78 of 259 did; 0 since 2026‑10‑01), and one
 404s from the NAS while the composed one plays. A path in NFD looks right in the
 repository and in any local listing and opens nothing, so the scanner normalises
 every name BEFORE it becomes a path and a test holds every committed path to NFC.
@@ -3003,11 +3002,11 @@ main; the repo is public by explicit user decision, 2026‑07‑11 — the user 
 the app or data private). Prod base `/practice-compass/` (override with `PC_BASE`)
 matches the Pages project path. CI (`ci.yml`) still gates lint + tests + build. The
 installed PWA works fully offline; hosting reliability only affects updates.
-`scripts/deploy-nas.sh` remains an OPTIONAL LAN mirror — never the primary, and no
-Tailscale requirement in the main flow. **It is DESTRUCTIVE:** `rsync --delete` empties
-`PC_DEPLOY_DIR` of everything that is not the build — pointed at a folder that also holds
-media, it deleted the owner's Setar and Tar files (2026-09-30). Never recommend it without
-naming the exact, app-only destination; guarding the script needs its own lane.
+`scripts/nas-mirror.mjs` is an OPTIONAL HTTPS mirror for an unmerged build, never the
+primary. **Repository tools change only what they can prove they wrote** (a folder they
+created, a marker's claims, a scanner's own output), never delete, never write through a link
+and never exit 0 without running — a path's name proved nothing on 2026-09-30, when
+`rsync --delete` hit media. `docs/nas-topology.md` maps what each path reaches.
 
 **Devices sync via the user's GitHub data repo** (Settings → Sync): on app open, after
 30 quiet seconds following changes (rev-driven), on returning online, and manually.

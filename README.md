@@ -146,10 +146,11 @@ npm run test:watch # watch mode
 
 Pushing to `main` deploys to GitHub Pages (CI runs lint + tests + build first). The prod
 base path is `/practice-compass/` (override with `PC_BASE=/`).
-`scripts/deploy-nas.sh` optionally mirrors the same build onto a locally mounted NAS
-share for a LAN-only copy — handy, never required. **Warning:** it runs `rsync --delete`, so
-EVERYTHING in `PC_DEPLOY_DIR` that is not part of the build is deleted. Point it only at a
-folder that holds nothing but this app — never at a share or folder containing media.
+`scripts/nas-mirror.mjs` optionally publishes the same build into a NAS folder as an HTTPS
+mirror, for trying an unmerged build on a phone — never required, never the primary. It is a dry
+run unless given `--apply`, writes only inside a folder it created (or one carrying its marker),
+and never deletes anything. Read [`docs/nas-topology.md`](docs/nas-topology.md) first: it maps
+what each NAS path really reaches.
 
 ---
 

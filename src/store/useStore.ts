@@ -384,12 +384,6 @@ interface StoreState {
   updateItem: (id: ID, patch: ItemPatch) => string | null;
   setItemStatus: (id: ID, status: ItemStatus) => void;
   deleteItem: (id: ID) => void;
-  /**
-   * @deprecated The old catalogue "Undo" deleted a fresh item. It now only
-   * takes the item OUT of its stage's pathway (`removeFromPathway`) and never
-   * deletes anything; returns whether anything changed.
-   */
-  removeCatalogItem: (id: ID) => boolean;
   /** Returns the refusal (one of several candidates for a suggestion), or null. */
   placeItemInStage: (itemId: ID, stageId: ID | undefined) => string | null;
 
@@ -1049,19 +1043,6 @@ export const useStore = create<StoreState>()(
           },
           active: s.active?.itemId === id ? null : s.active,
         }));
-      },
-
-      removeCatalogItem: (id) => {
-        // NEVER a deletion any more: "not practised yet" says nothing about the
-        // notes, files, lessons and links a fresh item may already carry.
-        const { db } = get();
-        const item = db.items.find((i) => i.id === id);
-        const stage = item?.stageId ? db.pathwayStages.find((st) => st.id === item.stageId) : undefined;
-        if (!item || !stage) return false;
-        const plan = planRemoveFromPathway(db, id, stage.pathwayId, new Date());
-        if (!plan.ok || (plan.items === db.items && plan.pathways === db.pathways)) return false;
-        set((s) => ({ db: { ...s.db, items: plan.items, pathways: plan.pathways } }));
-        return true;
       },
 
       linkReference: (pathwayId, refId, itemId) => {

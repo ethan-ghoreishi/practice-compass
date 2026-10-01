@@ -13,10 +13,10 @@
 //
 // Source contract: <ARCHIVE_ROOT>/CRAWLER-BRIEF.md.
 
-import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync, renameSync, readdirSync, lstatSync } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { createHash, randomBytes } from 'node:crypto';
+import { readFileSync, writeFileSync, renameSync, readdirSync, lstatSync, realpathSync, statSync } from 'node:fs';
+import { basename, dirname, join, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 
 export const ARCHIVE_ID = 'setar-classes';
@@ -587,16 +587,69 @@ export function scanArchive(root) {
   return { inventory, skipped };
 }
 
-/** Write via a temp file + rename, so a reader never sees a half-written index. */
-export function writeIndexAtomically(outPath, text, root) {
+/**
+ * May `--out` be written? Only if it is this scanner's OWN output, outside the
+ * archive it describes. Checked before the source is read and again inside the
+ * writer. Returns the target, addressed through its parent's REAL path.
+ *
+ * - The parent must exist; nothing here creates a folder.
+ * - Real paths, NFC-normalised, decide "inside the archive" — never the text
+ *   typed: a symlinked parent, a case-variant name (`realpathSync.native`
+ *   canonicalises case on macOS) and an NFD/NFC spelling all reach the same
+ *   folder on this setup.
+ * - An existing output must be a regular file, not a link, holding a Setar
+ *   index. Anything else is somebody else's file and is never replaced.
+ */
+export function checkOutput(outPath, root) {
   const out = resolve(outPath);
-  if (root && (out === resolve(root) || out.startsWith(resolve(root) + sep))) {
-    throw new Error('Refusing to write the index inside the archive it describes.');
+  let parent;
+  try {
+    parent = realpathSync.native(dirname(out));
+  } catch {
+    throw new Error(`Refusing --out ${out}: its folder does not exist, and this scanner creates none.`);
   }
-  const tmp = `${out}.tmp-${process.pid}`;
-  writeFileSync(tmp, text);
-  renameSync(tmp, out);
-  return out;
+  if (!statSync(parent).isDirectory()) throw new Error(`Refusing --out ${out}: its parent is not a folder.`);
+  const target = join(parent, basename(out));
+  if (root !== undefined) {
+    let archive;
+    try {
+      archive = realpathSync.native(resolve(root)).normalize('NFC');
+    } catch {
+      throw new Error(`Refusing --out ${out}: --root ${root} cannot be resolved.`);
+    }
+    const t = target.normalize('NFC');
+    if (t === archive || t.startsWith(archive + sep)) throw new Error('Refusing to write the index inside the archive it describes.');
+  }
+  let st;
+  try {
+    st = lstatSync(target);
+  } catch (err) {
+    if (err?.code === 'ENOENT') return target;
+    throw new Error(`Refusing --out ${out}: it cannot be read (${err?.code}).`);
+  }
+  if (!st.isFile()) throw new Error(`Refusing --out ${out}: it is not a regular file (a link is never written through).`);
+  let format;
+  try {
+    format = JSON.parse(readFileSync(target, 'utf8'))?.format;
+  } catch {
+    format = undefined;
+  }
+  if (format !== INDEX_FORMAT) throw new Error(`Refusing --out ${out}: it exists and is not an index this scanner wrote.`);
+  return target;
+}
+
+/**
+ * Atomically REPLACE this scanner's own output: an exclusively created (`wx`)
+ * temp beside it, renamed onto it. The rename replaces the entry, so a hard
+ * link's other name keeps its old bytes. A temp left by a failure is left —
+ * this scanner never deletes.
+ */
+export function writeIndexAtomically(outPath, text, root) {
+  const target = checkOutput(outPath, root);
+  const tmp = join(dirname(target), `.${basename(target)}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`);
+  writeFileSync(tmp, text, { flag: 'wx' });
+  renameSync(tmp, target);
+  return target;
 }
 
 /**
@@ -669,12 +722,25 @@ export function scanToIndex(root) {
 }
 
 function main() {
-  const { values } = parseArgs({
-    options: { root: { type: 'string' }, out: { type: 'string' } },
-  });
+  let values;
+  try {
+    ({ values } = parseArgs({ options: { root: { type: 'string' }, out: { type: 'string' } } }));
+  } catch (err) {
+    console.error(err.message);
+    values = {};
+  }
   if (!values.root) {
     console.error('Usage: scan-setar-classes.mjs --root <archive> [--out <file>]');
     process.exit(2);
+  }
+  if (values.out) {
+    try {
+      checkOutput(values.out, values.root);
+    } catch (err) {
+      console.error(err.message);
+      console.error('Nothing was scanned or written.');
+      process.exit(1);
+    }
   }
   let index;
   try {
@@ -686,7 +752,14 @@ function main() {
   }
   const text = `${JSON.stringify(index, null, 2)}\n`;
   if (values.out) {
-    const written = writeIndexAtomically(values.out, text, values.root);
+    let written;
+    try {
+      written = writeIndexAtomically(values.out, text, values.root);
+    } catch (err) {
+      console.error(err.message);
+      console.error('Nothing was written.');
+      process.exit(1);
+    }
     const files = index.sessions.reduce((n, s) => n + s.resources.length, 0);
     console.error(`${index.sessions.length} sessions, ${index.pieces.length} pieces, ${files} useful resources, ${index.diagnostics.length} needing attention.`);
     console.error(`Wrote ${written} (${index.contentHash.slice(0, 12)}).`);
@@ -695,4 +768,13 @@ function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+/** By REAL path: run through a symlinked folder (DSM's /var/services/…), this must still run. */
+function isDirectRun() {
+  try {
+    return realpathSync.native(process.argv[1]) === realpathSync.native(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (isDirectRun()) main();
