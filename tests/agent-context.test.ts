@@ -8,7 +8,7 @@
 // main. It measures the working tree and `@path` imports only — Prismatica
 // stays the authority on committed bytes and other import shapes.
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
@@ -66,15 +66,18 @@ const PATH_ROOTS = ['src/', 'tests/', 'scripts/', 'docs/', 'public/', '.github/'
 const SPACE = /[ \t\n\f\r]/;
 const PUNCTUATION = /[!-/:-@[-`{-~]/;
 const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+// No construct crosses a line ending except the whitespace before a destination or a title
+// (one at most): a span, title or tag that did could swallow a real link in a later block.
+const GAP = String.raw`[ \t]*\n?[ \t]*`;
 // What may follow an inline destination (an optional title, then the closing parenthesis),
 // and a reference definition's (an optional title, then the end of its line).
-const TITLE = String.raw`(?:"(?:\\[^]|[^"\\])*"|'(?:\\[^]|[^'\\])*'|\((?:\\[^]|[^()\\])*\))`;
-const INLINE_TAIL = new RegExp(String.raw`[ \t\n]*(?:${TITLE}[ \t\n]*)?\)`, 'y');
-const DEFINITION_TAIL = new RegExp(String.raw`(?:[ \t]*\n?[ \t]*${TITLE})?[ \t]*(?:\n|$)`, 'y');
-// Raw HTML as CommonMark reads it; it binds tighter than code spans and links.
-const ATTRIBUTE = String.raw`[ \t\n]+([A-Za-z_:][\w.:-]*)(?:[ \t\n]*=[ \t\n]*(?:([^ \t\n"'=<>` + '`' + String.raw`]+)|'([^']*)'|"([^"]*)"))?`;
-const OPEN_TAG = new RegExp(String.raw`<[A-Za-z][A-Za-z0-9-]*(?:${ATTRIBUTE})*[ \t\n]*\/?>`, 'y');
-const OTHER_HTML = /<\/[A-Za-z][A-Za-z0-9-]*[ \t\n]*>|<!--[^]*?-->|<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<> \t\n]*>/y;
+const TITLE = String.raw`(?:"(?:\\[^\n]|[^"\\\n])*"|'(?:\\[^\n]|[^'\\\n])*'|\((?:\\[^\n]|[^()\\\n])*\))`;
+const INLINE_TAIL = new RegExp(String.raw`${GAP}(?:${TITLE}${GAP})?\)`, 'y');
+const DEFINITION_TAIL = new RegExp(String.raw`(?:${GAP}${TITLE})?[ \t]*(?:\n|$)`, 'y');
+// Raw HTML as CommonMark reads it, kept to one line; it binds tighter than code spans and links.
+const ATTRIBUTE = String.raw`[ \t]+([A-Za-z_:][\w.:-]*)(?:[ \t]*=[ \t]*(?:([^ \t\n"'=<>` + '`' + String.raw`]+)|'([^'\n]*)'|"([^"\n]*)"))?`;
+const OPEN_TAG = new RegExp(String.raw`<[A-Za-z][A-Za-z0-9-]*(?:${ATTRIBUTE})*[ \t]*\/?>`, 'y');
+const OTHER_HTML = /<\/[A-Za-z][A-Za-z0-9-]*[ \t]*>|<!--[^\n]*?-->|<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<> \t\n]*>/y;
 
 /** Character references (and, in Markdown, backslash escapes) decoded; an unknown one throws. */
 function decode(text: string, markdown: boolean): string {
@@ -140,7 +143,8 @@ function srcsetUrls(value: string): string[] {
  * markers are removed first so a destination can continue on the next line, then each
  * construct is consumed WHOLE before anything after it is read, and the destination it
  * yields is checked exactly as written. Text it cannot read whole (an unpaired or escaped
- * backtick, an unclosed fence, a link or tag that does not parse) throws rather than being
+ * backtick, an unclosed fence, a link or tag that does not parse, a span, title or tag
+ * crossing a line ending) throws rather than being
  * skipped. Anchors, queries and, in code, line suffixes are stripped BEFORE globs are
  * skipped; only code is ever read as a glob. Nothing else is trimmed from a token.
  */
@@ -169,6 +173,7 @@ function namedPaths(markdown: string): string[] {
       const ticks = at(/`+/y, i)![0];
       const close = at(new RegExp(`(?<!\`)${ticks}(?!\`)`, 'g'), i + ticks.length);
       if (!close) throw new Error(`unpaired backtick near: ${text.slice(i, i + 60)}`);
+      if (text.slice(i, close.index).includes('\n')) throw new Error(`code span crosses a line near: ${text.slice(i, i + 60)}`);
       code.push(text.slice(i + ticks.length, close.index));
       i = close.index + ticks.length - 1;
     } else if (c === '<' && at(OPEN_TAG, i)) {
@@ -185,7 +190,7 @@ function namedPaths(markdown: string): string[] {
       brackets--;
       const tail = text[i + 1] === '(' ? INLINE_TAIL : text[i + 1] === ':' ? DEFINITION_TAIL : undefined;
       if (!tail) continue;
-      const [destination, end] = destinationAt(text, i + 2 + at(/[ \t\n]*/y, i + 2)![0].length);
+      const [destination, end] = destinationAt(text, i + 2 + at(new RegExp(GAP, 'y'), i + 2)![0].length);
       if (!at(tail, end)) throw new Error(`unreadable link near: ${text.slice(i, i + 60)}`);
       targets.push(decode(destination, true));
       i = tail.lastIndex - 1;
@@ -199,9 +204,19 @@ function namedPaths(markdown: string): string[] {
   return [...new Set(paths.filter((t) => PATH_ROOTS.some((root) => t.startsWith(root))))];
 }
 
+/** Whether `path` exists under ROOT spelt exactly, case included (APFS would ignore case). */
+function existsExactly(path: string): boolean {
+  let dir = ROOT;
+  for (const segment of path.split('/').filter(Boolean)) {
+    if (!statSync(dir).isDirectory() || !readdirSync(dir).includes(segment)) return false;
+    dir = join(dir, segment);
+  }
+  return true;
+}
+
 /** The repository paths `text` names that do not exist. */
 function missingPaths(text: string): string[] {
-  return namedPaths(text).filter((p) => !existsSync(join(ROOT, p)));
+  return namedPaths(text).filter((p) => !existsExactly(p));
 }
 
 it('the instructions every agent session loads at the repository root fit in 32768 bytes', () => {
@@ -282,7 +297,10 @@ it('namedPaths reads a repository path out of every Markdown form that can name 
     ['[t](docs/a[1].md) [u](docs%2Fb.md)', ['docs/a[1].md', 'docs/b.md']],
     ['<img srcset="public/a.png, public/b.png,, public/c(1).png 2x">', ['public/a.png', 'public/b.png', 'public/c(1).png']],
   ];
-  for (const [markdown, expected] of cases) expect(namedPaths(markdown), markdown).toEqual(expected);
+  for (const [markdown, expected] of cases) {
+    if (expected === 'refused') expect(() => namedPaths(markdown), markdown).toThrow();
+    else expect(namedPaths(markdown), markdown).toEqual(expected);
+  }
   expect(() => namedPaths('`docs/a.md` and a stray ` tick')).toThrow(/unpaired backtick/);
   expect(() => namedPaths('[t](docs&sol;a.md)')).toThrow(/undecoded entity/);
   expect(() => namedPaths('\\`docs/a.md\\`')).toThrow(/escaped backtick/);
@@ -298,7 +316,7 @@ it('namedPaths reads a repository path out of every Markdown form that can name 
 // the extraction did not stop at an existing prefix.
 it('every reviewer counterexample appended to AGENTS.md fails the path check', () => {
   const NBSP = '\u00A0';
-  const cases: [string, string[]][] = [
+  const cases: [string, string[] | 'refused'][] = [
     // Round 1: titled and angle-bracket links, and an anchor read as a glob.
     ['[missing](docs/reviewer-missing.md "Guide")', ['docs/reviewer-missing.md']],
     ['[missing](<docs/reviewer-missing.md>)', ['docs/reviewer-missing.md']],
@@ -328,6 +346,14 @@ it('every reviewer counterexample appended to AGENTS.md fails the path check', (
     ['<a href="docs/cgs-course.md`reviewer-missing`">', ['docs/cgs-course.md`reviewer-missing`']],
     ['<img srcset="public/icon.svg,reviewer-missing.png 1x">', ['public/icon.svg,reviewer-missing.png']],
     [`<img srcset="public/icon.svg${NBSP}reviewer-missing.png 1x">`, [`public/icon.svg${NBSP}reviewer-missing.png`]],
+    // Round 4 (pre-review): a span, title, comment or attribute that runs on into a later
+    // block and swallows a real link there; and a name that matches only if case is ignored.
+    ['a stray ` tick\n\n[missing](docs/reviewer-missing.md)\n\nand ` another', 'refused'],
+    ['[t](docs/cgs-course.md "x\n\n[u](docs/reviewer-missing.md)\n\n")', 'refused'],
+    ['text <!-- x\n\n[u](docs/reviewer-missing.md)\n\n-->', 'refused'],
+    ['<a title="x\n\n[u](docs/reviewer-missing.md)\n\n" href="docs/cgs-course.md">', 'refused'],
+    ['[empty]:\n\n[missing](docs/reviewer-missing.md)', ['docs/reviewer-missing.md']],
+    ['[t](docs/CGS-Course.md)', ['docs/CGS-Course.md']],
   ];
   const agents = readFileSync(AGENTS, 'utf8');
   const stillPassing = (markdown: string) => {
@@ -337,7 +363,10 @@ it('every reviewer counterexample appended to AGENTS.md fails the path check', (
       return false;
     }
   };
-  for (const [markdown, expected] of cases) expect(namedPaths(markdown), markdown).toEqual(expected);
+  for (const [markdown, expected] of cases) {
+    if (expected === 'refused') expect(() => namedPaths(markdown), markdown).toThrow();
+    else expect(namedPaths(markdown), markdown).toEqual(expected);
+  }
   expect(cases.map(([markdown]) => markdown).filter(stillPassing)).toEqual([]);
 });
 
