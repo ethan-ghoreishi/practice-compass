@@ -24,8 +24,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-30T18:21:14.435Z
-        commit: 532a06764eb5c1a4164bff8aa88d97e835a1ba2a
+        at: 2026-10-01T20:19:01.169Z
+        commit: 05934c432b10546be78183f747f269786bc2ff26
     - actor: The musician
       action: Taps + on a suggestion.
       shows: "'Added … — not practised yet.' The row now plays that item."
@@ -35,8 +35,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-30T18:21:14.435Z
-        commit: 532a06764eb5c1a4164bff8aa88d97e835a1ba2a
+        at: 2026-10-01T20:19:01.169Z
+        commit: 05934c432b10546be78183f747f269786bc2ff26
     - actor: The musician
       action: "Optionally uses a row's ⋯ menu: Link an existing item, Unlink
         reference, Remove from pathway, or Hide this suggestion (restored from
@@ -48,8 +48,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-30T18:21:14.435Z
-        commit: 532a06764eb5c1a4164bff8aa88d97e835a1ba2a
+        at: 2026-10-01T20:19:01.169Z
+        commit: 05934c432b10546be78183f747f269786bc2ff26
     - actor: The musician
       action: Taps ▶ on a row to practise it.
       shows: The ordinary active block.
@@ -57,8 +57,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-30T18:21:14.435Z
-        commit: 532a06764eb5c1a4164bff8aa88d97e835a1ba2a
+        at: 2026-10-01T20:19:01.169Z
+        commit: 05934c432b10546be78183f747f269786bc2ff26
     - actor: The musician
       action: Optionally pins the stage as the current one, edits it, or
         archives/restores the pathway.
@@ -69,8 +69,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-30T18:21:14.435Z
-        commit: 532a06764eb5c1a4164bff8aa88d97e835a1ba2a
+        at: 2026-10-01T20:19:01.169Z
+        commit: 05934c432b10546be78183f747f269786bc2ff26
   endsWith: The next piece of the route is a real practice item — taken once —
     with real practice behind it, and the stage's progress reflects it honestly.
   variations:
