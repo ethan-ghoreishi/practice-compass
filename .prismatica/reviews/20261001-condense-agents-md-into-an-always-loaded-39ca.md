@@ -1,40 +1,12 @@
 ---
 id: 20261001-condense-agents-md-into-an-always-loaded-39ca
 contractId: 20261001-condense-agents-md-into-an-always-loaded-39ca
-patchId: b043349ada2a0e5400b3a11646d92c50bf557135
+patchId: 8c4c473bc98837cdd99de5217c1f8459984b2034
 reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: repository-guidance-path-reachability
-    summary: "The path-reachability family remains open: ac-3 passes missing targets
-      through container continuations, Unicode whitespace truncation,
-      context-blind backtick stripping and srcset URL splitting. Close all
-      branches and extend the named proof fixtures."
-    counterexample: "HEAD 174b4b9, tests/agent-context.test.ts:69-79,111-119.
-      Read-only execution of the actual 'every repository path AGENTS.md names
-      exists' callback passes after appending each example: > [missing]:\\n>
-      docs/reviewer-missing.md\\n>\\n> [missing]; > [missing](\\n>
-      docs/reviewer-missing.md); > ![missing](\\n> public/reviewer-missing.png).
-      It also passes inline links, reference definitions and images whose
-      destination is an existing docs/cgs-course.md or public/icon.svg followed
-      by U+00A0 and reviewer-missing, because only the existing prefix is
-      checked. Paired backticks around reviewer-missing after the same prefixes
-      are stripped inside inline links, definitions and images; quoted HTML
-      srcset has the same bypass. <img
-      srcset=\"public/icon.svg,reviewer-missing.png 1x\"> and the U+00A0 variant
-      also check only public/icon.svg. Sweep: one namedPaths implementation;
-      CODE_SPAN/inCode, DESTINATION_START/destinationAt, HTML_TARGET/srcset and
-      targetPath; ac-3 and its named fixture test; package.json npm test, ci.yml
-      and deploy.yml. Clean: current named paths, genuine code spans/fences,
-      ordinary/titled/angle links and images, same-line container definitions,
-      plain next-line definitions, balanced/escaped parentheses, ordinary
-      quoted/unquoted HTML, entities, anchors/queries, deduplication and
-      specified glob exclusions. Original rejection examples now fail. All five
-      existing exact test bodies pass, but the counterexamples above are absent
-      from the fixtures."
-createdAt: 2026-10-01T23:06:43.568Z
-sealedAt: 2026-10-01T23:15:13.268Z
+verdict: approve
+createdAt: 2026-10-01T23:38:27.202Z
+sealedAt: 2026-10-01T23:47:03.590Z
 ---
 
 # Review: Condense AGENTS.md into an always-loaded rulebook within 32 KiB and keep it from growing back
@@ -48,7 +20,7 @@ sealedAt: 2026-10-01T23:15:13.268Z
 - **Contract:** 20261001-condense-agents-md-into-an-always-loaded-39ca
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/43
 - **Risk tier:** normal — a feature or bug — full checks plus a sealed fresh-eyes review
-- **Diff patch-id:** `b043349ada2a0e5400b3a11646d92c50bf557135`
+- **Diff patch-id:** `8c4c473bc98837cdd99de5217c1f8459984b2034`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
 
@@ -69,315 +41,416 @@ still breaks it is not closed.
 
 **Findings from the previous review:**
 
-- **always-loaded-prohibition-preservation** — Six baseline agent-facing restrictions remain absent from AGENTS.md. Restore the whole family, extend the preservation guard and correct the disposition table.
-  _counterexample:_ Baseline 56789a8:AGENTS.md prohibits an effect-mirrored notes ref (150-151), audio unlock on the practice screen (503-505), assigning a preserved course key merely by lower ordinal (2265-2267), putting planMinutesByInstrument in PracticeDB or sync/backup (2985-2986), viewport restoration while short or zoomed (3041-3043), and components rebuilding domain objects by hand (3102-3103). Current AGENTS.md lines 28, 61, 113-114, 53/134, 143 and 148 omit these specific restrictions. Clean consumers: ItemNotes/DurableNotes, LessonNotes, ItemDetail, ActiveBlock, RoutineRunner, useScreenAwake, the CGS scanner/runbook, store partialize, Today, SessionPlan, viewport/useViewportGuard/Layout and viewport fixtures retain their mechanisms. The five previously named bans, core loop, four hard do-nots, eleven rule ids, bounded owner decisions, named gaps, NAS tooling and AGENTS-citing consumers survive. CLAUDE.md imports AGENTS.md, but the 83-phrase preservation test passes despite these omissions.
-- **repository-guidance-path-reachability** — namedPaths still fails open across inline links/images, reference definitions and HTML targets. Close all extraction branches and extend the focused proof route.
-  _counterexample:_ Read-only execution of the actual ac-3 body passes with appended [missing](docs/(reviewer-missing).md), [missing]: docs/(reviewer-missing).md or ![missing](public/(reviewer-missing).png): extraction checks only existing docs/ or public/. [missing](docs/cgs-course.md(reviewer-missing)) checks an existing prefix file and passes. Reference definitions under > or - are omitted, as are <a href=docs/reviewer-missing.md> and <img src=public/reviewer-missing.png>. Sweep found one namedPaths implementation, three LINK_TARGETS branches, ac-3 and its fixture test; npm test feeds ci.yml and deploy.yml. Clean cases: code spans/fences, ordinary/titled/angle links, simple top-level references, quoted HTML, anchor/query/line stripping, deduplication and specified glob exclusions. All five named guards pass on current text; original rejection examples correctly fail, but these independent family cases are absent from the proof fixtures.
+- **repository-guidance-path-reachability** — The path-reachability family remains open: ac-3 passes missing targets through container continuations, Unicode whitespace truncation, context-blind backtick stripping and srcset URL splitting. Close all branches and extend the named proof fixtures.
+  _counterexample:_ HEAD 174b4b9, tests/agent-context.test.ts:69-79,111-119. Read-only execution of the actual 'every repository path AGENTS.md names exists' callback passes after appending each example: > [missing]:\n> docs/reviewer-missing.md\n>\n> [missing]; > [missing](\n> docs/reviewer-missing.md); > ![missing](\n> public/reviewer-missing.png). It also passes inline links, reference definitions and images whose destination is an existing docs/cgs-course.md or public/icon.svg followed by U+00A0 and reviewer-missing, because only the existing prefix is checked. Paired backticks around reviewer-missing after the same prefixes are stripped inside inline links, definitions and images; quoted HTML srcset has the same bypass. <img srcset="public/icon.svg,reviewer-missing.png 1x"> and the U+00A0 variant also check only public/icon.svg. Sweep: one namedPaths implementation; CODE_SPAN/inCode, DESTINATION_START/destinationAt, HTML_TARGET/srcset and targetPath; ac-3 and its named fixture test; package.json npm test, ci.yml and deploy.yml. Clean: current named paths, genuine code spans/fences, ordinary/titled/angle links and images, same-line container definitions, plain next-line definitions, balanced/escaped parentheses, ordinary quoted/unquoted HTML, entities, anchors/queries, deduplication and specified glob exclusions. Original rejection examples now fail. All five existing exact test bodies pass, but the counterexamples above are absent from the fixtures.
 
 **What changed since the previously reviewed head:**
 
-```diff
-diff --git a/AGENTS.md b/AGENTS.md
-index 4304fd0b121c5fe90eff7ddaf0cf407ce6514788..9de5bdcfe70983d5ae495c884e5bbbda3d267cde 100644
---- a/AGENTS.md
-+++ b/AGENTS.md
-@@ -25,7 +25,7 @@ Preserve **one item · one mode · one focus · one result · one next action.**
- - Four homes (`practiceInformation.ts`): `PracticeItem.notes` ("Working notes", the item's one notebook, editable while practising), `PracticeBlock.observation`, `PracticeBlock.nextAction`, `lessonAgenda`. Legacy `PracticeBlock.constraint` is kept, shown and validated, never newly captured. Nothing copies one home into another; the latest observation is derived (`latestObservation`) and shown dated, never stored back.
- - **Owner decision 2026-09-16 (v13 waiver), bounded and one-way:** `currentProblem`, `bestStrategy`, `tags`, `item.lastObservation`, `block.bodyNote` and the fourteen Persian/Guitar working-detail fields (`shahed`, `ist`, `foroud`, `ornamentIssue`, `mezrabIssue`, `phraseLabel`, `importantNote`, `rightHandIssue`, `leftHandIssue`, `toneIssue`, `fingering`, `tempo`, `stringNoiseIssue`, `bodyTensionNote`) are REMOVED, not merged into `notes` (their content was dummy data). Identity fields (`dastgahAvaz`, `gusheh`, `form`, `composer`, `lessonNumber`, `barRange`) stay. The waiver covers exactly those fields and is NOT permission to reset practice history, ratings, reviews, commitments or any future meaningful text. `retirePracticeText` only deletes, reads no clock and runs on every inbound database.
- - `validatePracticeText` (in `validateDB`; `validateUnfinishedText` for the running block): absent, empty and `null` are legitimate; a wrong type is refused naming the record, never coerced.
--- Notes are edited only in `src/components/ItemNotes.tsx` (lessons reuse `DurableNotes`): explicit Done, never on blur; "Saved." waits for IndexedDB; a failed write keeps the text with Try again (always writes) and Copy. The draft is tagged with its item, dropped when it changes, read through a ref, never a closure; an in-flight write never owns the editor; only the latest save acts (`saveSeq`). Editing notes changes nothing else (clock, block, result, review, SM-2).
-+- Notes are edited only in `src/components/ItemNotes.tsx` (lessons reuse `DurableNotes`): explicit Done, never on blur; "Saved." waits for IndexedDB; a failed write keeps the text with Try again (always writes) and Copy. The draft is tagged with its item, dropped when it changes, read through a ref, never a closure or a ref an effect mirrors; an in-flight write never owns the editor; only the latest save acts (`saveSeq`). Editing notes changes nothing else (clock, block, result, review, SM-2).
- - After any install every attachment the database describes has bytes here (r-no-silent-data-loss): `decodeBackupFiles` and `importFullBackup` refuse a file that breaks that, naming it, changing nothing; `validateDB` refuses duplicate attachment ids. The export is built from metadata (`buildFullBackupWithRev`), so never refused; unreferenced blobs are never deleted; `addAttachment` writes the blob first.
- 
- ## Quick start, low admin (r-quick-start)
-@@ -58,7 +58,7 @@ Preserve **one item · one mode · one focus · one result · one next action.**
- 
- ## Hands-free practice
- 
--- A running clock on a visible screen holds one Screen Wake Lock (`shouldKeepAwake`; one owner, `useScreenAwake`). `nextSignal` announces at most once per call, moving the ephemeral `signalledThrough` to the boundaries passed, never by one; routine boundaries are `segmentBoundaries`, never a second sum; Skip calls `acknowledgeThrough`. The guaranteed signal is visual (target ring, overtime figure; a routine boundary shows for a window, never one render); a block never auto-finishes; audio and vibration are best-effort, never asserted. None of this changes a minute.
-+- A running clock on a visible screen holds one Screen Wake Lock (`shouldKeepAwake`; one owner, `useScreenAwake`). `nextSignal` announces at most once per call, moving the ephemeral `signalledThrough` to the boundaries passed, never by one; routine boundaries are `segmentBoundaries`, never a second sum; Skip calls `acknowledgeThrough`. The guaranteed signal is visual (target ring, overtime figure; a routine boundary shows for a window, never one render); a block never auto-finishes; audio and vibration are best-effort, never asserted; audio unlocks on the page that starts the clock, never on the practice screen. None of this changes a minute.
- - The wake lock, `crypto.subtle` (`sha256Hex`) and the service worker need a secure context, which LAN `http://` is not: confirm `window.isSecureContext` on the device over HTTPS before judging an unmerged branch. The answer is a route, never a fallback hash: `parseSourceIndex` refuses first (`INSECURE_CONTEXT_REFUSAL`).
- - **Open gaps:** Sync over plain http still throws the raw `Cannot read properties of undefined (reading 'digest')` (a wording fix in its own lane, never a second hash); `readIndexFile` (`src/store/archiveIndex.ts`) has no production caller.
- 
-@@ -116,7 +116,7 @@ Runbook and detail: `docs/setar-archive.md`; app side `sourceReconcile.ts`.
- Runbooks: `docs/cgs-course.md`, `docs/khonyagar-course.md`.
- 
- - A course never reuses the Setar archive machinery: no persisted graph, no inbound door, no schema change. Its scanner is the only grammar, never imported by or reachable from runtime; what it cannot read (a BPM, a section) is absent with a diagnostic, never guessed; it refuses a duplicate key. Generated data (`courseData.ts`, `khonyagarData.ts`) is never hand-edited; legacy key aliases live in hand-written `courseSeed.ts` (`COURSE_LEGACY_KEYS`). Stored paths are NFC.
--- Catalogue keys are added, never renamed (`pathways.test.ts`); a section never moves stage; a work key never changes meaning; a shipped work row is never removed (literal ledgers, never derived from the data). An ordinary key matches per stage (`stageId`+`catalogKey`); only a declared work key crosses stages.
-+- Catalogue keys are added, never renamed (`pathways.test.ts`); a section never moves stage; a work key never changes meaning; a shipped work row is never removed (literal ledgers, never derived from the data). An ordinary key matches per stage (`stageId`+`catalogKey`); only a declared work key crosses stages. Of two folders of one family, a preserved key goes to the one with real content, never merely the lower ordinal.
- - One musical work is one repertoire item. Identity is DECLARED (`courseWorkKey`, `carriedCourseWorkItem`), never matched by name, ZWNJ or space; only an entry naming one work becomes repertoire, never a drill, an aid or two works. Material is composed from the catalogue (deduplicated by path, never basename) and opened where it lives; contrast-card decks are one folder reference, never a viewer, flashcard player or deck-by-deck list. Guidance is copied into notes once; regeneration never rewrites notes or stored fields.
- - Only the owner adds levels or shipped defaults, offered by deterministic id (`offeredCourseLevels`, `offeredDefaultPathways`), added only when chosen, never on load, hydration, import or sync; `reseedDefaultPathways` never adds a stage to an existing pathway; `seedInstrumentIds` never reads Setar or Guitar as Tar.
- - Routine fitting (`fitRoutineToMinutes`) never reuses `allocateMinutes` and names its drops honestly (`describeFitDrop`). Khonyagar ships no routine and creates no `Lesson`; nothing may claim the Session Plan follows its guide. A Khonyagar item carries no Persian identity inferred from a title.
-@@ -131,7 +131,7 @@ Numbers: `docs/scheduling-evidence.md`. One pure decision, `decideReview` (`sche
- 
- ## The Session Plan is a view over real blocks
- 
--`plan.ts` reuses the same `scoreItems` priorities, never a second ranking: no scores, no "optimal" claims, its evidence never dressed up as an optimum. Minutes never exceed the budget; a budget outside 5-120 is rejected, never clamped (`validateBudgetMinutes`); one `isProactiveCandidate` policy and one `candidatePool` serve build and swap; resting material never surfaces, even by fallback; warm-up is a role for familiar easy items, never a due review or class commitment; a diversity preference stays subordinate to real needs. A plan is stale when `rev` or the local day moves; Start rechecks the day and refuses visibly. It runs real blocks, revalidating each segment's item at start; skipping logs nothing.
-+`plan.ts` reuses the same `scoreItems` priorities, never a second ranking: no scores, no "optimal" claims, its evidence never dressed up as an optimum. Minutes never exceed the budget; a budget outside 5-120 is rejected, never clamped (`validateBudgetMinutes`); one `isProactiveCandidate` policy and one `candidatePool` serve build and swap; resting material never surfaces, even by fallback; warm-up is a role for familiar easy items, never a due review or class commitment; a diversity preference stays subordinate to real needs. A plan is stale when `rev` or the local day moves; Start rechecks the day and refuses visibly. It runs real blocks, revalidating each segment's item at start; skipping logs nothing. The running plan (`activePlan`, `planMinutesByInstrument`) is store state, never in `PracticeDB`, sync or a backup.
- 
- ## Device, sync and infrastructure
- 
-@@ -140,12 +140,12 @@ Numbers: `docs/scheduling-evidence.md`. One pure decision, `decideReview` (`sche
- - **Secrets** (r-secrets-stay-on-device): the GitHub token (scoped to the one data repo) and NAS base URL live only in this browser's localStorage, never in exports, backups or sync.
- - Keep storage roles distinct: IndexedDB (truth), GitHub sync (transport, never the only backup), NAS backup (independent export), NAS recordings (media).
- - Repository tools change only what they can prove they wrote (a folder they created, a marker's claims, a scanner's own output; a path's name proves nothing), never delete, never write through a link and never exit 0 without running. `docs/nas-topology.md` maps what each path reaches; `scripts/nas-mirror.mjs` is an optional HTTPS mirror for an unmerged build, never the primary.
--- Only `<main>` scrolls; nothing is fixed or sticky (`100dvh`, never `height: 100%`; installed standalone `100vh`, owner-passed on iOS 27). `viewport.ts` judges keyboard drift by geometry, never focus, never touching `<main>`'s scroll; diagnose from traces, never guesses. Five equal nav tabs; Today owns Start; a catalogue row shows its status once. The service worker prompts (in-app Reload), never a reinstall. The build ships a CSP of self plus api.github.com only.
-+- Only `<main>` scrolls; nothing is fixed or sticky (`100dvh`, never `height: 100%`; installed standalone `100vh`, owner-passed on iOS 27). `viewport.ts` judges keyboard drift by geometry, never focus, never touching `<main>`'s scroll, restoring only at full height and scale 1, never while the viewport is short or zoomed; diagnose from traces, never guesses. Five equal nav tabs; Today owns Start; a catalogue row shows its status once. The service worker prompts (in-app Reload), never a reinstall. The build ships a CSP of self plus api.github.com only.
- - Canonical names: practice item, Study source, Pathways / My repertoire / Practice list, "Add practice item", "Based on / reference", "Connect it (optional)"; links never duplicate the item.
- 
- ## Architecture and tests
- 
--- Domain logic in `src/domain/` is pure, React-free and takes an explicit `now` (r-pure-tested-domain). Recommendations carry a one-sentence reason from the numbers that ranked them. Only the store (blobs: `attachments.ts`) mutates app data; components never touch IndexedDB; a patch tells an omitted field from an empty one by key presence, never `??`. One file per route under `src/pages/`; pure helpers go in non-component modules.
-+- Domain logic in `src/domain/` is pure, React-free and takes an explicit `now` (r-pure-tested-domain). Recommendations carry a one-sentence reason from the numbers that ranked them. Only the store (blobs: `attachments.ts`) mutates app data; components never touch IndexedDB or rebuild domain objects by hand; a patch tells an omitted field from an empty one by key presence, never `??`. One file per route under `src/pages/`; pure helpers go in non-component modules.
- - Every inbound database (both persist `migrate` and `merge`, import, sync pull, Keep remote, archive restore, cold-start recovery) runs `validateDB` (`io.ts`) and its migrations, which read no clock and guess nothing; a new collection goes in its `ARRAY_KEYS` and returned object; schema changes bump `SCHEMA_VERSION` (now 15). A refused hydration leaves memory and disk untouched: its throw is never caught, `hydrated` never forced open, nothing set through `setState`; recovery (`importFullBackup`, never a second importer) is offered only for invalid, never too-new, data.
- - Colour contrast is checked by `contrast.test.ts`; change a light token in both of its blocks, and only one that fails a listed pair.
- - `npm test` must pass; update tests with any scoring or scheduling change. Browser journeys are Vitest tests using Playwright as a library (own dev server and context, no live GitHub or NAS; GitHub faked at `fetch`), driving controls by role and name, never a debug hook or source regex; a missing browser fails them, never skips (`npx playwright install chromium webkit`). WebKit cannot store a Blob in IndexedDB under automation, so its journeys seed state-only. Harness (`tests/practiceBrowser.ts`; read `DECISIONS.md` 2026-09-29 first): keep every page error, never `goTo` the current route, `connectSync` waits for an enabled Sync now, one private Vite cache per server, the fake GitHub remembers `main` after bootstrap, a cold-start timeout is a question, never a number to raise.
-diff --git a/DECISIONS.md b/DECISIONS.md
-index 598f5a1f783317bb6174ebe3994b6227b7beb502..ce02af3d6b05d83647fbba8fe21dd92da80ba7e8 100644
---- a/DECISIONS.md
-+++ b/DECISIONS.md
-@@ -25,9 +25,11 @@ counterexamples, measurements and rejected attempts were deleted, not relocated:
- 
- **Prohibitions stay loaded.** The first pass left some agent-facing prohibitions only in a runbook
- or a code comment, and review rejected that: a session that never opens the doc never sees the
--ban. A sweep of all 25 baseline sections restored every one, and `tests/agent-context.test.ts`
--anchors the 83 restored phrases. The cost is headroom: the Claude profile is now 31,469 of
--32,768 bytes (about 1.3 KiB free, down from 2 KiB), with each rule on one line. The cap still
-+ban. A sweep of all 25 baseline sections restored 83; a second review found six more, each a
-+rule whose main clause survived while a second negated qualifier did not (`nor`, `never merely`,
-+`never while`, `or ... by hand`), so the second sweep read the baseline for exactly that shape.
-+`tests/agent-context.test.ts` anchors all 89 phrases. The cost is headroom: the Claude profile is
-+now 31,926 of 32,768 bytes (842 free, down from 2 KiB), with each rule on one line. The cap still
- holds in `npm test`; the next lane makes room by condensing in place.
- 
- **Disposition.** Lines are 56789a8's AGENTS.md. "A:" is a heading in the new AGENTS.md, which
-@@ -37,14 +39,14 @@ row also dropped its review narrative, which the dated entries below already rec
- | Baseline section (lines) | Rules now live | Dropped as stale |
- | --- | --- | --- |
- | The one rule above all (6-18) | A: The core loop | - |
--| One canonical home, v13 (19-160) | A: Practice information has one home per kind; `practiceInformation.ts`, `ItemNotes.tsx` (editor), `backup.ts` and `io.ts` (attachment doors) comments | - |
-+| One canonical home, v13 (19-160) | A: Practice information has one home per kind (incl. never a ref an effect mirrors); `practiceInformation.ts`, `ItemNotes.tsx` (editor), `backup.ts` and `io.ts` (attachment doors) comments | - |
- | Keep admin overhead low (161-167) | A: Quick start, low admin | - |
- | Prioritise the quick-start flow (168-183) | A: Quick start, low admin | - |
- | Today is a session workspace (184-217) | A: Today is a session workspace (owner decisions 2026-08-28, 2026-09-11) | - |
- | Review actions (218-300) | A: Closing a block and review actions; `CloseBlock.tsx`, `format.ts` comments; due-review row in `Today.tsx` | - |
- | Nothing replaces an unfinished session (301-424) | A: Unfinished practice is never replaced; `practiceSession.ts`, `backup.ts`, `githubSync.ts`, `App.tsx` (deferred retry), `useStore.ts` (`installDatabase`) comments | - |
- | Practice totals (425-455) | A: Practice totals; `selectors.ts` comments (balance denominator) | - |
--| Hands-free practice (456-573) | A: Hands-free practice; `screenAwake.ts`, `useScreenAwake.ts` (audio, gesture unlock), `practiceSignal.ts`; secure-context table in docs/setar-archive.md §5 | - |
-+| Hands-free practice (456-573) | A: Hands-free practice (incl. audio never unlocked on the practice screen); `screenAwake.ts`, `useScreenAwake.ts` (audio, gesture unlock), `practiceSignal.ts`; secure-context table in docs/setar-archive.md §5 | - |
- | Hard "do nots" (574-603) | A: Hard do-nots; A: Device, sync (Sync); transport steps in `syncEngine.ts`, `gitRemote.ts` | - |
- | The Pathway is a trust anchor (604-811) | A: Pathways, routines and repertoire; docs/repertoire-experience.md (reader/writer matrix, source kinds, the three views, URL state, grouping); seed list in `pathwaySeed.ts`; `routines.ts`, `useStore.ts`, `RoutineRunner.tsx`, `musicTerms.ts`, `pathwaySeed.ts` comments | - |
- | Lessons and the deadline exception (812-846) | A: Lessons, the agenda and NAS references; `recordings.ts` (resolver); `Lessons.tsx` (class number, video-first order) | The one-tap Setar class import and `npm run scan:setar` regenerating `SETAR_CLASS_SESSIONS`: replaced by Refresh Setar archive; `setarClasses.ts` is a frozen ledger (docs/setar-archive.md §6) |
-@@ -52,13 +54,13 @@ row also dropped its review narrative, which the dated entries below already rec
- | Persian text, direction-aware (999-1636) | A: Direction-aware text (incl. `dir` written literally, never computed); A: Architecture and tests (WebKit harness); `direction.test.ts` ledgers and comments (headings, lone titles, label-first rows, the two `UNEXEMPTED_PHRASE_ALLOWLIST` exceptions with reasons); `farsi.ts`; `tests/practiceBrowser.ts` | Eleven findings' narratives and the scanner's own bug history (fixed in `direction.test.ts`) |
- | Everything the app already knows (1637-1747) | A: Material reaches you where you are (incl. never a panel, viewer or dashboard; nothing touches a minute, the wake lock or an announcement); composition order in `itemFiles.ts`; `recordings.ts`, `selectors.ts` comments; Files list in `ItemDetail.tsx` | - |
- | The Setar archive is a SOURCE (1748-2225) | A: The Setar archive is a source (incl. the scanner's symlink, read-failure and rename-loop bans, roster, alias and blob bans); docs/setar-archive.md §2, §5, §6; `scan-setar-classes.mjs`, `sourceArchive.ts`, `sourceReconcile.ts` comments | - |
--| A COURSE is reference data in code (2226-2638) | A: Courses are reference data in code (incl. scanner never reachable from runtime; contrast cards never a viewer, flashcard player or deck list); docs/cgs-course.md §2-§6 (routine proportions §4); `courseSeed.ts`, `pathwaySeed.ts` (offered defaults), `routines.ts` (`fitRoutineToMinutes`) comments | - |
-+| A COURSE is reference data in code (2226-2638) | A: Courses are reference data in code (incl. scanner never reachable from runtime; contrast cards never a viewer, flashcard player or deck list; a preserved key never goes merely to the lower ordinal); docs/cgs-course.md §2-§6 (routine proportions §4); `courseSeed.ts`, `pathwaySeed.ts` (offered defaults), `routines.ts` (`fitRoutineToMinutes`) comments | - |
- | The Khonyagar Tar course (2639-2717) | A: Courses are reference data in code; docs/khonyagar-course.md | - |
- | Review scheduling (2718-2881) | A: Review scheduling stays explainable; docs/scheduling-evidence.md §6-§7; `scheduling.ts`, `format.ts` comments | - |
--| The Session Plan (2882-2994) | A: The Session Plan is a view over real blocks (incl. no "optimal" claims); docs/scheduling-evidence.md §1-§5; `plan.ts`, `SessionPlan.tsx` (day staleness) | - |
--| Device & infrastructure (2995-3072) | A: Device, sync and infrastructure; docs/nas-topology.md; `viewport.ts`; `vite.config.ts` (CSP, base, prompt-mode worker, build stamp); `Layout.tsx` (equal tabs, scroll to top, per-route widths with `global.css`, which also holds the fonts); `App.tsx` (sync triggers); `Settings.tsx` (sync status, restore); catalogue row grid in `global.css` (`.stage-unit`) with its one status line in `StageDetail.tsx`, detach under Connected to in `ItemDetail.tsx` | - |
-+| The Session Plan (2882-2994) | A: The Session Plan is a view over real blocks (incl. no "optimal" claims; the running plan never in `PracticeDB`, sync or a backup); docs/scheduling-evidence.md §1-§5; `plan.ts`, `SessionPlan.tsx` (day staleness) | - |
-+| Device & infrastructure (2995-3072) | A: Device, sync and infrastructure (incl. no viewport restore while short or zoomed); docs/nas-topology.md; `viewport.ts`; `vite.config.ts` (CSP, base, prompt-mode worker, build stamp); `Layout.tsx` (equal tabs, scroll to top, per-route widths with `global.css`, which also holds the fonts); `App.tsx` (sync triggers); `Settings.tsx` (sync status, restore); catalogue row grid in `global.css` (`.stage-unit`) with its one status line in `StageDetail.tsx`, detach under Connected to in `ItemDetail.tsx` | - |
- | Colour is checked by a test (3073-3092) | A: Architecture and tests; `contrast.test.ts` comments | - |
--| Architecture rules (3093-3138) | A: Architecture and tests; per-version detail in `migrations.ts` | - |
-+| Architecture rules (3093-3138) | A: Architecture and tests (incl. components never rebuild domain objects by hand); per-version detail in `migrations.ts` | - |
- | Tests are not optional (3139-3180) | A: Architecture and tests; `vite.config.ts` (journeys run inside Vitest); `tests/practiceBrowser.ts`; fixture roles in the journeys' own comments | - |
- | Roadmap items are allowed (3181-3186) | A: Architecture and tests | - |
- 
+````diff
 diff --git a/tests/agent-context.test.ts b/tests/agent-context.test.ts
-index 2039b7f20703ee0415c2757d252a3f8630c5caae..d63c3458e5e9a57db61b5883bdd8c1cdf5977659 100644
+index d63c3458e5e9a57db61b5883bdd8c1cdf5977659..190ac8747f569797128364b1988262d3ccdffdc9 100644
 --- a/tests/agent-context.test.ts
 +++ b/tests/agent-context.test.ts
-@@ -63,39 +63,64 @@ const PATH_ROOTS = ['src/', 'tests/', 'scripts/', 'docs/', 'public/', '.github/'
+@@ -8,8 +8,8 @@
+ // main. It measures the working tree and `@path` imports only — Prismatica
+ // stays the authority on committed bytes and other import shapes.
  
- // A code span (or fence) is a backtick run closed by a run of the same length.
- const CODE_SPAN = /(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
--// A link destination is `<...>` or a run without spaces; a title may follow it.
--const DESTINATION = String.raw`(<[^>\n]*>|[^\s<>()]+)`;
--const LINK_TARGETS = [
--  new RegExp(String.raw`\]\(\s*${DESTINATION}`, 'g'), // [text](dest "title"), ![alt](dest)
--  new RegExp(String.raw`^ {0,3}\[[^\]\n]+\]:\s*${DESTINATION}`, 'gm'), // [label]: dest "title"
--  /\b(?:href|src)\s*=\s*["']([^"']+)["']/g, // <a href="dest">, <img src="dest">
--];
-+// Where a link destination starts: an inline link or image `](`, or a reference definition
-+// `]:` read anywhere, so one inside a block quote, a list or any indent is never missed
-+// (reading one that is not a definition only checks one more path).
-+const DESTINATION_START = /\]\(\s*|\]:\s*/g;
-+// An HTML target, quoted or not, in any case; srcset lists several.
-+const HTML_TARGET = /\b(href|src|srcset|poster)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
-+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
-+
-+/** The link destination at `i`: `<...>`, or a run without spaces whose parentheses balance. */
-+function destinationAt(text: string, i: number): string {
-+  if (text[i] === '<') return /^<([^>\n]*)>/.exec(text.slice(i))?.[1] ?? '';
-+  let depth = 0;
-+  let end = i;
-+  for (; end < text.length && !/\s/.test(text[end]); end++) {
-+    if (text[end] === '\\') end++; // an escaped character never opens or closes
-+    else if (text[end] === '(') depth++;
-+    else if (text[end] === ')' && --depth < 0) break;
-+  }
-+  return text.slice(i, end);
+-import { existsSync, readFileSync, statSync } from 'node:fs';
+-import { dirname, join, relative, resolve } from 'node:path';
++import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
++import { dirname, join, posix, relative, resolve } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+ import { expect, it } from 'vitest';
+ 
+@@ -61,68 +61,162 @@ const APP_RULE_IDS = [
+ 
+ const PATH_ROOTS = ['src/', 'tests/', 'scripts/', 'docs/', 'public/', '.github/'];
+ 
+-// A code span (or fence) is a backtick run closed by a run of the same length.
+-const CODE_SPAN = /(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
+-// Where a link destination starts: an inline link or image `](`, or a reference definition
+-// `]:` read anywhere, so one inside a block quote, a list or any indent is never missed
+-// (reading one that is not a definition only checks one more path).
+-const DESTINATION_START = /\]\(\s*|\]:\s*/g;
+-// An HTML target, quoted or not, in any case; srcset lists several.
+-const HTML_TARGET = /\b(href|src|srcset|poster)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
++// Markdown and HTML both separate on ASCII whitespace only: JavaScript's `\s` also matches
++// U+00A0 and would end a destination early, leaving an existing prefix to be checked.
++const SPACE = /[ \t\n\f\r]/;
++const PUNCTUATION = /[!-/:-@[-`{-~]/;
+ const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
++// No construct crosses a line ending except the whitespace before a destination or a title
++// (one at most): a span, title or tag that did could swallow a real link in a later block.
++const GAP = String.raw`[ \t]*\n?[ \t]*`;
++// What may follow an inline destination (an optional title, then the closing parenthesis),
++// and a reference definition's (an optional title, then the end of its line).
++const TITLE = String.raw`(?:"(?:\\[^\n]|[^"\\\n])*"|'(?:\\[^\n]|[^'\\\n])*'|\((?:\\[^\n]|[^()\\\n])*\))`;
++const INLINE_TAIL = new RegExp(String.raw`${GAP}(?:${TITLE}${GAP})?\)`, 'y');
++const DEFINITION_TAIL = new RegExp(String.raw`(?:${GAP}${TITLE})?[ \t]*(?:\n|$)`, 'y');
++// Raw HTML as CommonMark reads it, kept to one line; it binds tighter than code spans and links.
++const ATTRIBUTE = String.raw`[ \t]+([A-Za-z_:][\w.:-]*)(?:[ \t]*=[ \t]*(?:([^ \t\n"'=<>` + '`' + String.raw`]+)|'([^'\n]*)'|"([^"\n]*)"))?`;
++const OPEN_TAG = new RegExp(String.raw`<[A-Za-z][A-Za-z0-9-]*(?:${ATTRIBUTE})*[ \t]*\/?>`, 'y');
++const OTHER_HTML = /<\/[A-Za-z][A-Za-z0-9-]*[ \t]*>|<!--[^\n]*?-->|<[A-Za-z][A-Za-z0-9+.-]{1,31}:[^<> \t\n]*>/y;
+ 
+-/** The link destination at `i`: `<...>`, or a run without spaces whose parentheses balance. */
+-function destinationAt(text: string, i: number): string {
+-  if (text[i] === '<') return /^<([^>\n]*)>/.exec(text.slice(i))?.[1] ?? '';
+-  let depth = 0;
+-  let end = i;
+-  for (; end < text.length && !/\s/.test(text[end]); end++) {
+-    if (text[end] === '\\') end++; // an escaped character never opens or closes
+-    else if (text[end] === '(') depth++;
+-    else if (text[end] === ')' && --depth < 0) break;
+-  }
+-  return text.slice(i, end);
+-}
+-
+-/** A link target as the path it names: escapes and entities decoded, anchor and query dropped. */
+-function targetPath(target: string): string {
+-  const unescaped = target.replace(/\\([!-/:-@[-`{-~])|&(#x[0-9a-f]+|#\d+|\w+);/gi, (all, escaped, entity: string) => {
+-    if (escaped) return escaped;
++/** Character references (and, in Markdown, backslash escapes) decoded; an unknown one throws. */
++function decode(text: string, markdown: boolean): string {
++  return text.replace(/\\([!-/:-@[-`{-~])|&(#x[0-9a-f]+|#\d+|\w+);/gi, (all, escaped, entity: string) => {
++    if (escaped) return markdown ? escaped : all;
+     if (entity[0] === '#') return String.fromCodePoint(entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1)));
+     if (entity in ENTITIES) return ENTITIES[entity];
+-    throw new Error(`undecoded entity ${all} in ${target}`);
++    throw new Error(`undecoded entity ${all} in ${text}`);
+   });
+-  const path = unescaped.replace(/[#?].*$/, '');
 +}
 +
-+/** A link target as the path it names: escapes and entities decoded, anchor and query dropped. */
++/** A link target as the repository path it names: anchor and query dropped, percent-decoded. */
 +function targetPath(target: string): string {
-+  const unescaped = target.replace(/\\([!-/:-@[-`{-~])|&(#x[0-9a-f]+|#\d+|\w+);/gi, (all, escaped, entity: string) => {
-+    if (escaped) return escaped;
-+    if (entity[0] === '#') return String.fromCodePoint(entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1)));
-+    if (entity in ENTITIES) return ENTITIES[entity];
-+    throw new Error(`undecoded entity ${all} in ${target}`);
-+  });
-+  const path = unescaped.replace(/[#?].*$/, '');
-+  try {
-+    return decodeURI(path);
-+  } catch {
-+    return path;
++  const path = target.replace(/[#?][^]*$/, '');
+   try {
+-    return decodeURI(path);
++    return decodeURIComponent(path);
+   } catch {
+     return path;
+   }
+ }
+ 
++/** The whole destination at `i` and where it ends: `<...>`, or a run whose parentheses balance. */
++function destinationAt(text: string, i: number): [string, number] {
++  let j = i;
++  if (text[i] === '<') {
++    for (j++; text[j] !== '>'; j++) {
++      if (j >= text.length || text[j] === '\n' || text[j] === '<') throw new Error(`unreadable link near: ${text.slice(i, i + 60)}`);
++      if (text[j] === '\\') j++;
++    }
++    return [text.slice(i + 1, j), j + 1];
++  }
++  for (let depth = 0; j < text.length && text[j] > ' ' && text[j] !== '\x7f'; j++) {
++    if (text[j] === '\\' && PUNCTUATION.test(text[j + 1] ?? '')) j++; // never opens or closes
++    else if (text[j] === '(') depth++;
++    else if (text[j] === ')' && --depth < 0) break;
++  }
++  return [text.slice(i, j), j];
++}
++
++/** The URLs of a srcset, by the HTML candidate grammar: a comma inside a URL is part of it. */
++function srcsetUrls(value: string): string[] {
++  const urls: string[] = [];
++  for (let i = 0; ; ) {
++    while (i < value.length && (SPACE.test(value[i]) || value[i] === ',')) i++;
++    if (i >= value.length) return urls;
++    let j = i;
++    while (j < value.length && !SPACE.test(value[j])) j++;
++    const url = value.slice(i, j);
++    urls.push(url.replace(/,+$/, ''));
++    i = j;
++    if (url.endsWith(',')) continue;
++    for (let depth = 0; i < value.length && (value[i] !== ',' || depth > 0); i++) {
++      if (value[i] === '(') depth++;
++      else if (value[i] === ')' && depth > 0) depth--;
++    }
 +  }
 +}
- 
++
  /**
-  * Repository paths AGENTS.md names: every whitespace-separated token of a code span or
-- * fence, and every link destination (inline, angle-bracketed, titled, a reference
-- * definition, or an HTML href/src). Anchors, queries, line suffixes and trailing
-- * punctuation are stripped BEFORE globs are skipped. A backtick left unpaired throws:
-- * it would shift every span after it, so the text cannot be read reliably.
-+ * fence, and every link target (an inline link or image, a reference definition, an HTML
-+ * href/src/srcset/poster). Anchors, queries and, in code, line suffixes and trailing
-+ * punctuation are stripped BEFORE globs are skipped. A backtick left unpaired throws: it
-+ * would shift every span after it, so the text cannot be read reliably.
+- * Repository paths AGENTS.md names: every whitespace-separated token of a code span or
+- * fence, and every link target (an inline link or image, a reference definition, an HTML
+- * href/src/srcset/poster). Anchors, queries and, in code, line suffixes and trailing
+- * punctuation are stripped BEFORE globs are skipped. A backtick left unpaired throws: it
+- * would shift every span after it, so the text cannot be read reliably.
++ * Repository paths AGENTS.md names: every whitespace-separated token of a code span or fence,
++ * and every link target (an inline link or image, a reference definition, an HTML attribute
++ * value, each srcset URL). One left-to-right pass with CommonMark's precedence: block-quote
++ * markers are removed first so a destination can continue on the next line, then each
++ * construct is consumed WHOLE before anything after it is read, and the destination it
++ * yields is checked exactly as written. Text it cannot read whole (an unpaired or escaped
++ * backtick, an unclosed fence, a link or tag that does not parse, a span, title or tag
++ * crossing a line ending) throws rather than being
++ * skipped. Anchors, queries and, in code, line suffixes are stripped BEFORE globs are
++ * skipped; only code is ever read as a glob. Nothing else is trimmed from a token.
   */
- function namedPaths(text: string): string[] {
-   const spans = [...text.matchAll(CODE_SPAN)];
-   const prose = text.replace(CODE_SPAN, ' ');
-   if (prose.includes('`')) throw new Error(`unpaired backtick near: ${prose.slice(prose.indexOf('`'), prose.indexOf('`') + 60)}`);
--  const tokens = [
--    ...spans.flatMap(([, , span]) => span.split(/\s+/)),
--    ...LINK_TARGETS.flatMap((re) => [...prose.matchAll(re)].map(([, target]) => target)),
--  ];
--  const paths = tokens
--    .map((t) => t.replace(/^[<('"]+|[>'"]+$/g, ''))
--    .map((t) => {
--      try {
--        return decodeURI(t);
--      } catch {
--        return t;
--      }
--    })
--    .map((t) => t.replace(/^\.?\//, '').replace(/[#?].*$/, '').replace(/[),.;:]+$/, '').replace(/(:L?\d+(-L?\d+)?)+$/, ''))
-+  const inCode = spans
-+    .flatMap(([, , span]) => span.split(/\s+/))
-+    .map((t) => t.replace(/^[<('"]+|[>'"]+$/g, '').replace(/[#?].*$/, '').replace(/[),.;:]+$/, '').replace(/(:L?\d+(-L?\d+)?)+$/, ''));
-+  const html = [...prose.matchAll(HTML_TARGET)].flatMap(([, name, ...values]) => {
-+    const value = values.find((v) => v !== undefined) ?? '';
-+    return name.toLowerCase() === 'srcset' ? value.split(',').map((c) => c.trim().split(/\s+/)[0]) : [value];
-+  });
-+  const linked = [...[...prose.matchAll(DESTINATION_START)].map((m) => destinationAt(prose, m.index + m[0].length)), ...html].map(targetPath);
-+  const paths = [...inCode, ...linked]
-+    .map((t) => t.replace(/^\.?\//, ''))
-     .filter((t) => PATH_ROOTS.some((root) => t.startsWith(root)) && !/[*{[]/.test(t));
-   return [...new Set(paths)];
+-function namedPaths(text: string): string[] {
+-  const spans = [...text.matchAll(CODE_SPAN)];
+-  const prose = text.replace(CODE_SPAN, ' ');
+-  if (prose.includes('`')) throw new Error(`unpaired backtick near: ${prose.slice(prose.indexOf('`'), prose.indexOf('`') + 60)}`);
+-  const inCode = spans
+-    .flatMap(([, , span]) => span.split(/\s+/))
+-    .map((t) => t.replace(/^[<('"]+|[>'"]+$/g, '').replace(/[#?].*$/, '').replace(/[),.;:]+$/, '').replace(/(:L?\d+(-L?\d+)?)+$/, ''));
+-  const html = [...prose.matchAll(HTML_TARGET)].flatMap(([, name, ...values]) => {
+-    const value = values.find((v) => v !== undefined) ?? '';
+-    return name.toLowerCase() === 'srcset' ? value.split(',').map((c) => c.trim().split(/\s+/)[0]) : [value];
+-  });
+-  const linked = [...[...prose.matchAll(DESTINATION_START)].map((m) => destinationAt(prose, m.index + m[0].length)), ...html].map(targetPath);
+-  const paths = [...inCode, ...linked]
+-    .map((t) => t.replace(/^\.?\//, ''))
+-    .filter((t) => PATH_ROOTS.some((root) => t.startsWith(root)) && !/[*{[]/.test(t));
+-  return [...new Set(paths)];
++function namedPaths(markdown: string): string[] {
++  const lines = markdown.replace(/\r\n?/g, '\n').replace(/^(?:[ \t]*>)+/gm, '').split('\n');
++  const code: string[] = [];
++  const targets: string[] = [];
++  let fence: RegExp | undefined;
++  for (let i = 0; i < lines.length; i++) {
++    const open = /^[ \t]*(`{3,}(?=[^`]*$)|~{3,})/.exec(lines[i]);
++    if (fence?.test(lines[i])) fence = undefined;
++    else if (fence) code.push(lines[i]);
++    else if (open) fence = new RegExp(`^[ \\t]*\\${open[1][0]}{${open[1].length},}[ \\t]*$`);
++    else continue;
++    lines[i] = '';
++  }
++  if (fence) throw new Error('unclosed code fence');
++  const text = lines.join('\n');
++  const at = (pattern: RegExp, i: number) => ((pattern.lastIndex = i), pattern.exec(text));
++  let brackets = 0;
++  for (let i = 0; i < text.length; i++) {
++    const c = text[i];
++    if (c === '\\' && text[i + 1] === '`') throw new Error(`escaped backtick near: ${text.slice(i, i + 60)}`);
++    if (c === '\\' && PUNCTUATION.test(text[i + 1] ?? '')) i++;
++    else if (c === '`') {
++      const ticks = at(/`+/y, i)![0];
++      const close = at(new RegExp(`(?<!\`)${ticks}(?!\`)`, 'g'), i + ticks.length);
++      if (!close) throw new Error(`unpaired backtick near: ${text.slice(i, i + 60)}`);
++      if (text.slice(i, close.index).includes('\n')) throw new Error(`code span crosses a line near: ${text.slice(i, i + 60)}`);
++      code.push(text.slice(i + ticks.length, close.index));
++      i = close.index + ticks.length - 1;
++    } else if (c === '<' && at(OPEN_TAG, i)) {
++      const tag = OPEN_TAG.lastIndex;
++      for (const [, name, ...values] of text.slice(i, tag).matchAll(new RegExp(ATTRIBUTE, 'g'))) {
++        const value = values.find((v) => v !== undefined);
++        if (value !== undefined) targets.push(...(name.toLowerCase().endsWith('srcset') ? srcsetUrls(decode(value, false)) : [decode(value, false)]));
++      }
++      i = tag - 1;
++    } else if (c === '<' && at(OTHER_HTML, i)) i = OTHER_HTML.lastIndex - 1;
++    else if (c === '<' && /[A-Za-z!/?]/.test(text[i + 1] ?? '')) throw new Error(`unreadable HTML near: ${text.slice(i, i + 60)}`);
++    else if (c === '[') brackets++;
++    else if (c === ']' && brackets > 0) {
++      brackets--;
++      const tail = text[i + 1] === '(' ? INLINE_TAIL : text[i + 1] === ':' ? DEFINITION_TAIL : undefined;
++      if (!tail) continue;
++      const [destination, end] = destinationAt(text, i + 2 + at(new RegExp(GAP, 'y'), i + 2)![0].length);
++      if (!at(tail, end)) throw new Error(`unreadable link near: ${text.slice(i, i + 60)}`);
++      targets.push(decode(destination, true));
++      i = tail.lastIndex - 1;
++    }
++  }
++  const inCode = code
++    .flatMap((span) => span.split(/[ \t\n\f\r]+/))
++    .map((t) => t.replace(/[#?].*$/, '').replace(/(:L?\d+(-L?\d+)?)+$/, ''))
++    .filter((t) => !/[*{[]/.test(t));
++  const paths = [...inCode, ...targets.map(targetPath)].map((t) => posix.normalize(t).replace(/^\/+/, ''));
++  return [...new Set(paths.filter((t) => PATH_ROOTS.some((root) => t.startsWith(root))))];
++}
++
++/** Whether `path` exists under ROOT spelt exactly, case included (APFS would ignore case). */
++function existsExactly(path: string): boolean {
++  let dir = ROOT;
++  for (const segment of path.split('/').filter(Boolean)) {
++    if (!statSync(dir).isDirectory() || !readdirSync(dir).includes(segment)) return false;
++    dir = join(dir, segment);
++  }
++  return true;
++}
++
++/** The repository paths `text` names that do not exist. */
++function missingPaths(text: string): string[] {
++  return namedPaths(text).filter((p) => !existsExactly(p));
  }
-@@ -147,13 +172,41 @@ it('namedPaths reads a repository path out of every Markdown form that can name
-     ['`src/**/*.ts` `src/{a,b}.ts` `src/[id].ts`', []],
-     ['`README.md` [x](https://example.com/src/a.ts) `importFullBackup(text, intent)`', []],
-     ['`[x](docs/a.md)`', []],
-+    // Balanced and escaped parentheses belong to the destination; the link's own close does not.
-+    ['[t](docs/(a).md)', ['docs/(a).md']],
-+    ['[t](docs/a(b(c)).md "Guide")', ['docs/a(b(c)).md']],
-+    ['[t](docs/a\\(b.md)', ['docs/a(b.md']],
-+    ['(see [t](docs/a.md))', ['docs/a.md']],
-+    ['![alt](public/(i).png)', ['public/(i).png']],
-+    ['[ref]: docs/(a).md', ['docs/(a).md']],
-+    // A reference definition inside any container, or with its destination on the next line.
-+    ['> [ref]: docs/a.md', ['docs/a.md']],
-+    ['- [ref]: docs/a.md', ['docs/a.md']],
-+    ['1. > - [ref]: <docs/a.md>', ['docs/a.md']],
-+    ['- item\n\n      [ref]: docs/a.md', ['docs/a.md']],
-+    ['[ref]:\n  docs/a.md', ['docs/a.md']],
-+    // HTML targets unquoted, in any case, and every srcset candidate.
-+    ['<a href=docs/a.md>a</a> <img src=public/i.png>', ['docs/a.md', 'public/i.png']],
-+    ["<IMG SRC = 'public/i.png'>", ['public/i.png']],
-+    ['<img srcset="public/a.png 1x, public/b.png 2x"> <video poster=public/p.png>', ['public/a.png', 'public/b.png', 'public/p.png']],
-+    // Entities and backslash escapes decode before the path is read.
-+    ['[t](docs&#47;a.md) <a href="docs&#x2F;b.md">', ['docs/a.md', 'docs/b.md']],
-+    ['[t](docs/a&amp;b.md) [u](docs/\\_c.md)', ['docs/a&b.md', 'docs/_c.md']],
-+    // The 2026-10-01 review's counterexamples, each naming a file that is not the existing prefix.
-+    ['[missing](docs/(reviewer-missing).md)', ['docs/(reviewer-missing).md']],
-+    ['[missing]: docs/(reviewer-missing).md', ['docs/(reviewer-missing).md']],
-+    ['![missing](public/(reviewer-missing).png)', ['public/(reviewer-missing).png']],
-+    ['[missing](docs/cgs-course.md(reviewer-missing))', ['docs/cgs-course.md(reviewer-missing)']],
-+    ['> [missing]: docs/reviewer-missing.md', ['docs/reviewer-missing.md']],
-+    ['<a href=docs/reviewer-missing.md> <img src=public/reviewer-missing.png>', ['docs/reviewer-missing.md', 'public/reviewer-missing.png']],
-   ];
-   for (const [markdown, expected] of cases) expect(namedPaths(markdown), markdown).toEqual(expected);
-   expect(() => namedPaths('`docs/a.md` and a stray ` tick')).toThrow(/unpaired backtick/);
-+  expect(() => namedPaths('[t](docs&sol;a.md)')).toThrow(/undecoded entity/);
+ 
+ it('the instructions every agent session loads at the repository root fit in 32768 bytes', () => {
+@@ -139,9 +233,9 @@ it('AGENTS.md states the core loop, every hard do-not and each owner-approved ap
  });
  
--// Every agent-facing prohibition the 2026-10-01 rework restored from the baseline
--// (56789a8) sweep, one short exact phrase each. Condensing may reword around them; deleting
-+// Every agent-facing prohibition the 2026-10-01 reworks restored from the baseline
-+// (56789a8) sweeps, one short exact phrase each. Condensing may reword around them; deleting
- // one fails here. A rule that genuinely changes edits its phrase here in the same lane.
- const RESTORED_PROHIBITIONS = [
-   // Practice information, closing a block, unfinished practice, totals, hands-free
-@@ -248,6 +301,13 @@ const RESTORED_PROHIBITIONS = [
-   'its throw is never caught, `hydrated` never forced open, nothing set through `setState`',
-   'never a second importer',
-   'only one that fails a listed pair',
-+  // The second sweep (a sentence whose main clause survived but a second negated qualifier did not)
-+  'never a closure or a ref an effect mirrors',
-+  'audio unlocks on the page that starts the clock, never on the practice screen',
-+  'a preserved key goes to the one with real content, never merely the lower ordinal',
-+  '`planMinutesByInstrument`) is store state, never in `PracticeDB`, sync or a backup',
-+  'never while the viewport is short or zoomed',
-+  'components never touch IndexedDB or rebuild domain objects by hand',
- ];
+ it('every repository path AGENTS.md names exists', () => {
+-  const paths = namedPaths(readFileSync(AGENTS, 'utf8'));
+-  expect(paths.length).toBeGreaterThan(0);
+-  expect(paths.filter((p) => !existsSync(join(ROOT, p)))).toEqual([]);
++  const text = readFileSync(AGENTS, 'utf8');
++  expect(namedPaths(text).length).toBeGreaterThan(0);
++  expect(missingPaths(text)).toEqual([]);
+ });
  
- it('AGENTS.md keeps every agent-facing prohibition restored from the baseline sweep', () => {
-```
+ // The proof route for namedPaths: one Markdown form per row, each expectation written
+@@ -192,17 +286,88 @@ it('namedPaths reads a repository path out of every Markdown form that can name
+     // Entities and backslash escapes decode before the path is read.
+     ['[t](docs&#47;a.md) <a href="docs&#x2F;b.md">', ['docs/a.md', 'docs/b.md']],
+     ['[t](docs/a&amp;b.md) [u](docs/\\_c.md)', ['docs/a&b.md', 'docs/_c.md']],
+-    // The 2026-10-01 review's counterexamples, each naming a file that is not the existing prefix.
++    // Code fences of either kind, inside a block quote too; a destination keeps its backticks.
++    ['~~~\nscripts/run.mjs\n~~~', ['scripts/run.mjs']],
++    ['> ```\n> docs/a.md\n> ```', ['docs/a.md']],
++    ['[t](docs/`a`.md) `src/x.ts`', ['src/x.ts', 'docs/`a`.md']],
++    // HTML binds tighter than code; autolinks and comments name no repository path.
++    ['<a title="`docs/a.md`" href="docs/b.md">', ['docs/b.md']],
++    ['<https://example.com/docs/a.md> <!-- [t](docs/a.md) -->', []],
++    // A link target is a URL, never a glob, and its percent-encoding decodes whole.
++    ['[t](docs/a[1].md) [u](docs%2Fb.md)', ['docs/a[1].md', 'docs/b.md']],
++    ['<img srcset="public/a.png, public/b.png,, public/c(1).png 2x">', ['public/a.png', 'public/b.png', 'public/c(1).png']],
++  ];
++  for (const [markdown, expected] of cases) {
++    if (expected === 'refused') expect(() => namedPaths(markdown), markdown).toThrow();
++    else expect(namedPaths(markdown), markdown).toEqual(expected);
++  }
++  expect(() => namedPaths('`docs/a.md` and a stray ` tick')).toThrow(/unpaired backtick/);
++  expect(() => namedPaths('[t](docs&sol;a.md)')).toThrow(/undecoded entity/);
++  expect(() => namedPaths('\\`docs/a.md\\`')).toThrow(/escaped backtick/);
++  expect(() => namedPaths('```\ndocs/a.md')).toThrow(/unclosed code fence/);
++  expect(() => namedPaths('[t](docs/a.md extra)')).toThrow(/unreadable link/);
++  expect(() => namedPaths('[t](<docs/a.md)')).toThrow(/unreadable link/);
++  expect(() => namedPaths('<img src="public/i.png"')).toThrow(/unreadable HTML/);
++});
++
++// Every counterexample a review of this lane has raised against ac-3, each appended to the
++// real AGENTS.md and run through the same check ac-3 runs: the check must fail (a missing
++// path or a refusal). `expected` is the whole destination each one names, so a reader can see
++// the extraction did not stop at an existing prefix.
++it('every reviewer counterexample appended to AGENTS.md fails the path check', () => {
++  const NBSP = '\u00A0';
++  const cases: [string, string[] | 'refused'][] = [
++    // Round 1: titled and angle-bracket links, and an anchor read as a glob.
++    ['[missing](docs/reviewer-missing.md "Guide")', ['docs/reviewer-missing.md']],
++    ['[missing](<docs/reviewer-missing.md>)', ['docs/reviewer-missing.md']],
++    ['`docs/reviewer-missing.md#part[0]`', ['docs/reviewer-missing.md']],
++    // Round 2: parentheses inside a destination, container definitions, unquoted HTML.
+     ['[missing](docs/(reviewer-missing).md)', ['docs/(reviewer-missing).md']],
+     ['[missing]: docs/(reviewer-missing).md', ['docs/(reviewer-missing).md']],
+     ['![missing](public/(reviewer-missing).png)', ['public/(reviewer-missing).png']],
+     ['[missing](docs/cgs-course.md(reviewer-missing))', ['docs/cgs-course.md(reviewer-missing)']],
+     ['> [missing]: docs/reviewer-missing.md', ['docs/reviewer-missing.md']],
+-    ['<a href=docs/reviewer-missing.md> <img src=public/reviewer-missing.png>', ['docs/reviewer-missing.md', 'public/reviewer-missing.png']],
++    ['- [missing]: docs/reviewer-missing.md', ['docs/reviewer-missing.md']],
++    ['<a href=docs/reviewer-missing.md>', ['docs/reviewer-missing.md']],
++    ['<img src=public/reviewer-missing.png>', ['public/reviewer-missing.png']],
++    // Round 3: block-quote continuations, U+00A0 inside a destination, backticks inside a
++    // destination or attribute, and a comma inside a srcset URL.
++    ['> [missing]:\n> docs/reviewer-missing.md\n>\n> [missing]', ['docs/reviewer-missing.md']],
++    ['> [missing](\n> docs/reviewer-missing.md)', ['docs/reviewer-missing.md']],
++    ['> ![missing](\n> public/reviewer-missing.png)', ['public/reviewer-missing.png']],
++    [`[missing](docs/cgs-course.md${NBSP}reviewer-missing)`, [`docs/cgs-course.md${NBSP}reviewer-missing`]],
++    [`[missing]: docs/cgs-course.md${NBSP}reviewer-missing`, [`docs/cgs-course.md${NBSP}reviewer-missing`]],
++    [`![missing](public/icon.svg${NBSP}reviewer-missing)`, [`public/icon.svg${NBSP}reviewer-missing`]],
++    [`\`docs/cgs-course.md${NBSP}reviewer-missing\``, [`docs/cgs-course.md${NBSP}reviewer-missing`]],
++    ['[missing](docs/cgs-course.md`reviewer-missing`)', ['docs/cgs-course.md`reviewer-missing`']],
++    ['[missing]: docs/cgs-course.md`reviewer-missing`', ['docs/cgs-course.md`reviewer-missing`']],
++    ['![missing](public/icon.svg`reviewer-missing`)', ['public/icon.svg`reviewer-missing`']],
++    ['<img srcset="public/icon.svg`reviewer-missing` 1x">', ['public/icon.svg`reviewer-missing`']],
++    ['<a href="docs/cgs-course.md`reviewer-missing`">', ['docs/cgs-course.md`reviewer-missing`']],
++    ['<img srcset="public/icon.svg,reviewer-missing.png 1x">', ['public/icon.svg,reviewer-missing.png']],
++    [`<img srcset="public/icon.svg${NBSP}reviewer-missing.png 1x">`, [`public/icon.svg${NBSP}reviewer-missing.png`]],
++    // Round 4 (pre-review): a span, title, comment or attribute that runs on into a later
++    // block and swallows a real link there; and a name that matches only if case is ignored.
++    ['a stray ` tick\n\n[missing](docs/reviewer-missing.md)\n\nand ` another', 'refused'],
++    ['[t](docs/cgs-course.md "x\n\n[u](docs/reviewer-missing.md)\n\n")', 'refused'],
++    ['text <!-- x\n\n[u](docs/reviewer-missing.md)\n\n-->', 'refused'],
++    ['<a title="x\n\n[u](docs/reviewer-missing.md)\n\n" href="docs/cgs-course.md">', 'refused'],
++    ['[empty]:\n\n[missing](docs/reviewer-missing.md)', ['docs/reviewer-missing.md']],
++    ['[t](docs/CGS-Course.md)', ['docs/CGS-Course.md']],
+   ];
+-  for (const [markdown, expected] of cases) expect(namedPaths(markdown), markdown).toEqual(expected);
+-  expect(() => namedPaths('`docs/a.md` and a stray ` tick')).toThrow(/unpaired backtick/);
+-  expect(() => namedPaths('[t](docs&sol;a.md)')).toThrow(/undecoded entity/);
++  const agents = readFileSync(AGENTS, 'utf8');
++  const stillPassing = (markdown: string) => {
++    try {
++      return missingPaths(`${agents}\n\n${markdown}\n`).length === 0;
++    } catch {
++      return false;
++    }
++  };
++  for (const [markdown, expected] of cases) {
++    if (expected === 'refused') expect(() => namedPaths(markdown), markdown).toThrow();
++    else expect(namedPaths(markdown), markdown).toEqual(expected);
++  }
++  expect(cases.map(([markdown]) => markdown).filter(stillPassing)).toEqual([]);
+ });
+ 
+ // Every agent-facing prohibition the 2026-10-01 reworks restored from the baseline
+````
 
 **Paths the rework touched:**
 
-- `AGENTS.md`
-- `DECISIONS.md`
 - `tests/agent-context.test.ts`
 
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
 
-```
-174b4b9 Rework: keep each rule's second negated qualifier loaded; read every link-destination form
+````
+e6c0e83 Rework: read every link, code and HTML target whole before checking it
 
-Family always-loaded-prohibition-preservation
-Invariant: every agent-facing negation in 56789a8:AGENTS.md survives in AGENTS.md, including
-a qualifier that rides on a rule whose main clause was kept.
-Method change: the first sweep matched rules by their main clause, so a sentence counted as
-kept even when a second negation in it (nor, never merely, never while, or ... by hand) was
-dropped. The second sweep grepped the baseline for that shape. Restored, each by extending the
-clause already in place: an effect-mirrored notes ref; audio unlock on the practice screen; a
-preserved course key by lower ordinal; planMinutesByInstrument in PracticeDB, sync or backup;
-viewport restore while short or zoomed; components rebuilding domain objects by hand. Checked
-clean by the same grep: lessonId neither absent nor resolving (dangling-id rule), the
-hydration screen writing nothing (setState rule), focusForItem's third copy (only rule),
-generated course data never hand-edited, the routine run's activeRoutine (ephemeral rule).
-Guard: the six phrases join RESTORED_PROHIBITIONS (89); deleting any one fails it. The
-DECISIONS disposition rows for the six sections name them; the profile is 31,926 bytes.
+Family: repository-guidance-path-reachability (fourth round). Every earlier
+fix added a branch to the extractor, and each review found another way the
+extractor stopped early and checked only an existing prefix. This changes
+the method instead of adding a fifth branch.
 
-Family repository-guidance-path-reachability
-Invariant: every path a link target names is the one checked, never a prefix of it and
-never skipped.
-Consumers: namedPaths is the single implementation with one caller (ac-3); its three
-extraction branches are now: (1) inline links and images and (2) reference definitions share
-destinationAt, which reads <...> or a space-free run with balanced, escapable parentheses at
-any depth; definitions are read wherever `]:` occurs, so block quotes, lists and any indent
-are covered; (3) HTML href/src/srcset/poster, quoted or not, any case. Link targets decode
-backslash escapes and entities (an unknown named entity throws) before anchors/queries go;
-trail
+Invariant: every construct ac-3 reads is consumed whole, and the exact
+destination it names is validated, or the text is refused (a throw fails
+ac-3). Nothing is trimmed off a destination to make it match.
+
+Design (tests/agent-context.test.ts, namedPaths):
+- One left-to-right scanner with CommonMark precedence replaces the old
+  "strip code spans first, then regex the rest" order. Raw HTML and
+  autolinks bind tighter than code spans, and code spans tighter than link
+  brackets. A link destination is read raw, so backticks inside it belong to
+  it.
+- Block-quote markers are stripped per line before scanning, so a destination
+  can continue onto the next "> " line.
+- Destinations, srcset candidates and code tokens split on ASCII whitespace
+  only (the CommonMark/HTML class), never JavaScript's \s, which matches
+  U+00A0.
+- Every destination must be followed by a valid tail (title, then ")" for
+  an inline link; title, then end of line for a definition). A tail that does
+  not parse is refused, which closes truncation generally.
+- srcset follows the WHATWG candidate grammar, so a comma inside a URL stays
+  part of that URL.
+- Every HTML attribute value is a candidate.
+- Fences (``` and ~~~) are line-level, and an unclosed one is refused. An
+  escaped backtick or an unparseable tag is refused too.
+- Code tokens lose only anchors, queries and line suffixes. The leading and
+  trailing punctuation trimming was another prefix truncation, and nothing
+  needed it. Link targets are never read as globs.
+
+Consumers enumerated: namedPaths is the only implementation, and its code
+spans, fences, inline links/images, definitions, HTML at
 … (truncated)
-```
+
+bfc4d2d Rework: no read construct crosses a line it cannot; exact-case existence
+
+Same family, repository-guidance-path-reachability, from the other side.
+The previous commit stopped constructs ending too early. This one stops them
+running on too far. A code span, link title, HTML tag or comment that crosses
+a line ending could pair with something in a later block and swallow a real
+link there, so ac-3 never read it.
+
+Invariant, extended: every construct is read whole and no further. Only the
+whitespace before a destination or a title may cross a line ending, and at
+most one. Anything else that would cross one is refused. Existence is checked
+segment by segment against the directory listing, so a name that matches only
+case-insensitively (APFS) counts as missing, as it would on Linux CI.
+
+Consumers: the namedPaths code span, TITLE (both tails), ATTRIBUTE/OPEN_TAG,
+OTHER_HTML and the destination gap. missingPaths serves both ac-3 and the
+reviewer table. The reviewer table gains the cross-block cases (span,
+title, comment, attribute, blank-line definition) and a case-only mismatch.
+Each new rule has a mutation (allow the crossing, or use existsSync) that
+makes the named table test fail.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+````
 
 ## Check against the contract
 
