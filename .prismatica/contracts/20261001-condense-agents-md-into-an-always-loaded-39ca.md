@@ -5,7 +5,7 @@ title: Condense AGENTS.md into an always-loaded rulebook within 32 KiB and keep
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/43
 intent: 20261001-condense-agents-md-into-an-always-loaded-39ca
 tier: normal
-stage: review
+stage: ship
 baseline:
   commit: 56789a868c82e6bfd52b451cead11d071bf19252
   branch: main
