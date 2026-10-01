@@ -63,39 +63,64 @@ const PATH_ROOTS = ['src/', 'tests/', 'scripts/', 'docs/', 'public/', '.github/'
 
 // A code span (or fence) is a backtick run closed by a run of the same length.
 const CODE_SPAN = /(?<!`)(`+)(?!`)([\s\S]*?[^`])\1(?!`)/g;
-// A link destination is `<...>` or a run without spaces; a title may follow it.
-const DESTINATION = String.raw`(<[^>\n]*>|[^\s<>()]+)`;
-const LINK_TARGETS = [
-  new RegExp(String.raw`\]\(\s*${DESTINATION}`, 'g'), // [text](dest "title"), ![alt](dest)
-  new RegExp(String.raw`^ {0,3}\[[^\]\n]+\]:\s*${DESTINATION}`, 'gm'), // [label]: dest "title"
-  /\b(?:href|src)\s*=\s*["']([^"']+)["']/g, // <a href="dest">, <img src="dest">
-];
+// Where a link destination starts: an inline link or image `](`, or a reference definition
+// `]:` read anywhere, so one inside a block quote, a list or any indent is never missed
+// (reading one that is not a definition only checks one more path).
+const DESTINATION_START = /\]\(\s*|\]:\s*/g;
+// An HTML target, quoted or not, in any case; srcset lists several.
+const HTML_TARGET = /\b(href|src|srcset|poster)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/gi;
+const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
+
+/** The link destination at `i`: `<...>`, or a run without spaces whose parentheses balance. */
+function destinationAt(text: string, i: number): string {
+  if (text[i] === '<') return /^<([^>\n]*)>/.exec(text.slice(i))?.[1] ?? '';
+  let depth = 0;
+  let end = i;
+  for (; end < text.length && !/\s/.test(text[end]); end++) {
+    if (text[end] === '\\') end++; // an escaped character never opens or closes
+    else if (text[end] === '(') depth++;
+    else if (text[end] === ')' && --depth < 0) break;
+  }
+  return text.slice(i, end);
+}
+
+/** A link target as the path it names: escapes and entities decoded, anchor and query dropped. */
+function targetPath(target: string): string {
+  const unescaped = target.replace(/\\([!-/:-@[-`{-~])|&(#x[0-9a-f]+|#\d+|\w+);/gi, (all, escaped, entity: string) => {
+    if (escaped) return escaped;
+    if (entity[0] === '#') return String.fromCodePoint(entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1)));
+    if (entity in ENTITIES) return ENTITIES[entity];
+    throw new Error(`undecoded entity ${all} in ${target}`);
+  });
+  const path = unescaped.replace(/[#?].*$/, '');
+  try {
+    return decodeURI(path);
+  } catch {
+    return path;
+  }
+}
 
 /**
  * Repository paths AGENTS.md names: every whitespace-separated token of a code span or
- * fence, and every link destination (inline, angle-bracketed, titled, a reference
- * definition, or an HTML href/src). Anchors, queries, line suffixes and trailing
- * punctuation are stripped BEFORE globs are skipped. A backtick left unpaired throws:
- * it would shift every span after it, so the text cannot be read reliably.
+ * fence, and every link target (an inline link or image, a reference definition, an HTML
+ * href/src/srcset/poster). Anchors, queries and, in code, line suffixes and trailing
+ * punctuation are stripped BEFORE globs are skipped. A backtick left unpaired throws: it
+ * would shift every span after it, so the text cannot be read reliably.
  */
 function namedPaths(text: string): string[] {
   const spans = [...text.matchAll(CODE_SPAN)];
   const prose = text.replace(CODE_SPAN, ' ');
   if (prose.includes('`')) throw new Error(`unpaired backtick near: ${prose.slice(prose.indexOf('`'), prose.indexOf('`') + 60)}`);
-  const tokens = [
-    ...spans.flatMap(([, , span]) => span.split(/\s+/)),
-    ...LINK_TARGETS.flatMap((re) => [...prose.matchAll(re)].map(([, target]) => target)),
-  ];
-  const paths = tokens
-    .map((t) => t.replace(/^[<('"]+|[>'"]+$/g, ''))
-    .map((t) => {
-      try {
-        return decodeURI(t);
-      } catch {
-        return t;
-      }
-    })
-    .map((t) => t.replace(/^\.?\//, '').replace(/[#?].*$/, '').replace(/[),.;:]+$/, '').replace(/(:L?\d+(-L?\d+)?)+$/, ''))
+  const inCode = spans
+    .flatMap(([, , span]) => span.split(/\s+/))
+    .map((t) => t.replace(/^[<('"]+|[>'"]+$/g, '').replace(/[#?].*$/, '').replace(/[),.;:]+$/, '').replace(/(:L?\d+(-L?\d+)?)+$/, ''));
+  const html = [...prose.matchAll(HTML_TARGET)].flatMap(([, name, ...values]) => {
+    const value = values.find((v) => v !== undefined) ?? '';
+    return name.toLowerCase() === 'srcset' ? value.split(',').map((c) => c.trim().split(/\s+/)[0]) : [value];
+  });
+  const linked = [...[...prose.matchAll(DESTINATION_START)].map((m) => destinationAt(prose, m.index + m[0].length)), ...html].map(targetPath);
+  const paths = [...inCode, ...linked]
+    .map((t) => t.replace(/^\.?\//, ''))
     .filter((t) => PATH_ROOTS.some((root) => t.startsWith(root)) && !/[*{[]/.test(t));
   return [...new Set(paths)];
 }
@@ -147,13 +172,41 @@ it('namedPaths reads a repository path out of every Markdown form that can name 
     ['`src/**/*.ts` `src/{a,b}.ts` `src/[id].ts`', []],
     ['`README.md` [x](https://example.com/src/a.ts) `importFullBackup(text, intent)`', []],
     ['`[x](docs/a.md)`', []],
+    // Balanced and escaped parentheses belong to the destination; the link's own close does not.
+    ['[t](docs/(a).md)', ['docs/(a).md']],
+    ['[t](docs/a(b(c)).md "Guide")', ['docs/a(b(c)).md']],
+    ['[t](docs/a\\(b.md)', ['docs/a(b.md']],
+    ['(see [t](docs/a.md))', ['docs/a.md']],
+    ['![alt](public/(i).png)', ['public/(i).png']],
+    ['[ref]: docs/(a).md', ['docs/(a).md']],
+    // A reference definition inside any container, or with its destination on the next line.
+    ['> [ref]: docs/a.md', ['docs/a.md']],
+    ['- [ref]: docs/a.md', ['docs/a.md']],
+    ['1. > - [ref]: <docs/a.md>', ['docs/a.md']],
+    ['- item\n\n      [ref]: docs/a.md', ['docs/a.md']],
+    ['[ref]:\n  docs/a.md', ['docs/a.md']],
+    // HTML targets unquoted, in any case, and every srcset candidate.
+    ['<a href=docs/a.md>a</a> <img src=public/i.png>', ['docs/a.md', 'public/i.png']],
+    ["<IMG SRC = 'public/i.png'>", ['public/i.png']],
+    ['<img srcset="public/a.png 1x, public/b.png 2x"> <video poster=public/p.png>', ['public/a.png', 'public/b.png', 'public/p.png']],
+    // Entities and backslash escapes decode before the path is read.
+    ['[t](docs&#47;a.md) <a href="docs&#x2F;b.md">', ['docs/a.md', 'docs/b.md']],
+    ['[t](docs/a&amp;b.md) [u](docs/\\_c.md)', ['docs/a&b.md', 'docs/_c.md']],
+    // The 2026-10-01 review's counterexamples, each naming a file that is not the existing prefix.
+    ['[missing](docs/(reviewer-missing).md)', ['docs/(reviewer-missing).md']],
+    ['[missing]: docs/(reviewer-missing).md', ['docs/(reviewer-missing).md']],
+    ['![missing](public/(reviewer-missing).png)', ['public/(reviewer-missing).png']],
+    ['[missing](docs/cgs-course.md(reviewer-missing))', ['docs/cgs-course.md(reviewer-missing)']],
+    ['> [missing]: docs/reviewer-missing.md', ['docs/reviewer-missing.md']],
+    ['<a href=docs/reviewer-missing.md> <img src=public/reviewer-missing.png>', ['docs/reviewer-missing.md', 'public/reviewer-missing.png']],
   ];
   for (const [markdown, expected] of cases) expect(namedPaths(markdown), markdown).toEqual(expected);
   expect(() => namedPaths('`docs/a.md` and a stray ` tick')).toThrow(/unpaired backtick/);
+  expect(() => namedPaths('[t](docs&sol;a.md)')).toThrow(/undecoded entity/);
 });
 
-// Every agent-facing prohibition the 2026-10-01 rework restored from the baseline
-// (56789a8) sweep, one short exact phrase each. Condensing may reword around them; deleting
+// Every agent-facing prohibition the 2026-10-01 reworks restored from the baseline
+// (56789a8) sweeps, one short exact phrase each. Condensing may reword around them; deleting
 // one fails here. A rule that genuinely changes edits its phrase here in the same lane.
 const RESTORED_PROHIBITIONS = [
   // Practice information, closing a block, unfinished practice, totals, hands-free
@@ -248,6 +301,13 @@ const RESTORED_PROHIBITIONS = [
   'its throw is never caught, `hydrated` never forced open, nothing set through `setState`',
   'never a second importer',
   'only one that fails a listed pair',
+  // The second sweep (a sentence whose main clause survived but a second negated qualifier did not)
+  'never a closure or a ref an effect mirrors',
+  'audio unlocks on the page that starts the clock, never on the practice screen',
+  'a preserved key goes to the one with real content, never merely the lower ordinal',
+  '`planMinutesByInstrument`) is store state, never in `PracticeDB`, sync or a backup',
+  'never while the viewport is short or zoomed',
+  'components never touch IndexedDB or rebuild domain objects by hand',
 ];
 
 it('AGENTS.md keeps every agent-facing prohibition restored from the baseline sweep', () => {

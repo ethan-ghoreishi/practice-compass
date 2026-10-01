@@ -25,9 +25,11 @@ counterexamples, measurements and rejected attempts were deleted, not relocated:
 
 **Prohibitions stay loaded.** The first pass left some agent-facing prohibitions only in a runbook
 or a code comment, and review rejected that: a session that never opens the doc never sees the
-ban. A sweep of all 25 baseline sections restored every one, and `tests/agent-context.test.ts`
-anchors the 83 restored phrases. The cost is headroom: the Claude profile is now 31,469 of
-32,768 bytes (about 1.3 KiB free, down from 2 KiB), with each rule on one line. The cap still
+ban. A sweep of all 25 baseline sections restored 83; a second review found six more, each a
+rule whose main clause survived while a second negated qualifier did not (`nor`, `never merely`,
+`never while`, `or ... by hand`), so the second sweep read the baseline for exactly that shape.
+`tests/agent-context.test.ts` anchors all 89 phrases. The cost is headroom: the Claude profile is
+now 31,926 of 32,768 bytes (842 free, down from 2 KiB), with each rule on one line. The cap still
 holds in `npm test`; the next lane makes room by condensing in place.
 
 **Disposition.** Lines are 56789a8's AGENTS.md. "A:" is a heading in the new AGENTS.md, which
@@ -37,14 +39,14 @@ row also dropped its review narrative, which the dated entries below already rec
 | Baseline section (lines) | Rules now live | Dropped as stale |
 | --- | --- | --- |
 | The one rule above all (6-18) | A: The core loop | - |
-| One canonical home, v13 (19-160) | A: Practice information has one home per kind; `practiceInformation.ts`, `ItemNotes.tsx` (editor), `backup.ts` and `io.ts` (attachment doors) comments | - |
+| One canonical home, v13 (19-160) | A: Practice information has one home per kind (incl. never a ref an effect mirrors); `practiceInformation.ts`, `ItemNotes.tsx` (editor), `backup.ts` and `io.ts` (attachment doors) comments | - |
 | Keep admin overhead low (161-167) | A: Quick start, low admin | - |
 | Prioritise the quick-start flow (168-183) | A: Quick start, low admin | - |
 | Today is a session workspace (184-217) | A: Today is a session workspace (owner decisions 2026-08-28, 2026-09-11) | - |
 | Review actions (218-300) | A: Closing a block and review actions; `CloseBlock.tsx`, `format.ts` comments; due-review row in `Today.tsx` | - |
 | Nothing replaces an unfinished session (301-424) | A: Unfinished practice is never replaced; `practiceSession.ts`, `backup.ts`, `githubSync.ts`, `App.tsx` (deferred retry), `useStore.ts` (`installDatabase`) comments | - |
 | Practice totals (425-455) | A: Practice totals; `selectors.ts` comments (balance denominator) | - |
-| Hands-free practice (456-573) | A: Hands-free practice; `screenAwake.ts`, `useScreenAwake.ts` (audio, gesture unlock), `practiceSignal.ts`; secure-context table in docs/setar-archive.md §5 | - |
+| Hands-free practice (456-573) | A: Hands-free practice (incl. audio never unlocked on the practice screen); `screenAwake.ts`, `useScreenAwake.ts` (audio, gesture unlock), `practiceSignal.ts`; secure-context table in docs/setar-archive.md §5 | - |
 | Hard "do nots" (574-603) | A: Hard do-nots; A: Device, sync (Sync); transport steps in `syncEngine.ts`, `gitRemote.ts` | - |
 | The Pathway is a trust anchor (604-811) | A: Pathways, routines and repertoire; docs/repertoire-experience.md (reader/writer matrix, source kinds, the three views, URL state, grouping); seed list in `pathwaySeed.ts`; `routines.ts`, `useStore.ts`, `RoutineRunner.tsx`, `musicTerms.ts`, `pathwaySeed.ts` comments | - |
 | Lessons and the deadline exception (812-846) | A: Lessons, the agenda and NAS references; `recordings.ts` (resolver); `Lessons.tsx` (class number, video-first order) | The one-tap Setar class import and `npm run scan:setar` regenerating `SETAR_CLASS_SESSIONS`: replaced by Refresh Setar archive; `setarClasses.ts` is a frozen ledger (docs/setar-archive.md §6) |
@@ -52,13 +54,13 @@ row also dropped its review narrative, which the dated entries below already rec
 | Persian text, direction-aware (999-1636) | A: Direction-aware text (incl. `dir` written literally, never computed); A: Architecture and tests (WebKit harness); `direction.test.ts` ledgers and comments (headings, lone titles, label-first rows, the two `UNEXEMPTED_PHRASE_ALLOWLIST` exceptions with reasons); `farsi.ts`; `tests/practiceBrowser.ts` | Eleven findings' narratives and the scanner's own bug history (fixed in `direction.test.ts`) |
 | Everything the app already knows (1637-1747) | A: Material reaches you where you are (incl. never a panel, viewer or dashboard; nothing touches a minute, the wake lock or an announcement); composition order in `itemFiles.ts`; `recordings.ts`, `selectors.ts` comments; Files list in `ItemDetail.tsx` | - |
 | The Setar archive is a SOURCE (1748-2225) | A: The Setar archive is a source (incl. the scanner's symlink, read-failure and rename-loop bans, roster, alias and blob bans); docs/setar-archive.md §2, §5, §6; `scan-setar-classes.mjs`, `sourceArchive.ts`, `sourceReconcile.ts` comments | - |
-| A COURSE is reference data in code (2226-2638) | A: Courses are reference data in code (incl. scanner never reachable from runtime; contrast cards never a viewer, flashcard player or deck list); docs/cgs-course.md §2-§6 (routine proportions §4); `courseSeed.ts`, `pathwaySeed.ts` (offered defaults), `routines.ts` (`fitRoutineToMinutes`) comments | - |
+| A COURSE is reference data in code (2226-2638) | A: Courses are reference data in code (incl. scanner never reachable from runtime; contrast cards never a viewer, flashcard player or deck list; a preserved key never goes merely to the lower ordinal); docs/cgs-course.md §2-§6 (routine proportions §4); `courseSeed.ts`, `pathwaySeed.ts` (offered defaults), `routines.ts` (`fitRoutineToMinutes`) comments | - |
 | The Khonyagar Tar course (2639-2717) | A: Courses are reference data in code; docs/khonyagar-course.md | - |
 | Review scheduling (2718-2881) | A: Review scheduling stays explainable; docs/scheduling-evidence.md §6-§7; `scheduling.ts`, `format.ts` comments | - |
-| The Session Plan (2882-2994) | A: The Session Plan is a view over real blocks (incl. no "optimal" claims); docs/scheduling-evidence.md §1-§5; `plan.ts`, `SessionPlan.tsx` (day staleness) | - |
-| Device & infrastructure (2995-3072) | A: Device, sync and infrastructure; docs/nas-topology.md; `viewport.ts`; `vite.config.ts` (CSP, base, prompt-mode worker, build stamp); `Layout.tsx` (equal tabs, scroll to top, per-route widths with `global.css`, which also holds the fonts); `App.tsx` (sync triggers); `Settings.tsx` (sync status, restore); catalogue row grid in `global.css` (`.stage-unit`) with its one status line in `StageDetail.tsx`, detach under Connected to in `ItemDetail.tsx` | - |
+| The Session Plan (2882-2994) | A: The Session Plan is a view over real blocks (incl. no "optimal" claims; the running plan never in `PracticeDB`, sync or a backup); docs/scheduling-evidence.md §1-§5; `plan.ts`, `SessionPlan.tsx` (day staleness) | - |
+| Device & infrastructure (2995-3072) | A: Device, sync and infrastructure (incl. no viewport restore while short or zoomed); docs/nas-topology.md; `viewport.ts`; `vite.config.ts` (CSP, base, prompt-mode worker, build stamp); `Layout.tsx` (equal tabs, scroll to top, per-route widths with `global.css`, which also holds the fonts); `App.tsx` (sync triggers); `Settings.tsx` (sync status, restore); catalogue row grid in `global.css` (`.stage-unit`) with its one status line in `StageDetail.tsx`, detach under Connected to in `ItemDetail.tsx` | - |
 | Colour is checked by a test (3073-3092) | A: Architecture and tests; `contrast.test.ts` comments | - |
-| Architecture rules (3093-3138) | A: Architecture and tests; per-version detail in `migrations.ts` | - |
+| Architecture rules (3093-3138) | A: Architecture and tests (incl. components never rebuild domain objects by hand); per-version detail in `migrations.ts` | - |
 | Tests are not optional (3139-3180) | A: Architecture and tests; `vite.config.ts` (journeys run inside Vitest); `tests/practiceBrowser.ts`; fixture roles in the journeys' own comments | - |
 | Roadmap items are allowed (3181-3186) | A: Architecture and tests | - |
 
