@@ -5,7 +5,7 @@ title: Make NAS deployment and media tooling fail closed, map the real NAS
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/41
 intent: 20261001-make-nas-deployment-and-media-tooling-fa-3d7b
 tier: heavy
-stage: build
+stage: review
 baseline:
   commit: 25d6767e8138593a9995ae16710cfaed35e380a6
   branch: main
