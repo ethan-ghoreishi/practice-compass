@@ -1,4 +1,16 @@
-import { mkdtempSync, mkdirSync, writeFileSync, symlinkSync, utimesSync, readFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  lstatSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readlinkSync,
+  writeFileSync,
+  symlinkSync,
+  utimesSync,
+  readFileSync,
+  rmSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, expect, it } from 'vitest';
@@ -441,6 +453,25 @@ describe('Setar session attribution', () => {
   });
 });
 
+/** Every entry under `dir`, never following a link: what "the archive is untouched" means. */
+function treeOf(dir: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  const visit = (rel: string) => {
+    for (const name of readdirSync(join(dir, rel)).sort()) {
+      const r = rel ? `${rel}/${name}` : name;
+      const p = join(dir, r);
+      const st = lstatSync(p);
+      if (st.isSymbolicLink()) out[r] = `link ${readlinkSync(p)}`;
+      else if (st.isDirectory()) {
+        out[r] = `dir ${st.mtimeMs}`;
+        visit(r);
+      } else out[r] = `file ${st.size} ${st.mtimeMs} ${createHash('sha256').update(readFileSync(p)).digest('hex')}`;
+    }
+  };
+  visit('');
+  return out;
+}
+
 describe('scanning the archive', () => {
   it('setar scanning is bounded read-only and produces stable complete indexes', () => {
     const root = mkdtempSync(join(tmpdir(), 'setar-scan-'));
@@ -548,9 +579,28 @@ describe('scanning the archive', () => {
       expect(() => buildIndex({ registryText: REGISTRY, inventory: oversize })).toThrow(/more than 5000 files/);
 
       // --- publication is atomic, outside the archive, read-only over it ----
+      const archiveBefore = treeOf(root);
       const target = join(out, 'index.json');
-      writeIndexAtomically(target, 'last good\n', root);
+      const text = `${JSON.stringify(scanToIndex(root), null, 2)}\n`;
+      writeIndexAtomically(target, text, root);
+      // The same archive scans to byte-identical text, and the scanner's OWN
+      // previous output is the one file it may replace.
+      const again = scanToIndex(root);
+      expect(`${JSON.stringify(again, null, 2)}\n`).toBe(text);
+      expect(again.contentHash).toBe(JSON.parse(text).contentHash);
+      writeIndexAtomically(target, `${JSON.stringify(again, null, 2)}\n`, root);
+      expect(readFileSync(target, 'utf8')).toBe(text);
+      expect(readdirSync(out).sort()).toEqual(['index.json', 'outside.mp4']); // no temp left behind
       expect(() => writeIndexAtomically(join(root, 'index.json'), 'x', root)).toThrow(/inside the archive/);
+      // …and the same refusal holds through REALPATH: a symlinked parent whose
+      // name says "outside" while it lands inside is exactly what a share does.
+      symlinkSync(root, join(out, 'looks-outside'));
+      expect(() => writeIndexAtomically(join(out, 'looks-outside', 'index.json'), text, root)).toThrow(/inside the archive/);
+      // A file this scanner did not write is never replaced, whatever its name.
+      writeFileSync(join(out, 'notes.json'), '{"mine":true}\n');
+      expect(() => writeIndexAtomically(join(out, 'notes.json'), text, root)).toThrow(/not an index this scanner wrote/);
+      expect(readFileSync(join(out, 'notes.json'), 'utf8')).toBe('{"mine":true}\n');
+      expect(treeOf(root)).toEqual(archiveBefore);
       // --- ONE CONSISTENT VIEW, OF EVERY INPUT, NOT JUST THE REGISTRY -------
       // The registry used to be the only input re-read after the walk, so the
       // one thing a non-atomic NAS copy actually perturbs — THE MEDIA — was
@@ -744,7 +794,7 @@ describe('scanning the archive', () => {
       // anything is written, so the last good output still stands.
       rmSync(join(root, 'PIECES.csv'));
       expect(() => scanToIndex(root)).toThrow();
-      expect(readFileSync(target, 'utf8')).toBe('last good\n');
+      expect(readFileSync(target, 'utf8')).toBe(text);
       // And the archive itself is untouched by any of the above.
       expect(scanArchive(root).inventory).toHaveLength(INVENTORY.length);
     } finally {

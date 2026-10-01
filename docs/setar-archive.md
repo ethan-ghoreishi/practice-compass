@@ -123,6 +123,29 @@ sorted path inventory (LF-joined, trailing newline)
 
 These are evidence of one corpus, not a limit: sessions 40+ need no code change.
 
+### Post-recovery observation (2026‑10‑01)
+
+Beside the baseline above, not replacing it: a fresh read-only scan after the owner's manual
+recovery from the 2026‑09‑30 deletion (planning measurements, `25d6767`).
+
+| | |
+|---|---|
+| sessions with files | 39 |
+| canonical pieces | 104 |
+| useful resources | 133 |
+| rename-log rows published | 270 |
+| diagnostics | 0 |
+| contentHash | `5f303d4db445…` |
+
+Owner follow-ups, recorded and decided by nothing in the repository:
+
+- `session-40-29-09-2026` exists and is **empty** on both sides of the Drive pairing.
+- Six fixture-era resource names, in sessions 23, 28 and 38, resolve through no logged
+  rename. Fuller names sit beside them on disk, so they look like unlogged manual renames
+  rather than losses.
+- `setar-classes/undo-rename.sh` is an executable `mv` script inside the served, synced
+  archive. Run, it would rename about 180 media files. No tool runs, moves or deletes it.
+
 ---
 
 ## 3. The publisher
@@ -168,7 +191,12 @@ two scripts by hand; that is the development fallback, not the deployment.
 2. **Directories.** Create a runtime/output directory *outside* the archive,
    e.g. `/volume1/practice-compass-index/`, owned by a non-admin service user.
    Copy `scripts/scan-setar-classes.mjs`, `scripts/publish-setar-index.mjs` and
-   `scripts/run-setar-index.sh` into it.
+   `scripts/run-setar-index.sh` into it. **When any of the three changes, copy all three
+   again** — still exactly three files, nothing else. The NAS keeps running its old copies
+   until then. Since 2026‑10‑01 the runner creates no directory (a missing
+   `PC_INDEX_WORKDIR` fails before anything runs), the scanner refuses an output it did not
+   write or one that real paths place inside the archive, and both Node scripts detect a
+   direct run by real path, so DSM's symlinked `/var/services/…` paths still run them.
 3. **Permissions.** Give that user **read-only** access to the archive share and
    read/write to the runtime directory only.
 4. **Configuration.** Create `config.env` in the runtime directory, `chmod 600`:
@@ -397,17 +425,16 @@ fix is the route, not a setting:
 - **On the Mac — verified.** `http://localhost:4173` is already a secure context;
   browsers privilege localhost on purpose, which is also why no automated check
   in this repo can ever see this failure.
-- **For a phone — candidate route, NOT yet verified end to end.** Mirror the build
-  to the NAS (`npm run deploy`) and open it over `https://192.168.0.20/practice-compass/`.
-  What is measured: that origin is HTTPS and therefore a secure context, and a
-  self-signed Synology certificate does not change that — accept the browser
-  warning once. What is NOT measured: the mirror itself. On 2026‑09‑18 that URL
-  answered **403**, and `deploy-nas.sh`'s target share (`/Volumes/web`) was not
-  mounted on the Mac, so the build behind it is stale or absent and the script had
-  no destination. Mount the share, run `npm run deploy`, and confirm the page loads
-  and reports `window.isSecureContext === true` before treating this route as good.
-  Per ac-19's own rule, record the NAS mapping you actually find rather than
-  assuming a `/Volumes` path works.
+- **For a phone — the HTTPS mirror.** Publish the build into a NEW, app-only folder with
+  `node scripts/nas-mirror.mjs --dest <folder>` (a dry run), then again with `--apply`, and
+  open it over `https://192.168.0.20/<folder>/`. What is measured: an HTTPS origin is a
+  secure context even with a self-signed Synology certificate (`:5010`, 2026‑09‑18). What is
+  not: that Web Station serves the `web` share at that URL (owner to confirm), and whether
+  iOS runs a service worker from a self-signed origin. `https://192.168.0.20/practice-compass/`
+  still answered **403** on 2026‑10‑01, and `/Volumes/web/practice-compass` shows the media
+  tree, so the mirror refuses it. `docs/nas-topology.md` has the map and what each testing
+  route proves; the mirror is a separate origin, never connected to the real data repo while
+  it runs an unmerged branch.
 
 Refresh says this in as many words rather than crashing, and it says it before it
 looks at the file at all — on a device that cannot hash, no index can pass, and a

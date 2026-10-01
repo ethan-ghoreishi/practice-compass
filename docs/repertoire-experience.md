@@ -121,8 +121,9 @@ anything else, then tap away, rotate once and back; return to More → Stop reco
 trace. Note the iOS version from Settings → General → About: the user agent freezes it. The first line names the device, iOS
 (user agent), whether it ran standalone, the build and `secure`. Layout geometry does not need
 HTTPS, so these traces were taken over plain http; the installed app's offline half of ac-24
-does, and needs a safe HTTPS route the owner chooses (never `scripts/deploy-nas.sh` aimed at a
-folder holding media — its `rsync --delete` deletes everything else there). Each further line is one
+does, and its route is `scripts/nas-mirror.mjs` publishing into a new app-only folder
+(`docs/nas-topology.md`); if iOS will not open that self-signed mirror as an installed app, the
+production install stands in, since a lane that only changes tooling cannot change layout. Each further line is one
 event, labelled by its source (`vv:resize`, `window:scroll`, `root:scroll`, `document:focusout`…;
 `<main>`'s own scrolling is not an event), with both viewports
 (`innerH`, `vvH`, `vvTop`, `scale`), every shell offset (`scrollY`, `html`, `body`, `root`,

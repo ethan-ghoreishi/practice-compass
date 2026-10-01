@@ -2,6 +2,58 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## NAS tooling changes only what it can prove it wrote (2026-10-01)
+
+On 2026-09-30 `scripts/deploy-nas.sh` ran `rsync --delete` into `/Volumes/web/practice-compass`,
+which reached the owner's media tree; Synology Drive carried the deletions to `/Volumes/Sandisk`.
+The cause was not one bad default but a family: every tool near the media trusted a path's NAME,
+and on this setup SMB shows a server-side link as an ordinary folder, so no check on the Mac can
+see one. `docs/nas-topology.md` is the measured map.
+
+- **One invariant for every writer near the media.** A repository tool changes only what it can
+  prove it wrote — by content it wrote, never by a path — never deletes, never writes inside what
+  it reads, and never reports success without having run. Only the owner writes media.
+- **The mirror is kept, not retired.** It is the only HTTPS route that puts an unmerged build on
+  the phone. `scripts/nas-mirror.mjs` replaces `deploy-nas.sh`, and `npm run deploy` is gone on
+  purpose. OWNERSHIP IS POSITIVE: a folder the tool created, or one holding its marker whose claims
+  journal lists every path it ever created there. An existing folder without that marker is
+  refused even when empty, because "empty" proves nothing — the empty `session-40` folder is
+  exactly that shape. `realpath` and the media-marker check are defence in depth, never the proof.
+- **No deletion at all; every write an atomic replacement of a claimed path.** Deletion and
+  write-through are the only ways a tool here can destroy something. An exclusively created
+  (`wx`) temp, folders checked with `lstat`, then a rename that replaces the ENTRY, so neither a
+  symlink nor a hard link standing there is written through. Stale hashed assets cost nothing,
+  so old files simply stay; the owner deletes the folder they created to start over. Temps are
+  journaled BEFORE they are created, which is what lets an interrupted publish finish on a re-run
+  instead of locking the owner out. An identical publish writes nothing at all.
+- **Scanner guards stay inline.** The NAS job is installed by copying exactly three files, so no
+  shared module. Each scanner refuses, before reading the source and again before writing, an
+  output that real paths (NFC-normalised; `realpathSync.native`, which alone canonicalises case on
+  macOS) place inside its root, an existing file it did not generate, and a link. The course
+  scanners resolve their default output from the script, never the CWD, and no longer run on
+  import.
+- **Direct-run detection by REAL path.** `import.meta.url === pathToFileURL(argv[1])` fails through
+  a symlinked folder (DSM's `/var/services/homes` and `/web` are links), so the unattended indexer
+  would exit 0 having done nothing. In `publish-setar-index.mjs` only that line and the two import
+  specifiers it needs changed. `run-setar-index.sh` no longer creates its work directory: a
+  guessed directory could land anywhere a mount resolves.
+- **App flows get proofs, not changes.** The injected CSP gives the app no channel to a NAS origin,
+  and a narrower index from a partial restore is reversible without touching an owner record.
+  Both are now pinned by tests.
+
+Residue review of the previous lane:
+
+- **Kept**: More → Keyboard trace (the fallback diagnostic if the installed-app keyboard check
+  fails), the viewport guard, the standalone `100vh` shell and the `interactive-widget` meta —
+  together the configuration the owner passed (ac-24). Removing any of them would re-open a
+  question only the owner's device can answer.
+- **Removed**: `removeCatalogItem`, a non-deleting alias with no production caller; its two test
+  callers use `removeFromPathway`, the action the UI actually calls.
+- **Replaced** by `docs/nas-topology.md`: every recommendation of, and warning about,
+  `deploy-nas.sh`, and the stale topology and filename-normalisation claims.
+- **Left out**, as different families with no new evidence of owner impact: Sync's raw error over
+  plain http, QuickAdd/`insights.ts` instrument-name direction, and the unwired `readIndexFile`.
+
 ## Repertoire v15: shared terms, reference identity, calmer browsing (2026-09-29)
 
 One lane, one end state: find music, understand it, take a suggestion into owned practice ONCE,

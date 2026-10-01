@@ -67,6 +67,13 @@ A decomposed path looks right in the repository and opens nothing. So the
 stored path is the **real filename, NFC-normalised**. `khonyagarCourse.test.ts`
 holds every committed path to that.
 
+*Re-measured 2026‑10‑01 (read-only, while planning the NAS-tooling lane):* after the
+owner's recovery from the 2026‑09‑30 deletion, the `/Volumes/Sandisk` copy holds **0**
+decomposed names, and the NAS lists 259 mp4, 4 pdf and 2 md, all NFC. The count of 78
+above describes the disk this scanner was written against, not today's. The NFC rule
+stays exactly as it is: it is what makes the output independent of which copy is read,
+and the regenerated `khonyagarData.ts` was byte-identical either way.
+
 **The index is the title; the disk is the path.** Three index titles carry
 stray whitespace: `030` has a leading space, and `077` and `148` a double space.
 The displayed title is the index title with whitespace collapsed. After NFC and

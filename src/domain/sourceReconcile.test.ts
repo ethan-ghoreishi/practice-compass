@@ -34,7 +34,7 @@ const { buildIndex } = scannerModule as {
 const EMPTY_REGISTRY = 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes\n';
 import { emptyDB } from './seed';
 import { LEGACY_SEED_PATHS } from './setarClasses';
-import { createItem, createLesson } from './factories';
+import { createBlock, createItem, createLesson, createReview } from './factories';
 import type { Lesson, PracticeDB, PracticeItem } from './types';
 
 const NOW = new Date('2026-09-17T09:00:00.000Z');
@@ -1376,5 +1376,130 @@ describe('musical terms at the archive boundary', () => {
     const rebased = planArchiveImport({ db: moved, index: INDEX, instrumentId: SETAR, decisions: [decision], now: NOW });
     expect(rebased.staleDecisions).toContainEqual(decision);
     expect(applyArchiveImport(moved, rebased, [decision]).items.find((i) => i.id === target.id)!.persian!.composer).toEqual({ termId: 'composer:alizadeh' });
+  });
+});
+
+describe('a transient narrower archive', () => {
+  it('a degraded archive index followed by the full one restores the source graph exactly', () => {
+    // A partial restore — or a scan taken mid-copy — publishes an index that is
+    // narrower than the archive. It may change what the SOURCE offers for as
+    // long as it stands; it may never change an owner record, and the next
+    // full index must give back exactly the graph that was there before.
+    const installed = applyArchiveImport(baseDB(), plan(baseDB()));
+    const itemOf = (db: PracticeDB, key: string) => db.items.find((i) => i.source?.pieceKey === key)!;
+    const lessonOf = (db: PracticeDB, n: number) => db.lessons.find((l) => l.source?.sessionN === n)!;
+    const s12 = INDEX.sessions.find((s) => s.n === 12)!;
+    const lostFiles = s12.resources.filter((r) => r.role !== 'ضبط-کلاس').map((r) => r.path);
+    expect(lostFiles.length).toBeGreaterThan(0);
+    const araq = itemOf(installed, 'عراق');
+    // A piece the owner DELETED earlier: its suppression is all that is left.
+    const deletedKey = INDEX.pieces.find((p) => p.key !== 'عراق' && itemOf(installed, p.key))!.key;
+    const deleted = itemOf(installed, deletedKey);
+
+    // --- the owner's own records, on every kind the refresh could reach -----
+    const owned: PracticeDB = {
+      ...installed,
+      items: [
+        ...installed.items
+          .filter((i) => i.id !== deleted.id)
+          .map((i) => (i.id === araq.id ? { ...i, title: 'My own title', notes: 'my notes', status: 'usable' as const } : i)),
+        item({ id: 'own-manual', title: 'A piece of my own' }),
+      ],
+      lessons: [
+        ...installed.lessons.map((l) =>
+          l.source?.sessionN === 12
+            ? {
+                ...l,
+                notes: 'class twelve notes',
+                // The owner's own links: one to a file the narrower index
+                // will NOT describe, one to a take it never describes at all.
+                recordings: [
+                  { id: 'rec-1', title: 'the score I use', path: lostFiles[0]!, createdAt: NOW.toISOString() },
+                  { id: 'rec-2', title: 'my take', path: 'session-12-06-08-2024/تمرین-من-عراق.mp4', createdAt: NOW.toISOString() },
+                ],
+              }
+            : l,
+        ),
+        lesson({ id: 'own-lesson', recordings: [{ id: 'rec-3', title: 'manual', path: 'elsewhere/x.mp4', createdAt: NOW.toISOString() }] }),
+      ],
+      blocks: [
+        { ...createBlock({ practiceItemId: araq.id, instrumentId: SETAR, durationMinutes: 12, mode: 'repair', focus: 'tone' }, NOW), id: 'blk-1' },
+      ],
+      reviews: [{ ...createReview({ practiceItemId: araq.id, dueDate: '2026-09-20', reviewType: 'repair' }, NOW), id: 'rev-1' }],
+      lessonAgenda: [
+        {
+          id: 'q-1',
+          kind: 'question',
+          instrumentId: SETAR,
+          lessonId: lessonOf(installed, 13).id,
+          itemId: araq.id,
+          text: 'How long is the forud?',
+          createdAt: NOW.toISOString(),
+          updatedAt: NOW.toISOString(),
+        },
+      ],
+      archiveSources: installed.archiveSources.map((s) => ({
+        ...s,
+        suppressions: [
+          { kind: 'piece', ref: deletedKey, at: NOW.toISOString() },
+          // A hide on a file the narrower index drops, scoped to one item.
+          { kind: 'resource', ref: lostFiles[0]!, itemId: araq.id, at: NOW.toISOString() },
+        ],
+      })),
+    };
+    expect(validateDB(owned)).toBeTruthy();
+    const ownerRecords = (db: PracticeDB) => ({
+      items: db.items,
+      lessons: db.lessons,
+      blocks: db.blocks,
+      reviews: db.reviews,
+      lessonAgenda: db.lessonAgenda,
+      suppressions: db.archiveSources.map((s) => s.suppressions),
+    });
+    const graph = (db: PracticeDB) => {
+      const { sessions, pieces } = db.archiveSources.find((s) => s.id === 'setar-classes')!;
+      return { sessions, pieces };
+    };
+    const before = graph(owned);
+
+    // --- the degraded index: files, a whole session and a piece missing ------
+    const narrow: SourceIndex = {
+      ...INDEX,
+      contentHash: '9'.repeat(64),
+      pieces: INDEX.pieces.filter((p) => p.key !== 'عراق'),
+      sessions: INDEX.sessions
+        .filter((s) => s.n !== 13)
+        .map((s) => ({
+          ...s,
+          roster: s.roster.filter((k) => k !== 'عراق'),
+          members: s.members.filter((m) => m.key !== 'عراق'),
+          resources: s.resources
+            .filter((r) => s.n !== 12 || !lostFiles.includes(r.path))
+            .map((r) => ({ ...r, pieces: r.pieces.filter((k) => k !== 'عراق') })),
+        })),
+    };
+    const degradedPlan = planArchiveImport({ db: owned, index: narrow, instrumentId: SETAR, now: NOW });
+    expect(degradedPlan.newItems).toEqual([]);
+    const degraded = applyArchiveImport(owned, degradedPlan);
+    expect(validateDB(degraded)).toBeTruthy();
+    // It WAS degraded — provenance kept and flagged, never deleted…
+    const narrowed = graph(degraded);
+    expect(narrowed.sessions.find((s) => s.n === 13)!.unavailable).toBe(true);
+    expect(narrowed.pieces.find((p) => p.key === 'عراق')!.unavailable).toBe(true);
+    const flagged = narrowed.sessions.find((s) => s.n === 12)!.resources.filter((r) => r.unavailable).map((r) => r.path);
+    expect(flagged.sort()).toEqual([...lostFiles].sort());
+    // …and no owner record moved.
+    expect(ownerRecords(degraded)).toEqual(ownerRecords(owned));
+
+    // --- the full index again: the graph comes back exactly ------------------
+    const fullPlan = planArchiveImport({ db: degraded, index: INDEX, instrumentId: SETAR, now: NOW });
+    expect(fullPlan.newItems).toEqual([]);
+    expect(fullPlan.newLessons).toEqual([]);
+    const restored = applyArchiveImport(degraded, fullPlan);
+    expect(validateDB(restored)).toBeTruthy();
+    expect(graph(restored)).toEqual(before);
+    expect(JSON.stringify(graph(restored))).not.toContain('"unavailable"');
+    expect(ownerRecords(restored)).toEqual(ownerRecords(owned));
+    expect(restored.items.map((i) => i.id).sort()).toEqual(owned.items.map((i) => i.id).sort());
   });
 });

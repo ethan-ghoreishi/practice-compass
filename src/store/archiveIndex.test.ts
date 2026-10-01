@@ -1057,10 +1057,12 @@ describe('deletions, unlinking and hiding', () => {
     // Removing an owner's own link says nothing about the archive.
     expect(suppressions()).toHaveLength(suppressionsBefore);
 
-    // --- a catalogue removal of a bound item is still lossless -------------
+    // --- a pathway removal of a bound item is still lossless ---------------
+    // It sits in no stage, so leaving a Setar pathway changes nothing at all.
     const catalogueItem = itemFor('چهار-پاره');
-    expect(store().removeCatalogItem(catalogueItem.id)).toBe(false); // no catalogKey
-    expect(store().db.items.some((i) => i.id === catalogueItem.id)).toBe(true);
+    const setarPathway = store().addPathway({ name: 'Setar', instrumentId: SETAR });
+    expect(store().removeFromPathway(catalogueItem.id, setarPathway)).toBeNull();
+    expect(store().db.items.find((i) => i.id === catalogueItem.id)).toEqual(catalogueItem);
 
     // --- MOVING A BOUND ITEM TO ANOTHER INSTRUMENT IS REFUSED --------------
     useStore.setState((s) => ({
