@@ -255,14 +255,11 @@ The type decides three things:
   name is never reused, renamed or absorbed.
 - **The study source.** Every item created from the course is linked to a
   «خنیاگر» study source, created on first use.
-- **Practice items first, not repertoire.** No entry carries any Persian
-  identity (form, dastgāh, composer or gusheh), and none is inferred from a
-  title: many course pieces are simplified practice versions. Tar is a
-  Persian-family instrument, so My repertoire groups its works by dastgāh and
-  leaves an item with no Persian identity out. It enters My repertoire only
-  when the owner curates that by hand (edit the item, pick "Composed piece",
-  give it a form and/or dastgāh), and then groups like any curated Persian
-  item: under its dastgāh, or under "No dastgāh yet" without one.
+- **No inferred Persian identity.** No entry carries any Persian identity
+  (form, dastgāh, composer or gusheh), and none is inferred from a title: many
+  course pieces are simplified practice versions. A work is still created as a
+  `gusheh` or `full_piece`, so it enters My repertoire under "No dastgāh yet"
+  until the owner gives it a dastgāh; a technique or exercise section stays out.
 - **Where work rows sit.** A work row renders after the stage's sections, not
   physically between the sections that teach it: `courseStageSeeds` emits units
   then works for every course, and reordering it would change the Guitar

@@ -2,6 +2,68 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## AGENTS.md is a 32 KiB rulebook again; how its rules were found moved out (2026-10-01)
+
+**Diagnosis.** Every Claude session loaded CLAUDE.md plus `@AGENTS.md` whole (245,482 bytes at
+56789a8; Claude Code warns above its per-file threshold but does not truncate), and Codex reads
+only the first 32 KiB of AGENTS.md by default, so it never reached the hard do-nots at byte
+~42,700. The file grew from 10,838 bytes (2026-07-10) because most lanes listed AGENTS.md as a
+required doc and appended how each rule was found. Prismatica's instruction-budget check (32,768
+bytes per provider profile) was present and correctly wired, but it is a ratchet against each
+lane's own baseline, not a ceiling: it arrived on 2026-09-27 with the file at ~246 KB, so it
+grandfathered the debt and let a lane regrow up to its baseline; `prismatica doctor` only warns;
+and a direct push to main is never checked. Nothing was missing or misconfigured. Landing under
+32 KiB turns the same ratchet into a ceiling for every later lane, and `tests/agent-context.test.ts`
+puts the same cap (plus the core loop, the hard do-nots, every `r-*` id, every restored
+prohibition and every named path) on `npm test`, which deploy.yml runs on every push to main.
+
+**Authoring rule.** AGENTS.md holds current rules only, each once, as an imperative plus where it
+is enforced; a lane edits it only when a current rule changes. The why goes here, dated;
+mechanism goes to the subsystem's `docs/*.md` or the enforcing code's comment. Review findings,
+counterexamples, measurements and rejected attempts were deleted, not relocated: the full text is
+`git show 56789a8:AGENTS.md`. No rule changed meaning and every dated owner decision kept its force.
+
+**Prohibitions stay loaded.** The first pass left some agent-facing prohibitions only in a runbook
+or a code comment, and review rejected that: a session that never opens the doc never sees the
+ban. A sweep of all 25 baseline sections restored 83; a second review found six more, each a
+rule whose main clause survived while a second negated qualifier did not (`nor`, `never merely`,
+`never while`, `or ... by hand`), so the second sweep read the baseline for exactly that shape.
+`tests/agent-context.test.ts` anchors all 89 phrases. The cost is headroom: the Claude profile is
+now 31,926 of 32,768 bytes (842 free, down from 2 KiB), with each rule on one line. The cap still
+holds in `npm test`; the next lane makes room by condensing in place.
+
+**Disposition.** Lines are 56789a8's AGENTS.md. "A:" is a heading in the new AGENTS.md, which
+holds every agent-facing prohibition of that section; the other homes hold only mechanism. Every
+row also dropped its review narrative, which the dated entries below already record.
+
+| Baseline section (lines) | Rules now live | Dropped as stale |
+| --- | --- | --- |
+| The one rule above all (6-18) | A: The core loop | - |
+| One canonical home, v13 (19-160) | A: Practice information has one home per kind (incl. never a ref an effect mirrors); `practiceInformation.ts`, `ItemNotes.tsx` (editor), `backup.ts` and `io.ts` (attachment doors) comments | - |
+| Keep admin overhead low (161-167) | A: Quick start, low admin | - |
+| Prioritise the quick-start flow (168-183) | A: Quick start, low admin | - |
+| Today is a session workspace (184-217) | A: Today is a session workspace (owner decisions 2026-08-28, 2026-09-11) | - |
+| Review actions (218-300) | A: Closing a block and review actions; `CloseBlock.tsx`, `format.ts` comments; due-review row in `Today.tsx` | - |
+| Nothing replaces an unfinished session (301-424) | A: Unfinished practice is never replaced; `practiceSession.ts`, `backup.ts`, `githubSync.ts`, `App.tsx` (deferred retry), `useStore.ts` (`installDatabase`) comments | - |
+| Practice totals (425-455) | A: Practice totals; `selectors.ts` comments (balance denominator) | - |
+| Hands-free practice (456-573) | A: Hands-free practice (incl. audio never unlocked on the practice screen); `screenAwake.ts`, `useScreenAwake.ts` (audio, gesture unlock), `practiceSignal.ts`; secure-context table in docs/setar-archive.md §5 | - |
+| Hard "do nots" (574-603) | A: Hard do-nots; A: Device, sync (Sync); transport steps in `syncEngine.ts`, `gitRemote.ts` | - |
+| The Pathway is a trust anchor (604-811) | A: Pathways, routines and repertoire; docs/repertoire-experience.md (reader/writer matrix, source kinds, the three views, URL state, grouping); seed list in `pathwaySeed.ts`; `routines.ts`, `useStore.ts`, `RoutineRunner.tsx`, `musicTerms.ts`, `pathwaySeed.ts` comments | - |
+| Lessons and the deadline exception (812-846) | A: Lessons, the agenda and NAS references; `recordings.ts` (resolver); `Lessons.tsx` (class number, video-first order) | The one-tap Setar class import and `npm run scan:setar` regenerating `SETAR_CLASS_SESSIONS`: replaced by Refresh Setar archive; `setarClasses.ts` is a frozen ledger (docs/setar-archive.md §6) |
+| Lesson commitments and questions, v12 (847-998) | A: Lessons, the agenda and NAS references; A: Architecture and tests (hydration); `lessonAgenda.ts`, `migrations.ts`, `useStore.ts`, `App.tsx` comments; `ClassQuestions.tsx` (exports, refused clipboard) | - |
+| Persian text, direction-aware (999-1636) | A: Direction-aware text (incl. `dir` written literally, never computed); A: Architecture and tests (WebKit harness); `direction.test.ts` ledgers and comments (headings, lone titles, label-first rows, the two `UNEXEMPTED_PHRASE_ALLOWLIST` exceptions with reasons); `farsi.ts`; `tests/practiceBrowser.ts` | Eleven findings' narratives and the scanner's own bug history (fixed in `direction.test.ts`) |
+| Everything the app already knows (1637-1747) | A: Material reaches you where you are (incl. never a panel, viewer or dashboard; nothing touches a minute, the wake lock or an announcement); composition order in `itemFiles.ts`; `recordings.ts`, `selectors.ts` comments; Files list in `ItemDetail.tsx` | - |
+| The Setar archive is a SOURCE (1748-2225) | A: The Setar archive is a source (incl. the scanner's symlink, read-failure and rename-loop bans, roster, alias and blob bans); docs/setar-archive.md §2, §5, §6; `scan-setar-classes.mjs`, `sourceArchive.ts`, `sourceReconcile.ts` comments | - |
+| A COURSE is reference data in code (2226-2638) | A: Courses are reference data in code (incl. scanner never reachable from runtime; contrast cards never a viewer, flashcard player or deck list; a preserved key never goes merely to the lower ordinal); docs/cgs-course.md §2-§6 (routine proportions §4); `courseSeed.ts`, `pathwaySeed.ts` (offered defaults), `routines.ts` (`fitRoutineToMinutes`) comments | - |
+| The Khonyagar Tar course (2639-2717) | A: Courses are reference data in code; docs/khonyagar-course.md | - |
+| Review scheduling (2718-2881) | A: Review scheduling stays explainable; docs/scheduling-evidence.md §6-§7; `scheduling.ts`, `format.ts` comments | - |
+| The Session Plan (2882-2994) | A: The Session Plan is a view over real blocks (incl. no "optimal" claims; the running plan never in `PracticeDB`, sync or a backup); docs/scheduling-evidence.md §1-§5; `plan.ts`, `SessionPlan.tsx` (day staleness) | - |
+| Device & infrastructure (2995-3072) | A: Device, sync and infrastructure (incl. no viewport restore while short or zoomed); docs/nas-topology.md; `viewport.ts`; `vite.config.ts` (CSP, base, prompt-mode worker, build stamp); `Layout.tsx` (equal tabs, scroll to top, per-route widths with `global.css`, which also holds the fonts); `App.tsx` (sync triggers); `Settings.tsx` (sync status, restore); catalogue row grid in `global.css` (`.stage-unit`) with its one status line in `StageDetail.tsx`, detach under Connected to in `ItemDetail.tsx` | - |
+| Colour is checked by a test (3073-3092) | A: Architecture and tests; `contrast.test.ts` comments | - |
+| Architecture rules (3093-3138) | A: Architecture and tests (incl. components never rebuild domain objects by hand); per-version detail in `migrations.ts` | - |
+| Tests are not optional (3139-3180) | A: Architecture and tests; `vite.config.ts` (journeys run inside Vitest); `tests/practiceBrowser.ts`; fixture roles in the journeys' own comments | - |
+| Roadmap items are allowed (3181-3186) | A: Architecture and tests | - |
+
 ## NAS tooling changes only what it can prove it wrote (2026-10-01)
 
 On 2026-09-30 `scripts/deploy-nas.sh` ran `rsync --delete` into `/Volumes/web/practice-compass`,
@@ -1173,8 +1235,8 @@ than silently left: `QuickAdd.tsx`'s instrument-picker button has the identical 
 defect but sits in a file this lane's own contract puts out of scope, so the check
 explicitly excludes it instead of failing on a bug this lane cannot fix; and
 `src/domain/insights.ts` fuses an instrument name into a generated sentence one layer
-below where a presentation-only lane can reach, left open for its own lane. See
-AGENTS.md's "A FIFTH REJECTION..." section for the full account.
+below where a presentation-only lane can reach, left open for its own lane. See the "A FIFTH
+REJECTION..." section of AGENTS.md at 56789a8 (`git show 56789a8:AGENTS.md`) for the full account.
 
 ## Fourth rejection: an instrument name is user text, not generated copy (2026-09-12)
 
