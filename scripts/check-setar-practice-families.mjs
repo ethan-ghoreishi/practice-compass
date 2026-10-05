@@ -26,9 +26,10 @@
 // ---------------------------------------------------------------------------
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** [acceptance id, exact test title, file that holds it]. */
 export const ACCEPTANCE = [
@@ -81,6 +82,29 @@ export const MUTATIONS = [
     find: "...(typeof raw.studySource === 'string' ? { studySource: raw.studySource } : {}),",
     replace: '',
     test: 'study provenance decodes the same way at every reader',
+  },
+  {
+    name: 'inbound drops studySource (validateDB rebuilds the graph without it)',
+    file: 'src/domain/io.ts',
+    find: '    archiveSources: migrated.archiveSources ?? [],',
+    replace:
+      '    archiveSources: (migrated.archiveSources ?? []).map((g) => ({ ...g, pieces: g.pieces.map((p) => { const { studySource: _s, ...rest } = p as typeof p & { studySource?: string }; void _s; return rest; }) })),',
+    test: 'study provenance decodes the same way at every reader',
+  },
+  {
+    name: 'a fix hard-coded to Session 40\'s keys',
+    file: 'scripts/scan-setar-classes.mjs',
+    find: '    if (parsedName.piece) session.named.add(parsedName.piece);',
+    replace: "    if (['پیش-درامد-چهارگاه-فروتن', 'چهارمضراب-چهارگاه-عبادی'].includes(parsedName.piece)) session.named.add(parsedName.piece);",
+    test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
+  },
+  {
+    name: 'an auto-confirmed draft (an unregistered named piece indexed)',
+    file: 'scripts/scan-setar-classes.mjs',
+    find: '    if (parsedName.piece && !byKey.has(parsedName.piece)) {\n      diag(',
+    replace:
+      "    if (parsedName.piece && !byKey.has(parsedName.piece)) {\n      const draft = { key: parsedName.piece, form: '', piece: parsedName.piece, dastgah: '', composer: '', aliases: [], sessions: [], notes: '' };\n      pieces.push(draft);\n      byKey.set(draft.key, draft);\n    }\n    if (false) {\n      diag(",
+    test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
   },
   {
     name: 'roster disagreement counted only after filtering',
@@ -221,6 +245,10 @@ export const MUTATIONS = [
 ];
 
 const isBrowser = (file) => file.includes('.browser.');
+/** The proof test checks THIS runner, so a family run never includes it: no recursion. */
+const PROOF_FILE = 'tests/setar-practice-proof.test.ts';
+const familyRows = () => [...ACCEPTANCE, ...COMPANIONS].filter(([, , file]) => file !== PROOF_FILE);
+const runFiles = (unitOnly) => [...new Set(familyRows().map(([, , f]) => f))].filter((f) => !unitOnly || !isBrowser(f));
 const args = new Set(process.argv.slice(2));
 
 function testFiles() {
@@ -270,7 +298,13 @@ function vitest(files, extra = []) {
 
 function main() {
   if (args.has('--list')) {
-    process.stdout.write(`${JSON.stringify({ acceptance: ACCEPTANCE, companions: COMPANIONS, mutations: MUTATIONS.map((m) => ({ name: m.name, file: m.file, test: m.test })) }, null, 2)}\n`);
+    const manifest = {
+      acceptance: ACCEPTANCE,
+      companions: COMPANIONS,
+      mutations: MUTATIONS.map((m) => ({ name: m.name, file: m.file, test: m.test })),
+      runs: runFiles(false),
+    };
+    process.stdout.write(`${JSON.stringify(manifest, null, 2)}\n`);
     return 0;
   }
   const problems = titleProblems();
@@ -310,8 +344,8 @@ function main() {
   }
 
   const unitOnly = args.has('--unit');
-  const rows = [...ACCEPTANCE, ...COMPANIONS].filter(([, , file]) => file !== 'tests/setar-practice-proof.test.ts');
-  const files = [...new Set(rows.map(([, , f]) => f))].filter((f) => !unitOnly || !isBrowser(f));
+  const rows = familyRows();
+  const files = runFiles(unitOnly);
   const { status, results } = vitest(files);
   let failed = status !== 0;
   console.log('\nSetar practice reliability — acceptance checks and the one test proving each:');
@@ -330,4 +364,4 @@ function main() {
 }
 
 /** Run only when executed directly, so a test can import the manifest. */
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop())) process.exit(main());
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) process.exit(main());
