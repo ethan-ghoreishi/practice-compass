@@ -523,9 +523,10 @@ interface StoreState {
   pauseSession: () => void;
   resumeSession: () => void;
   setSessionNote: (note: string) => void;
-  /** Persist how many target boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
   /**
-   * CLAIM a boundary announcement for the block that STARTED at `startedAt`:
+   * The boundary marker (practiceSignal.ts) lives in store state, not component
+   * state, so navigating away and back never re-announces. CLAIM a boundary
+   * announcement for the block that STARTED at `startedAt`:
    * true — and the marker advanced — only when that block is still the one
    * running, is running, and has not already announced through `marker`. A
    * refused claim changes nothing, so a replayed effect, a remount or a stale
@@ -609,8 +610,7 @@ interface StoreState {
   skipRoutineRun: () => void;
   /** Turn the active run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time — then clear it. */
   finishRoutine: () => void;
-  /** Persist how many segment boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
-  /** The routine twin of `claimSessionSignal`, for the run that started at `startedAt`. */
+  /** The routine twin of `claimSessionSignal`, for the run that started at `startedAt` (segment boundaries). */
   claimRoutineSignal: (startedAt: string | undefined, marker: number) => boolean;
 
   // Data management
