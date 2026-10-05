@@ -168,6 +168,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "small" },
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
+  // Each visible suggestion is a term's own (possibly Farsi) name (this lane).
+  { file: "components/MusicalTermField.tsx", tagName: "button", classValue: "btn btn-sm term-option" },
   // A term field's resolution line: the term's own (possibly Farsi) name.
   { file: "components/MusicalTermField.tsx", tagName: "span", classValue: "" },
   // Link existing / which item is it / which source: each candidate's own title.
