@@ -6,10 +6,17 @@ import { catalogForStage, planDefaultPathways } from '../src/domain/pathwaySeed'
 import { stagesOfPathway } from '../src/domain/pathways';
 import { SCHEMA_VERSION, type PracticeDB } from '../src/domain/types';
 import {
+  connectSync,
+  exportBackup,
   goTo,
   importBackup,
   importOutcome,
+  installFakeGitHub,
+  newFakeRemote,
   openPracticeApp,
+  openSettings,
+  publishSourceIndex,
+  stampSourceIndex,
   persistedDb,
   readPersistedState,
   reload,
@@ -207,4 +214,225 @@ describe('pathway membership, reversibly', () => {
       }
     }
   }, 600_000);
+});
+
+// ---------------------------------------------------------------------------
+// ac-3 — what the owner deleted, skipped, unlinked or hid comes back ONE exact
+// decision at a time, through the Settings controls, and nothing else does.
+// ---------------------------------------------------------------------------
+
+const S7 = 'session-7-08-01-2025';
+const KERESHMEH = 'کرشمه-ماهور-ردیف-میرزاعبدالله';
+const DARAMAD_MAHUR = 'درامد-ماهور-ردیف-میرزاعبدالله';
+const DELETED_PIECE = 'درامد-افشاری-ردیف-میرزاعبدالله';
+
+/** A refused IndexedDB write, as a full device would refuse it. */
+async function breakStorage(page: Page) {
+  await page.evaluate(() => {
+    const proto = IDBObjectStore.prototype as unknown as { put: unknown; __realPut?: unknown };
+    proto.__realPut = proto.put;
+    proto.put = function failing() {
+      throw new DOMException('storage is full', 'QuotaExceededError');
+    };
+  });
+}
+async function repairStorage(page: Page) {
+  await page.evaluate(() => {
+    const proto = IDBObjectStore.prototype as unknown as { put: unknown; __realPut?: unknown };
+    if (proto.__realPut) proto.put = proto.__realPut;
+  });
+}
+
+/** The published index for a graph — re-stamped as the scanner would. */
+async function indexFor(graph: PracticeDB['archiveSources'][number], change: (i: Record<string, unknown>) => void = () => {}) {
+  const index: Record<string, unknown> = {
+    format: 'setar-archive-index',
+    version: 1,
+    archiveId: graph.id,
+    pieces: graph.pieces.map(({ unavailable: _u, ...p }) => (void _u, p)),
+    sessions: graph.sessions.map(({ unavailable: _u, ...s }) => (void _u, { ...s, resources: s.resources.map(({ unavailable: _r, ...r }) => (void _r, r)) })),
+    renames: graph.renames,
+    diagnostics: graph.diagnostics,
+  };
+  change(index);
+  return stampSourceIndex(index);
+}
+
+async function refreshArchive(app: PracticeApp) {
+  await openSettings(app);
+  await app.page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+  await app.page.getByRole('button', { name: /^(Apply|Already current)$/ }).waitFor({ timeout: 30_000 });
+}
+
+const suppressionsOf = (d: Db) =>
+  d.archiveSources[0]!.suppressions.map((x) => `${x.kind}|${x.ref}|${x.itemId ?? ''}`).sort();
+
+describe('archive recovery, one decision at a time', () => {
+  it('setar recovery restores only the selected suppression through owner controls', async () => {
+    const base = validateDB(OWNER_V16);
+    const graph = base.archiveSources[0]!;
+    const item = (key: string) => base.items.find((i) => i.source?.pieceKey === key)!;
+    const lesson25 = base.lessons.find((l) => l.source?.sessionN === 25)!;
+    // The owner's earlier decisions, as another device or an earlier session
+    // made them: a deleted class (with its notes), a deleted piece, the
+    // fixture's own unlink, a file hidden everywhere (no longer described),
+    // and ONE shared demonstration hidden on TWO different items.
+    const owner: Db = {
+      ...base,
+      lessons: [
+        ...base.lessons.filter((l) => l.id !== lesson25.id),
+        { ...base.lessons[0]!, id: 'L-manual', source: undefined, origin: undefined, number: 99, date: '2025-02-02', notes: 'my own class', itemIds: [] },
+      ],
+      items: base.items.filter((i) => i.source?.pieceKey !== DELETED_PIECE),
+      lessonAgenda: [],
+      archiveSources: [
+        {
+          ...graph,
+          suppressions: [
+            ...graph.suppressions,
+            { kind: 'session', ref: '25', at: T },
+            { kind: 'piece', ref: DELETED_PIECE, at: T },
+            { kind: 'resource', ref: 'session-24-25-01-2025/نت-قدیمی.pdf', at: T },
+            { kind: 'resource', ref: `${S7}/نمونه-1.mp4`, itemId: item(KERESHMEH).id, at: T },
+            { kind: 'resource', ref: `${S7}/نمونه-1.mp4`, itemId: item(DARAMAD_MAHUR).id, at: T },
+          ],
+        },
+      ],
+    };
+    const seededSuppressions = owner.archiveSources[0]!.suppressions.map((x) => `${x.kind}|${x.ref}|${x.itemId ?? ''}`).sort();
+
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      for (const viewport of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+        const where = `${engine}/${viewport.width}`;
+        const app = await seeded(engine, owner, viewport, OWNER_V16.files);
+        const { page } = app;
+        try {
+          const remote = newFakeRemote();
+          await installFakeGitHub(page, remote);
+          await connectSync(app);
+          publishSourceIndex(remote, await indexFor(graph), 'idx-1');
+
+          // --- NORMAL REFRESH never resurrects a suppressed decision --------
+          await refreshArchive(app);
+          await page.getByRole('button', { name: /^(Apply|Already current)$/ }).click();
+          await refreshArchive(app);
+          // A no-op still shows what needs attention and what is hidden.
+          const noop = await page.locator('main').innerText();
+          expect(noop, where).toMatch(/Already current\./);
+          expect(noop, where).toMatch(/6 hidden or removed by you/);
+          let d = await db(app);
+          expect(suppressionsOf(d), where).toEqual(seededSuppressions);
+          expect(d.lessons.some((l) => l.source?.sessionN === 25), where).toBe(false);
+          expect(d.items.some((i) => i.source?.pieceKey === DELETED_PIECE), where).toBe(false);
+
+          // Deleting a MANUAL class records nothing to restore; deleting an
+          // archive class would (seeded above).
+          await goTo(app, '/lessons');
+          const manual = page.getByRole('article').filter({ hasText: 'Class 99' }).first();
+          if (await manual.count()) {
+            await manual.getByRole('button', { name: /Class 99/ }).first().click();
+          } else {
+            await page.getByRole('button', { name: /Class 99/ }).first().click();
+          }
+          await page.getByRole('button', { name: 'Delete lesson' }).first().click();
+          await until(app, (x) => x.lessons.some((l) => l.id === 'L-manual'), (v) => v === false);
+          expect(suppressionsOf(await db(app)), where).toEqual(seededSuppressions);
+
+          // --- THE LIST: every decision, its scope, current or not described -
+          await openSettings(app);
+          await page.getByText(/Hidden and removed from the archive \(6\)/).click();
+          const list = await page.locator('details', { hasText: 'Hidden and removed from the archive' }).innerText();
+          expect(list, where).toContain(`hidden on ${KERESHMEH}`);
+          expect(list, where).toContain(`hidden on ${DARAMAD_MAHUR}`);
+          expect(list, where).toMatch(/نت-قدیمی\.pdf — hidden everywhere · not described by the latest index/);
+          expect(list, where).toMatch(/cannot come back from it/);
+
+          // --- ONE of two hides of ONE shared path: only that tuple clears ---
+          await page.getByRole('button', { name: `Restore File ${S7}/نمونه-1.mp4 — hidden on ${KERESHMEH}` }).click();
+          await page.getByText(/Restore of .*: ?Saved\./).first().waitFor({ timeout: 10_000 });
+          d = await until(app, (x) => x, (x) => suppressionsOf(x).length === 5);
+          expect(d.archiveSources[0]!.suppressions.filter((x) => x.ref === `${S7}/نمونه-1.mp4`).map((x) => x.itemId), where).toEqual([
+            item(DARAMAD_MAHUR).id,
+          ]);
+          // The demonstration is back on that item, and still hidden on the other.
+          const demoOn = async (id: string) => {
+            await goTo(app, `/items/${id}`);
+            return (await page.locator('main').innerText()).includes('نمونه 1');
+          };
+          expect(await demoOn(item(KERESHMEH).id), where).toBe(true);
+          expect(await demoOn(item(DARAMAD_MAHUR).id), where).toBe(false);
+
+          // --- A REFUSED WRITE says so; Try again really writes ---------------
+          await openSettings(app);
+          await page.getByText(/Hidden and removed from the archive \(5\)/).click();
+          await breakStorage(page);
+          await page.getByRole('button', { name: `Restore Piece ${DELETED_PIECE} — deleted or skipped` }).click();
+          await page.getByText(/Not saved/).first().waitFor({ timeout: 10_000 });
+          // The row has left the list, and its outcome is still on screen.
+          expect(await page.getByRole('button', { name: `Restore Piece ${DELETED_PIECE} — deleted or skipped` }).count(), where).toBe(0);
+          await repairStorage(page);
+          await page.getByRole('button', { name: 'Try again' }).click();
+          await page.getByText(/Restore of .*: ?Saved\./).first().waitFor({ timeout: 10_000 });
+          await reload(app);
+          expect(suppressionsOf(await db(app)), where).not.toContain(`piece|${DELETED_PIECE}|`);
+
+          // --- A STALE PREVIEW is looked at again after a restore ------------
+          await refreshArchive(app);
+          expect(await page.locator('main').innerText(), where).toMatch(/Will add 1 pieces and 0 classes/);
+          await page.getByText(/Hidden and removed from the archive \(4\)/).click();
+          await page.getByRole('button', { name: 'Restore Class 25 — deleted or skipped' }).click();
+          await expect.poll(() => page.locator('main').innerText(), { timeout: 10_000 }).toMatch(/Will add 1 pieces and 1 classes/);
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          d = await until(app, (x) => x, (x) => x.lessons.some((l) => l.source?.sessionN === 25));
+          // The class's SOURCE facts return, once — and only them.
+          const back = d.lessons.find((l) => l.source?.sessionN === 25)!;
+          expect(back.id, where).toBe(lesson25.id);
+          expect(back.notes, where).toBeUndefined();
+          expect(d.lessons.filter((l) => l.source?.sessionN === 25), where).toHaveLength(1);
+          expect(d.items.filter((i) => i.source?.pieceKey === DELETED_PIECE).map((i) => [i.status, i.timesPractised]), where).toEqual([['dormant', 0]]);
+
+          // --- SIMULTANEOUS source changes and a FUTURE class -----------------
+          // Session 41 arrives while the class-9 unlink and the remaining hides
+          // stand; nothing about restoring is special to any session number.
+          publishSourceIndex(
+            remote,
+            await indexFor(graph, (i) => {
+              (i.sessions as unknown[]).push({
+                n: 41,
+                date: '2026-10-06',
+                folder: 'session-41-06-10-2026',
+                roster: [],
+                rosterTrusted: true,
+                hasClassRecording: true,
+                resources: [{ path: 'session-41-06-10-2026/ضبط-کلاس.mp4', role: 'ضبط-کلاس', kind: 'video', title: 'ضبط کلاس', part: null, pieces: [], group: null }],
+                members: [],
+              });
+            }),
+            'idx-2',
+          );
+          await refreshArchive(app);
+          expect(await page.locator('main').innerText(), where).toMatch(/Will add 0 pieces and 1 classes/);
+          await page.getByRole('button', { name: 'Apply' }).click();
+          await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+          d = await until(app, (x) => x, (x) => x.lessons.some((l) => l.source?.sessionN === 41));
+          expect(suppressionsOf(d), where).toEqual(
+            [`link|9:چهارمضراب-ماهور-صبا|`, 'resource|session-24-25-01-2025/نت-قدیمی.pdf|', `resource|${S7}/نمونه-1.mp4|${item(DARAMAD_MAHUR).id}`].sort(),
+          );
+          // Imported classes stay history, even dated after this device's clock.
+          expect(d.lessons.find((l) => l.source?.sessionN === 41)!.origin, where).toBe('archive');
+
+          // --- RELOAD and REINSTALL carry exactly these decisions ---------------
+          await reload(app);
+          const exported = await exportBackup(app);
+          await importBackup(app, 'reinstall.json', engine === 'webkit' ? JSON.stringify({ ...JSON.parse(exported), files: undefined }) : exported);
+          expect(await importOutcome(app), where).toContain('Imported');
+          expect(suppressionsOf(await db(app)), where).toEqual(suppressionsOf(d));
+          expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
+        } finally {
+          await app.close();
+        }
+      }
+    }
+  }, 900_000);
 });
