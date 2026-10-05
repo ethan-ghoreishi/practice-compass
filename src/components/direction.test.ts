@@ -154,6 +154,9 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/ArchiveRefresh.tsx", tagName: "li", classValue: "row" },
+  // A hidden or removed archive entry: its source value (piece key, class pair,
+  // path) in its own isolate between generated LTR copy (this lane).
+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/Attachments.tsx", tagName: "button", classValue: "grow" },
   { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
   { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
@@ -181,6 +184,11 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
+  // Review Setar setup (this lane): a declared source's own text, then each
+  // item's own title in the Keeping fresh list and on its organisation card.
+  { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
+  { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
+  { file: "components/SetarSetupReview.tsx", tagName: "strong", classValue: "small" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },

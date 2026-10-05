@@ -41,6 +41,7 @@ import {
 } from '../store/githubSync';
 import { Field } from '../components/ui';
 import ArchiveRefresh from '../components/ArchiveRefresh';
+import SetarSetupReview from '../components/SetarSetupReview';
 import { testPracticeSound, usePracticeSound } from '../components/practiceCue';
 import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
 
@@ -608,6 +609,8 @@ function NasRecordingsSection() {
       <MediaRootSection archiveBase={normalized ?? ''} />
 
       <ArchiveRefresh />
+
+      <SetarSetupReview />
     </section>
   );
 }
