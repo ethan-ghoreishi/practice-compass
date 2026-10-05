@@ -349,5 +349,10 @@ export function migrateToCurrent(db: PracticeDB, fromVersion: number): PracticeD
   // v14 -> v15: vocabulary, bindings, keyed course sources. Unconditional for
   // the reason migrateToV15's own docstring gives.
   next = migrateToV15(next);
+  // v15 -> v16: an archive piece MAY carry `studySource`. Nothing converts:
+  // a graph accepted before the field existed keeps NO value, which is the
+  // honest "the registry said nothing" — never an empty declaration, never a
+  // value read off a key, a title or the notes, and no item is touched. The
+  // version number below is the whole migration.
   return { ...next, schemaVersion: SCHEMA_VERSION };
 }

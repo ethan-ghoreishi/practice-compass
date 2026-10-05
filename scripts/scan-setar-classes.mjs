@@ -3,6 +3,7 @@
 //
 //   node scripts/scan-setar-classes.mjs --root <archive> --out <file>
 //   node scripts/scan-setar-classes.mjs --root <archive>          # stdout
+//   node scripts/scan-setar-classes.mjs --root <archive> --attention   # owner report, stdout only
 //
 // READ-ONLY over the archive: nothing is written, renamed or deleted inside
 // `--root`, and the output must live outside it. Node stdlib only — the app's
@@ -61,23 +62,37 @@ const MAX_CSV_BYTES = 4 * 1024 * 1024;
  * which is exactly what this lane may not guess at.
  */
 export function parseCsv(text) {
+  return parseCsvCells(text).map((r) => r.values);
+}
+
+/**
+ * The same reader, keeping each cell's RAW text beside its value — quoting and
+ * all — so a draft amending ONE cell of an existing registry row can leave
+ * every other cell exactly as the owner wrote it.
+ */
+export function parseCsvCells(text) {
   const rows = [];
   let row = [];
+  let raws = [];
   let field = '';
   let quoted = false;
   let started = false; // this field opened with a quote
   let i = 0;
+  let fieldStart = 0;
   const src = text.replace(/^﻿/, '');
 
   const endField = () => {
     row.push(field);
+    raws.push(src.slice(fieldStart, i).replace(/\r$/, ''));
     field = '';
     started = false;
+    fieldStart = i + 1;
   };
   const endRow = () => {
     endField();
-    rows.push(row);
+    rows.push({ values: row, raws });
     row = [];
+    raws = [];
   };
 
   while (i < src.length) {
@@ -123,7 +138,12 @@ export function parseCsv(text) {
   }
   if (quoted) throw new Error('Malformed CSV: a quoted field is never closed.');
   if (field !== '' || row.length > 0) endRow();
-  return rows.filter((r) => r.length > 1 || r[0] !== '');
+  return rows.filter((r) => r.values.length > 1 || r.values[0] !== '');
+}
+
+/** One CSV cell, quoted only when it has to be — the inverse of the reader above. */
+export function csvCell(value) {
+  return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
 /** Rows as objects, checked against the exact headers a caller requires. */
@@ -176,6 +196,12 @@ export function parseRegistry(text) {
       piece: r.piece ?? '',
       dastgah: r.dastgah ?? '',
       composer: r.composer ?? '',
+      // The OPTIONAL `source` column, verbatim: the material this piece is
+      // declared to be studied FROM. A registry without the column says
+      // nothing (no key at all, so an old-shaped registry publishes a
+      // byte-identical index); an empty cell is an explicit "none declared".
+      // Provenance only — never a kind, a stage or an identity.
+      ...(r.source !== undefined ? { studySource: r.source } : {}),
       aliases: r.aliases_seen ? r.aliases_seen.split('|').map((a) => a.trim()).filter(Boolean) : [],
       sessions,
       notes,
@@ -322,7 +348,7 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
     if (existing && existing.folder !== folder) {
       throw new Error(`Two folders claim session ${parsed.n}: "${existing.folder}" and "${folder}".`);
     }
-    const session = existing ?? { n: parsed.n, date: parsed.date, folder, assets: [] };
+    const session = existing ?? { n: parsed.n, date: parsed.date, folder, assets: [], named: new Set() };
     sessions.set(parsed.n, session);
 
     const ext = fileExt(name);
@@ -333,12 +359,22 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
       diag(path, 'Filename carries no known role — left for the owner to name or move.');
       continue;
     }
+    // EVERY piece a filename names is evidence about this class — recorded
+    // BEFORE a file is dropped for its type or for an unregistered key. The
+    // roster check below used to see only the files that SURVIVED those
+    // filters, so an unregistered score vanished first and the unnamed
+    // demonstration beside it was spread across a roster the folder plainly
+    // disagrees with.
+    if (parsedName.piece) session.named.add(parsedName.piece);
     if (!kind) {
-      diag(path, `Unsupported file type "${ext || '(none)'}" — not indexed.`);
+      diag(path, `Unsupported file type "${ext || '(none)'}" — not indexed. Save it as .mp4, .pdf or .jpg to include it.`);
       continue;
     }
     if (parsedName.piece && !byKey.has(parsedName.piece)) {
-      diag(path, `Piece "${parsedName.piece}" is not in the registry — not indexed.`);
+      diag(
+        path,
+        `Piece "${parsedName.piece}" is not in the registry — not indexed. If it is a new piece, declare it in PIECES.csv (the scanner's --attention report drafts the row).`,
+      );
       continue;
     }
     if (parsedName.piece && parsedName.role === CLASS_ROLE) {
@@ -366,13 +402,22 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
     // The ROSTER is the registry's own answer to "which pieces were assigned
     // at class N" — never a set inferred from the filenames present.
     const roster = pieces.filter((p) => p.sessions.includes(s.n)).map((p) => p.key);
-    const named = [...new Set(s.assets.map((a) => a.piece).filter(Boolean))];
-    const strays = named.filter((k) => !roster.includes(k));
+    // Every NAMED piece, registered or not (see the inventory loop above).
+    const strays = [...s.named].filter((k) => !roster.includes(k)).sort(cmp);
     // A named piece the roster does not claim means the two halves of the
     // source disagree. An unnamed demo expands across the roster, so expanding
     // it here would spread a guess: block that one inference and say so.
     const rosterTrusted = strays.length === 0;
-    for (const k of strays) diag(`${s.folder}`, `Piece "${k}" appears in this folder but the registry does not list session ${s.n} for it.`);
+    for (const k of strays) {
+      // An unregistered key already has its own per-file reason; this one is
+      // about the ROSTER, and only a registered piece can be added to it.
+      if (byKey.has(k)) {
+        diag(
+          `${s.folder}`,
+          `Piece "${k}" appears in this folder but the registry does not list session ${s.n} for it. Add ${s.n} to its sessions in PIECES.csv only if it was taught in this class.`,
+        );
+      }
+    }
 
     const resources = [];
     const memberships = new Map(); // pieceKey -> Set(role)
@@ -395,7 +440,17 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
             ? [a.piece]
             : [];
       if (a.role === DEMO_ROLE && !a.piece && !rosterTrusted) {
-        diag(a.path, `Unnamed demonstration not attributed: session ${s.n}'s roster disagrees with its filenames.`);
+        diag(
+          a.path,
+          `Unnamed demonstration not attributed: session ${s.n}'s roster disagrees with its filenames (${strays
+            .map((k) => `"${k}"`)
+            .join(', ')} named here, not listed for session ${s.n}). It stays with the lesson until PIECES.csv declares who this class taught.`,
+        );
+      } else if (a.role === DEMO_ROLE && !a.piece && roster.length === 0) {
+        diag(
+          a.path,
+          `Unnamed demonstration not attributed: PIECES.csv lists no pieces for session ${s.n}. It stays with the lesson until a confirmed roster is declared there.`,
+        );
       }
       for (const k of pieces_) member(k, a.role);
       resources.push({
@@ -712,26 +767,259 @@ function readOptional(path, label) {
  * transient, which is what a copy in flight actually looks like.
  */
 export function scanToIndex(root) {
+  return buildIndex(readStableSource(root));
+}
+
+/**
+ * The ONE consistent reading both the index and the attention report are built
+ * from. `reread` exists only so a test can stand in a SECOND reading that
+ * differs — nothing in a synchronous process can change a disk between two.
+ */
+export function readStableSource(root, reread) {
   const base = resolve(root);
   const before = readSource(base);
-  const after = readSource(base);
+  const after = reread ? reread(base) : readSource(base);
   if (canonicalJson(before) !== canonicalJson(after)) {
     throw new Error('The archive changed during the scan; no index was produced.');
   }
-  return buildIndex(before);
+  return before;
+}
+
+// ---------------------------------------------------------------------------
+// --attention: what needs the OWNER, and the smallest safe step for each
+// ---------------------------------------------------------------------------
+//
+// An operator aid over the SAME reading and the SAME grammar as the index —
+// never a second scanner, an importer, a ledger or a registry editor. It
+// prints to stdout and writes nothing anywhere: every draft in it is
+// UNCONFIRMED, because a filename is evidence of what a file is called, not of
+// which piece it is, who taught it or what it means musically. The owner
+// confirms an identity and edits PIECES.csv / RENAME-LOG.csv themselves; the
+// ordinary NAS job then publishes, and the app's Refresh imports.
+
+/** The report as data. `formatAttention` is its only rendering. */
+export function attentionReport(source) {
+  const index = buildIndex(source);
+  const table = parseCsvCells(source.registryText);
+  const header = table[0].values.map((h) => h.trim());
+  const col = (name) => header.indexOf(name);
+  const byKey = new Map(index.pieces.map((p) => [p.key, p]));
+
+  // What the filenames NAME, by the index's own grammar — candidates only.
+  const observed = new Map(); // key -> { sessions: Map<n, Set<role>>, files: [] }
+  for (const entry of source.inventory) {
+    const segs = entry.path.split('/');
+    if (segs.length !== 2) continue;
+    const folder = parseSessionFolderName(segs[0]);
+    if (!folder) continue;
+    const ext = fileExt(segs[1]);
+    const parsed = parseAssetStem(ext ? segs[1].slice(0, -ext.length) : segs[1]);
+    if (!parsed?.piece) continue;
+    const o = observed.get(parsed.piece) ?? { sessions: new Map(), files: [] };
+    if (!o.sessions.has(folder.n)) o.sessions.set(folder.n, new Set());
+    o.sessions.get(folder.n).add(parsed.role);
+    o.files.push(entry.path);
+    observed.set(parsed.piece, o);
+  }
+  const seenIn = (o) =>
+    [...o.sessions.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([n, roles]) => ({ session: n, roles: [...roles].sort(cmp) }));
+
+  const newIdentities = [...observed.entries()]
+    .filter(([key]) => !byKey.has(key))
+    .sort((a, b) => cmp(a[0], b[0]))
+    .map(([key, o]) => ({
+      key,
+      seen: seenIn(o),
+      files: [...o.files].sort(cmp),
+      // Against the registry's ACTUAL header, in its order: the identity and
+      // nothing else. No form, dastgah, composer, source or session is read
+      // off a filename.
+      draft: header.map((h) => (h === 'canonical_fa' ? csvCell(key) : '')).join(','),
+    }));
+
+  const rosterCandidates = [];
+  for (const [key, o] of [...observed.entries()].sort((a, b) => cmp(a[0], b[0]))) {
+    const piece = byKey.get(key);
+    if (!piece) continue;
+    const missing = [...o.sessions.keys()].filter((n) => !piece.sessions.includes(n)).sort((a, b) => a - b);
+    if (!missing.length) continue;
+    const row = table.slice(1).find((r) => r.values[col('canonical_fa')] === key);
+    const current = row.values[col('sessions')].trim();
+    const raws = [...row.raws];
+    // ONE cell changes; every other cell keeps the exact text it had.
+    raws[col('sessions')] = csvCell(current ? `${current},${missing.join(',')}` : missing.join(','));
+    rosterCandidates.push({ key, missing, files: o.files.filter((f) => missing.includes(parseSessionFolderName(f.split('/')[0]).n)).sort(cmp), draft: raws.join(',') });
+  }
+
+  const unattributedDemos = [];
+  for (const s of index.sessions) {
+    for (const r of s.resources) {
+      if (r.role !== DEMO_ROLE || r.group !== `${DEMO_ROLE}:` || r.pieces.length) continue;
+      unattributedDemos.push({
+        session: s.n,
+        path: r.path,
+        roster: s.roster,
+        why: s.rosterTrusted ? 'empty' : 'inconsistent',
+      });
+    }
+  }
+
+  // Rename evidence: where the log says a file ENDED UP, and that name is not
+  // on disk. The files in the same folder that no row names are shown beside
+  // them — never paired with them. Which became which is the owner's to say.
+  const onDisk = new Set(source.inventory.map((e) => e.path));
+  const renameGaps = [];
+  const logHeader = [];
+  if (source.renameLog?.present) {
+    const rows = parseCsvCells(source.renameLog.text);
+    logHeader.push(...rows[0].values.map((h) => h.trim()));
+    const pairs = readTable(source.renameLog.text, ['old_path', 'new_path'])
+      .map((r) => ({ from: r.old_path.trim(), to: r.new_path.trim() }))
+      .filter((r) => r.from && r.to);
+    const froms = new Set(pairs.map((p) => p.from));
+    const destinations = new Set(pairs.map((p) => p.to));
+    const ends = new Map();
+    for (const p of pairs) {
+      if (froms.has(p.to) || onDisk.has(p.to)) continue;
+      ends.set(p.to, [...(ends.get(p.to) ?? []), p.from]);
+    }
+    const byFolder = new Map();
+    for (const [end, from] of ends) {
+      const folder = end.split('/')[0];
+      const name = end.split('/').pop();
+      const ext = fileExt(name);
+      const personal = parseAssetStem(ext ? name.slice(0, -ext.length) : name)?.role === PERSONAL_ROLE;
+      byFolder.set(folder, [...(byFolder.get(folder) ?? []), { path: end, from: [...from].sort(cmp), personal }]);
+    }
+    const sessionOf = (folder) => parseSessionFolderName(folder)?.n ?? Number.MAX_SAFE_INTEGER;
+    for (const [folder, missing] of [...byFolder.entries()].sort((a, b) => sessionOf(a[0]) - sessionOf(b[0]) || cmp(a[0], b[0]))) {
+      renameGaps.push({
+        folder,
+        missing: missing.sort((a, b) => cmp(a.path, b.path)),
+        unlogged: [...onDisk].filter((p) => p.startsWith(`${folder}/`) && !destinations.has(p) && !froms.has(p)).sort(cmp),
+      });
+    }
+  }
+
+  // Everything else the index already explains, minus what the sections above
+  // say better.
+  const covered = new Set([...newIdentities.flatMap((n) => n.files), ...unattributedDemos.map((d) => d.path)]);
+  const other = index.diagnostics.filter(
+    (d) => !covered.has(d.path) && !/registry does not list session/.test(d.reason),
+  );
+
+  return {
+    contentHash: index.contentHash,
+    sessions: index.sessions.length,
+    pieces: index.pieces.length,
+    diagnostics: index.diagnostics.length,
+    registryHeader: header,
+    logHeader,
+    newIdentities,
+    rosterCandidates,
+    unattributedDemos,
+    renameGaps,
+    other,
+  };
+}
+
+/** The report as the owner reads it. Archive-relative paths only — never a root. */
+export function formatAttention(r) {
+  const out = [];
+  const line = (s = '') => out.push(s);
+  line('Setar archive — attention report. READ-ONLY: nothing was written, renamed or published.');
+  line(`An ordinary scan of this archive would publish index ${r.contentHash.slice(0, 12)} (${r.sessions} sessions, ${r.pieces} pieces, ${r.diagnostics} needing attention).`);
+  line('After the NAS job runs, Refresh in the app shows the hash it accepted: the same hash means it already has this state.');
+  line('Every draft below is UNCONFIRMED. Nothing in it is read from a filename except the name itself.');
+  line();
+
+  line(`1. Pieces named by files but missing from PIECES.csv: ${r.newIdentities.length}`);
+  for (const n of r.newIdentities) {
+    line(`   ${n.key}`);
+    line(`     seen: ${n.seen.map((s) => `session ${s.session} (${s.roles.join(', ')})`).join('; ')}`);
+    for (const f of n.files) line(`       ${f}`);
+    line('     why it is not imported: PIECES.csv is the identity table, and an unregistered name is never guessed into a piece.');
+    line('     to import it: confirm this exact spelling IS the piece (it becomes canonical_fa byte for byte), then add one row.');
+    line(`     UNCONFIRMED draft row for the header ${r.registryHeader.join(',')}:`);
+    line(`       ${n.draft}`);
+    line('     Musical fields may stay empty. Put a session number in `sessions` only if that class taught it.');
+  }
+  line();
+
+  line(`2. Unnamed demonstrations kept with their lesson: ${r.unattributedDemos.length}`);
+  for (const d of r.unattributedDemos) {
+    line(`   ${d.path}`);
+    line(
+      d.why === 'empty'
+        ? `     PIECES.csv lists no pieces for session ${d.session}, so the demonstration stays with the class.`
+        : `     PIECES.csv lists ${d.roster.length ? d.roster.join(', ') : 'no pieces'} for session ${d.session}, but files in that folder name other pieces, so the roster cannot be trusted for it.`,
+    );
+    line(`     to attribute it: add ${d.session} to \`sessions\` for exactly the pieces you can confirm this class taught. A named file needs no such entry.`);
+  }
+  line();
+
+  line(`3. Registered pieces named in a class their row does not list: ${r.rosterCandidates.length}`);
+  for (const c of r.rosterCandidates) {
+    line(`   ${c.key} — named in session ${c.missing.join(', ')}`);
+    for (const f of c.files) line(`       ${f}`);
+    line('     Its named files are imported already. Only if it was TAUGHT in that class, its row becomes (UNCONFIRMED; every other cell unchanged):');
+    line(`       ${c.draft}`);
+  }
+  line();
+
+  line(`4. Rename-log names that are not on disk: ${r.renameGaps.reduce((n, g) => n + g.missing.length, 0)}`);
+  for (const g of r.renameGaps) {
+    line(`   ${g.folder}`);
+    line('     the log says these files ended up here, but no such file exists:');
+    for (const m of g.missing) {
+      line(`       ${m.path}   (logged from ${m.from.join(', ')}${m.personal ? '; your own take — never material' : ''})`);
+    }
+    line(g.unlogged.length ? '     files in that folder that no log row names:' : '     every file in that folder is already named by the log.');
+    for (const u of g.unlogged) line(`       ${u}`);
+    line('     If a missing name was renamed to one of these, append ONE exact row per file to RENAME-LOG.csv:');
+    line(`       ${(r.logHeader.length ? r.logHeader : ['old_path', 'new_path']).join(',')}`);
+    line(`       <the missing path>,<its current path>${r.logHeader.length > 2 ? ','.repeat(r.logHeader.length - 2) : ''}`);
+    line('     Only you know which became which: nothing here pairs them by number, size or similarity. Unpaired, the old name stays "not described".');
+  }
+  line();
+
+  line(`5. Other files and rows needing attention: ${r.other.length}`);
+  for (const d of r.other) line(`   ${d.path} — ${d.reason}`);
+  line();
+  line('Edit PIECES.csv and RENAME-LOG.csv yourself, let the existing NAS job publish, then Refresh in the app.');
+  return `${out.join('\n')}\n`;
 }
 
 function main() {
   let values;
   try {
-    ({ values } = parseArgs({ options: { root: { type: 'string' }, out: { type: 'string' } } }));
+    ({ values } = parseArgs({ options: { root: { type: 'string' }, out: { type: 'string' }, attention: { type: 'boolean' } } }));
   } catch (err) {
     console.error(err.message);
     values = {};
   }
   if (!values.root) {
-    console.error('Usage: scan-setar-classes.mjs --root <archive> [--out <file>]');
+    console.error('Usage: scan-setar-classes.mjs --root <archive> [--out <file> | --attention]');
     process.exit(2);
+  }
+  if (values.attention) {
+    // A REPORT, never an output file: refused before anything is read.
+    if (values.out) {
+      console.error('--attention prints to stdout only and never writes a file; remove --out. Nothing was read or written.');
+      process.exit(2);
+    }
+    let report;
+    try {
+      report = attentionReport(readStableSource(values.root));
+    } catch (err) {
+      console.error(`Scan failed: ${err.message}`);
+      console.error('No report was produced, and nothing was written.');
+      process.exit(1);
+    }
+    process.stdout.write(formatAttention(report));
+    return;
   }
   if (values.out) {
     try {

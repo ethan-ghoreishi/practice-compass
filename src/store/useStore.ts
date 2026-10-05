@@ -69,12 +69,15 @@ import {
   nowISO,
   withSuppression,
   withoutSuppression,
+  archiveFor,
+  sessionMembership,
   planArchiveImport,
   applyArchiveImport,
   type ImportPlan,
   type ImportSummary,
   type ReconcileDecision,
   type SourceIndex,
+  type SourceSuppression,
   SCHEMA_VERSION,
   planDefaultPathways,
   planDefaultStages,
@@ -429,8 +432,12 @@ interface StoreState {
   }) => Promise<ArchiveCommitResult>;
   /** Hide ONE archive resource — on one item, or everywhere. */
   hideArchiveResource: (archiveId: ID, path: string, itemId?: ID) => void;
-  /** Lift a suppression, so the next refresh may bring that entity back. */
-  resetArchiveSuppression: (archiveId: ID, kind: 'piece' | 'session' | 'resource' | 'link', ref: string) => void;
+  /**
+   * Lift ONE owner suppression — the exact kind, target and item scope — so
+   * the next Refresh may bring that source entity back. Returns a refusal or
+   * null; the caller waits for storage before saying it is saved.
+   */
+  restoreArchiveSuppression: (archiveId: ID, target: Pick<SourceSuppression, 'kind' | 'ref' | 'itemId'>) => string | null;
   /** Attach a direct NAS reference to an item — no artificial lesson needed. */
   addItemReference: (itemId: ID, ref: { title: string; path: string; kind?: LessonFileKind; notes?: string }) => void;
   /** Remove a direct item reference. Never touches the file it points at. */
@@ -771,6 +778,29 @@ export const useStore = create<StoreState>()(
 
       linkItemToLesson: (lessonId, itemId) => {
         const now = new Date();
+        const { db } = get();
+        const lesson = db.lessons.find((l) => l.id === lessonId);
+        const item = db.items.find((i) => i.id === itemId);
+        // RELINKING WHAT THE ARCHIVE SAYS lifts the owner's own unlink — the
+        // one suppression that hid it — and copies nothing: the session's
+        // membership stays a source fact, never authored history in itemIds.
+        const member = lesson && item ? sessionMembership(db, lesson, item) : null;
+        const unlinked = member
+          ? archiveFor(db, member.archiveId)?.suppressions.some((x) => x.kind === 'link' && x.ref === member.link && x.itemId === undefined)
+          : false;
+        if (member && unlinked) {
+          set((s) => ({
+            db: {
+              ...s.db,
+              archiveSources: withoutSuppression(
+                s.db.archiveSources,
+                member.archiveId,
+                (x) => x.kind === 'link' && x.ref === member.link && x.itemId === undefined,
+              ),
+            },
+          }));
+          return;
+        }
         set((s) => ({
           db: {
             ...s.db,
@@ -828,21 +858,23 @@ export const useStore = create<StoreState>()(
         // An archive association is DERIVED from the session's membership, not
         // stored on the lesson — so removing it means recording the owner's
         // decision, in the same mutation, or the graph simply asserts it again.
-        const lessonSource = db.lessons.find((l) => l.id === lessonId)?.source;
-        const itemSource = db.items.find((i) => i.id === itemId)?.source;
-        const both = lessonSource && itemSource && lessonSource.archiveId === itemSource.archiveId ? lessonSource : null;
+        // Only where the session really lists this piece: a suppression for a
+        // link the archive never made would be a decision about nothing.
+        const lesson = db.lessons.find((l) => l.id === lessonId);
+        const item = db.items.find((i) => i.id === itemId);
+        const member = lesson && item ? sessionMembership(db, lesson, item) : null;
         set((s) => ({
           db: {
             ...s.db,
             lessons: s.db.lessons.map((l) =>
-              l.id === lessonId
+              l.id === lessonId && (l.itemIds ?? []).includes(itemId)
                 ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== itemId) }, now)
                 : l,
             ),
-            archiveSources: both
-              ? withSuppression(s.db.archiveSources, both.archiveId, {
+            archiveSources: member
+              ? withSuppression(s.db.archiveSources, member.archiveId, {
                   kind: 'link',
-                  ref: `${both.sessionN}:${itemSource!.pieceKey}`,
+                  ref: member.link,
                   at: nowISO(now),
                 })
               : s.db.archiveSources,
@@ -1247,17 +1279,26 @@ export const useStore = create<StoreState>()(
         }));
       },
 
-      resetArchiveSuppression: (archiveId, kind, ref) => {
+      restoreArchiveSuppression: (archiveId, target) => {
+        if (!get().db.archiveSources.some((a) => a.id === archiveId)) return 'That archive is no longer on this device.';
+        // EXACTLY the chosen decision: kind, target AND scope. Matching kind
+        // and target alone also lifted every sibling hide of the same file on
+        // OTHER items — a restore of one decision undoing several.
+        //
+        // Always a write, even when the decision is already gone from memory:
+        // a retry after a refused write must persist again, never report the
+        // in-memory state as saved.
         set((s) => ({
           db: {
             ...s.db,
             archiveSources: withoutSuppression(
               s.db.archiveSources,
               archiveId,
-              (x) => x.kind === kind && x.ref === ref,
+              (x) => x.kind === target.kind && x.ref === target.ref && x.itemId === target.itemId,
             ),
           },
         }));
+        return null;
       },
 
       addItemReference: (itemId, ref) => {

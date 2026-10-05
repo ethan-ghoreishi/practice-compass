@@ -8,6 +8,7 @@ import {
   describeArchiveAccess,
   archiveRootUrl,
   decisionMatchesSuggestion,
+  archiveValueDecision,
   type ImportPlan,
   type MetadataField,
   type ReconcileDecision,
@@ -278,16 +279,7 @@ export default function ArchiveRefresh() {
                         className="btn btn-sm"
                         aria-pressed={applied}
                         onClick={() =>
-                          decide({
-                            kind: 'apply-field',
-                            pieceKey: sg.pieceKey,
-                            // The RECORD the value was shown against, not just
-                            // the piece: a rebase must not hand the answer to
-                            // whichever item happens to hold that piece later.
-                            itemId: sg.itemId,
-                            field: sg.field,
-                            from: sg.from,
-                          })
+                          decide(archiveValueDecision(sg))
                         }
                       >
                         {applied ? `Archive’s ${FIELD_LABELS[sg.field]} chosen` : `Use the archive’s ${FIELD_LABELS[sg.field]}`}

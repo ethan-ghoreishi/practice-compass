@@ -38,3 +38,4 @@ export * from './seed';
 export * from './practiceInformation';
 export * from './migrations';
 export * from './io';
+export * from './setarSetup';

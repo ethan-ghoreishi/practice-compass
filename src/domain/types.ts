@@ -641,7 +641,7 @@ export interface SchedulingParams {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 export interface PracticeDB {
   schemaVersion: number;

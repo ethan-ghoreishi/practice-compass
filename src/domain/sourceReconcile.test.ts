@@ -11,6 +11,7 @@ import {
 } from './sourceArchive';
 import {
   applyArchiveImport,
+  archiveValueDecision,
   planArchiveImport,
   repairReferencePath,
   repairLessonReferences,
@@ -376,9 +377,10 @@ describe('reconciling the archive with the owner’s own records', () => {
     // piece: a rebase must not hand the answer to whichever item happens to
     // hold that piece by the time Apply is pressed.
     const araqItemId = suggestion.itemId;
-    const selective = applyArchiveImport(owned, delta, [
-      { kind: 'apply-field', pieceKey: 'عراق', itemId: araqItemId, field: 'composer', from: '' },
-    ]);
+    // The decision is BUILT from the suggestion — record, typed premise and
+    // exact proposal together — never assembled from what the screen showed.
+    expect(suggestion).toMatchObject({ current: '', to: 'میرزا-حسینقلی', fresh: true });
+    const selective = applyArchiveImport(owned, delta, [archiveValueDecision(suggestion)]);
     const applied = selective.items.find((i) => i.source?.pieceKey === 'عراق')!;
     expect(applied.persian?.composer).toBe('میرزا-حسینقلی');
     // ...and applying a field NEVER touches the notebook or the title.
@@ -412,9 +414,7 @@ describe('reconciling the archive with the owner’s own records', () => {
     // The suggestion stands until it is answered, and it may be answered days
     // later against the very same published index. Judging "already current"
     // by the index hash alone reported exactly that and discarded the answer.
-    const lateField = [
-      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'composer' as const, from: '' },
-    ];
+    const lateField = [archiveValueDecision(suggestion)];
     const lateDecision = planArchiveImport({
       db: refreshed,
       index: next,
@@ -422,7 +422,11 @@ describe('reconciling the archive with the owner’s own records', () => {
       decisions: lateField,
       now: NOW,
     });
-    expect(lateDecision.suggestions.some((x) => x.pieceKey === 'عراق' && x.field === 'composer')).toBe(true);
+    // Once its graph is accepted the difference is no longer OFFERED — the
+    // owner applied without taking it — but it is still there to review, and
+    // a decision made from the review applies.
+    expect(lateDecision.suggestions.some((x) => x.pieceKey === 'عراق' && x.field === 'composer')).toBe(false);
+    expect(lateDecision.differences.some((x) => x.pieceKey === 'عراق' && x.field === 'composer')).toBe(true);
     expect(lateDecision.summary.unchanged).toBe(false);
     const lateApplied = applyArchiveImport(refreshed, lateDecision, lateField);
     expect(lateApplied).not.toBe(refreshed);
@@ -435,10 +439,11 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(lateApplied.blocks).toEqual(refreshed.blocks);
     // Applied, the suggestion is gone: the next refresh has nothing to offer.
     expect(planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).suggestions).toEqual([]);
+    expect(
+      planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, now: NOW }).differences.filter((x) => x.pieceKey === 'عراق'),
+    ).toEqual([]);
     // A decision for a field with NO suggestion changes nothing at all.
-    const emptyField = [
-      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqItemId, field: 'form' as const, from: '' },
-    ];
+    const emptyField = [{ ...archiveValueDecision(suggestion), field: 'form' as const }];
     const noop = planArchiveImport({ db: lateApplied, index: next, instrumentId: SETAR, decisions: emptyField, now: NOW });
     expect(noop.summary.unchanged).toBe(true);
     expect(applyArchiveImport(lateApplied, noop, emptyField)).toBe(lateApplied);
@@ -470,13 +475,12 @@ describe('reconciling the archive with the owner’s own records', () => {
     expect(notOverwritten.items.find((i) => i.source?.pieceKey === 'عراق')!.persian?.composer).toBe(
       'Owner wrote this during refresh',
     );
-    // The suggestion is re-offered against what is there NOW, so the owner can
-    // answer the question that actually stands.
-    expect(rebased.suggestions.find((x) => x.pieceKey === 'عراق' && x.field === 'composer')!.from).toBe(
-      'Owner wrote this during refresh',
-    );
-    // A decision carrying the CURRENT value still applies, on the same data.
-    const answeredNow = [{ ...lateField[0]!, from: 'Owner wrote this during refresh' }];
+    // The difference is there to review against what is there NOW, so the
+    // owner can answer the question that actually stands.
+    const standing = rebased.differences.find((x) => x.pieceKey === 'عراق' && x.field === 'composer')!;
+    expect(standing.from).toBe('Owner wrote this during refresh');
+    // A decision built from the CURRENT difference still applies, on the same data.
+    const answeredNow = [archiveValueDecision(standing)];
     const fresh = planArchiveImport({ db: ownWrote, index: next, instrumentId: SETAR, decisions: answeredNow, now: NOW });
     expect(fresh.staleDecisions).toEqual([]);
     expect(applyArchiveImport(ownWrote, fresh, answeredNow).items.find((i) => i.source?.pieceKey === 'عراق')!.persian
@@ -554,7 +558,15 @@ describe('reconciling the archive with the owner’s own records', () => {
     // field, must not be written to the item that holds the piece now — whose
     // composer is also empty, so nothing about the VALUE would have caught it.
     const fieldForA = [
-      { kind: 'apply-field' as const, pieceKey: 'عراق', itemId: araqId, field: 'composer' as const, from: '' },
+      {
+        kind: 'apply-field' as const,
+        pieceKey: 'عراق',
+        itemId: araqId,
+        field: 'composer' as const,
+        from: '',
+        to: 'میرزا-حسینقلی',
+        toTermId: 'composer:mirza-hosseingholi',
+      },
     ];
     const redirectedField = planArchiveImport({
       db: boundToAnother,
@@ -1356,16 +1368,30 @@ describe('musical terms at the archive boundary', () => {
     expect(plan(asTerm).suggestions.filter((s) => s.itemId === target.id)).toEqual([]);
     expect(plan(asTerm).summary.unchanged).toBe(true);
 
-    // 3. A term-backed field that means something ELSE is offered — shown by
-    //    the term's name, its PREMISE the term itself — and applying it writes
-    //    the registry's raw text, the owner's explicit choice.
+    // 3. A term-backed field that means something ELSE is a DIFFERENCE — but
+    //    the registry has not changed it since this graph was accepted, so it
+    //    is a standing difference the owner already lives with: never offered
+    //    on its own, only when they ask to review differences. Shown by the
+    //    term's name; its premise is the typed value and what it means.
     const other = { ...after, items: after.items.map((i) => (i.id === target.id ? { ...i, persian: { ...i.persian, composer: { termId: 'composer:lotfi' } } } : i)) };
-    const offered = plan(other).suggestions.find((s) => s.itemId === target.id && s.field === 'composer')!;
-    expect(offered).toMatchObject({ from: 'محمدرضا لطفی', fromTermId: 'composer:lotfi', to: 'صبا' });
-    const decision = { kind: 'apply-field' as const, pieceKey: offered.pieceKey, itemId: target.id, field: 'composer' as const, from: { termId: 'composer:lotfi' } };
+    expect(plan(other).suggestions.filter((s) => s.itemId === target.id)).toEqual([]);
+    const offered = plan(other).differences.find((s) => s.itemId === target.id && s.field === 'composer')!;
+    expect(offered).toMatchObject({
+      from: 'محمدرضا لطفی',
+      current: { termId: 'composer:lotfi' },
+      currentTermId: 'composer:lotfi',
+      to: 'صبا',
+      toTermId: 'composer:saba',
+      fresh: false,
+    });
+    const decision = archiveValueDecision(offered);
     expect(decisionMatchesSuggestion(decision, offered)).toBe(true);
-    // The UI's own premise — the label it displayed — matches the same suggestion.
-    expect(decisionMatchesSuggestion({ ...decision, from: offered.from }, offered)).toBe(true);
+    // A LABEL IS NOT A PREMISE. The name the screen displayed used to match
+    // the same suggestion, so a different term carrying that name — or the
+    // owner's literal text spelling it — answered a question about this one.
+    expect(decisionMatchesSuggestion({ ...decision, from: offered.from }, offered)).toBe(false);
+    expect(decisionMatchesSuggestion({ ...decision, fromTermId: undefined }, offered)).toBe(false);
+    expect(decisionMatchesSuggestion({ ...decision, to: 'صبای' }, offered)).toBe(false);
     const applied = applyArchiveImport(other, planArchiveImport({ db: other, index: INDEX, instrumentId: SETAR, decisions: [decision], now: NOW }), [decision]);
     expect(applied.items.find((i) => i.id === target.id)!.persian!.composer).toBe('صبا');
 
@@ -1501,5 +1527,155 @@ describe('a transient narrower archive', () => {
     expect(JSON.stringify(graph(restored))).not.toContain('"unavailable"');
     expect(ownerRecords(restored)).toEqual(ownerRecords(owned));
     expect(restored.items.map((i) => i.id).sort()).toEqual(owned.items.map((i) => i.id).sort());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-7 — the accepted graph is the baseline: only NEW, MEANINGFUL source
+// proposals are offered; everything else is a standing difference the owner
+// reviews only when they ask.
+// ---------------------------------------------------------------------------
+
+describe('archive metadata against the accepted baseline', () => {
+  const piece = (over: Partial<SourceIndex['pieces'][number]> & { key: string }) => ({
+    form: '',
+    piece: '',
+    dastgah: '',
+    composer: '',
+    aliases: [],
+    sessions: [],
+    notes: '',
+    ...over,
+  });
+  const BASE_PIECES = [
+    // The two reported owner edits, exactly.
+    piece({ key: 'بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله', form: 'گوشه', piece: 'بسته-نگار', dastgah: 'بیات-ترک', studySource: 'ردیف-میرزاعبدالله' }),
+    piece({ key: 'جنگ-شهنازی', form: '(قطعه)', piece: 'جنگ', composer: 'شهنازی' }),
+    piece({ key: 'صلح-شهنازی', form: '(قطعه)', piece: 'صلح', composer: 'شهنازی' }),
+    piece({ key: 'چهارمضراب-ماهور-صبا', form: 'چهارمضراب', piece: 'چهارمضراب', dastgah: 'ماهور', composer: 'صبا' }),
+    piece({ key: 'آواز-آزمون', form: 'گوشه', piece: 'آواز', dastgah: 'شور', provisional: true }),
+    piece({ key: 'قطعه-مبهم', form: 'ضربی', piece: 'ضربی', composer: 'Ambig' }),
+  ];
+  const idx = (hash: string, pieces = BASE_PIECES): SourceIndex => ({
+    format: 'setar-archive-index',
+    version: 1,
+    archiveId: 'setar-classes',
+    pieces,
+    sessions: [],
+    renames: [],
+    diagnostics: [],
+    contentHash: hash.repeat(64).slice(0, 64),
+  });
+  const withPiece = (key: string, over: Partial<SourceIndex['pieces'][number]>, pieces = BASE_PIECES) =>
+    pieces.map((p) => (p.key === key ? { ...p, ...over } : p));
+  const at = (db: PracticeDB, key: string) => db.items.find((i) => i.source?.pieceKey === key)!;
+  const edit = (db: PracticeDB, key: string, persian: Record<string, unknown>): PracticeDB => ({
+    ...db,
+    items: db.items.map((i) => (i.source?.pieceKey === key ? { ...i, persian: { ...i.persian, ...persian } } : i)),
+  });
+  const run = (db: PracticeDB, index: SourceIndex, decisions = [] as never[]) => {
+    const p = planArchiveImport({ db, index, instrumentId: SETAR, decisions, now: NOW });
+    const next = applyArchiveImport(db, p, decisions);
+    // Preview and write agree on "nothing changes", by identity.
+    expect(next === db, 'summary.unchanged must be what the write does').toBe(p.summary.unchanged);
+    return { p, next };
+  };
+  const fields = (p: ReturnType<typeof planArchiveImport>, list: 'suggestions' | 'differences') =>
+    p[list].map((s) => `${s.pieceKey}:${s.field}`).sort();
+
+  it('setar metadata refresh offers only new meaningful source proposals', () => {
+    // Two custom composers claim one spelling: «Ambig» is AMBIGUOUS, so it
+    // stays the owner's literal text and compares as text.
+    const vocabDb = baseDB({
+      musicTerms: ['a', 'b'].map((x) => ({ id: `term-${x}`, kind: 'composer' as const, name: `Composer ${x}`, aliases: ['Ambig'], createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() })),
+    });
+
+    // --- FIRST ADOPTION: everything seeded from the registry, nothing offered.
+    const first = run(vocabDb, idx('a'));
+    expect(first.p.newItems).toHaveLength(BASE_PIECES.length);
+    expect(first.p.suggestions).toEqual([]);
+    expect(first.p.differences).toEqual([]);
+    // The kind policy seeds a درامد-free گوشه as a gusheh and a (قطعه) as a piece.
+    expect(at(first.next, 'بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله')).toMatchObject({ itemType: 'gusheh', persian: { gusheh: 'بسته-نگار' } });
+    expect(at(first.next, 'جنگ-شهنازی').itemType).toBe('full_piece');
+
+    // --- THE OWNER'S OWN READINGS, across every value shape --------------
+    let owned = first.next;
+    owned = edit(owned, 'بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله', { gusheh: 'بسته‌نگار' }); // ZWNJ spelling
+    owned = edit(owned, 'جنگ-شهنازی', { form: 'ضربی' }); // specific literal
+    owned = edit(owned, 'صلح-شهنازی', { form: { termId: 'form:zarbi' } }); // specific reference
+    owned = edit(owned, 'چهارمضراب-ماهور-صبا', { dastgahAvaz: 'Mahur', composer: '' }); // unique alias; deliberate empty
+    owned = edit(owned, 'آواز-آزمون', { dastgahAvaz: 'دشتی/شور' }); // composite literal
+    expect(validateDB(owned)).toBeTruthy();
+
+    // --- UNRELATED HASH CHURN: a new index, no registry field changed -------
+    const churn = run(owned, idx('b'));
+    // NOTHING is offered — the reported repeated offers are gone.
+    expect(churn.p.suggestions).toEqual([]);
+    expect(churn.p.summary.metadata).toBe(0);
+    // Review differences shows the standing, MEANINGFUL ones only: the ZWNJ
+    // spelling (a gusheh name is never normalised), the deliberately empty
+    // composer and the composite. Never (قطعه) over a named form, never an
+    // alias that already means the registry's term.
+    expect(fields(churn.p, 'differences')).toEqual(
+      [
+        'آواز-آزمون:dastgahAvaz',
+        'بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله:gusheh',
+        'چهارمضراب-ماهور-صبا:composer',
+      ].sort(),
+    );
+    expect(churn.p.differences.every((d) => !d.fresh)).toBe(true);
+    expect(churn.p.differences.find((d) => d.field === 'dastgahAvaz')!.provisional).toBe(true);
+    // Applying keeps every owner value exactly.
+    expect(at(churn.next, 'بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله').persian!.gusheh).toBe('بسته‌نگار');
+    expect(at(churn.next, 'جنگ-شهنازی').persian!.form).toBe('ضربی');
+    expect(at(churn.next, 'صلح-شهنازی').persian!.form).toEqual({ termId: 'form:zarbi' });
+
+    // --- A RELEVANT CHANGE IN THE SOURCE IS OFFERED, once, as itself -------
+    let changed = withPiece('چهارمضراب-ماهور-صبا', { composer: 'وزیری' });
+    changed = withPiece('بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله', { piece: 'بسته-نگار-دوم' }, changed);
+    changed = withPiece('جنگ-شهنازی', { form: 'ضربی' }, changed); // now MEANS what the owner wrote
+    changed = withPiece('صلح-شهنازی', { form: 'رنگ' }, changed); // now differs from the owner's ضربی
+    changed = withPiece('قطعه-مبهم', { composer: 'صبا' }, changed); // the owner's text was the old value
+    const fresh = run(churn.next, idx('c', changed));
+    expect(fields(fresh.p, 'suggestions')).toEqual(
+      [
+        'بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله:gusheh',
+        'صلح-شهنازی:form',
+        'قطعه-مبهم:composer',
+        'چهارمضراب-ماهور-صبا:composer',
+      ].sort(),
+    );
+    expect(fresh.p.summary.metadata).toBe(4);
+    const offered = fresh.p.suggestions.find((s) => s.pieceKey === 'صلح-شهنازی')!;
+    expect(offered).toMatchObject({ current: { termId: 'form:zarbi' }, currentTermId: 'form:zarbi', to: 'رنگ', toTermId: 'form:reng', fresh: true });
+    // Unanswered, the owner's fields are untouched and the graph accepts the
+    // registry's facts — which SETTLES those offers.
+    expect(at(fresh.next, 'صلح-شهنازی').persian!.form).toEqual({ termId: 'form:zarbi' });
+    const settled = run(fresh.next, idx('c', changed));
+    expect(settled.p.suggestions).toEqual([]);
+    expect(settled.next).toBe(fresh.next);
+    // …through a reload and a reinstall too: the accepted graph travels.
+    const reinstalled = validateDB(JSON.parse(JSON.stringify(fresh.next)));
+    expect(run(reinstalled, idx('c', changed)).p.suggestions).toEqual([]);
+    // Review differences stays opt-in and still answerable.
+    expect(settled.p.differences.some((d) => d.pieceKey === 'صلح-شهنازی' && d.field === 'form')).toBe(true);
+
+    // --- DISAPPEARANCE and REAPPEARANCE use the retained baseline ------------
+    const without = changed.filter((p) => p.key !== 'چهارمضراب-ماهور-صبا');
+    const gone = run(fresh.next, idx('d', without));
+    expect(gone.p.differences.some((d) => d.pieceKey === 'چهارمضراب-ماهور-صبا')).toBe(false);
+    expect(gone.next.archiveSources[0]!.pieces.find((p) => p.key === 'چهارمضراب-ماهور-صبا')!.unavailable).toBe(true);
+    const back = run(gone.next, idx('e', changed));
+    expect(back.p.suggestions.some((d) => d.pieceKey === 'چهارمضراب-ماهور-صبا')).toBe(false);
+    const backChanged = run(gone.next, idx('f', withPiece('چهارمضراب-ماهور-صبا', { composer: 'لطفی' }, changed)));
+    expect(fields(backChanged.p, 'suggestions')).toContain('چهارمضراب-ماهور-صبا:composer');
+
+    // --- A CHOICE writes exactly the chosen field, once ----------------------
+    const choose = archiveValueDecision(offered);
+    const taken = run(fresh.next, idx('c', changed), [choose] as never[]);
+    expect(at(taken.next, 'صلح-شهنازی').persian!.form).toBe('رنگ');
+    expect(at(taken.next, 'صلح-شهنازی').persian!.composer).toBe('شهنازی');
+    expect(run(taken.next, idx('c', changed), [choose] as never[]).next).toBe(taken.next);
   });
 });

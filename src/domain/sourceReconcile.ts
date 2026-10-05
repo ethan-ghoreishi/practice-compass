@@ -1,6 +1,7 @@
 import type { ID, ISODate, Lesson, LessonRecording, MusicalValue, PracticeDB, PracticeItem } from './types';
-import { isTermRef, resolveValue, TERM_FIELD_KIND, valueLabel, vocabulary, type Vocabulary } from './musicTerms';
+import { hasValue, isTermRef, resolveValue, TERM_FIELD_KIND, valueLabel, vocabulary, type Vocabulary } from './musicTerms';
 import { createItem, createLesson } from './factories';
+import { classifyPiece } from './setarSetup';
 import { nowISO } from './util';
 import {
   isSafeSourcePath,
@@ -46,20 +47,30 @@ export type ReconcileDecision =
   | { kind: 'create-lesson'; sessionN: number }
   | { kind: 'skip-lesson'; sessionN: number }
   /**
-   * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — carrying `itemId`, the RECORD
-   * it was shown against, and `from`, the value of theirs it was chosen
-   * against. A decision is about the state the owner actually saw: the preview
-   * and the commit are two moments, and between them a note can be saved, a
-   * sync can land, another device can write.
+   * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — bound to the RECORD it was shown
+   * against (`itemId`), the owner's value it was chosen over, TYPED (`from`: a
+   * term reference stays a reference, text stays text, `null` is empty), what
+   * that value MEANT (`fromTermId`), and the exact proposal (`to`, `toTermId`).
+   * A decision is about the state the owner actually saw: the preview and the
+   * commit are two moments, and between them a note can be saved, a sync can
+   * land, a term can be renamed or re-pointed, the registry can change.
    *
    * Without the PREMISE, choosing the archive's composer over an empty field
    * and then typing one yourself before pressing Apply replaced your own new
-   * words with the registry's. Without the IDENTITY, the same answer landed on
-   * whichever record happened to hold that piece at commit time: sync a
-   * database where the piece is bound to item B instead, also with an empty
-   * composer, and a choice made about A was written to B.
+   * words. Without the IDENTITY, the answer landed on whichever record held the
+   * piece at commit time. And a LABEL is never a premise: the screen's "لطفی"
+   * matched a different term that happened to carry the same name.
    */
-  | { kind: 'apply-field'; pieceKey: string; itemId: ID; field: MetadataField; from: MusicalValue };
+  | {
+      kind: 'apply-field';
+      pieceKey: string;
+      itemId: ID;
+      field: MetadataField;
+      from: MusicalValue | null;
+      fromTermId?: ID;
+      to: string;
+      toTermId?: ID;
+    };
 
 export type MetadataField = 'dastgahAvaz' | 'gusheh' | 'form' | 'composer';
 
@@ -78,32 +89,92 @@ export interface ReconcileQuestion {
   candidates: ReconcileCandidate[];
 }
 
-/** A registry improvement the owner may apply to an already-seeded item. */
+/**
+ * A registry value that differs, in MEANING, from the owner's own field on an
+ * item the archive already seeded. `fresh` ones — the registry CHANGED this
+ * field since the graph this device last accepted — are offered; the rest are
+ * standing differences the owner already lived with, shown only when they ask
+ * to review them. Accepting a graph is what settles a difference: an unchanged
+ * source value never challenges a later owner edit again, and no separate
+ * ledger of answers is kept.
+ */
 export interface MetadataSuggestion {
   pieceKey: string;
   itemId: ID;
   field: MetadataField;
-  /** The owner's current value AS IT READS — a term's name, or their own text. */
+  /** The owner's current value, TYPED: a reference stays a reference; `null` is empty. */
+  current: MusicalValue | null;
+  /** The one term `current` resolves to, if any. */
+  currentTermId?: ID;
+  /** How the owner's value reads on screen — display only, never compared. */
   from: string;
-  /** Set when that value is a term REFERENCE: the premise is the term itself. */
-  fromTermId?: ID;
+  /** The registry's exact proposed text. */
   to: string;
+  /** The one term `to` resolves to, if any. */
+  toTermId?: ID;
+  /** The registry changed this field since this device last accepted the graph. */
+  fresh: boolean;
+  /** The registry row carries a PROVISIONAL / MEDIUM-confidence caveat. */
+  provisional?: boolean;
+}
+
+/** The one decision a suggestion is answered with — built here, never by a screen. */
+export function archiveValueDecision(s: MetadataSuggestion): Extract<ReconcileDecision, { kind: 'apply-field' }> {
+  return {
+    kind: 'apply-field',
+    pieceKey: s.pieceKey,
+    itemId: s.itemId,
+    field: s.field,
+    from: s.current,
+    ...(s.currentTermId ? { fromTermId: s.currentTermId } : {}),
+    to: s.to,
+    ...(s.toTermId ? { toTermId: s.toTermId } : {}),
+  };
+}
+
+/** A typed value compared as a value: a reference by its term, text by its exact bytes; empty is empty. */
+function sameTyped(a: MusicalValue | null | undefined, b: MusicalValue | null | undefined): boolean {
+  if (isTermRef(a) || isTermRef(b)) return isTermRef(a) && isTermRef(b) && a.termId === b.termId;
+  return (a ?? '') === (b ?? '');
 }
 
 /**
- * Does the owner's field ALREADY say what the registry proposes? Literal text
- * compares exactly, as it always has. A term-backed field says it when the
- * registry's own spelling resolves to that same term — «Shur» in the registry
- * is not an improvement on a field that already IS شور. The registry text is
- * never rewritten; only the question "is there anything to offer" reads terms.
+ * The registry's placeholder for a composed piece it has not classified. It
+ * names no form, so it can never improve a field that already names one.
  */
-function fieldAlreadySays(current: MusicalValue | undefined, proposed: string, field: MetadataField, vocab: Vocabulary): boolean {
-  if (!isTermRef(current)) return (current ?? '') === proposed;
-  if (field === 'gusheh') return false;
-  const kind = TERM_FIELD_KIND[field];
-  const mine = resolveValue(current, kind, vocab);
-  const theirs = resolveValue(proposed, kind, vocab);
-  return mine.status === 'term' && theirs.status === 'term' && mine.term.id === theirs.term.id;
+export const GENERIC_FORMS: ReadonlySet<string> = new Set(['(قطعه)']);
+
+/** The one term a value means for this field, by the shared resolver. A gusheh name is never a term. */
+function meaningOf(value: MusicalValue | null | undefined, field: MetadataField, vocab: Vocabulary): ID | undefined {
+  if (field === 'gusheh') return undefined;
+  const r = resolveValue(value ?? undefined, TERM_FIELD_KIND[field], vocab);
+  return r.status === 'term' ? r.term.id : undefined;
+}
+
+/**
+ * Do two values SAY the same thing? A term reference and a literal both
+ * resolve through the existing unique term resolution, so «بیات-ترک» and the
+ * term بیات ترک are one meaning. Anything that resolves to no single term —
+ * unknown, ambiguous, composite — compares as its exact text. A gusheh name is
+ * never normalised: «بسته‌نگار» and «بسته-نگار» are two spellings, and which
+ * one is right is the owner's to say.
+ */
+function sameMeaning(a: MusicalValue | null | undefined, b: MusicalValue | null | undefined, field: MetadataField, vocab: Vocabulary): boolean {
+  const ta = meaningOf(a, field, vocab);
+  const tb = meaningOf(b, field, vocab);
+  if (ta || tb) return ta === tb;
+  return sameTyped(a, b);
+}
+
+/**
+ * Is there anything for the registry's value to OFFER over the owner's? Never
+ * when the registry says nothing, never when both mean the same, and never a
+ * generic placeholder over a form the owner has named.
+ */
+function offers(current: MusicalValue | null | undefined, proposed: string, field: MetadataField, vocab: Vocabulary): boolean {
+  if (!proposed) return false;
+  if (field === 'form' && GENERIC_FORMS.has(proposed) && hasValue(current ?? undefined)) return false;
+  return !sameMeaning(current, proposed, field, vocab);
 }
 
 /**
@@ -115,12 +186,15 @@ export function decisionMatchesSuggestion(d: ReconcileDecision, s: MetadataSugge
   return (
     d.kind === 'apply-field' &&
     d.pieceKey === s.pieceKey &&
-    // IDENTITY and PREMISE together: which record, and what of theirs it was
-    // chosen against. Either one alone lets a rebase redirect the answer.
+    // IDENTITY, PREMISE AND PROPOSAL together: which record, what of theirs
+    // (typed, and what it meant), and exactly what replaces it. Any one alone
+    // lets a rebase redirect the answer.
     d.itemId === s.itemId &&
     d.field === s.field &&
-    // A term-backed premise is the term; a text premise is what the owner read.
-    (isTermRef(d.from) ? d.from.termId === s.fromTermId : d.from === s.from)
+    sameTyped(d.from, s.current) &&
+    d.fromTermId === s.currentTermId &&
+    d.to === s.to &&
+    d.toTermId === s.toTermId
   );
 }
 
@@ -130,6 +204,10 @@ export interface ImportSummary {
   updatedLessons: number;
   questions: number;
   attention: number;
+  /** Registry fields that changed since the last accepted graph and differ from the owner's. */
+  metadata: number;
+  /** Owner suppressions this graph carries — deleted, skipped, unlinked or hidden. */
+  suppressed: number;
   /** Nothing at all would change: the same index, already accepted. */
   unchanged: boolean;
 }
@@ -152,7 +230,10 @@ export interface ImportPlan {
   /** Existing items adopted by an explicit owner decision. */
   adoptedItems: PracticeItem[];
   questions: ReconcileQuestion[];
+  /** The FRESH differences: offered without being asked for. */
   suggestions: MetadataSuggestion[];
+  /** EVERY meaningful difference, fresh or standing — "Review differences", on request. */
+  differences: MetadataSuggestion[];
   attention: SourceDiagnostic[];
   /**
    * Decisions whose PREMISE moved: the owner's value is no longer the one the
@@ -214,9 +295,10 @@ export function followRenames(path: string, renames: Map<string, string>): strin
 /** The registry facts an item is SEEDED from — identity, never working detail. */
 function persianFromPiece(piece: SourcePiece) {
   return {
-    // "گوشه" is the form that identifies a gusheh. Every other form is carried
-    // verbatim; none of them is turned into a category the registry never made.
-    ...(piece.form === 'گوشه' ? { gusheh: piece.piece || piece.key } : {}),
+    // A piece the ONE kind policy reads as a gusheh is named as one. Every
+    // form is carried verbatim; none is turned into a category the registry
+    // never made.
+    ...(classifyPiece(piece).kind === 'gusheh' ? { gusheh: piece.piece || piece.key } : {}),
     ...(piece.dastgah ? { dastgahAvaz: piece.dastgah } : {}),
     ...(piece.form ? { form: piece.form } : {}),
     ...(piece.composer ? { composer: piece.composer } : {}),
@@ -242,7 +324,12 @@ function itemForPiece(archiveId: string, instrumentId: ID, piece: SourcePiece, n
       instrumentId,
       // The canonical key IS the piece's name in this archive, byte for byte.
       title: piece.key,
-      itemType: piece.form === 'گوشه' ? 'gusheh' : 'full_piece',
+      // The ONE kind policy (`classifyPiece`): an explicit تمرین/اتود is an
+      // exercise, a clear composed form a full piece, a گوشه or radif درامد a
+      // gusheh, a بداهه the owner's improvisation — never silently a composed
+      // work. Where the registry does not decide it, `other`, and the Setar
+      // review asks.
+      itemType: classifyPiece(piece).kind ?? 'other',
       status: 'dormant',
       persian: persianFromPiece(piece),
     },
@@ -586,27 +673,42 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
 
   const newItems: PracticeItem[] = [];
   const adoptedItems: PracticeItem[] = [];
-  const suggestions: MetadataSuggestion[] = [];
+  const differences: MetadataSuggestion[] = [];
+  // THE LAST ACCEPTED GRAPH IS THE BASELINE. A field the registry has not
+  // changed since then has already been seen and answered — taken, or kept by
+  // the owner's own edit — and offering it again on every refresh is how a
+  // deliberate «بسته‌نگار» and a deliberate «ضربی» were challenged forever.
+  // A piece the source stopped describing is retained with its last fields,
+  // so it is still the baseline when it comes back.
+  const accepted = new Map((existing?.pieces ?? []).map((p) => [p.key, p]));
 
   for (const piece of index.pieces) {
     const bound = boundItems.get(piece.key);
     if (bound) {
-      // SOURCE FACTS update; the owner's own fields never do. A later registry
-      // improvement is OFFERED, field by field, and applied only on an explicit
-      // decision — including when the owner's value is deliberately EMPTY.
+      // SOURCE FACTS update; the owner's own fields never do. A registry value
+      // that differs is OFFERED, field by field, and applied only on an
+      // explicit decision — including when the owner's value is deliberately
+      // EMPTY.
+      const baseline = accepted.get(piece.key);
       for (const field of ['dastgahAvaz', 'gusheh', 'form', 'composer'] as MetadataField[]) {
         const proposed = persianFromPiece(piece)[field] ?? '';
-        const current = bound.persian?.[field];
-        if (proposed && !fieldAlreadySays(current, proposed, field, vocab)) {
-          suggestions.push({
-            pieceKey: piece.key,
-            itemId: bound.id,
-            field,
-            from: valueLabel(current, vocab),
-            ...(isTermRef(current) ? { fromTermId: current.termId } : {}),
-            to: proposed,
-          });
-        }
+        const current = bound.persian?.[field] ?? null;
+        if (!offers(current, proposed, field, vocab)) continue;
+        const before = baseline ? (persianFromPiece(baseline)[field] ?? '') : proposed;
+        const currentTermId = meaningOf(current, field, vocab);
+        const toTermId = meaningOf(proposed, field, vocab);
+        differences.push({
+          pieceKey: piece.key,
+          itemId: bound.id,
+          field,
+          current,
+          ...(currentTermId ? { currentTermId } : {}),
+          from: valueLabel(current, vocab),
+          to: proposed,
+          ...(toTermId ? { toTermId } : {}),
+          fresh: !sameMeaning(before, proposed, field, vocab),
+          ...(piece.provisional || piece.mediumConfidence ? { provisional: true } : {}),
+        });
       }
       continue;
     }
@@ -735,9 +837,10 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     ]),
   };
 
-  // A field decision only counts as a change when there is a suggestion for it
-  // to apply — a stale one left over from an earlier preview changes nothing.
-  const appliedFields = decisions.filter((d) => suggestions.some((x) => decisionMatchesSuggestion(d, x)));
+  // A field decision only counts as a change when there is a difference for it
+  // to apply — fresh or reviewed, exactly as the owner saw it. A stale one
+  // left over from an earlier preview changes nothing.
+  const appliedFields = decisions.filter((d) => differences.some((x) => decisionMatchesSuggestion(d, x)));
   for (const d of appliedFields) acted(d);
 
   // THE SWEEP. Anything the loops above did not act on is either an action
@@ -764,14 +867,13 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       case 'create-lesson':
         return boundLessons.get(d.sessionN)?.id === sourceLessonId(archiveId, d.sessionN);
       case 'apply-field': {
-        // No live suggestion can mean two opposite things. The registry value
-        // is already in the owner's field — done — or the registry no longer
-        // proposes one, which is a premise that moved.
+        // No live difference can mean two opposite things. The registry's
+        // value is already in the owner's field, exactly as chosen — done — or
+        // the premise moved.
         const piece = index.pieces.find((x) => x.key === d.pieceKey);
         const item = boundItems.get(d.pieceKey);
         if (!piece || !item || item.id !== d.itemId) return false;
-        const proposed = persianFromPiece(piece)[d.field] ?? '';
-        return proposed !== '' && fieldAlreadySays(item.persian?.[d.field], proposed, d.field, vocab);
+        return (persianFromPiece(piece)[d.field] ?? '') === d.to && sameTyped(item.persian?.[d.field], d.to);
       }
     }
   };
@@ -802,7 +904,8 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     repairedLessons,
     adoptedItems,
     questions,
-    suggestions,
+    suggestions: differences.filter((d) => d.fresh),
+    differences,
     attention,
     staleDecisions,
     summary: {
@@ -811,6 +914,8 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       updatedLessons: repairedAdopted.length + adoptedItems.length + repairedLessons.length,
       questions: questions.length,
       attention: attention.length,
+      metadata: differences.filter((d) => d.fresh).length,
+      suppressed: source.suppressions.length,
       unchanged: sameGraph && !changesRecords && questions.length === 0,
     },
   };
@@ -840,13 +945,13 @@ export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: 
   const suppressionsChanged =
     plan.source.suppressions.length !== knownSuppressions.size ||
     plan.source.suppressions.some((s) => !knownSuppressions.has(suppressionKey(s)));
-  // A field decision counts only when the plan actually OFFERS that field —
+  // A field decision counts only when the plan actually holds that difference —
   // the same rule the plan's own summary applies, so "nothing to do" means the
   // same thing on both sides of the preview/commit boundary. A decision left
   // over from an earlier preview must not make an unchanged refresh a write.
   const applied = decisions.filter(
     (d): d is Extract<ReconcileDecision, { kind: 'apply-field' }> =>
-      plan.suggestions.some((x) => decisionMatchesSuggestion(d, x)),
+      plan.differences.some((x) => decisionMatchesSuggestion(d, x)),
   );
   const nothingToDo =
     !graphChanged &&
@@ -862,7 +967,7 @@ export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: 
   const adoptedLessonIds = new Set(plan.adoptedLessons.map((l) => l.id));
   const repairedById = new Map(plan.repairedLessons.map((l) => [l.id, l]));
   const fieldsByItem = new Map<ID, MetadataSuggestion[]>();
-  for (const s of plan.suggestions) {
+  for (const s of plan.differences) {
     if (!applied.some((d) => decisionMatchesSuggestion(d, s))) continue;
     fieldsByItem.set(s.itemId, [...(fieldsByItem.get(s.itemId) ?? []), s]);
   }
