@@ -239,8 +239,17 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
       label: { gusheh: 'Gusheh (radif)', full_piece: 'Composed piece', exercise: 'Exercise / étude', improvisation: 'Improvisation' }[k],
       after: target(k),
     }));
+    // The import's own old default is not an owner's decision; anything else is.
+    const seeded = i.itemType === legacySeedKind(piece) || i.itemType === 'other';
     if (!reading.kind) {
-      push({ id: `kind:${i.id}`, itemId: i.id, field: 'kind', state: 'exception', before, choices: options, evidence: reading.why });
+      // Yours to say — and once said, it is not asked again. (Confirming the
+      // import's old default is indistinguishable from never answering, so
+      // that one stays a question; nothing records answers beside the item.)
+      push(
+        seeded
+          ? { id: `kind:${i.id}`, itemId: i.id, field: 'kind', state: 'exception', before, choices: options, evidence: reading.why }
+          : { id: `kind:${i.id}`, itemId: i.id, field: 'kind', state: 'correct', before, after: before, choices: [], evidence: `${reading.why} You set it to ${i.itemType}.` },
+      );
       continue;
     }
     const want = target(reading.kind);
@@ -248,8 +257,6 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
       push({ id: `kind:${i.id}`, itemId: i.id, field: 'kind', state: 'correct', before, after: before, choices: [], evidence: reading.why });
       continue;
     }
-    // The import's own old default is not an owner's decision; anything else is.
-    const seeded = i.itemType === legacySeedKind(piece) || i.itemType === 'other';
     push(
       seeded
         ? { id: `kind:${i.id}`, itemId: i.id, field: 'kind', state: 'proposed', before, after: want, choices: [], evidence: reading.why }

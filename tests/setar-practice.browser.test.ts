@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Page } from 'playwright';
 import OWNER_V16_TEXT from './fixtures/setar-practice-owner-v16.json?raw';
+import { hashState } from '../src/domain/canonical';
 import { validateDB } from '../src/domain/io';
 import { catalogForStage, planDefaultPathways } from '../src/domain/pathwaySeed';
 import { stagesOfPathway } from '../src/domain/pathways';
@@ -15,7 +16,9 @@ import {
   newFakeRemote,
   openPracticeApp,
   openSettings,
+  publishRemote,
   publishSourceIndex,
+  remoteStateText,
   stampSourceIndex,
   persistedDb,
   readPersistedState,
@@ -837,4 +840,149 @@ describe('the archive, from the NAS folder to the practice item', () => {
       }
     }
   }, 900_000);
+});
+
+// ---------------------------------------------------------------------------
+// ac-11 — Review Setar setup, through its own controls, survives what really
+// happens while the owner is reading it: a sync that changes other things and
+// brings a row nobody saw, a refused write, a reload, and running it again.
+// ---------------------------------------------------------------------------
+
+describe('Review Setar setup, interrupted', () => {
+  it('setar setup review is usable through controls and survives interruption', async () => {
+    const base = validateDB(OWNER_V16);
+    const by = (key: string) => base.items.find((i) => i.source?.pieceKey === key)!;
+    const MAHUR = by('درامد-ماهور-ردیف-میرزاعبدالله');
+    const TORK2 = by('درامد-دوم-بیات-ترک-ردیف-میرزاعبدالله');
+    const ABU_ATA = by('درامد-ابوعطا-ردیف-میرزاعبدالله');
+    const RENG_HARBI = by('رنگ-حربی-ماهور-ردیف-میرزاعبدالله');
+    const JANG = by('جنگ-شهنازی');
+    const SABA = by('چهارمضراب-ماهور-صبا');
+    const KERESHMEH_MAHUR = by('کرشمه-ماهور-ردیف-میرزاعبدالله');
+    const RIZ = base.items.find((i) => i.id === 'it-riz')!;
+    const LATE_TITLE = 'آواز ماهور (از دستگاه دیگر)';
+    const untouched = (d: Db) =>
+      JSON.stringify([d.blocks, d.reviews, d.lessonAgenda, d.lessons, d.items.map((i) => [i.id, i.notes, i.timesPractised, i.nextReviewDate, i.lastResult])]);
+
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      const where = engine;
+      // State-only in both engines: this journey is about the review, and a
+      // pulled snapshot must carry every attachment's bytes (sync refuses one
+      // that does not), which the fake remote's state-only snapshot cannot.
+      const app = await seeded(engine, { ...base, attachments: [] }, { width: 390, height: 844 });
+      const { page } = app;
+      try {
+        const remote = newFakeRemote();
+        await installFakeGitHub(page, remote);
+        await connectSync(app);
+        const before = await db(app);
+
+        // --- OPEN: nothing is chosen until the owner chooses ------------------
+        await page.getByText('Review Setar setup').click();
+        await expect.poll(() => page.getByRole('combobox', { name: 'Instrument to review' }).inputValue()).toBe('inst-setar');
+        await page.getByRole('combobox', { name: 'Pathway to place items in' }).selectOption('setar-radif');
+        // A source with a near-duplicate on this instrument, and one with the
+        // same title on ANOTHER instrument that is never offered.
+        const source = page.getByRole('combobox', { name: 'Study source for ردیف-میرزاعبدالله' });
+        const offered = await source.locator('option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+        expect(offered, where).toEqual(expect.arrayContaining(['mat-radif', 'mat-radif-borumand', 'create']));
+        expect(offered, where).not.toContain('mat-radif-tar');
+        await source.selectOption('mat-radif');
+        expect(await page.getByText(/Keeping fresh — choose which items \(0 chosen\)/).count(), where).toBe(1);
+
+        // --- EVIDENCE, BEFORE and AFTER are on the row ------------------------
+        const mahur = page.getByRole('group', { name: `Setup of ${MAHUR.title}` });
+        const shown = await mahur.innerText();
+        expect(shown, where).toContain('Kind: composed piece → gusheh (radif) · درامد');
+        expect(shown, where).toMatch(/Place: not placed → ماهور/);
+        expect(shown, where).toMatch(/Study source: none → ردیف میرزا عبدالله/);
+        // A proposed row the owner saw is selected; one they clear stays out.
+        expect(await mahur.getByRole('checkbox', { name: /^Kind of / }).isChecked(), where).toBe(true);
+        await page.getByRole('group', { name: `Setup of ${TORK2.title}` }).getByRole('checkbox', { name: /^Place of / }).uncheck();
+        // An exception asks; a choice is explicit.
+        await page.getByRole('combobox', { name: `Place of ${ABU_ATA.title}` }).selectOption('0');
+        await page.getByRole('combobox', { name: `Kind of ${RENG_HARBI.title}` }).selectOption('0');
+
+        // --- KEEPING FRESH: a batch, an exclusion, an inclusion ----------------
+        // The batch takes only rows without a note; a resting archive piece or
+        // a technique item carries one, so it stays out unless chosen by hand.
+        await page.getByText(/Keeping fresh — choose which items/).click();
+        await page.getByRole('button', { name: 'Choose every item without a note' }).click();
+        const fresh = (title: string) => page.getByRole('checkbox', { name: `Keeping fresh: ${title}` });
+        expect([await fresh(SABA.title).isChecked(), await fresh(KERESHMEH_MAHUR.title).isChecked()], where).toEqual([true, true]);
+        expect([await fresh(RIZ.title).isChecked(), await fresh(JANG.title).isChecked(), await fresh(MAHUR.title).isChecked()], where).toEqual([false, false, false]);
+        await fresh(SABA.title).uncheck();
+        await fresh(RIZ.title).check();
+
+        // --- ANOTHER DEVICE changes other things, and adds an item --------------
+        const pulled = structuredClone(before) as Db;
+        const tar = pulled.items.find((i) => i.id === 'it-tar-kereshmeh')!;
+        tar.notes = 'edited on the other device';
+        pulled.items.push({ ...pulled.items.find((i) => i.id === 'it-own-gusheh')!, id: 'it-late', title: LATE_TITLE, status: 'dormant', persian: { dastgahAvaz: 'ماهور', gusheh: 'آواز' } });
+        publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 99);
+        await page.getByRole('button', { name: 'Sync now' }).click();
+        await until(app, (x) => x.items.some((i) => i.id === 'it-late'), (v) => v);
+        // The late row is SHOWN, and joins nothing; every earlier choice stands.
+        const late = page.getByRole('group', { name: `Setup of ${LATE_TITLE}` });
+        await late.waitFor({ timeout: 10_000 });
+        expect(await late.getByRole('checkbox', { name: /^Place of / }).isChecked(), where).toBe(false);
+        expect(await page.getByRole('checkbox', { name: `Keeping fresh: ${LATE_TITLE}` }).isChecked(), where).toBe(false);
+        expect(await page.getByRole('group', { name: `Setup of ${TORK2.title}` }).getByRole('checkbox', { name: /^Place of / }).isChecked(), where).toBe(false);
+        expect(await page.getByRole('combobox', { name: `Kind of ${RENG_HARBI.title}` }).inputValue(), where).toBe('0');
+        const preApply = await db(app);
+
+        // --- A REFUSED WRITE is not "Saved."; Try again writes ----------------
+        await breakStorage(page);
+        await page.getByRole('button', { name: /^Apply \d+ selected$/ }).click();
+        await page.getByText(/Not saved/).first().waitFor({ timeout: 10_000 });
+        expect(await page.getByText('Saved.').count(), where).toBe(0);
+        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(preApply));
+        await repairStorage(page);
+        await page.getByRole('button', { name: 'Try again' }).click();
+        await page.getByText('Saved.').first().waitFor({ timeout: 10_000 });
+
+        const after = await until(app, (x) => x, (x) => x.items.find((i) => i.id === MAHUR.id)!.itemType === 'gusheh');
+        const item = (id: string) => after.items.find((i) => i.id === id)!;
+        // Exactly the selected rows, and their fields only.
+        expect([item(MAHUR.id).itemType, item(MAHUR.id).persian?.gusheh, item(MAHUR.id).stageId, item(MAHUR.id).materialId], where).toEqual([
+          'gusheh',
+          'درامد',
+          'setar-radif-mahur',
+          'mat-radif',
+        ]);
+        expect(item(TORK2.id).stageId, where).toBe(TORK2.stageId);
+        expect(item(TORK2.id).itemType, where).toBe('gusheh');
+        expect(item(ABU_ATA.id).stageId, where).toBe('setar-radif-abu-ata');
+        expect(item(RENG_HARBI.id).itemType, where).toBe('gusheh');
+        expect([item(RIZ.id).status, item(KERESHMEH_MAHUR.id).status], where).toEqual(['maintenance', 'maintenance']);
+        expect([item(SABA.id).status, item(JANG.id).status, item(MAHUR.id).status], where).toEqual([SABA.status, JANG.status, MAHUR.status]);
+        // The late item and the other device's edit are exactly as pulled.
+        expect(item('it-late'), where).toEqual(pulled.items.find((i) => i.id === 'it-late'));
+        expect(item('it-tar-kereshmeh').notes, where).toBe('edited on the other device');
+        // An existing source was used: none was made.
+        expect(after.materials.map((m) => m.id).sort(), where).toEqual(before.materials.map((m) => m.id).sort());
+        // Notes, history, reviews, dates, ratings and classes never move.
+        expect(untouched(after), where).toBe(untouched({ ...preApply, items: preApply.items }));
+
+        // --- RELOAD and REPEAT: what is done stays done; nothing doubles ---------
+        await reload(app);
+        await openSettings(app);
+        await page.getByText('Review Setar setup').click();
+        await page.getByRole('combobox', { name: 'Pathway to place items in' }).selectOption('setar-radif');
+        await page.getByRole('combobox', { name: 'Study source for ردیف-میرزاعبدالله' }).selectOption('mat-radif');
+        // Applied rows are done; placing it in a catalogue stage now ASKS which
+        // suggestion it answers (the radif list is partial), choosing none.
+        const again = page.getByRole('group', { name: `Setup of ${MAHUR.title}` });
+        expect(await again.getByRole('checkbox').count(), where).toBe(0);
+        expect(await again.getByRole('combobox', { name: `Suggestion of ${MAHUR.title}` }).inputValue(), where).toBe('-1');
+        expect(await page.getByRole('combobox', { name: `Kind of ${RENG_HARBI.title}` }).count(), where).toBe(0);
+        // The row the owner cleared is offered again, as a proposal, not applied.
+        expect(await page.getByRole('group', { name: `Setup of ${TORK2.title}` }).getByRole('checkbox', { name: /^Place of / }).count(), where).toBe(1);
+        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(after));
+        expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    }
+  }, 600_000);
 });

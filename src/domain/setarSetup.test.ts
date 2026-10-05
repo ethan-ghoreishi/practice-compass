@@ -240,6 +240,17 @@ describe('the Setar setup review', () => {
     expect(s().commitSetarSetup({ context: WITH_SOURCE, selections, now: NOW })).toBeNull();
     expect(s().db).toBe(after);
     expect(s().rev).toBe(rev);
+    // An undecidable kind: the owner's different answer is settled, never asked
+    // again; confirming the import's old default stays a question (nothing
+    // records answers beside the item).
+    const harbi = plan.proposals.find((p) => p.id === `kind:${idOf(OWNER, 'رنگ-حربی-ماهور-ردیف-میرزاعبدالله')}`)!;
+    const toGusheh = harbi.choices.find((c) => 'itemType' in c.after && c.after.itemType === 'gusheh')!.after;
+    const settled = applySetarSetup(OWNER, WITH_SOURCE, [{ id: harbi.id, before: harbi.before, after: toGusheh }], NOW);
+    if (!settled.ok) throw new Error(settled.reason);
+    const harbiAgain = planSetarSetup(settled.db, WITH_SOURCE).proposals.find((p) => p.id === harbi.id)!;
+    expect([harbiAgain.state, harbiAgain.choices]).toEqual(['correct', []]);
+    const confirmedDefault = planSetarSetup(after, WITH_SOURCE).proposals.find((p) => p.id === `kind:${idOf(OWNER, 'چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله')}`)!;
+    expect(confirmedDefault.state).toBe('exception');
 
     // --- CREATE a study source ONCE, never by title, never cross-instrument -
     useStore.setState({ db: OWNER });
