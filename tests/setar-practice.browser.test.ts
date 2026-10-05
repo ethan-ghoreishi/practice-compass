@@ -1186,3 +1186,159 @@ describe('archive metadata choices, from the screen', () => {
     }
   }, 600_000);
 });
+
+// ---------------------------------------------------------------------------
+// ac-13 — the recovery list and the metadata difference rows, on a phone, in
+// light and dark, at normal and large text, with long text in the language
+// the surrounding copy is NOT in: each value resolves its own direction and
+// starts where its text starts; every action is a 44px target the keyboard
+// reaches and that keeps focus in the section; only <main> scrolls.
+// ---------------------------------------------------------------------------
+
+/**
+ * What the layout rules say about the page right now — once any transient
+ * toast (the app's one deliberate overlay, not layout) has gone.
+ */
+const layoutFacts = async (page: Page) => {
+  await page.locator('.toast').waitFor({ state: 'detached', timeout: 15_000 });
+  return page.evaluate(() => {
+    const main = document.querySelector('main')!;
+    const root = document.scrollingElement!;
+    const pinned = [...document.querySelectorAll('body *')]
+      .filter((e) => ['fixed', 'sticky'].includes(getComputedStyle(e).position))
+      .map((e) => e.outerHTML.slice(0, 60));
+    return {
+      pageScrolls: root.scrollHeight > window.innerHeight + 1 || window.scrollY !== 0,
+      sideways: document.documentElement.scrollWidth > window.innerWidth + 1 || main.scrollWidth > main.clientWidth + 1,
+      mainScrollTop: main.scrollTop,
+      pinned,
+    };
+  });
+};
+const focused = (page: Page) =>
+  page.evaluate(() => {
+    const a = document.activeElement as HTMLElement | null;
+    const s = a ? getComputedStyle(a) : null;
+    return {
+      tag: a?.tagName.toLowerCase() ?? '',
+      name: a?.getAttribute('aria-label') || a?.textContent?.trim() || '',
+      ring: !!s && ((s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 1) || s.boxShadow !== 'none'),
+    };
+  });
+const isTarget = async (l: ReturnType<Page['getByRole']>) => {
+  const b = await l.boundingBox();
+  return !!b && b.width >= 44 && b.height >= 44;
+};
+const LARGE_TEXT = 'html { font-size: 150% !important; }';
+
+describe('recovery and difference controls, on a phone', () => {
+  it('portable term and recovery controls preserve direction focus and scroll ownership', async () => {
+    const seed = validateDB(OWNER_V16);
+    const by = (key: string) => seed.items.find((i) => i.source?.pieceKey === key)!;
+    const KER = by(KERESHMEH);
+    const LONG_EN = 'My own long English working title for this Mahur gusheh, kept exactly as I typed it on the phone';
+    const graph = seed.archiveSources[0]!;
+    const base: Db = {
+      ...seed,
+      attachments: [],
+      items: seed.items.filter((i) => i.source?.pieceKey !== DELETED_PIECE).map((i) => (i.id === KER.id ? { ...i, title: LONG_EN } : i)),
+      archiveSources: [
+        {
+          ...graph,
+          suppressions: [
+            ...graph.suppressions,
+            { kind: 'piece', ref: DELETED_PIECE, at: T },
+            { kind: 'resource', ref: `${S7}/نمونه-1.mp4`, itemId: KER.id, at: T },
+            { kind: 'resource', ref: 'session-24-25-01-2025/نت-درامد-اول-بیات-ترک-ردیف-میرزاعبدالله-نسخه-قدیمی-با-نام-بسیار-بلند.pdf', at: T },
+          ],
+        },
+      ],
+    };
+    const corrected = await indexFor(graph, (i) => {
+      for (const p of i.pieces as { key: string; composer?: string }[]) if (p.key === 'چهارمضراب-ماهور-صبا') p.composer = 'ابوالحسن صبا و شاگردان او در کلاس‌های هنرستان';
+    });
+
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      for (const [colorScheme, large] of [['light', false], ['dark', true]] as const) {
+        const where = `${engine} ${colorScheme}${large ? ' large text' : ''}`;
+        const app = await openPracticeApp({ now: CLOCK, engine, viewport: { width: 390, height: 844 }, colorScheme });
+        const { page } = app;
+        try {
+          await importBackup(app, 'recovery.json', wrap(base));
+          expect(await importOutcome(app), where).toContain('Imported');
+          const remote = newFakeRemote();
+          await installFakeGitHub(page, remote);
+          await connectSync(app);
+          publishSourceIndex(remote, corrected, 'idx-corrected');
+          if (large) await page.addStyleTag({ content: LARGE_TEXT });
+          await page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+          await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 30_000 });
+
+          // --- DIFFERENCE ROW: values directed, actions reachable and kept ------
+          const diff = page.getByRole('group', { name: 'composer of چهارمضراب-ماهور-صبا' });
+          const keep = diff.getByRole('button', { name: 'Keep my value' });
+          const use = diff.getByRole('button', { name: 'Use archive value' });
+          expect([await isTarget(keep), await isTarget(use)], where).toEqual([true, true]);
+          const values = await diff.locator('span[dir="auto"]').evaluateAll((ns) => ns.map((n) => [n.textContent, getComputedStyle(n).direction]));
+          expect(values.filter(([t]) => t && /[؀-ۿ]/.test(t)).every(([, d]) => d === 'rtl'), where).toBe(true);
+          await keep.focus();
+          await page.keyboard.press('Tab');
+          expect((await focused(page)).name, where).toBe('Use archive value');
+          await page.keyboard.press('Space');
+          await expect.poll(() => use.getAttribute('aria-pressed')).toBe('true');
+          expect((await focused(page)).name, `${where}: focus stays on the choice`).toBe('Use archive value');
+          await page.keyboard.press('Shift+Tab');
+          await page.keyboard.press('Space');
+          await expect.poll(() => keep.getAttribute('aria-pressed')).toBe('true');
+
+          // --- RECOVERY LIST: each value its own direction, rows start-aligned ---
+          await page.getByText(/Hidden and removed from the archive \(4\)/).click();
+          const list = page.locator('details', { hasText: 'Hidden and removed from the archive' }).getByRole('list');
+          const rows = await list.locator(':scope > li > span.small').evaluateAll((spans) =>
+            spans.map((s) => ({
+              align: getComputedStyle(s).textAlign,
+              parts: [...s.children].map((c) => [c.getAttribute('dir'), c.textContent, getComputedStyle(c).direction]),
+            })),
+          );
+          expect(rows.length, where).toBe(4);
+          expect(rows.map((r) => r.align), where).toEqual(['start', 'start', 'start', 'start']);
+          const parts = rows.flatMap((r) => r.parts);
+          // Generated copy is LTR; a Farsi key is RTL; the owner's English
+          // title, beside a Farsi path, is LTR on its own.
+          expect(parts.filter(([d]) => d === 'ltr').every(([, , c]) => c === 'ltr'), where).toBe(true);
+          expect(parts.find(([d, t]) => d === 'auto' && t === DELETED_PIECE)?.[2], where).toBe('rtl');
+          expect(parts.find(([d, t]) => d === 'auto' && t === LONG_EN)?.[2], where).toBe('ltr');
+          for (const b of await list.getByRole('button', { name: /^Restore / }).all()) expect(await isTarget(b), where).toBe(true);
+
+          // --- ONLY MAIN SCROLLS, nothing pinned, nothing sideways ---------------
+          const last = list.getByRole('button', { name: /^Restore / }).last();
+          await last.scrollIntoViewIfNeeded();
+          let facts = await layoutFacts(page);
+          expect([facts.pageScrolls, facts.sideways, facts.pinned], where).toEqual([false, false, []]);
+          expect(facts.mainScrollTop, `${where}: <main> did the scrolling`).toBeGreaterThan(0);
+
+          // --- KEYBOARD: Restore, and focus stays in the section ----------------
+          const summary = page.getByText(/Hidden and removed from the archive \(4\)/);
+          await summary.focus();
+          await page.keyboard.press('Tab'); // the runbook link
+          await page.keyboard.press('Tab'); // the first Restore
+          const first = await focused(page);
+          expect(first.name, where).toMatch(/^Restore /);
+          expect(first.ring, `${where}: a visible ring`).toBe(true);
+          await page.keyboard.press('Enter');
+          await page.getByText(/Restore of .*Saved\./).first().waitFor({ timeout: 10_000 });
+          const after = await focused(page);
+          expect([after.tag, after.name], `${where}: focus kept`).toEqual(['summary', 'Hidden and removed from the archive (3)']);
+          await page.keyboard.press('Tab');
+          await page.keyboard.press('Tab');
+          expect((await focused(page)).name, where).toMatch(/^Restore /);
+          facts = await layoutFacts(page);
+          expect([facts.pageScrolls, facts.sideways, facts.pinned], where).toEqual([false, false, []]);
+          expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
+        } finally {
+          await app.close();
+        }
+      }
+    }
+  }, 600_000);
+});

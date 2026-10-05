@@ -156,7 +156,9 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/ArchiveRefresh.tsx", tagName: "li", classValue: "row" },
   // The restore outcome names what was restored, in its own isolate; then each
   // hidden or removed archive entry's source value (piece key, class pair,
-  // path) in its own isolate between generated LTR copy (this lane).
+  // path) and the title of the item it is hidden on, each in its own isolate
+  // between generated LTR copy (this lane).
+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/Attachments.tsx", tagName: "button", classValue: "grow" },

@@ -201,3 +201,133 @@ describe('musical term suggestions', () => {
     }
   }, 600_000);
 });
+
+// ---------------------------------------------------------------------------
+// ac-13 companion — the same controls on a phone, in light and dark, at normal
+// and large text, with values in the language their surroundings are NOT in:
+// each resolves its own direction from the start edge; the keyboard reaches
+// every action, which is a 44px target and never drops focus to the page; the
+// draft on the form survives; only <main> scrolls.
+// ---------------------------------------------------------------------------
+
+const LARGE_TEXT = 'html { font-size: 150% !important; }';
+const LONG_TITLE = 'A long English working title for a Persian piece, typed on the phone before its Farsi details';
+
+async function layoutFacts(page: Page) {
+  // The app's one deliberate overlay (a transient toast) is not layout.
+  await page.locator('.toast').waitFor({ state: 'detached', timeout: 15_000 });
+  return page.evaluate(() => {
+    const main = document.querySelector('main')!;
+    return {
+      pageScrolls: document.scrollingElement!.scrollHeight > window.innerHeight + 1 || window.scrollY !== 0,
+      sideways: document.documentElement.scrollWidth > window.innerWidth + 1 || main.scrollWidth > main.clientWidth + 1,
+      pinned: [...document.querySelectorAll('body *')].filter((e) => ['fixed', 'sticky'].includes(getComputedStyle(e).position)).length,
+    };
+  });
+}
+const active = (page: Page) =>
+  page.evaluate(() => {
+    const a = document.activeElement as HTMLElement | null;
+    const s = a ? getComputedStyle(a) : null;
+    return {
+      tag: a?.tagName.toLowerCase() ?? '',
+      name: a?.getAttribute('aria-label') || a?.textContent?.trim() || '',
+      ring: !!s && ((s.outlineStyle !== 'none' && parseFloat(s.outlineWidth) >= 1) || s.boxShadow !== 'none'),
+    };
+  });
+const target = async (l: Locator) => {
+  const b = await l.boundingBox();
+  return !!b && b.width >= 44 && b.height >= 44;
+};
+const direction = (l: Locator) => l.evaluate((n) => [getComputedStyle(n).direction, getComputedStyle(n).textAlign]);
+
+describe('musical term controls, on a phone', () => {
+  it('term suggestion controls keep direction focus and scroll on new and edit forms', async () => {
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      for (const [colorScheme, large] of [['light', false], ['dark', true]] as const) {
+        const where = `${engine} ${colorScheme}${large ? ' large text' : ''}`;
+        const app = await openPracticeApp({ now: CLOCK, engine, viewport: PHONE, colorScheme });
+        const { page } = app;
+        try {
+          await importBackup(app, 'terms.json', fixture());
+          expect(await importOutcome(app), where).toContain('Imported');
+          if (large) await page.addStyleTag({ content: LARGE_TEXT });
+
+          // --- NEW FORM: an English draft, Farsi terms found from Latin -------
+          await goTo(app, '/items/new');
+          if (large) await page.addStyleTag({ content: LARGE_TEXT });
+          await page.getByRole('group', { name: 'Kind of practice item' }).getByRole('button', { name: 'Composed piece' }).click();
+          await page.getByRole('textbox', { name: 'Title' }).fill(LONG_TITLE);
+          const composer = field(page, 'Composer / maestro');
+          await composer.fill('sab');
+          const offered = suggestions(page, 'Composer / maestro').getByRole('button', { name: 'ابوالحسن صبا' });
+          await offered.waitFor();
+          // The Latin query reads LTR in its box; the Farsi term RTL in its button.
+          expect(await direction(composer), where).toEqual(['ltr', 'start']);
+          expect((await direction(offered))[0], where).toBe('rtl');
+          for (const b of [offered, page.getByRole('button', { name: 'Clear Composer / maestro' }), page.getByRole('button', { name: 'All Composer / maestro terms' })]) {
+            expect(await target(b), where).toBe(true);
+          }
+          // The list is in the flow: the page does not scroll, nothing is pinned.
+          let facts = await layoutFacts(page);
+          expect([facts.pageScrolls, facts.sideways, facts.pinned], where).toEqual([false, false, 0]);
+
+          // KEYBOARD: box → Clear → All → the first suggestion, each ringed.
+          await composer.focus();
+          const seen: string[] = [];
+          for (let i = 0; i < 3; i++) {
+            await page.keyboard.press('Tab');
+            const a = await active(page);
+            expect(a.ring, `${where}: ${a.name} has a visible ring`).toBe(true);
+            seen.push(a.name);
+          }
+          expect(seen, where).toEqual(['Clear Composer / maestro', 'All Composer / maestro terms', 'ابوالحسن صبا']);
+          await page.keyboard.press('Enter');
+          // Chosen; focus is back in the box, not on the page.
+          await expect.poll(() => composer.inputValue()).toBe('ابوالحسن صبا');
+          expect(await active(page), where).toMatchObject({ tag: 'input', name: 'Composer / maestro' });
+          expect(await direction(composer), where).toEqual(['rtl', 'start']);
+          // Clear by keyboard: focus stays in the box, which takes typing at once.
+          await page.keyboard.press('Tab');
+          expect((await active(page)).name, where).toBe('Clear Composer / maestro');
+          await page.keyboard.press('Enter');
+          expect(await active(page), where).toMatchObject({ tag: 'input', name: 'Composer / maestro' });
+          await page.keyboard.type('vazi');
+          await suggestions(page, 'Composer / maestro').getByRole('button', { name: 'علی‌نقی وزیری' }).waitFor();
+          // Escape closes the list and leaves the draft and the focus alone.
+          await page.keyboard.press('Escape');
+          expect(await suggestions(page, 'Composer / maestro').count(), where).toBe(0);
+          expect([await composer.inputValue(), (await active(page)).name], where).toEqual(['vazi', 'Composer / maestro']);
+          expect(await page.getByRole('textbox', { name: 'Title' }).inputValue(), `${where}: the draft survives`).toBe(LONG_TITLE);
+          await pick(page, page.getByRole('button', { name: 'All Composer / maestro terms' }), 'keyboard');
+          await pick(page, suggestions(page, 'Composer / maestro').getByRole('button', { name: 'علی‌نقی وزیری' }), 'keyboard');
+          await page.getByRole('button', { name: 'Add practice item' }).click();
+          await page.getByText(LONG_TITLE).first().waitFor({ timeout: 10_000 });
+          const made = ((await persistedDb(app)) as { items: { title: string; persian?: { composer?: unknown } }[] }).items.find((i) => i.title === LONG_TITLE);
+          expect(made?.persian?.composer, where).toEqual({ termId: 'composer:vaziri' });
+
+          // --- EDIT FORM: a Farsi literal beside an English title -------------
+          await goTo(app, '/items/it-literal');
+          await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
+          if (large) await page.addStyleTag({ content: LARGE_TEXT });
+          const editComposer = field(page, 'Composer / maestro');
+          expect(await direction(editComposer), where).toEqual(['rtl', 'start']);
+          expect(await direction(page.getByRole('textbox', { name: 'Title' })), where).toEqual(['ltr', 'start']);
+          await field(page, 'Form').fill('chahar');
+          const forms = suggestions(page, 'Form');
+          await forms.getByRole('button', { name: 'چهارپاره' }).waitFor();
+          await forms.getByRole('button', { name: 'چهارپاره' }).scrollIntoViewIfNeeded();
+          facts = await layoutFacts(page);
+          expect([facts.pageScrolls, facts.sideways, facts.pinned], where).toEqual([false, false, 0]);
+          await pick(page, forms.getByRole('button', { name: 'چهارپاره' }), 'keyboard');
+          expect(await active(page), where).toMatchObject({ tag: 'input', name: 'Form' });
+          // The other fields' drafts are untouched by the choice.
+          expect(await editComposer.inputValue(), where).toBe('یک آهنگساز');
+          expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
+        } finally {
+          await app.close();
+        }
+      }
+    }
+  }, 600_000);
+});

@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react';
+import { useId, useMemo, useRef, useState } from 'react';
 import {
   resolveValue,
   searchAliasTable,
@@ -63,9 +63,13 @@ export default function MusicalTermField({
     return offered.filter((t) => [t.name, ...t.aliases].some((s) => searchMatch(s, text, table))).slice(0, MATCHES_SHOWN);
   }, [open, kind, vocab, text, table, r]);
 
+  // A chosen suggestion or Clear unmounts the button that had focus: focus
+  // returns to the box, never to the page.
+  const box = useRef<HTMLInputElement>(null);
   const choose = (termId: string) => {
     onChange({ termId });
     setOpen(null);
+    box.current?.focus();
   };
 
   return (
@@ -83,6 +87,7 @@ export default function MusicalTermField({
       >
         <div className="row" style={{ gap: 6 }}>
           <input
+            ref={box}
             className="input grow"
             dir="auto"
             aria-label={label}
@@ -106,6 +111,7 @@ export default function MusicalTermField({
               onClick={() => {
                 onChange(undefined);
                 setOpen('typing');
+                box.current?.focus();
               }}
             >
               ✕

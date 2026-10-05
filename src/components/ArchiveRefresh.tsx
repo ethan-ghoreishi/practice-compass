@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { fetchPublishedIndex, type FetchedIndex } from '../store/archiveIndex';
 import { getNasBaseUrl } from '../store/backup';
@@ -462,15 +462,19 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
   // the list the moment the store lifts it, and its Saving…/Not saved and Try
   // again must outlive it until storage has answered.
   const [last, setLast] = useState<{ target: Pick<SourceSuppression, 'kind' | 'ref' | 'itemId'>; label: string } | null>(null);
+  // Restore removes its own row, button and all: keyboard focus moves to the
+  // section's summary, which stays, instead of falling to the page.
+  const summary = useRef<HTMLElement>(null);
   const rows = source.suppressions;
   if (rows.length === 0 && !last) return null;
   const run = (target: Pick<SourceSuppression, 'kind' | 'ref' | 'itemId'>, label: string) => {
     setLast({ target, label });
     saves.run('restore', label, () => restore(source.id, target), { current: () => label, again: () => undefined, saved: onRestored });
+    summary.current?.focus();
   };
   // Generated English around ONE source value (a piece key, a class pair, a
   // path), each in its own isolate — the value resolves its own direction.
-  const describe = (x: SourceSuppression): { lead: string; name: string; tail: string; there: boolean } => {
+  const describe = (x: SourceSuppression): { lead: string; name: string; tail: string; owner?: string; there: boolean } => {
     if (x.kind === 'session') {
       return { lead: 'Class ', name: x.ref, tail: ' — deleted or skipped', there: source.sessions.some((s) => String(s.n) === x.ref && !s.unavailable) };
     }
@@ -486,13 +490,17 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
     return {
       lead: 'File ',
       name: x.ref,
-      tail: x.itemId ? (owner ? ` — hidden on ${owner}` : ' — hidden on an item that no longer exists') : ' — hidden everywhere',
+      tail: x.itemId ? (owner ? ' — hidden on ' : ' — hidden on an item that no longer exists') : ' — hidden everywhere',
+      // The item's title is the owner's text: its own isolate, never fused.
+      ...(x.itemId && owner ? { owner } : {}),
       there: source.sessions.some((s) => s.resources.some((r) => r.path === x.ref && !r.unavailable)),
     };
   };
   return (
     <details className="card card-quiet stack-sm" open={last ? true : undefined}>
-      <summary className="small">Hidden and removed from the archive ({rows.length})</summary>
+      <summary className="small" ref={summary}>
+        Hidden and removed from the archive ({rows.length})
+      </summary>
       {last && (
         <SaveStatus
           ack={saves.states.restore}
@@ -519,14 +527,15 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
       <ul className="stack-sm" role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         {rows.map((x) => {
           const key = `${x.kind}\u0000${x.ref}\u0000${x.itemId ?? ''}`;
-          const { lead, name, tail, there } = describe(x);
-          const what = `${lead}${name}${tail}`;
+          const { lead, name, tail, owner, there } = describe(x);
+          const what = `${lead}${name}${tail}${owner ?? ''}`;
           return (
             <li key={key} className="row between" style={{ gap: 8, flexWrap: 'wrap' }}>
               <span className="small" style={{ textAlign: 'start' }}>
                 <span dir="ltr">{lead}</span>
                 <span dir="auto">{name}</span>
                 <span dir="ltr">{tail}</span>
+                {owner && <span dir="auto">{owner}</span>}
                 <span className="tiny faint" dir="ltr">
                   {there ? ' · the archive still describes it' : ' · not described by the latest index'}
                 </span>

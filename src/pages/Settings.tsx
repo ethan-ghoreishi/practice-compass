@@ -840,7 +840,7 @@ function SchedulingSection() {
           })}
         </div>
 
-        <div className="row between" style={{ gap: 8 }}>
+        <div className="row between" style={{ gap: 8, flexWrap: 'wrap' }}>
           <div className="tiny faint">
             {customised ? 'Using your adjusted values.' : 'Using the recommended defaults.'}
           </div>
