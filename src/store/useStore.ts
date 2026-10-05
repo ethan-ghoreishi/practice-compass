@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
 import { withRevision } from './revision';
+import { primePracticeSound } from '../components/practiceCue';
 import {
   acknowledgeThrough,
   applyBlockStats,
@@ -230,6 +231,12 @@ export interface ActiveRoutine {
   runningSince?: string;
   /** Count of boundaries already announced (practiceSignal.ts). Absent reads as zero — see nextSignal. */
   signalledThrough?: number;
+  /**
+   * When THIS run started — its identity, so a boundary claim made against a
+   * run that has since finished and been restarted is refused. Absent on a run
+   * persisted before it existed, which then claims as `undefined`.
+   */
+  startedAt?: string;
 }
 
 /** Advance the pointer to the next still-pending segment (or one past the end). */
@@ -517,7 +524,14 @@ interface StoreState {
   resumeSession: () => void;
   setSessionNote: (note: string) => void;
   /** Persist how many target boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
-  setSessionSignal: (marker: number) => void;
+  /**
+   * CLAIM a boundary announcement for the block that STARTED at `startedAt`:
+   * true — and the marker advanced — only when that block is still the one
+   * running, is running, and has not already announced through `marker`. A
+   * refused claim changes nothing, so a replayed effect, a remount or a stale
+   * observation can never announce twice; only a true claim may sound.
+   */
+  claimSessionSignal: (startedAt: string, marker: number) => boolean;
   cancelSession: () => void;
   closeSession: (input: CloseSessionInput) => void;
 
@@ -596,7 +610,8 @@ interface StoreState {
   /** Turn the active run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time — then clear it. */
   finishRoutine: () => void;
   /** Persist how many segment boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
-  setRoutineSignal: (marker: number) => void;
+  /** The routine twin of `claimSessionSignal`, for the run that started at `startedAt`. */
+  claimRoutineSignal: (startedAt: string | undefined, marker: number) => boolean;
 
   // Data management
   exportDB: () => PracticeDB;
@@ -1544,6 +1559,11 @@ export const useStore = create<StoreState>()(
       },
 
       startSession: (input) => {
+        // Every block start — direct, from a stage, the next item, a Session
+        // Plan Begin — is a tap that reaches this call synchronously, so the
+        // practice sound is readied HERE, inside that gesture, before anything
+        // navigates. A refused start (another clock) readies it all the same.
+        primePracticeSound();
         const { active, activeRoutine } = get();
         // Never silently overwrite an existing session's elapsed time, and
         // never let an ordinary block run alongside a routine — every start
@@ -1579,6 +1599,7 @@ export const useStore = create<StoreState>()(
       },
 
       resumeSession: () => {
+        primePracticeSound(); // Resume is a tap too — on the practice screen and on Close
         const { active, activeRoutine } = get();
         if (!active || active.running) return;
         // A routine clock is also live (only reachable from persisted state
@@ -1594,10 +1615,13 @@ export const useStore = create<StoreState>()(
         set({ active: { ...active, note } });
       },
 
-      setSessionSignal: (marker) => {
+      claimSessionSignal: (startedAt, marker) => {
         const { active } = get();
-        if (!active) return;
+        // Read and written in ONE synchronous call: nothing can interleave.
+        if (!active || active.startedAt !== startedAt || !active.running) return false;
+        if ((active.signalledThrough ?? 0) >= marker) return false;
         set({ active: { ...active, signalledThrough: marker } });
+        return true;
       },
 
       cancelSession: () => set({ active: null }),
@@ -2086,6 +2110,9 @@ export const useStore = create<StoreState>()(
       },
 
       startRoutineRun: (routineId, shortOnTime, authoredSegments) => {
+        // Only ever called from a Start tap (a card, a duration, the runner's
+        // own Start) — never from an effect — so this is inside the gesture.
+        primePracticeSound();
         const { activeRoutine, active } = get();
         // Same guard as startSession, in the other direction: an ordinary
         // block already running must be resolved before a routine can start.
@@ -2102,6 +2129,7 @@ export const useStore = create<StoreState>()(
         // running and resolves it — the same deterministic way out every other
         // page gives them.
         if (activeRoutine) return;
+        const at = nowISO();
         set({
           activeRoutine: {
             routineId,
@@ -2110,7 +2138,8 @@ export const useStore = create<StoreState>()(
             segs: toRunSegments(authoredSegments),
             accumulatedSeconds: 0,
             running: true,
-            runningSince: nowISO(),
+            runningSince: at,
+            startedAt: at,
           },
         });
       },
@@ -2129,6 +2158,7 @@ export const useStore = create<StoreState>()(
       },
 
       resumeRoutineRun: () => {
+        primePracticeSound();
         const { activeRoutine, active } = get();
         if (!activeRoutine || activeRoutine.running) return;
         // Same guard as resumeSession, in the other direction.
@@ -2157,10 +2187,12 @@ export const useStore = create<StoreState>()(
         set({ activeRoutine: { ...activeRoutine, segs, signalledThrough } });
       },
 
-      setRoutineSignal: (marker) => {
+      claimRoutineSignal: (startedAt, marker) => {
         const { activeRoutine } = get();
-        if (!activeRoutine) return;
+        if (!activeRoutine || activeRoutine.startedAt !== startedAt || !activeRoutine.running) return false;
+        if ((activeRoutine.signalledThrough ?? 0) >= marker) return false;
         set({ activeRoutine: { ...activeRoutine, signalledThrough: marker } });
+        return true;
       },
 
       finishRoutine: () => {

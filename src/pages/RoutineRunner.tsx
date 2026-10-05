@@ -6,7 +6,9 @@ import { getItem } from '../store/lookups';
 import { formatClock } from '../components/format';
 import ItemNotes from '../components/ItemNotes';
 import { CheckIcon, PauseIcon, PlayIcon } from '../components/icons';
-import { playSignalCue, useScreenAwake } from '../components/useScreenAwake';
+import { useScreenAwake } from '../components/useScreenAwake';
+import { playPracticeCue, usePracticeSound } from '../components/practiceCue';
+import { SoundNote } from './ActiveBlock';
 
 /** How long the "just arrived" cue stays visible after a segment boundary — long enough that glancing up a few seconds later still shows it, never a single-render flash. */
 const SEGMENT_ARRIVAL_WINDOW_SECONDS = 8;
@@ -35,7 +37,8 @@ export default function RoutineRunner() {
   const resumeRoutineRun = useStore((s) => s.resumeRoutineRun);
   const skipRoutineRun = useStore((s) => s.skipRoutineRun);
   const finishRoutine = useStore((s) => s.finishRoutine);
-  const setRoutineSignal = useStore((s) => s.setRoutineSignal);
+  const claimRoutineSignal = useStore((s) => s.claimRoutineSignal);
+  const sound = usePracticeSound();
 
   const routine = db.pathwayRoutines.find((r) => r.id === routineId);
   const stage = routine?.stageId ? db.pathwayStages.find((s) => s.id === routine.stageId) : undefined;
@@ -91,13 +94,13 @@ export default function RoutineRunner() {
     if (active) navigate('/active', { replace: true });
   }, [active, navigate]);
 
-  // Nothing running yet for this routine: begin one.
-  useEffect(() => {
-    if (routine && routineId && !active && !activeRoutine && !result) {
-      startRoutineRun(routineId, shortOnTime, segmentsForRun(routine.segments, shortOnTime));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [routine, routineId, shortOnTime, active]);
+  // Nothing running yet: a run is begun only by a TAP — a card's Start, a
+  // duration, or the Start below — never by arriving at this URL. A start in
+  // an effect is outside every gesture, so its practice sound could never be
+  // readied, and a bare link would start a clock nobody asked for.
+  const begin = () => {
+    if (routine && routineId) startRoutineRun(routineId, shortOnTime, segmentsForRun(routine.segments, shortOnTime));
+  };
 
   // Force a re-render every second so the countdown visibly ticks. The actual
   // time is always read fresh from the wall clock below, so a background/lock
@@ -124,10 +127,7 @@ export default function RoutineRunner() {
   useEffect(() => {
     if (!isMine || !activeRoutine.running) return; // paused or frozen (legacy dual-clock hydration): announce nothing
     const signalResult = nextSignal(activeRoutine.signalledThrough, elapsedSeconds, segmentBoundaries(segs));
-    if (signalResult.announce) {
-      setRoutineSignal(signalResult.marker);
-      playSignalCue();
-    }
+    if (signalResult.announce && claimRoutineSignal(activeRoutine.startedAt, signalResult.marker)) playPracticeCue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMine, activeRoutine?.running, activeRoutine?.signalledThrough, elapsedSeconds, segs]);
 
@@ -202,7 +202,35 @@ export default function RoutineRunner() {
     );
   }
 
-  if (!isMine || !clock) return null; // brief window while redirecting to / starting the run
+  if (!isMine && !otherActive && !active) {
+    const planned = segmentsForRun(routine.segments, shortOnTime);
+    const minutes = planned.reduce((n, x) => n + x.minutes, 0);
+    return (
+      <div className="stack-lg" style={{ paddingTop: 'var(--space-6)', textAlign: 'center' }}>
+        <header className="stack-sm">
+          <div className="eyebrow">{stage ? `${stage.code} · ` : ''}Routine</div>
+          {/* The routine's own name leads its group; the generated summary
+              is an inline LTR isolate inside it. */}
+          <div className="stack-sm" dir="auto" style={{ textAlign: 'start' }}>
+            <h1 className="page-title">{routine.name}</h1>
+            <div className="tiny faint">
+              <span dir="ltr">
+                {planned.length} segments · {minutes} min{shortOnTime ? ' · short on time' : ''}
+              </span>
+            </div>
+          </div>
+        </header>
+        <button className="btn btn-primary btn-lg" onClick={begin}>
+          <PlayIcon /> Start
+        </button>
+        <Link to={backTo} className="link small">
+          Not now
+        </Link>
+      </div>
+    );
+  }
+
+  if (!isMine || !clock) return null; // brief window while redirecting to the running clock
 
   const seg = authoredSegments[clock.segIndex];
   if (!seg) return null;
@@ -301,6 +329,8 @@ export default function RoutineRunner() {
           Skip
         </button>
       </div>
+
+      <SoundNote state={sound} />
 
       <div className="stack-sm" style={{ alignItems: 'center' }}>
         <button className="btn btn-ghost btn-sm" onClick={finish}>

@@ -288,7 +288,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
         continue;
       }
       let target: ID | undefined;
-      let why = '';
+      let why: string;
       if (kind === 'gusheh') {
         const r = resolveValue(i.persian?.dastgahAvaz, 'dastgah', vocab);
         if (r.status !== 'term') {

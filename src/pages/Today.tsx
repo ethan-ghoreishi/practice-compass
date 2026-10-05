@@ -23,6 +23,7 @@ import {
   type PracticeItem,
   type Recommendation,
   preparationDatesByItem,
+  segmentsForRun,
 } from '../domain';
 import { sessionElapsedSeconds, useStore, type ActiveSession } from '../store/useStore';
 import { getItem, instrumentName } from '../store/lookups';
@@ -431,6 +432,14 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
  */
 function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
   const navigate = useNavigate();
+  const startRoutineRun = useStore((s) => s.startRoutineRun);
+  // Begun inside the tap, then shown: the run and its practice sound start in
+  // the gesture itself. A clock already running refuses it; the route then
+  // takes the owner to that clock.
+  const start = (short: boolean) => {
+    startRoutineRun(routine.id, short, segmentsForRun(routine.segments, short));
+    navigate(`/routine/${routine.id}${short ? '?short=1' : ''}`);
+  };
   const total = routine.segments.reduce((sum, seg) => sum + seg.minutes, 0);
   const hasEssential = routine.segments.some((seg) => seg.essential);
   return (
@@ -448,7 +457,7 @@ function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
           <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/${routine.id}/edit`)}>
             Edit
           </button>
-          <button className="btn btn-primary btn-sm" onClick={() => navigate(`/routine/${routine.id}`)} aria-label={`Start ${routine.name}`}>
+          <button className="btn btn-primary btn-sm" onClick={() => start(false)} aria-label={`Start ${routine.name}`}>
             <PlayIcon width={16} height={16} />
           </button>
         </div>
@@ -457,7 +466,7 @@ function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
         <button
           className="btn btn-ghost btn-sm"
           style={{ alignSelf: 'flex-end' }}
-          onClick={() => navigate(`/routine/${routine.id}?short=1`)}
+          onClick={() => start(true)}
         >
           Short on time — essentials only
         </button>

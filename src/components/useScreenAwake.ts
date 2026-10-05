@@ -10,40 +10,6 @@ async function requestWakeLock(): Promise<WakeLockSentinelPort> {
 }
 
 /**
- * Best-effort only, never the contractual signal — the visual state change
- * is that (see ActiveBlock/RoutineRunner). Wrapped so failure is always
- * silent: `navigator.vibrate` is unimplemented in Safari on iOS, and a
- * WebAudio context needs a user-gesture unlock that happens on the page
- * that STARTS a clock (Today/StageDetail/SessionPlan) — never on the
- * practice screen itself, which hands-free practice by definition never
- * taps. It may therefore be silent on the owner's own iPhone; the OWNER
- * device checks record what was actually heard rather than asserting it.
- */
-export function playSignalCue(): void {
-  try {
-    if (typeof navigator.vibrate === 'function') navigator.vibrate(80);
-  } catch {
-    // best-effort only
-  }
-  try {
-    const Ctx = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.2, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-    osc.connect(gain).connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.3);
-    osc.onended = () => void ctx.close();
-  } catch {
-    // best-effort only — most likely a locked AudioContext with no unlock gesture available here
-  }
-}
-
-/**
  * A thin React/browser adapter: one coordinator per mounted practice screen
  * (ActiveBlock, RoutineRunner) — safe because only one of them is ever
  * mounted at a time, matching the single-active-practice-clock invariant.

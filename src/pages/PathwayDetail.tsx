@@ -16,6 +16,7 @@ import {
   type CourseLevelOffer,
   type PathwayRoutine,
   type PathwayStage,
+  segmentsForRun,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { instrumentName } from '../store/lookups';
@@ -33,6 +34,7 @@ export default function PathwayDetail() {
   const addDefaultStages = useStore((s) => s.addDefaultStages);
   const moveStage = useStore((s) => s.moveStage);
   const renameSection = useStore((s) => s.renameSection);
+  const startRoutineRun = useStore((s) => s.startRoutineRun);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -216,7 +218,13 @@ export default function PathwayDetail() {
           <RoutineRow
             key={r.id}
             routine={r}
-            onStart={(short) => navigate(`/routine/${r.id}${short ? '?short=1' : ''}`)}
+            onStart={(short) => {
+              // Begun HERE, inside the tap — the run and its practice sound —
+              // then shown. A clock already running refuses the start, and the
+              // route takes the owner to it.
+              startRoutineRun(r.id, short, segmentsForRun(r.segments, short));
+              navigate(`/routine/${r.id}${short ? '?short=1' : ''}`);
+            }}
             onEdit={() => navigate(`/routine/${r.id}/edit`)}
           />
         ))}

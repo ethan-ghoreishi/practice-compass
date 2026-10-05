@@ -17,6 +17,7 @@ import {
   courseStage,
   itemsPreparedForLesson,
   pathwaysReturnPath,
+  segmentsForRun,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
@@ -40,6 +41,7 @@ export default function StageDetail() {
   const chooseCourseSource = useStore((s) => s.chooseCourseSource);
   const startItemSession = useStore((s) => s.startItemSession);
   const activeRoutine = useStore((s) => s.activeRoutine);
+  const startRoutineRun = useStore((s) => s.startRoutineRun);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -278,7 +280,11 @@ export default function StageDetail() {
           <RoutineCard
             key={r.id}
             routine={r}
-            onStart={(short) => navigate(`/routine/${r.id}${short ? '?short=1' : ''}`)}
+            onStart={(short) => {
+              // Begun inside the tap, then shown — see PathwayDetail.
+              startRoutineRun(r.id, short, segmentsForRun(r.segments, short));
+              navigate(`/routine/${r.id}${short ? '?short=1' : ''}`);
+            }}
             onEdit={() => navigate(`/routine/${r.id}/edit`)}
           />
         ))}

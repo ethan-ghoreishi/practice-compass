@@ -241,6 +241,9 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/Repertoire.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "row between" },
+  // The explicit Start screen a bare routine link now shows: the routine's own
+  // name leads its group, its generated summary an LTR isolate inside (this lane).
+  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "" },
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "tiny faint" },
   { file: "pages/RoutineRunner.tsx", tagName: "span", classValue: "" },

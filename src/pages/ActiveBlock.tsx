@@ -7,7 +7,8 @@ import { formatClock } from '../components/format';
 import ItemMaterial from '../components/ItemMaterial';
 import ItemNotes from '../components/ItemNotes';
 import { PauseIcon, PlayIcon } from '../components/icons';
-import { playSignalCue, useScreenAwake } from '../components/useScreenAwake';
+import { useScreenAwake } from '../components/useScreenAwake';
+import { playPracticeCue, testPracticeSound, usePracticeSound } from '../components/practiceCue';
 
 export default function ActiveBlock() {
   const db = useStore((s) => s.db);
@@ -17,7 +18,8 @@ export default function ActiveBlock() {
   const resumeSession = useStore((s) => s.resumeSession);
   const cancelSession = useStore((s) => s.cancelSession);
   const setSessionNote = useStore((s) => s.setSessionNote);
-  const setSessionSignal = useStore((s) => s.setSessionSignal);
+  const claimSessionSignal = useStore((s) => s.claimSessionSignal);
+  const sound = usePracticeSound();
   const navigate = useNavigate();
 
   const [, setTick] = useState(0);
@@ -35,10 +37,9 @@ export default function ActiveBlock() {
   useEffect(() => {
     if (!active?.running) return; // paused or frozen (legacy dual-clock hydration): announce nothing
     const result = nextSignal(active.signalledThrough, elapsedForSignal, [active.targetMinutes * 60]);
-    if (result.announce) {
-      setSessionSignal(result.marker);
-      playSignalCue();
-    }
+    // Only a CLAIM the store grants may sound: a replayed or remounted effect
+    // holding the same stale marker is refused, so one boundary is one cue.
+    if (result.announce && claimSessionSignal(active.startedAt, result.marker)) playPracticeCue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.running, active?.signalledThrough, elapsedForSignal, active?.targetMinutes]);
 
@@ -190,6 +191,8 @@ export default function ActiveBlock() {
         </button>
       </div>
 
+      <SoundNote state={sound} />
+
       {hasMaterial && <MaterialDuringPractice itemId={active.itemId} />}
 
       {/* Scratch OBSERVATION for THIS block — it seeds the close screen and
@@ -254,6 +257,30 @@ function MaterialDuringPractice({ itemId }: { itemId: string }) {
         <span className="tiny faint">{open ? 'hide' : 'show'}</span>
       </button>
       {open && <ItemMaterial itemId={itemId} />}
+    </div>
+  );
+}
+
+/**
+ * How the practice sound stands on THIS page — said calmly, only when it is
+ * not ready, with the one tap that can ready it. The ring is the signal that
+ * is always there; this never claims a speaker made a sound.
+ */
+export function SoundNote({ state }: { state: ReturnType<typeof usePracticeSound> }) {
+  if (state === 'ready') return null;
+  if (state === 'unavailable') {
+    return (
+      <p className="tiny faint" style={{ textAlign: 'center' }}>
+        <span dir="ltr">This browser has no practice sound here — the ring still marks the target.</span>
+      </p>
+    );
+  }
+  return (
+    <div className="row tiny faint" style={{ justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <span dir="ltr">{state === 'paused' ? 'Practice sound is paused on this device.' : 'Practice sound is off on this page.'}</span>
+      <button type="button" className="btn btn-sm" onClick={testPracticeSound}>
+        Turn on sound
+      </button>
     </div>
   );
 }

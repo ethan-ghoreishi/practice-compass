@@ -68,9 +68,8 @@ describe('the Setar setup review', () => {
     // --- THE KIND POLICY, family by family, from the registry's own words ---
     const read = (form: string, composer = '', provisional = false) => classifyPiece({ form, composer, provisional });
     expect(read('گوشه')).toMatchObject({ kind: 'gusheh', family: 'gusheh' });
-    for (const _ of ['درامد-ابوعطا', 'درامد-افشاری', 'درامد-اول', 'درامد-دوم', 'درامد-سوم', 'درامد-ماهور']) {
-      expect(read('درامد')).toMatchObject({ kind: 'gusheh', family: 'radif-daramad' });
-    }
+    // All six radif درامد variants carry the form «درامد» — the opening gusheh, never a composed piece.
+    expect(read('درامد')).toMatchObject({ kind: 'gusheh', family: 'radif-daramad' });
     expect(read('چهارپاره')).toMatchObject({ kind: 'gusheh', family: 'radif-chaharpareh' });
     // DECLARED RADIF SOURCE NEVER DECIDES KIND: a composer-attributed چهارپاره is asked about.
     expect(read('چهارپاره', 'مرادخانی')).toMatchObject({ kind: null, family: 'composed-chaharpareh' });
