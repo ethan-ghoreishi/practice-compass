@@ -25,7 +25,7 @@
 // proves the same thing. docs/setar-practice-reliability.md records the matrix.
 // ---------------------------------------------------------------------------
 
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -89,6 +89,14 @@ export const MUTATIONS = [
     find: '    archiveSources: migrated.archiveSources ?? [],',
     replace:
       '    archiveSources: (migrated.archiveSources ?? []).map((g) => ({ ...g, pieces: g.pieces.map((p) => { const { studySource: _s, ...rest } = p as typeof p & { studySource?: string }; void _s; return rest; }) })),',
+    test: 'study provenance decodes the same way at every reader',
+  },
+  {
+    name: 'adoption drops studySource (index -> graph)',
+    file: 'src/domain/sourceReconcile.ts',
+    find: '  if (!previous) return { pieces: index.pieces, sessions: index.sessions };',
+    replace:
+      '  if (!previous) return { pieces: index.pieces.map((p) => { const { studySource: _s, ...rest } = p; void _s; return rest; }), sessions: index.sessions };',
     test: 'study provenance decodes the same way at every reader',
   },
   {
@@ -236,6 +244,14 @@ export const MUTATIONS = [
     test: 'musical term suggestions can be found and selected while typing in both engines',
   },
   {
+    name: 'removal from a pathway that also unbinds the item',
+    file: 'src/store/useStore.ts',
+    find: '          set((s) => ({ db: { ...s.db, items: plan.items, pathways: plan.pathways } }));',
+    replace:
+      '          set((s) => ({ db: { ...s.db, items: plan.items.map((i) => (i.id === itemId ? { ...i, catalogRefs: undefined } : i)), pathways: plan.pathways } }));',
+    test: 'pathway removal and restoration visibly retain the existing owned item',
+  },
+  {
     name: 'removal from a pathway by deleting the item',
     file: 'src/store/useStore.ts',
     find: '      removeFromPathway: (itemId, pathwayId) => {',
@@ -279,12 +295,24 @@ export function titleProblems(rows = [...ACCEPTANCE, ...COMPANIONS]) {
   return problems;
 }
 
-function vitest(files, extra = []) {
+/** The child run in flight, so a signal can stop it. */
+let child = null;
+
+/**
+ * Vitest as a child the event loop can wait on — never spawnSync, which would
+ * leave a SIGINT or SIGTERM no chance to restore a mutated file.
+ */
+async function vitest(files, extra = []) {
   const out = mkdtempSync(join(tmpdir(), 'setar-families-'));
   const report = join(out, 'report.json');
-  const run = spawnSync('npx', ['vitest', 'run', ...files, ...extra, '--reporter=json', `--outputFile=${report}`, '--reporter=default'], {
-    stdio: 'inherit',
+  const status = await new Promise((resolve) => {
+    child = spawn('npx', ['vitest', 'run', ...files, ...extra, '--reporter=json', `--outputFile=${report}`, '--reporter=default'], {
+      stdio: 'inherit',
+    });
+    child.on('error', () => resolve(1));
+    child.on('close', (code) => resolve(code ?? 1));
   });
+  child = null;
   let results = {};
   try {
     const json = JSON.parse(readFileSync(report, 'utf8'));
@@ -293,10 +321,10 @@ function vitest(files, extra = []) {
     results = {};
   }
   rmSync(out, { recursive: true, force: true });
-  return { status: run.status, results };
+  return { status, results };
 }
 
-function main() {
+async function main() {
   if (args.has('--list')) {
     const manifest = {
       acceptance: ACCEPTANCE,
@@ -316,7 +344,31 @@ function main() {
   if (args.has('--mutations')) {
     const failures = [];
     const only = process.argv.find((a) => a.startsWith('--only='))?.slice('--only='.length);
-    for (const m of MUTATIONS.filter((x) => !only || x.name === only)) {
+    const selected = MUTATIONS.filter((x) => !only || x.name === only);
+    // Never exit 0 without running.
+    if (selected.length === 0) {
+      console.error(`No mutation is named "${only}". --list prints every name.`);
+      return 2;
+    }
+    // Only a file with no uncommitted changes is mutated, so whatever happens
+    // to this process, `git checkout -- <file>` is always a complete recovery.
+    const files = [...new Set(selected.map((m) => m.file))];
+    const dirty = spawnSync('git', ['status', '--porcelain', '--', ...files], { encoding: 'utf8' });
+    if (dirty.status !== 0 || dirty.stdout.trim()) {
+      console.error(`Refusing to mutate files with uncommitted changes (or git is unavailable):\n${dirty.stdout || dirty.stderr || ''}`);
+      return 2;
+    }
+    // A signal mid-run restores the file under mutation before leaving.
+    let pending = null;
+    const stop = (signal) => {
+      if (pending) writeFileSync(pending.file, pending.original);
+      child?.kill(signal);
+      console.error(`\nStopped by ${signal}${pending ? `; ${pending.file} restored` : ''}.`);
+      process.exit(130);
+    };
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+    for (const m of selected) {
       const original = readFileSync(m.file, 'utf8');
       const count = original.split(m.find).length - 1;
       if (count !== 1) {
@@ -325,13 +377,15 @@ function main() {
       }
       const owner = [...ACCEPTANCE, ...COMPANIONS].find(([, title]) => title === m.test);
       try {
+        pending = { file: m.file, original };
         writeFileSync(m.file, original.replace(m.find, m.replace));
-        const { results } = vitest([owner[2]], ['-t', m.test]);
+        const { results } = await vitest([owner[2]], ['-t', m.test]);
         const status = results[m.test] ?? 'did not run';
         console.log(`MUTATION ${status === 'failed' ? 'CAUGHT ' : 'MISSED '} ${m.name} → ${m.test} (${status})`);
         if (status !== 'failed') failures.push(`${m.name}: "${m.test}" ${status}`);
       } finally {
         writeFileSync(m.file, original);
+        pending = null;
       }
       if (readFileSync(m.file, 'utf8') !== original) failures.push(`${m.name}: ${m.file} was not restored`);
     }
@@ -346,7 +400,7 @@ function main() {
   const unitOnly = args.has('--unit');
   const rows = familyRows();
   const files = runFiles(unitOnly);
-  const { status, results } = vitest(files);
+  const { status, results } = await vitest(files);
   let failed = status !== 0;
   console.log('\nSetar practice reliability — acceptance checks and the one test proving each:');
   for (const [id, title, file] of rows) {
@@ -364,4 +418,4 @@ function main() {
 }
 
 /** Run only when executed directly, so a test can import the manifest. */
-if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) process.exit(main());
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) main().then((code) => process.exit(code));

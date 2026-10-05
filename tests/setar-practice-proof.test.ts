@@ -33,6 +33,7 @@ const REQUIRED_FAMILIES: RegExp[] = [
   /^scanner drops studySource$/,
   /^decoder drops studySource$/,
   /^inbound drops studySource/,
+  /^adoption drops studySource/,
   /^restore widened/,
   /^a relation reader bypasses the selector/,
   /^a same-label premise accepted$/,
@@ -41,6 +42,7 @@ const REQUIRED_FAMILIES: RegExp[] = [
   /^an omitted gesture door/,
   /^term suggestions back to a datalist only$/,
   /^removal from a pathway by deleting the item$/,
+  /^removal from a pathway that also unbinds the item$/,
   /^a hard-coded session ceiling$/,
   /^a fix hard-coded to Session 40's keys$/,
   /^an inferred roster/,
@@ -62,6 +64,11 @@ describe('the Setar practice family proof route', () => {
     const listed = spawnSync(process.execPath, [SCRIPT, '--list'], { env: { PATH: '' }, encoding: 'utf8' });
     expect(listed.status, listed.stderr).toBe(0);
     const manifest = JSON.parse(listed.stdout) as { acceptance: Row[]; companions: Row[]; mutations: Omit<Mutation, 'find' | 'replace'>[]; runs: string[] };
+
+    // The mutation route never exits 0 without running: an unknown name is
+    // refused before anything is touched or spawned.
+    const none = spawnSync(process.execPath, [SCRIPT, '--mutations', '--only=__none__'], { env: { PATH: '' }, encoding: 'utf8' });
+    expect([none.status, none.stderr], 'empty selection').toEqual([2, expect.stringMatching(/No mutation is named "__none__"/)]);
 
     // Seventeen automated checks, in order, each ONE named test in its file.
     expect(manifest.acceptance.map(([id]) => id)).toEqual(Array.from({ length: 17 }, (_, i) => `ac-${i + 1}`));

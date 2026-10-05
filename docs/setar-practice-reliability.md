@@ -179,12 +179,17 @@ private dump.
 `node scripts/check-setar-practice-families.mjs --mutations` applies each
 partial fix to its source, runs only the named test, requires it to FAIL, and
 restores the file byte for byte (the run checks; `git diff --quiet` after).
+It refuses to mutate a file with uncommitted changes, so `git checkout --
+<file>` is always a full recovery; a SIGINT or SIGTERM mid-run restores the
+file under mutation and exits 130; `--only=<name>` that names nothing exits 2
+having touched nothing.
 
 | Partial fix | Mutated source | Fails | Result |
 | --- | --- | --- | --- |
 | scanner drops studySource | `scripts/scan-setar-classes.mjs` | ac-1 | failed (caught) |
 | decoder drops studySource | `src/domain/sourceArchive.ts` | ac-2 io companion | failed (caught) |
 | inbound drops studySource (validateDB rebuilds the graph without it) | `src/domain/io.ts` | ac-2 io companion | failed (caught) |
+| adoption drops studySource (index -> graph) | `src/domain/sourceReconcile.ts` | ac-2 io companion | failed (caught) |
 | a fix hard-coded to Session 40's keys | scanner | ac-1 | failed (caught) |
 | an auto-confirmed draft (an unregistered named piece indexed) | scanner | ac-1 | failed (caught) |
 | roster disagreement counted only after filtering | scanner | ac-1 | failed (caught) |
@@ -205,9 +210,10 @@ restores the file byte for byte (the run checks; `git diff --quiet` after).
 | a delayed cue queued for a context that is not running | `src/components/practiceCue.ts` | ac-14 practiceCue companion | failed (caught) |
 | routine Start moved back into an effect | `src/pages/RoutineRunner.tsx` | ac-14 | failed (caught) |
 | term suggestions back to a datalist only | `src/components/MusicalTermField.tsx` | ac-12 | failed (caught) |
+| removal from a pathway that also unbinds the item | `src/store/useStore.ts` | ac-16 | failed (caught) |
 | removal from a pathway by deleting the item | `src/store/useStore.ts` | ac-16 | failed (caught) |
 
-Recorded 2026-10-06: all 24 caught, every source restored byte for byte. The
+Recorded 2026-10-06: all 26 caught, every source restored byte for byte. The
 first run MISSED one — a cue queued on a not-running context went unnoticed by
 ac-14, whose stand-in never resumes a context after a missed boundary. The
 practiceCue companion now drives exactly that (interrupted → boundary → the
