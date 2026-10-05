@@ -1110,3 +1110,79 @@ describe('archive associations, through every reader', () => {
     }
   }, 600_000);
 });
+
+// ---------------------------------------------------------------------------
+// ac-8 companion — the difference row sends the TYPED value it was decided
+// against. Another device swaps the owner's literal for the term of the same
+// spelling while the preview is open: a label premise would accept the stale
+// choice; this one is refused, said, re-previewed, and nothing is written.
+// ---------------------------------------------------------------------------
+
+describe('archive metadata choices, from the screen', () => {
+  it('archive metadata controls send the typed premise and re-preview a stale choice', async () => {
+    const seed = validateDB(OWNER_V16);
+    const KEY = 'اتود-وزیری';
+    const itemId = seed.items.find((i) => i.source?.pieceKey === KEY)!.id;
+    // The owner typed the maestro's full name as text — the label of a term.
+    const base: Db = {
+      ...seed,
+      attachments: [],
+      items: seed.items.map((i) => (i.id === itemId ? { ...i, persian: { ...i.persian, composer: 'علی‌نقی وزیری' } } : i)),
+    };
+    const graph = base.archiveSources[0]!;
+    const corrected = await indexFor(graph, (i) => {
+      for (const p of i.pieces as { key: string; composer?: string }[]) if (p.key === KEY) p.composer = 'ابوالحسن صبا';
+    });
+
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      const where = engine;
+      const app = await seeded(engine, base, { width: 390, height: 844 });
+      const { page } = app;
+      const row = () => page.getByRole('group', { name: `composer of ${KEY}` });
+      try {
+        const remote = newFakeRemote();
+        await installFakeGitHub(page, remote);
+        await connectSync(app);
+        publishSourceIndex(remote, corrected, 'idx-corrected');
+        await refreshArchive(app);
+        await row().getByRole('button', { name: 'Use archive value' }).click();
+        expect(await row().getByRole('button', { name: 'Use archive value' }).getAttribute('aria-pressed'), where).toBe('true');
+
+        // Another device makes the SAME-LOOKING value a term reference.
+        const pulled = structuredClone(await db(app)) as Db;
+        pulled.items = pulled.items.map((i) => (i.id === itemId ? { ...i, persian: { ...i.persian, composer: { termId: 'composer:vaziri' } } } : i));
+        publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 99);
+        await page.getByRole('button', { name: 'Sync now' }).click();
+        await until(app, (x) => JSON.stringify(x.items.find((i) => i.id === itemId)!.persian?.composer), (v) => v === '{"termId":"composer:vaziri"}');
+        const beforeApply = await db(app);
+
+        await page.getByRole('button', { name: 'Apply' }).click();
+        // Refused and SAID; the fresh preview is back with the owner's value kept.
+        await page.getByRole('status').filter({ hasText: 'has changed since' }).waitFor({ timeout: 15_000 });
+        expect(await row().getByRole('button', { name: 'Keep my value' }).getAttribute('aria-pressed'), where).toBe('true');
+        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(beforeApply));
+
+        // Chosen again against what is there NOW: written once, nothing else moves.
+        await row().getByRole('button', { name: 'Use archive value' }).click();
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+        const after = await until(app, (x) => x, (x) => JSON.stringify(x.items.find((i) => i.id === itemId)!.persian?.composer) !== '{"termId":"composer:vaziri"}');
+        const was = beforeApply.items.find((i) => i.id === itemId)!;
+        const now = after.items.find((i) => i.id === itemId)!;
+        // The registry's own text, as adoption always writes it — never a guessed id.
+        expect(now.persian?.composer, where).toBe('ابوالحسن صبا');
+        expect({ ...now.persian, composer: null }, where).toEqual({ ...was.persian, composer: null });
+        expect([now.notes, now.status, now.itemType, now.timesPractised], where).toEqual([was.notes, was.status, was.itemType, was.timesPractised]);
+        expect(after.items.filter((i) => i.id !== itemId), where).toEqual(beforeApply.items.filter((i) => i.id !== itemId));
+
+        // Settled: a reload and another refresh offer nothing about it.
+        await reload(app);
+        await refreshArchive(app);
+        expect(await row().count(), where).toBe(0);
+        expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    }
+  }, 600_000);
+});

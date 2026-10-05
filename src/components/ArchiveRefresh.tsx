@@ -41,7 +41,7 @@ type Phase =
   | { kind: 'working' }
   | { kind: 'error'; message: string }
   | { kind: 'done'; message: string; plan?: ImportPlan; commitSha?: string }
-  | { kind: 'preview'; fetched: FetchedIndex; rev: number; plan: ImportPlan };
+  | { kind: 'preview'; fetched: FetchedIndex; rev: number; plan: ImportPlan; notice?: string };
 
 export default function ArchiveRefresh() {
   const db = useStore((s) => s.db);
@@ -68,14 +68,14 @@ export default function ArchiveRefresh() {
   });
   const rootUrl = archiveRootUrl(getNasBaseUrl());
 
-  function showPlan(fetched: FetchedIndex, nextDecisions: ReconcileDecision[]) {
+  function showPlan(fetched: FetchedIndex, nextDecisions: ReconcileDecision[], notice?: string) {
     const { plan, rev } = preview({
       index: fetched.index,
       instrumentId: chosen,
       decisions: nextDecisions,
       verifiedBase: rootUrl ?? undefined,
     });
-    setPhase({ kind: 'preview', fetched, rev, plan });
+    setPhase({ kind: 'preview', fetched, rev, plan, ...(notice ? { notice } : {}) });
   }
 
   async function startRefresh() {
@@ -131,7 +131,8 @@ export default function ArchiveRefresh() {
           ? decisions.filter((d) => !result.staleDecisions!.includes(d))
           : decisions;
         setDecisions(kept);
-        showPlan(fetched, kept);
+        // Said, never silent: the choice the owner made is no longer on screen.
+        showPlan(fetched, kept, result.message);
         setPhase((p) => (p.kind === 'preview' ? p : { kind: 'error', message: result.message }));
         return;
       }
@@ -211,6 +212,11 @@ export default function ArchiveRefresh() {
         </div>
       )}
 
+      {phase.kind === 'preview' && phase.notice && (
+        <p className="tiny" role="status" style={{ margin: 0, color: 'var(--tone-alert)' }}>
+          {phase.notice}
+        </p>
+      )}
       {phase.kind === 'preview' && plan && (
         <div className="stack-sm">
           <Summary plan={plan} commitSha={phase.fetched.commitSha} />
