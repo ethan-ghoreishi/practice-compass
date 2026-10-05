@@ -986,3 +986,127 @@ describe('Review Setar setup, interrupted', () => {
     }
   }, 600_000);
 });
+
+// ---------------------------------------------------------------------------
+// ac-6 companion — the five association readers (a class's "Worked on" list
+// and its link picker; an item's Connected to summary, Connections list and
+// link picker) agree through Unlink, Relink and a reload, and a derived
+// association never becomes owner history.
+// ---------------------------------------------------------------------------
+
+describe('archive associations, through every reader', () => {
+  it('archive associations unlink and relink through every reader and survive a reload', async () => {
+    const base = validateDB(OWNER_V16);
+    const by = (key: string) => base.items.find((i) => i.source?.pieceKey === key)!;
+    const KERESHMEH_M = by('کرشمه-ماهور-ردیف-میرزاعبدالله');
+    const SABA = by('چهارمضراب-ماهور-صبا');
+    const RIZ = base.items.find((i) => i.id === 'it-riz')!;
+    const L7 = base.lessons.find((l) => l.source?.sessionN === 7)!;
+    const L9 = base.lessons.find((l) => l.source?.sessionN === 9)!;
+
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      const where = engine;
+      const app = await seeded(engine, base, { width: 390, height: 844 }, OWNER_V16.files);
+      const { page } = app;
+      const text = () => page.locator('main').innerText();
+      // Every reader starts from a cold mount: a same-hash navigation would
+      // keep the class card the last step opened (the harness never goTo's
+      // the current route).
+      const fresh = async (path: string) => {
+        if (page.url().endsWith(`#${path}`)) await goTo(app, '/settings');
+        await goTo(app, path);
+      };
+      /** What every reader says about one (item, class) pair. */
+      const readers = async (itemId: string, lesson: typeof L7) => {
+        await fresh(`/items/${itemId}`);
+        const itemText = await text();
+        const pickerItem = await page
+          .getByRole('combobox', { name: 'Link this item to a lesson' })
+          .locator('option')
+          .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value))
+          .catch(() => [] as string[]);
+        await fresh('/lessons');
+        await page.getByRole('button', { name: new RegExp(`Class ${lesson.number}\\b`) }).first().click();
+        const title = base.items.find((i) => i.id === itemId)!.title;
+        const inList = await page.getByRole('button', { name: `Unlink ${title} from this lesson — the item is kept` }).count();
+        await page.getByRole('button', { name: 'Link existing…' }).click();
+        const pickerLesson = await page
+          .getByRole('combobox', { name: 'Link an existing item to this lesson' })
+          .locator('option')
+          .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+        return {
+          summary: new RegExp(`Lessons:[^\\n]*${lesson.date}`).test(itemText),
+          connections: itemText.includes(`Class on ${lesson.date}`),
+          inList: inList === 1,
+          offeredOnItem: pickerItem.includes(lesson.id),
+          offeredOnLesson: pickerLesson.includes(itemId),
+        };
+      };
+      const LINKED = { summary: true, connections: true, inList: true, offeredOnItem: false, offeredOnLesson: false };
+      const UNLINKED = { summary: false, connections: false, inList: false, offeredOnItem: true, offeredOnLesson: true };
+      const owned = (d: Db) => JSON.stringify([d.lessons.map((l) => [l.id, l.itemIds ?? []]), d.lessonAgenda]);
+      try {
+        const start = await db(app);
+        expect(await readers(KERESHMEH_M.id, L7), where).toEqual(LINKED);
+        // Its archive material is the archive's, not the association's.
+        await fresh(`/items/${KERESHMEH_M.id}`);
+        expect(await text(), where).toContain('نمونه');
+
+        // --- DERIVED: Unlink from the item, Relink from the class ---------------
+        await page.getByText(`Class on ${L7.date}`).locator('xpath=..').getByRole('button', { name: 'Unlink' }).click();
+        let d = await until(app, (x) => x, (x) => x.archiveSources[0]!.suppressions.length === 2);
+        expect(d.archiveSources[0]!.suppressions.map((x) => [x.kind, x.ref]), where).toContainEqual(['link', `7:${KERESHMEH_M.source!.pieceKey}`]);
+        expect(owned(d), where).toBe(owned(start));
+        expect(await readers(KERESHMEH_M.id, L7), where).toEqual(UNLINKED);
+        await fresh(`/items/${KERESHMEH_M.id}`);
+        expect(await text(), where).toContain('نمونه');
+
+        await fresh('/lessons');
+        await page.getByRole('button', { name: /Class 7\b/ }).first().click();
+        await page.getByRole('button', { name: 'Link existing…' }).click();
+        await page.getByRole('combobox', { name: 'Link an existing item to this lesson' }).selectOption(KERESHMEH_M.id);
+        d = await until(app, (x) => x, (x) => x.archiveSources[0]!.suppressions.length === 1);
+        // Only ITS suppression was lifted, and nothing was copied into itemIds.
+        expect(d.archiveSources[0]!.suppressions, where).toEqual(start.archiveSources[0]!.suppressions);
+        expect(owned(d), where).toBe(owned(start));
+        expect(await readers(KERESHMEH_M.id, L7), where).toEqual(LINKED);
+        expect(await page.getByText('in this class’s archive').count(), where).toBeGreaterThan(0);
+
+        // The class-9 unlink the owner made earlier: Relink from the ITEM.
+        expect(await readers(SABA.id, L9), where).toEqual(UNLINKED);
+        await fresh(`/items/${SABA.id}`);
+        await page.getByRole('combobox', { name: 'Link this item to a lesson' }).selectOption(L9.id);
+        d = await until(app, (x) => x, (x) => x.archiveSources[0]!.suppressions.length === 0);
+        expect(owned(d), where).toBe(owned(start));
+
+        // --- MANUAL: the owner's own link is history in itemIds ---------------
+        await fresh(`/items/${RIZ.id}`);
+        await page.getByRole('combobox', { name: 'Link this item to a lesson' }).selectOption(L7.id);
+        d = await until(app, (x) => x, (x) => (x.lessons.find((l) => l.id === L7.id)!.itemIds ?? []).includes(RIZ.id));
+        expect(await readers(RIZ.id, L7), where).toEqual(LINKED);
+        await fresh('/lessons');
+        await page.getByRole('button', { name: /Class 7\b/ }).first().click();
+        await page.getByRole('button', { name: `Unlink ${RIZ.title} from this lesson — the item is kept` }).click();
+        d = await until(app, (x) => x, (x) => !(x.lessons.find((l) => l.id === L7.id)!.itemIds ?? []).includes(RIZ.id));
+        // A manual unlink writes no archive suppression.
+        expect(d.archiveSources[0]!.suppressions, where).toEqual([]);
+        await fresh(`/items/${RIZ.id}`);
+        await page.getByRole('combobox', { name: 'Link this item to a lesson' }).selectOption(L7.id);
+        await until(app, (x) => (x.lessons.find((l) => l.id === L7.id)!.itemIds ?? []).includes(RIZ.id), (v) => v);
+
+        // --- RELOAD: every reader says the same -------------------------------
+        await reload(app);
+        expect(await readers(KERESHMEH_M.id, L7), where).toEqual(LINKED);
+        expect(await readers(SABA.id, L9), where).toEqual(LINKED);
+        expect(await readers(RIZ.id, L7), where).toEqual(LINKED);
+        d = await db(app);
+        expect(d.lessons.find((l) => l.id === L7.id)!.itemIds, where).toEqual([RIZ.id]);
+        expect(d.lessons.find((l) => l.id === L9.id)!.itemIds ?? [], where).toEqual([]);
+        expect(d.lessonAgenda, where).toEqual([]);
+        expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    }
+  }, 600_000);
+});
