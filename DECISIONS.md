@@ -2,6 +2,62 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Setar archive recovery, owner metadata authority, portable terms and a gesture-primed cue (2026-10-05)
+
+Seven owner reports, one lane (contract 20261005-…-e964; proof map in
+`docs/setar-practice-reliability.md`).
+
+- **Session 40 was a declaration gap, and it exposed a real attribution defect.**
+  The two scores name pieces PIECES.csv does not declare, so they are excluded —
+  intended. But the scanner checked roster trust only against files that SURVIVED
+  the registry and type filters, so an unregistered named file vanished before the
+  check and an unnamed demonstration could spread over a roster the folder plainly
+  disagreed with. Every role-named piece now counts against the roster first.
+  Deleting Class 40 had persisted a session suppression; nothing could lift it
+  except a test. **Restore lifts one exact `{kind, ref, itemId}` tuple** — matching
+  kind and ref alone also lifted sibling item-scoped hides.
+- **Session 1 was not a resolver defect.** RENAME-LOG.csv stops at `ضبط-کلاس-N`; the
+  files are now `نمونه-N`. Without the owner's three continuations the old names
+  stay "not described" by design. Nothing pairs files by number, size or similarity.
+- **Ongoing intake stays source declaration, never code.** Rejected: a per-session
+  worksheet, a registry editor, a persistent attention ledger. Chosen: a read-only
+  `--attention` mode of the SAME scanner that drafts against the registry's actual
+  header (the real file has ten columns; an eight-column positional append would
+  misplace `sessions`) and amends one cell of an existing row, every draft
+  UNCONFIRMED. The registry stays the identity and roster authority.
+- **The accepted graph is the metadata baseline.** Every unequal field was
+  offered on every refresh, so `بسته‌نگار` and `ضربی` were challenged forever.
+  Rejected: a ledger of answers. Chosen: offer only fields the registry CHANGED
+  since the last accepted graph; accepting a graph settles the offer; standing
+  differences are opt-in (Review differences). `(قطعه)` never improves a named
+  form; a gusheh spelling is never normalised. **A label was being used as a
+  premise** (the UI passed the displayed name) — decisions now carry the typed
+  value, its term meaning and the exact proposal; the test that endorsed label
+  fallback was corrected.
+- **`studySource` is the only new saved shape (schema 16).** Optional, absent =
+  unknown legacy evidence, `''` = none declared, wrong types refused at every door;
+  index `version` stays 1 because the field is additive and the old decoder ignores
+  it. v15 readers refuse v16; deploy the app before the NAS scripts.
+- **The cue was structurally silent where autoplay is enforced.** Each boundary
+  built a NEW AudioContext inside an effect, never resumed it, and leaked it; a
+  StrictMode remount cued twice because the marker setter wrote unconditionally.
+  Recorded before any change. Chosen: one page-lifetime context primed only inside
+  Start/Resume/Test/recovery taps (the store's start and resume actions, called
+  synchronously by every door), a compare-and-set marker claim keyed by the clock's
+  own start, and routine cards that start the run inside the tap — a bare routine
+  URL now asks for Start. Rejected without new evidence: forcing an audio-session
+  category, silent background audio, louder gain as a permission fix, push or
+  notifications. Two pulses replace one 0.3 s tone; audibility is OWNER.
+- **Native `<datalist>` is not a portable suggestion surface** (WebKit bug 305719
+  motivates, does not prove, the iPhone report). One in-flow button list, no UA
+  branch, no dependency.
+- **Removal was always safe, just hidden** in the row menu; it now follows Add on
+  screen. Deletion is never offered as the inverse.
+- **Setar organisation is a selected review, not a migration.** Archive presence
+  proves no learning, so Keeping fresh is never pre-selected; a declared radif
+  source never decides kind (`چهارپاره-مرادخانی`); the partial radif catalogue
+  proposes no reference — only explicit choices.
+
 ## AGENTS.md is a 32 KiB rulebook again; how its rules were found moved out (2026-10-01)
 
 **Diagnosis.** Every Claude session loaded CLAUDE.md plus `@AGENTS.md` whole (245,482 bytes at

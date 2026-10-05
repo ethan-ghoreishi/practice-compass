@@ -91,6 +91,52 @@ cannot support. An ordinary chain beside a loop or a fork still publishes.
 Dotfiles, `@eaDir` and out-of-scope root folders stay silent: they are not
 archive content.
 
+**A roster is trusted only where EVERY named file agrees with it.** Each piece a
+filename names — registered or not, of a supported type or not — counts against
+the registry's roster for that session BEFORE any file is dropped. The check used
+to see only the files that survived the registry and type filters, so Session 40's
+two unregistered scores vanished first and the unnamed demonstration beside them
+would have spread over whatever the registry listed. An unnamed demonstration in a
+session whose roster is empty, or disagrees with its filenames, stays with the
+lesson, and the diagnostic says which of the two it is. Nothing is ever inferred
+from a filename to fill a roster.
+
+**`PIECES.csv`'s optional `source` column travels as `studySource`** — verbatim,
+and only when the column exists, so an older registry publishes a byte-identical
+index. The app reads it as declared provenance (schema v16), never as a kind, a
+stage or an identity. Index format stays `version: 1`: the field is additive, and a
+pre-v16 app ignores it (its digest covers the raw file, so the index still
+verifies).
+
+### `--attention`: what needs the owner, and the smallest safe step
+
+```sh
+node scripts/scan-setar-classes.mjs --root <archive> --attention
+```
+
+The SAME two-read observation and the same grammar as the index, printed as a
+report to stdout. It writes nothing anywhere and refuses `--out`. Every path in it
+is archive-relative. It lists:
+
+1. **Pieces named by files but missing from PIECES.csv**: each key, the sessions
+   and roles it was seen in, why it is excluded, and an UNCONFIRMED draft row built
+   against the registry's ACTUAL header (any order, any extra columns). The draft
+   carries the identity and nothing else; no form, dastgāh, composer, source or
+   session is read off a filename.
+2. **Unnamed demonstrations kept with their lesson**, saying whether the roster is
+   empty or inconsistent, and what would attribute them.
+3. **Registered pieces named in a class their row does not list**: the existing
+   row with ONE cell amended — every other cell, its quoting and its extra columns
+   exactly as written. A named file needs no such entry; this is only for a class
+   that taught it.
+4. **Rename-log names that are not on disk**, per folder, beside the files there
+   that no log row names, with an `old_path,new_path` template. Nothing pairs them:
+   which became which is the owner's to say.
+5. Everything else the index already diagnoses.
+
+It also names the content hash an ordinary scan would publish, so a stale
+publication is told apart from a declaration problem.
+
 The output is written **outside the archive** via a temp file + rename, and the
 scanner refuses an `--out` path inside `--root`.
 
@@ -368,17 +414,33 @@ genuinely is not laid out this way. Leave it blank and the derivation applies.
 
 ### Who owns an imported field, and where to correct a wrong one
 
-**Source-owned** (replaced by the archive, but only when you say so): the piece's
-`dastgah`, `form`, `composer` and gusheh name. A later registry improvement is
-**offered field by field** and applied only on an explicit tap — including when
-your value is deliberately empty. Nothing is applied silently, and nothing can
-revert on its own.
+**Source-proposed** (replaced by the archive, but only when you say so): the
+piece's `dastgah`, `form`, `composer` and gusheh name. Under **Archive metadata
+differs**, a registry value is offered only when the registry CHANGED that field
+since the graph this device last accepted — never because it merely differs from
+yours. Each offer is "Keep my value" (the default) or "Use archive value"; Apply
+accepts the archive's facts and keeps every value you did not choose. Accepting
+the graph settles the offer, through a reload, a sync and a reinstall alike, with
+no separate ledger of answers. Differences you already live with stay out of the
+way until you open **Review differences**, where the same two choices apply.
+
+Meaning, not spelling, decides a difference: a literal and a term reference
+resolve through the shared vocabulary (`بیات-ترک` IS بیات ترک). A gusheh name is
+never a term and never normalised — `بسته‌نگار` (ZWNJ) and `بسته-نگار` are two
+spellings and yours wins. The registry's `(قطعه)` names no form, so it never
+improves a form you have named (`ضربی`). A choice is bound to the record, your
+TYPED value, what it meant, and the exact proposal: if any of them moves before
+Apply, the commit refuses and the preview is shown again.
 
 **Yours from the moment of import, and never written again**: the item's **type**
-(gusheh / full piece — seeded once from the registry's `form`, then never
-re-offered), title, status, notes, difficulty, parts, pathway placement, and
+— seeded once by the one kind policy (`classifyPiece`): `گوشه` and the radif
+`درامد` a gusheh, `تمرین`/`اتود` an exercise, `بداهه` your improvisation, a clear
+composed form a full piece, anything the registry does not decide `other` for you
+to say — then title, status, notes, difficulty, parts, pathway placement, and
 every practice, review and scheduling field. Edit any of them freely; a refresh,
-a reload and a sync all preserve the edit.
+a reload and a sync all preserve the edit. **Review Setar setup** (Settings) can
+PROPOSE kind, placement, study source and class corrections from the archive's
+evidence; it writes only the rows you select.
 
 **A bound class is left alone entirely.** Its date, number, notes and links are
 yours from the moment it is adopted; the only thing a refresh ever rewrites on it
@@ -390,7 +452,7 @@ is the *path text* of a reference, and only into the namespace above.
 | --- | --- | --- |
 | Treat a piece as a full piece rather than a gusheh | **in the app** (item type) | Yours; sticks for good. One tap, no re-import. |
 | Fix a wrong `dastgah` / `form` / `composer` for the long run | **in PIECES.csv**, then Refresh and apply the offer | The registry is the source of that fact; every future device gets it too. |
-| Fix one of those on this device only | **in the app** | The archive will keep offering its own value; ignore the offer. |
+| Fix one of those on this device only | **in the app** | Your value stands; the archive offers its own again only if the registry changes that field. |
 | Correct a spelling of the piece's own name | **in the app** (title) | A title edit is yours and binding survives it. |
 | Rename `canonical_fa` in PIECES.csv | **avoid** | It is a NEW identity: the refresh creates a second item and flags the old piece `unavailable`, with no question linking them. Merge is then yours to do by hand. |
 | Rename a file in the archive | **normally**, and log it in RENAME-LOG.csv | Path identity follows the log exactly; your saved references are repaired on the next refresh, titles and notes intact. |
@@ -440,6 +502,17 @@ Refresh says this in as many words rather than crashing, and it says it before i
 looks at the file at all — on a device that cannot hash, no index can pass, and a
 file-shaped error would send you to republish an index that is perfectly good.
 
+### Hidden and removed from the archive
+
+Deleting a class, skipping a piece, unlinking a piece from a class and hiding a
+file are owner decisions the archive respects. The collapsed list under Refresh
+shows every one with its exact scope — a file hidden on ONE item is listed with
+that item — and Restore lifts exactly that decision and nothing else (never a
+sibling hide of the same file on another item). The next Refresh brings back what
+the archive still describes. Re-importing cannot recover notes, links or files you
+deleted with a record: those were never in the archive, so restore them from a
+backup.
+
 ---
 
 ## 6. Notes for whoever changes this next
@@ -462,3 +535,56 @@ file-shaped error would send you to republish an index that is perfectly good.
 - `npm test` must never need the NAS, the Sandisk drive or the network. The
   checked-in fixture `tests/fixtures/setar-archive.json` is the real corpus with
   registry notes trimmed to their first sentence.
+
+---
+
+## 7. When Refresh says something needs attention
+
+Refresh reads what the NAS job last PUBLISHED. Running the job again changes
+nothing until the archive's own declarations change, so first tell which of these
+it is:
+
+| You see | It is | Do |
+| --- | --- | --- |
+| Refresh fails, or the hash under "Accepted index" never moves | the scan failed, the NAS runs old copies of the scripts, or nothing has published | Read the task's mail; copy all three runtime files again (§4); run the task once |
+| The hash `--attention` prints differs from the accepted one | a newer index exists but this device has not accepted it | Refresh and Apply |
+| "Piece … is not in the registry" | missing registry evidence | Step (b) |
+| "Unnamed demonstration not attributed" | an empty or inconsistent roster | Step (c) |
+| A file listed "not described by the latest index" | a rename the log does not record, or a file gone | Step (d) or (e) |
+| A class or piece you expect is missing | it was deleted or skipped here | "Hidden and removed from the archive" → Restore |
+
+The checklist — the same for Session 41, 42 and every class after them; no step
+needs a code change, a reseed or another lane:
+
+- **(a) Ordinary files for registered pieces** need nothing beyond the existing NAS
+  job and a Refresh. A file NAMED for a registered piece is scoped to it in any
+  session, without listing that session for it.
+- **(b) A genuinely new piece**: run `--attention`, confirm the exact spelling IS the
+  piece (it becomes `canonical_fa` byte for byte), and add that ONE row to
+  PIECES.csv. Musical fields may stay empty until you or the teacher can say.
+- **(c) An unnamed demonstration** stays with the lesson until the class's roster is
+  declared: put the session number in `sessions` for exactly the pieces you can
+  confirm it taught. An EMPTY roster says nothing; an INCONSISTENT one names a
+  piece the roster does not — fix the roster or the filename.
+- **(d) A renamed or moved file**: append ONE exact `old_path,new_path` row to
+  RENAME-LOG.csv per file, after checking the existing chain for that path — never
+  a loop, never a second destination. Old references and hides then follow it.
+  Without the row, the old name stays "not described" and the new one arrives as
+  new material.
+- **(e) Added files and role changes** arrive with the next index. Replacing a
+  file's bytes at the SAME path keeps every reference and opens the NAS's current
+  bytes (the index may not change at all, deliberately). A file the index stops
+  describing is not called deleted: hide it, or repoint your own reference.
+
+Deliberate suppressions still need an explicit Restore.
+
+Worked examples of the SAME steps, not special cases: Session 40 is two (b) rows
+(`پیش-درامد-چهارگاه-فروتن`, `چهارمضراب-چهارگاه-عبادی`) and a (c) roster; Session 1
+is three (d) continuations (`ضبط-کلاس-N.mp4` → `نمونه-N.mp4`). The automated proof
+runs these and future sessions 41, 42, 43, 45, 57, 58 and 103 on temporary corpora
+only (`docs/setar-practice-reliability.md`). Only the owner edits PIECES.csv or
+RENAME-LOG.csv; no tool writes them.
+
+**Order when this lane's scanner reaches the NAS:** deploy the app first (a v16
+app reads both old and new indexes), then copy all three runtime files (§4), then
+run the job and Refresh.

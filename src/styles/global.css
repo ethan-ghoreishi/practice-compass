@@ -1079,7 +1079,8 @@ body,
   gap: 6px;
 }
 .term-option,
-.term-action {
+.term-action,
+.btn-touch {
   min-height: 44px;
   min-width: 44px;
 }

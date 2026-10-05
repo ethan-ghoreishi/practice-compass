@@ -471,8 +471,12 @@ describe('the practice sound, through every door', () => {
     // No stand-in: the browser's own Web Audio, no autoplay flag. The app's own
     // indicator reports the engine running after the tap, and the two pulses
     // it scheduled reach their `ended` — scheduling completes. Nothing here
-    // asserts a sound was heard.
-    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+    // asserts a sound was heard. ONE route, in Chromium: it renders to a fake
+    // output where a host has no audio device (CI's Linux runners), while
+    // WebKit's Linux build may have no audio sink at all — its graph is proven
+    // above against the stand-in, and a real WebKit's sound is an OWNER check
+    // on the iPhone itself.
+    for (const engine of ['chromium'] as Engine[]) {
       const app = await openPracticeApp({
         now: CLOCK,
         engine,
@@ -532,15 +536,21 @@ describe('the practice sound, through every door', () => {
         await reload(app);
         await page.clock.runFor(3_000);
         expect(count(await trace(app), 'vibrate')).toBe(0);
-        // Finish and save: the minutes are the wall clock's — 12 running
-        // minutes and a few seconds, the 30 s pause excluded — never a count
-        // of ticks.
+        // Finish and save: the minutes are the WALL CLOCK's — the running
+        // time this test advanced (598 + 4 + 120 + 5 s; the 30 s pause
+        // excluded) plus the real seconds the page's clock kept moving between
+        // steps — read back from the frozen clock, never a count of ticks.
         await page.getByRole('button', { name: 'Finish' }).click();
+        await page.getByRole('button', { name: 'Same' }).waitFor();
+        const frozen = ((await readPersistedState(app)).state as { active: { accumulatedSeconds: number; running: boolean } }).active;
+        expect(frozen.running).toBe(false);
+        expect(frozen.accumulatedSeconds).toBeGreaterThanOrEqual(727);
+        expect(frozen.accumulatedSeconds).toBeLessThan(727 + 60);
         await page.getByRole('button', { name: 'Same' }).click();
         await page.getByRole('button', { name: 'Save block' }).click();
         await page.getByRole('navigation', { name: 'Primary' }).waitFor();
         const saved = (await persistedDb(app)).blocks.at(-1) as { durationMinutes: number; result: string; startedAt: string };
-        expect(saved).toMatchObject({ durationMinutes: 12, result: 'same', startedAt: started });
+        expect(saved).toMatchObject({ durationMinutes: Math.max(1, Math.round(frozen.accumulatedSeconds / 60)), result: 'same', startedAt: started });
 
         // --- REMOUNT after the target passed elsewhere: StrictMode's double
         //     effect, one claim, ONE cue (the pre-fix app played two).
@@ -667,12 +677,15 @@ describe('the practice sound, through every door', () => {
         await expect.poll(() => page.locator('main').innerText()).toContain('Target reached');
         expect(await cues(from)).toBe(1);
         await page.getByRole('button', { name: 'Finish' }).click();
+        await page.getByRole('button', { name: 'Same' }).waitFor();
+        const planClock = ((await readPersistedState(app)).state as { active: { accumulatedSeconds: number } }).active;
+        expect(planClock.accumulatedSeconds).toBeGreaterThanOrEqual(target * 60 + 2);
         await page.getByRole('button', { name: 'Same' }).click();
         await page.getByRole('button', { name: 'Save block' }).click();
         await page.getByRole('button', { name: /^Start / }).first().waitFor();
         expect((await persisted(app)).activePlan!.pointer).toBe(1);
         const planBlock = (await persistedDb(app)).blocks.at(-1) as { durationMinutes: number };
-        expect(planBlock.durationMinutes).toBe(target);
+        expect(planBlock.durationMinutes).toBe(Math.max(1, Math.round(planClock.accumulatedSeconds / 60)));
         await page.getByRole('button', { name: 'End the plan' }).click();
         expect(app.pageErrors.map((e) => e.message)).toEqual([]);
       } finally {

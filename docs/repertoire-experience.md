@@ -41,7 +41,7 @@ Reference ids: `stage:<stageId>:<key>` · `course:<courseId>:work:<identity>` ·
 
 | Fact | Written by | Read by |
 | --- | --- | --- |
-| Term values on items | `ItemForm` (`MusicalTermField` → `valueFromInput`), `itemFromCatalogEntry` (radif entries carry `{termId}`), archive adoption (`sourceReconcile`, raw registry TEXT only), migration (never — legacy text is kept) | `resolveValue`/`valueLabel`/`valueGroup`/`valueSearchTexts` → `groupByDastgah`, `discoverRepertoire`, `repertoireSearchTexts` (Practice list, Start), `ItemDetail` details, `WorkRow`, `MusicalTermField`, archive suggestion comparison (`fieldAlreadySays`), `isWork`/`hasPersianIdentity`, `kindFromItem`, `validateMusicTerms` |
+| Term values on items | `ItemForm` (`MusicalTermField`: typed text → `valueFromInput`, a tapped suggestion → `{termId}`), `itemFromCatalogEntry` (radif entries carry `{termId}`), archive adoption (`sourceReconcile`, raw registry TEXT only), an archive difference the owner chose (`archiveValueDecision`), migration (never — legacy text is kept) | `resolveValue`/`valueLabel`/`valueGroup`/`valueSearchTexts` → `groupByDastgah`, `discoverRepertoire`, `repertoireSearchTexts` (Practice list, Start), `ItemDetail` details, `WorkRow`, `MusicalTermField` (suggestions through `searchAliasTable`/`searchMatch`), archive difference comparison (`sameMeaning`/`offers`), `isWork`/`hasPersianIdentity`, `kindFromItem`, `validateMusicTerms` |
 | `musicTerms` | `addTerm`/`updateTerm`/`deleteTerm` (store, via `planAddTerm`/`planUpdateTerm`/`planDeleteTerm`; an update is refused when `reclassifiedItems` finds an unedited value whose meaning would change, a delete while `itemsUsingTerm` — ambiguous claimants included — is non-empty; MusicTerms' Delete reads `planDeleteTerm` itself), `migrateToV15` (empty list only) | `vocabulary()` everywhere above, `searchAliasTable`, MusicTerms page, `validateDB` |
 | `catalogRefs` | `planStageAddition` → `planCatalogAddition` (Add; creates nothing while `unlinkedInStage` lists items placed there that answer no suggestion, unless the owner chose Add as a new item), `planLinkReference`, `planUnlinkReference`, `planRemoveFromPathway`, and — through `settleLegacyEvidence` (unique legacy decided, ambiguous refused) — every placement writer: `updateItem` (stage/key/instrument), `placeItemInStage`, `deleteStage`, `deletePathway`; `bindLegacyReferences` (v15 migration, fitting evidence only). Every one passes `identityRefusal` before `set()`; a link or instrument move may not overrule another item's legacy answer (`legacyClaimRefusal`) | `resolveCatalogReference` → `stageUnits`/`hiddenUnits`/`stageProgress`/`currentStage`/`nextUnitInStage`/`pathwayProgress`, `planCatalogAddition` reuse, `carriedCourseWorkItem`, routine segment binding (`unitItem`), `itemReferences` → `itemFiles` course material, `validateReferences` |
 | `hiddenRefs` | `planSetReferenceHidden` (Hide/Restore), `planRemoveFromPathway` | `pathwayStageContext` → every stage consumer above; `validateReferences` (scope = the pathway's shipped definition) |
@@ -50,7 +50,25 @@ Reference ids: `stage:<stageId>:<key>` · `course:<courseId>:work:<identity>` ·
 | Missing shipped stages | `planDefaultStages` via `addDefaultStages` (PathwayDetail "Restore shipped stages"), `planCourseLevels` (course levels) | `offeredDefaultStages`, `offeredCourseLevels` |
 | Save outcomes (terms, sources, course source choice) | `useAcknowledgedSaves` in MusicTerms, Materials, ItemForm inline source, StageDetail `SourceChoice` | `SaveStatus` (keyed by record, carried-draft aware) |
 | Browse return | Repertoire (`state.from`, Study sources `?instrument=`) | PathwayDetail, StageDetail (`pathwaysReturnPath` fallback), Materials |
-| Inbound install | Settings import (full/state-only), sync pull, Keep remote, archive restore, cold recovery, persist `migrate` and `merge` | all through `validateDB` → `migrateToCurrent` (+ `migrateToV15`) → reconstruct (incl. `musicTerms`) → validators |
+| Inbound install | Settings import (full/state-only), sync pull, Keep remote, archive restore, cold recovery, persist `migrate` and `merge` | all through `validateDB` → `migrateToCurrent` (+ `migrateToV15`; v16 only advances the version) → reconstruct (incl. `musicTerms`) → validators |
+| Lesson ↔ item association | the owner: `linkItemToLesson`/`unlinkItemFromLesson` (`lesson.itemIds`); the archive: session membership, read through `membersForSession` — an unlink of a listed piece writes ONE link suppression, a relink lifts exactly that one and copies nothing into `itemIds` | `lessonAssociations` → `associationsForLesson` (Lessons "Worked on in this class" and its linkable list) and `associationsForItem` (ItemDetail Connected to, its lesson summary, Connections and its linkable list); `setarSetup` class rows |
+| Item kind of a NEW archive item | `classifyPiece` (one policy, `setarSetup.ts`) inside `planArchiveImport` | the item's own `itemType` from then on; Review Setar setup proposals only |
+
+## Setar reliability lane (2026-10-05)
+
+- **Term fields on every device.** `MusicalTermField` no longer relies on a native
+  `<datalist>`: up to eight matches show as the app's own buttons while typing
+  (Farsi, Latin, aliases, transliterations), plus **All** and a clear control.
+  Tapping one stores the term; a partial match is never accepted for the owner.
+- **Remove from pathway is where the owner looks.** After Add, the notice carries
+  "Remove from pathway" (the item is kept); on an owned row it is the menu's first
+  entry, apart from Unlink. Restore says the same item answers again.
+- **One association relation.** Lessons and ItemDetail read `lessonAssociations`;
+  an archive-derived association is labelled as the class's archive, never as
+  practice or a preparation.
+- **Imported kinds** follow `classifyPiece`; **Review Setar setup** proposes
+  kind, place, study source and class corrections from the archive's evidence and
+  writes only the selected rows (`docs/setar-practice-reliability.md`).
 
 ## The shared Persian reference — audit
 

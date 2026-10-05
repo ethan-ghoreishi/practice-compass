@@ -39,6 +39,7 @@ fact that could not be measured from the Mac is marked **owner to confirm
 | Synology Drive | both copies | both copies | — it IS the propagation |
 | NAS indexer (`run-setar-index.sh`, a DSM task every ~15 min, three copied files) | `PC_ARCHIVE_ROOT` | `setar-index.json` in its own work directory, which it never creates; one file on the `source-index` branch | GitHub only. Task, runtime directory and that `config.env` sits outside every served or synced share: **owner to confirm (ac‑11)** |
 | Setar scanner by hand on the Mac | an archive root | its own previous index, or a new file, outside that root | nothing |
+| Setar scanner `--attention` (Mac or NAS, by hand) | an archive root, read twice and compared | nothing — a report on stdout only, archive-relative paths; `--out` is refused before anything is read | nothing. Only the owner edits `PIECES.csv` / `RENAME-LOG.csv` from it |
 | Course scanners (Mac, by hand) | `/Volumes/Sandisk/…` | `src/domain/courseData.ts` / `khonyagarData.ts` (default resolved from the script, never the CWD) | a commit, if the owner makes one |
 | `scripts/nas-mirror.mjs` | the repo's `dist/` | only inside a folder it created, or one holding its marker | the mirror's own origin |
 | The app | GitHub API; media only by opening a link | its own IndexedDB; the GitHub data repo through sync | other devices, through sync |
@@ -110,7 +111,7 @@ replace. It writes nothing at the destination.
 | HTTPS mirror (`nas-mirror.mjs`) | yes: HTTPS is a secure context even with a self-signed certificate (measured on `:5010`, 2026‑09‑18) | an unmerged build on the phone over HTTPS | **service worker and installed-app support from a self-signed origin: unverified until observed** |
 | GitHub Pages | yes | production and the installed PWA | only `main`; there is no branch preview |
 
-## When something looks wrong: three read-only commands
+## When something looks wrong: four read-only commands
 
 Each writes only into a fresh temp folder. Compare the results with the dated
 values here and in `docs/setar-archive.md`.
@@ -125,6 +126,10 @@ node scripts/scan-khonyagar-course.mjs --write --out "$T/khonyagarData.ts" && cm
 # 2. Scan the Setar archive to stdout; read its counts and content hash.
 node scripts/scan-setar-classes.mjs --root /Volumes/Sandisk/video-courses/setar-classes > "$T/setar.json"
 grep '"contentHash"' "$T/setar.json"
+
+# 2b. What needs the owner: missing registry rows, rosters, unlogged renames
+#     (docs/setar-archive.md §7). Prints only; writes nothing.
+node scripts/scan-setar-classes.mjs --root /Volumes/Sandisk/video-courses/setar-classes --attention > "$T/attention.txt"
 
 # 3. Fingerprint the media: every file's size and path, sorted, then hashed.
 (cd /Volumes/Sandisk/video-courses && find . -type f ! -name .DS_Store ! -path '*/@eaDir/*' -exec stat -f '%z %N' {} + | LC_ALL=C sort) > "$T/media.txt"

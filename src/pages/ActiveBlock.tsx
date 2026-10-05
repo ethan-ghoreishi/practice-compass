@@ -278,7 +278,7 @@ export function SoundNote({ state }: { state: ReturnType<typeof usePracticeSound
   return (
     <div className="row tiny faint" style={{ justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
       <span dir="ltr">{state === 'paused' ? 'Practice sound is paused on this device.' : 'Practice sound is off on this page.'}</span>
-      <button type="button" className="btn btn-sm" onClick={testPracticeSound}>
+      <button type="button" className="btn btn-sm btn-touch" onClick={testPracticeSound}>
         Turn on sound
       </button>
     </div>

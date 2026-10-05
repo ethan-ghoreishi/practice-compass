@@ -375,10 +375,10 @@ function DifferenceRow({
         </div>
       </div>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }} role="group" aria-label={`${FIELD_LABELS[sg.field]} of ${sg.pieceKey}`}>
-        <button type="button" className="btn btn-sm" aria-pressed={!used} onClick={onKeep}>
+        <button type="button" className="btn btn-sm btn-touch" aria-pressed={!used} onClick={onKeep}>
           Keep my value
         </button>
-        <button type="button" className="btn btn-sm" aria-pressed={used} onClick={onUse}>
+        <button type="button" className="btn btn-sm btn-touch" aria-pressed={used} onClick={onUse}>
           Use archive value
         </button>
       </div>
@@ -452,8 +452,16 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
   const items = useStore((s) => s.db.items);
   const restore = useStore((s) => s.restoreArchiveSuppression);
   const saves = useAcknowledgedSaves();
+  // ONE outcome slot for the section, not one per row: a restored row leaves
+  // the list the moment the store lifts it, and its Saving…/Not saved and Try
+  // again must outlive it until storage has answered.
+  const [last, setLast] = useState<{ target: Pick<SourceSuppression, 'kind' | 'ref' | 'itemId'>; label: string } | null>(null);
   const rows = source.suppressions;
-  if (rows.length === 0) return null;
+  if (rows.length === 0 && !last) return null;
+  const run = (target: Pick<SourceSuppression, 'kind' | 'ref' | 'itemId'>, label: string) => {
+    setLast({ target, label });
+    saves.run('restore', label, () => restore(source.id, target), { current: () => label, again: () => undefined, saved: onRestored });
+  };
   // Generated English around ONE source value (a piece key, a class pair, a
   // path), each in its own isolate — the value resolves its own direction.
   const describe = (x: SourceSuppression): { lead: string; name: string; tail: string; there: boolean } => {
@@ -477,8 +485,21 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
     };
   };
   return (
-    <details className="card card-quiet stack-sm">
+    <details className="card card-quiet stack-sm" open={last ? true : undefined}>
       <summary className="small">Hidden and removed from the archive ({rows.length})</summary>
+      {last && (
+        <SaveStatus
+          ack={saves.states.restore}
+          subject={
+            <>
+              <span dir="ltr">Restore of </span>
+              <span dir="auto">{last.label}</span>
+              <span dir="ltr">: </span>
+            </>
+          }
+          onRetry={() => run(last.target, last.label)}
+        />
+      )}
       <p className="tiny faint" style={{ textAlign: 'start' }}>
         <span dir="ltr">
           Restoring lifts that one decision; the next Refresh brings back what the archive still describes. Notes,
@@ -504,23 +525,9 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
                   {there ? ' · the archive still describes it' : ' · not described by the latest index'}
                 </span>
               </span>
-              <span className="row" style={{ gap: 6 }}>
-                <SaveStatus ack={saves.states[key]} onRetry={() => saves.run(key, key, () => restore(source.id, x))} />
-                <button
-                  type="button"
-                  className="btn btn-sm"
-                  aria-label={`Restore ${what}`}
-                  onClick={() =>
-                    saves.run(key, key, () => restore(source.id, x), {
-                      current: () => key,
-                      again: () => undefined,
-                      saved: onRestored,
-                    })
-                  }
-                >
-                  Restore
-                </button>
-              </span>
+              <button type="button" className="btn btn-sm btn-touch" aria-label={`Restore ${what}`} onClick={() => run({ kind: x.kind, ref: x.ref, ...(x.itemId ? { itemId: x.itemId } : {}) }, what)}>
+                Restore
+              </button>
             </li>
           );
         })}
