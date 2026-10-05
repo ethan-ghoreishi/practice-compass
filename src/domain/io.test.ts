@@ -1216,3 +1216,145 @@ describe('the v14 source graph at the schema boundary', () => {
     expect(() => validateDB({ ...graphed, attachments: [attachment, attachment] })).toThrow(/share the id/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// ac-2 support — `studySource` (v16) reads the same at every reader: the
+// scanner and its digest, the text decoder behind the fetch and the file
+// doors, the graph check and `validateDB`. Absent is unknown legacy evidence
+// (kept absent), '' is an explicit "none declared", any other text is kept
+// verbatim; null, a number or an object is refused, naming the piece.
+// ---------------------------------------------------------------------------
+
+describe('study provenance at every reader (v16)', () => {
+  it('study provenance decodes the same way at every reader', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    // @ts-expect-error — no type declarations for the .mjs operator tool.
+    const scanner = (await import('../../scripts/scan-setar-classes.mjs')) as { scanToIndex(root: string): Record<string, unknown> };
+    const { parseSourceIndex, decodeSourceIndex } = await import('./sourceArchive');
+    const { readIndexFile, fetchPublishedIndex } = await import('../store/archiveIndex');
+    const { stampSourceIndex } = await import('../../tests/practiceBrowser');
+
+    const DECLARED: Record<string, string> = { 'درامد-الف': '', 'درامد-ب': 'ردیف-میرزاعبدالله', 'درامد-پ': 'منبعی-که-برنامه-نمی‌شناسد' };
+    const archive = (withColumn: boolean) => {
+      const root = mkdtempSync(join(tmpdir(), 'study-source-'));
+      const folder = 'session-1-26-09-2023';
+      mkdirSync(join(root, folder));
+      const header = withColumn ? 'canonical_fa,form,piece,dastgah,composer,source,aliases_seen,sessions,notes' : 'canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes';
+      const rows = Object.entries(DECLARED).map(([key, source]) =>
+        withColumn ? `${key},گوشه,درامد,شور,,${source},,1,` : `${key},گوشه,درامد,شور,,,1,`,
+      );
+      writeFileSync(join(root, 'PIECES.csv'), `${[header, ...rows].join('\n')}\n`);
+      for (const key of Object.keys(DECLARED)) writeFileSync(join(root, folder, `نت-${key}.pdf`), 'x');
+      return root;
+    };
+    const sources = (index: { pieces: { key: string; studySource?: unknown }[] }) =>
+      Object.fromEntries(index.pieces.map((p) => [p.key, 'studySource' in p ? p.studySource : 'ABSENT']));
+
+    // Every reader of one published text, all through the same decoder.
+    const readers = async (text: string) => {
+      const encoded = Buffer.from(text, 'utf8').toString('base64');
+      const fetchImpl = (async (url: string) =>
+        new Response(
+          JSON.stringify(url.includes('/git/ref/') ? { object: { sha: 'c0ffee' } } : { content: encoded, encoding: 'base64', size: text.length }),
+          { status: 200 },
+        )) as unknown as typeof fetch;
+      const fetched = await fetchPublishedIndex({ repo: 'owner/data', token: 't', fetchImpl, now: NOW });
+      const file = await readIndexFile(text, NOW);
+      let parsed: unknown;
+      try {
+        parsed = await parseSourceIndex(text);
+      } catch (e) {
+        parsed = (e as Error).message;
+      }
+      return {
+        parsed,
+        fetched: fetched.ok ? fetched.value.index : fetched.error,
+        file: file.ok ? file.value.index : file.error,
+      };
+    };
+
+    const roots: string[] = [];
+    try {
+      // --- SCANNER: the column's cells verbatim; no column, no key ------------
+      const declaredRoot = archive(true);
+      const legacyRoot = archive(false);
+      roots.push(declaredRoot, legacyRoot);
+      const declared = scanner.scanToIndex(declaredRoot);
+      const legacy = scanner.scanToIndex(legacyRoot);
+      expect(sources(declared as never)).toEqual(DECLARED);
+      expect(sources(legacy as never)).toEqual({ 'درامد-الف': 'ABSENT', 'درامد-ب': 'ABSENT', 'درامد-پ': 'ABSENT' });
+      // The field is additive: the rest of each index is the same, version 1.
+      const strip = (i: Record<string, unknown>) => {
+        const { contentHash: _h, generatedAt: _g, ...rest } = i;
+        void _h;
+        void _g;
+        return { ...rest, pieces: (rest.pieces as Record<string, unknown>[]).map(({ studySource: _s, ...p }) => (void _s, p)) };
+      };
+      expect(declared.version).toBe(1);
+      expect(strip(declared)).toEqual(strip(legacy));
+      expect(declared.contentHash).not.toBe(legacy.contentHash);
+
+      // --- DIGEST and BOTH DOORS: one meaning, everywhere --------------------
+      for (const [what, index] of [
+        ['declared', declared],
+        ['legacy', legacy],
+      ] as const) {
+        const text = JSON.stringify(index);
+        const read = await readers(text);
+        expect(read.fetched, what).toEqual(read.parsed);
+        expect(read.file, what).toEqual(read.parsed);
+        expect(sources(read.parsed as never), what).toEqual(sources(index as never));
+      }
+      // The digest covers the declaration: an edited source without a re-scan
+      // is refused at every door.
+      const edited = JSON.parse(JSON.stringify(declared)) as { pieces: { key: string; studySource?: string }[] };
+      edited.pieces[1]!.studySource = 'something else';
+      for (const result of Object.values(await readers(JSON.stringify(edited)))) expect(String(result)).toMatch(/content hash/);
+
+      // --- WRONG TYPES: refused at every reader, the piece named ------------
+      for (const bad of [null, 5, { title: 'x' }]) {
+        const raw = JSON.parse(JSON.stringify(declared)) as { pieces: Record<string, unknown>[] };
+        raw.pieces[0]!.studySource = bad;
+        expect(() => decodeSourceIndex(raw), JSON.stringify(bad)).toThrow(/study source/);
+        for (const result of Object.values(await readers(await stampSourceIndex(raw)))) {
+          expect(String(result), JSON.stringify(bad)).toMatch(/study source/);
+        }
+      }
+
+      // --- GRAPH and validateDB: what was adopted is persisted as decoded ----
+      const index = await parseSourceIndex(JSON.stringify(declared));
+      const seeded: PracticeDB = { ...createSeedDB(NOW), schemaVersion: SCHEMA_VERSION };
+      const instrumentId = seeded.instruments[0]!.id;
+      const plan = planArchiveImport({ db: seeded, index, instrumentId, now: NOW });
+      const adopted = applyArchiveImport(seeded, plan);
+      const valid = validateDB(JSON.parse(JSON.stringify(adopted)));
+      expect(sources(valid.archiveSources[0]! as never)).toEqual(DECLARED);
+      for (const bad of [null, 5, { title: 'x' }]) {
+        const broken = JSON.parse(JSON.stringify(adopted)) as PracticeDB;
+        (broken.archiveSources[0]!.pieces[2] as unknown as Record<string, unknown>).studySource = bad;
+        expect(() => validateDB(broken), JSON.stringify(bad)).toThrow(/Piece "درامد-پ" has an unreadable study source/);
+      }
+
+      // --- MIGRATION: v15 → v16 advances the version only, reads no clock ----
+      const v15 = JSON.parse(JSON.stringify(adopted)) as PracticeDB;
+      v15.schemaVersion = 15;
+      for (const p of v15.archiveSources[0]!.pieces) delete (p as { studySource?: string }).studySource;
+      vi.useFakeTimers({ now: new Date('2031-01-01T00:00:00.000Z') });
+      try {
+        const once = validateDB(JSON.parse(JSON.stringify(v15)));
+        const twice = validateDB(JSON.parse(JSON.stringify(once)));
+        expect(once.schemaVersion).toBe(16);
+        expect(twice).toEqual(once);
+        // Missing evidence stays missing — never guessed as "none".
+        expect(once.archiveSources[0]!.pieces.every((p) => !('studySource' in p))).toBe(true);
+        expect({ ...once, schemaVersion: 15 }).toEqual(v15);
+      } finally {
+        vi.useRealTimers();
+      }
+    } finally {
+      for (const r of roots) rmSync(r, { recursive: true, force: true });
+    }
+  });
+});
