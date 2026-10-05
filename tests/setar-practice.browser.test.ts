@@ -436,3 +436,405 @@ describe('archive recovery, one decision at a time', () => {
     }
   }, 900_000);
 });
+
+// ---------------------------------------------------------------------------
+// ac-4 — scanner → publisher → SHA-pinned fetch → refresh → Lessons and items,
+// for Session 40, Session 1 and FUTURE classes alike. The corpus is a
+// temporary copy of tests/fixtures/setar-practice-source-v1.json; the only
+// edits to it are the OWNER's confirmed rows from the expectations fixture;
+// the publisher is the real `publishIndex` over an in-memory transport onto
+// the harness's fake GitHub; media opens from a local, read-only fake NAS.
+// ---------------------------------------------------------------------------
+
+import { createServer as createHttpServer, type Server } from 'node:http';
+import { mkdirSync as mkdirSyncFs, mkdtempSync as mkdtempSyncFs, readFileSync as readFileSyncFs, rmSync as rmSyncFs, writeFileSync as writeFileSyncFs } from 'node:fs';
+import { tmpdir as tmpdirFs } from 'node:os';
+import { join as joinPath } from 'node:path';
+import SOURCE_CORPUS from './fixtures/setar-practice-source-v1.json';
+import SOURCE_EXPECT from './fixtures/setar-practice-source-expectations.json';
+// @ts-expect-error — no type declarations for the .mjs operator tools.
+import * as scannerTool from '../scripts/scan-setar-classes.mjs';
+// @ts-expect-error — no type declarations for the .mjs operator tools.
+import * as publisherTool from '../scripts/publish-setar-index.mjs';
+
+const scanTool = scannerTool as {
+  scanToIndex(root: string): { contentHash: string } & Record<string, unknown>;
+  attentionReport(source: unknown): { newIdentities: { key: string; draft: string }[] };
+  readStableSource(root: string): unknown;
+};
+const publishTool = publisherTool as {
+  publishIndex(input: { transport: unknown; indexText: string }): Promise<{ status: string; commit?: string }>;
+};
+
+/** The real publisher's transport, writing the harness's fake remote. */
+function fakeTransport(remote: ReturnType<typeof newFakeRemote>, opts: { race?: () => void; interrupt?: boolean } = {}) {
+  let n = 0;
+  const blobs = new Map<string, string>();
+  const trees = new Map<string, string>();
+  const commits = new Map<string, string>();
+  return {
+    async getRef() {
+      return remote.sourceIndex ? { sha: remote.sourceIndex.commit } : null;
+    },
+    async getFile(sha: string) {
+      return remote.sourceIndex && remote.sourceIndex.commit === sha ? { text: remote.sourceIndex.text } : null;
+    },
+    async getCommit() {
+      return { treeSha: 'base-tree' };
+    },
+    async createBlob(text: string) {
+      const sha = `blob-${(n += 1)}`;
+      blobs.set(sha, text);
+      return sha;
+    },
+    async createTree({ blobSha }: { blobSha: string }) {
+      const sha = `tree-${(n += 1)}`;
+      trees.set(sha, blobs.get(blobSha)!);
+      return sha;
+    },
+    async createCommit({ treeSha }: { treeSha: string }) {
+      const sha = `commit-${Date.now().toString(36)}-${(n += 1)}`;
+      commits.set(sha, trees.get(treeSha)!);
+      return sha;
+    },
+    async updateRef(_branch: string, sha: string, expected: string) {
+      if (opts.race) {
+        const race = opts.race;
+        opts.race = undefined;
+        race();
+      }
+      if (opts.interrupt) throw new Error('network dropped');
+      if (remote.sourceIndex?.commit !== expected) return 'HTTP 422';
+      publishSourceIndex(remote, commits.get(sha)!, sha);
+      return 'ok';
+    },
+    async createRef(_branch: string, sha: string) {
+      if (opts.interrupt) throw new Error('network dropped');
+      if (remote.sourceIndex) return 'HTTP 422';
+      publishSourceIndex(remote, commits.get(sha)!, sha);
+      return 'ok';
+    },
+  };
+}
+
+/** Scan the temporary archive exactly as the NAS job does: the CLI's own bytes. */
+const scanText = (root: string) => `${JSON.stringify(scanTool.scanToIndex(root), null, 2)}\n`;
+
+function corpusRoot(): string {
+  const root = mkdtempSyncFs(joinPath(tmpdirFs(), 'setar-publish-'));
+  writeFileSyncFs(joinPath(root, 'PIECES.csv'), `${[SOURCE_CORPUS.registry.header, ...SOURCE_CORPUS.registry.rows].join('\n')}\n`);
+  writeFileSyncFs(joinPath(root, 'RENAME-LOG.csv'), `${[SOURCE_CORPUS.renameLog.header, ...SOURCE_CORPUS.renameLog.rows].join('\n')}\n`);
+  for (const [folder, files] of Object.entries(SOURCE_CORPUS.sessions)) addFolder(root, folder, files);
+  return root;
+}
+function addFolder(root: string, folder: string, files: string[]) {
+  mkdirSyncFs(joinPath(root, folder), { recursive: true });
+  for (const f of files) writeFileSyncFs(joinPath(root, folder, f), `media:${folder}/${f}:0`);
+}
+
+/** The OWNER's confirmed edits, applied to the temporary copy only. */
+function ownerConfirms(root: string, keys: string[], logRows: string[]) {
+  const keyCol = SOURCE_EXPECT.variants.real.header.split(',').indexOf('canonical_fa');
+  const file = joinPath(root, 'PIECES.csv');
+  const lines = readFileSyncFs(file, 'utf8').replace(/\n$/, '').split('\n');
+  const rows = SOURCE_EXPECT.variants.real.ownerRows as Record<string, string>;
+  for (const key of keys) {
+    const at = lines.findIndex((l, i) => i > 0 && l.split(',')[keyCol] === key);
+    if (at >= 0) lines[at] = rows[key]!;
+    else lines.push(rows[key]!);
+  }
+  writeFileSyncFs(file, `${lines.join('\n')}\n`);
+  if (logRows.length) writeFileSyncFs(joinPath(root, 'RENAME-LOG.csv'), `${readFileSyncFs(joinPath(root, 'RENAME-LOG.csv'), 'utf8')}${logRows.join('\n')}\n`);
+}
+
+/** A local, read-only stand-in for the NAS media route — resolver mechanics only. */
+async function fakeNas(root: string): Promise<{ base: string; server: Server }> {
+  const server = createHttpServer((req, res) => {
+    const rel = decodeURIComponent((req.url ?? '').replace(/^\/setar-classes\//, '').split('?')[0]!);
+    try {
+      const bytes = readFileSyncFs(joinPath(root, rel));
+      res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8', 'access-control-allow-origin': '*' });
+      res.end(bytes);
+    } catch {
+      res.writeHead(404).end();
+    }
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+  const port = (server.address() as { port: number }).port;
+  return { base: `http://127.0.0.1:${port}/setar-classes`, server };
+}
+
+const FRUTON = 'پیش-درامد-چهارگاه-فروتن';
+const EBADI = 'چهارمضراب-چهارگاه-عبادی';
+const ZARBI = 'ضربی-اصفهان-نوری';
+const RENG = 'رنگ-ماهور-درویش-خان';
+const DARAMAD_SHUR = 'درآمد-شور-ردیف-میرزاعبدالله';
+
+describe('the archive, from the NAS folder to the practice item', () => {
+  it('setar publish fetch and refresh carry source corrections to lessons and item material', async () => {
+    const T0 = '2026-09-01T10:00:00.000Z';
+    const template = validateDB(OWNER_V16).items.find((i) => i.id === 'it-riz')!;
+    const owner: Db = validateDB({
+      schemaVersion: SCHEMA_VERSION,
+      instruments: [{ id: 'inst-setar', name: 'Setar', active: true, createdAt: T0, updatedAt: T0 }],
+      items: [
+        // UNRELATED practice that no refresh may touch.
+        { ...template, id: 'it-unrelated', title: 'Unrelated practice', notes: 'mine', timesPractised: 3, totalMinutes: 30 },
+        // Unbound items with the exact titles of a registered piece (Skipped)
+        // and of a piece a FUTURE class will register (Linked).
+        { ...template, id: 'it-skip-title', title: RENG, itemType: 'full_piece', status: 'usable' },
+        { ...template, id: 'it-same-title', title: ZARBI, itemType: 'full_piece', status: 'usable' },
+      ],
+      blocks: [{ ...validateDB(OWNER_V16).blocks[0]!, id: 'blk-unrelated', practiceItemId: 'it-unrelated' }],
+      reviews: [{ id: 'rev-unrelated', practiceItemId: 'it-unrelated', dueDate: '2026-10-20', reviewType: 'retention', createdAt: T0, updatedAt: T0 }],
+      // The owner's own class 1, carrying a reference from before the renames.
+      lessons: [
+        {
+          id: 'L-1',
+          instrumentId: 'inst-setar',
+          date: '2023-09-26',
+          number: 1,
+          notes: 'class one, mine',
+          itemIds: [],
+          recordings: [{ id: 'rec-legacy', title: 'My class 1, part 1', notes: 'watch 12:30', path: 'setar-classes/session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4', kind: 'video', createdAt: T0 }],
+          createdAt: T0,
+          updatedAt: T0,
+        },
+      ],
+    });
+    const unrelated = (d: Db) => JSON.stringify([d.items.find((i) => i.id === 'it-unrelated'), d.blocks, d.reviews]);
+    const resource = (d: Db, n: number, file: string) =>
+      d.archiveSources[0]!.sessions.find((s) => s.n === n)!.resources.find((r) => r.path.endsWith(`/${file}`));
+    const itemOf = (d: Db, key: string) => d.items.find((i) => i.source?.pieceKey === key);
+
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      const root = corpusRoot();
+      const nas = await fakeNas(root);
+      const app = await seeded(engine, owner, { width: 1280, height: 900 });
+      const { page } = app;
+      const requests: string[] = [];
+      page.on('request', (r) => requests.push(r.url()));
+      const pageText = () => page.locator('main').innerText();
+      try {
+        const remote = newFakeRemote();
+        await installFakeGitHub(page, remote);
+        await connectSync(app);
+        await openSettings(app);
+        const base = page.getByRole('group', { name: 'Setar archive base URL' }).locator('input');
+        await base.fill(nas.base);
+        await base.blur();
+        const before = unrelated(await db(app));
+
+        // === ROUND 1: the archive as delivered ===============================
+        const v0 = scanText(root);
+        expect((await publishTool.publishIndex({ transport: fakeTransport(remote), indexText: v0 })).status).toBe('created');
+        await refreshArchive(app);
+        let text = await pageText();
+        // What was fetched is named by its own hash and the commit it was pinned to.
+        expect(text).toContain(`Index ${JSON.parse(v0).contentHash.slice(0, 12)}`);
+        expect(text).toContain(`published commit ${remote.sourceIndex!.commit.slice(0, 7)}`);
+        // Unresolved keys and rosters say so, with the way to the safe step.
+        await page.getByRole('button', { name: /^Show \d+ needing attention$/ }).click();
+        text = await pageText();
+        expect(text).toContain(`Piece "${FRUTON}" is not in the registry`);
+        expect(text).toContain('Unnamed demonstration not attributed');
+        expect(text).toContain('How to fix each one');
+        // An exact title is a question; Skip answers it without importing.
+        await page.getByRole('button', { name: 'Skip' }).click();
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+        let d = await until(app, (x) => x, (x) => x.archiveSources.length === 1);
+        // Only the independently supported facts: class 40 and its recording;
+        // the unnamed demo stays with the lesson; no piece from a filename.
+        expect(d.lessons.find((l) => l.source?.sessionN === 40)!.origin).toBe('archive');
+        expect(itemOf(d, FRUTON)).toBeUndefined();
+        expect(resource(d, 40, 'نمونه.mp4')!.pieces).toEqual([]);
+        expect(d.items.find((i) => i.id === 'it-skip-title')!.source).toBeUndefined();
+        expect(itemOf(d, RENG)).toBeUndefined();
+        // An unlogged rename is never guessed from a part number.
+        expect(d.lessons.flatMap((l) => l.recordings ?? []).some((r) => r.path.endsWith('نمونه-1.mp4'))).toBe(false);
+        await goTo(app, '/lessons');
+        await page.getByRole('button', { name: /Class 40/ }).first().click();
+        expect(await pageText()).toContain('نمونه');
+
+        // The generic report, then the OWNER's explicit confirmation.
+        let report = scanTool.attentionReport(scanTool.readStableSource(root));
+        expect(report.newIdentities.map((n) => n.key).sort()).toEqual([FRUTON, EBADI].sort());
+        ownerConfirms(root, [FRUTON, EBADI, 'چهارپاره-مرادخانی'], SOURCE_EXPECT.ownerLogRows);
+        const v1 = scanText(root);
+        expect((await publishTool.publishIndex({ transport: fakeTransport(remote), indexText: v1 })).status).toBe('published');
+        await refreshArchive(app);
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+        d = await until(app, (x) => x, (x) => !!itemOf(x, FRUTON));
+        // New pieces arrive resting, with no practice, review or deadline.
+        for (const key of [FRUTON, EBADI]) {
+          const it = itemOf(d, key)!;
+          expect([it.status, it.timesPractised, it.totalMinutes, it.nextReviewDate, it.lastResult], key).toEqual(['dormant', 0, 0, undefined, undefined]);
+        }
+        expect(resource(d, 40, 'نمونه.mp4')!.pieces.sort()).toEqual([FRUTON, EBADI].sort());
+        // Session 1: the owner's reference followed the WHOLE logged chain, its
+        // own title and notes intact, and the class is the owner's, adopted.
+        const class1 = d.lessons.filter((l) => l.source?.sessionN === 1 || l.id === 'L-1');
+        expect(class1.map((l) => l.id)).toEqual(['L-1']);
+        expect(class1[0]!.recordings).toEqual([{ ...owner.lessons[0]!.recordings![0]!, path: 'session-1-26-09-2023/نمونه-1.mp4' }]);
+        expect(class1[0]!.notes).toBe('class one, mine');
+
+        // Lessons and items: every file where the source puts it.
+        await goTo(app, '/lessons');
+        await page.getByRole('button', { name: /Class 40/ }).first().click();
+        text = await pageText();
+        expect(text).toContain(FRUTON);
+        expect(text).toContain(EBADI);
+        expect(text).toContain('in this class’s archive');
+        const fruton = itemOf(d, FRUTON)!;
+        await goTo(app, `/items/${fruton.id}`);
+        text = await pageText();
+        expect(text).toContain('نت پیش درامد چهارگاه فروتن');
+        expect(text).not.toContain('نت چهارمضراب چهارگاه عبادی');
+        expect(text).toContain('نمونه');
+        expect(text).not.toContain('ضبط کلاس');
+        await goTo(app, `/items/${itemOf(d, EBADI)!.id}`);
+        text = await pageText();
+        expect(text).toContain('نت چهارمضراب چهارگاه عبادی');
+        expect(text).not.toContain('نت پیش درامد چهارگاه فروتن');
+        // Hide the demonstration on ONE item.
+        await goTo(app, `/items/${fruton.id}`);
+        await page.getByRole('button', { name: /^Hide نمونه/ }).first().click();
+        await until(app, (x) => x.archiveSources[0]!.suppressions.filter((s) => s.kind === 'resource').length, (n) => n === 1);
+
+        // An UNCHANGED publication makes no commit; Refresh says current.
+        const commitBefore = remote.sourceIndex!.commit;
+        expect((await publishTool.publishIndex({ transport: fakeTransport(remote), indexText: scanText(root) })).status).toBe('unchanged');
+        expect(remote.sourceIndex!.commit).toBe(commitBefore);
+        await refreshArchive(app);
+        expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+
+        // SAME-PATH BYTE REPLACEMENT: the semantic hash is unchanged by design,
+        // and the reference opens the NAS's current bytes.
+        const scoreRel = `session-40-29-09-2026/نت-${FRUTON}.pdf`;
+        const original = readFileSyncFs(joinPath(root, scoreRel), 'utf8');
+        const replaced = original.replace(/:0$/, ':1');
+        expect(replaced.length).toBe(original.length);
+        writeFileSyncFs(joinPath(root, scoreRel), replaced);
+        expect(JSON.parse(scanText(root)).contentHash).toBe(JSON.parse(v1).contentHash);
+        await goTo(app, `/items/${fruton.id}`);
+        const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Open' }).first().click()]);
+        await expect.poll(() => popup.content(), { timeout: 10_000 }).toContain(':1');
+        await popup.close();
+
+        // === ROUND 2: future classes, independently constructed ==============
+        for (const f of SOURCE_CORPUS.future) addFolder(root, f.folder, f.files);
+        report = scanTool.attentionReport(scanTool.readStableSource(root));
+        expect(report.newIdentities.map((n) => n.key)).toEqual([ZARBI]);
+        ownerConfirms(root, [ZARBI, DARAMAD_SHUR], []);
+        const v2 = scanText(root);
+        // Another publisher lands first; ours re-reads and lands after it.
+        const raced = await publishTool.publishIndex({
+          transport: fakeTransport(remote, { race: () => publishSourceIndex(remote, v1, 'commit-raced') }),
+          indexText: v2,
+        });
+        expect(raced.status).toBe('published');
+        expect(remote.sourceIndex!.text).toBe(v2);
+        await refreshArchive(app);
+        await page.getByRole('button', { name: `Link to “${ZARBI}”` }).click();
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+        d = await until(app, (x) => x, (x) => x.lessons.some((l) => l.source?.sessionN === 45));
+        expect(d.items.find((i) => i.id === 'it-same-title')!.source).toEqual({ archiveId: 'setar-classes', pieceKey: ZARBI });
+        expect(d.items.filter((i) => i.title === ZARBI)).toHaveLength(1);
+        for (const n of [41, 42, 45]) expect(d.lessons.find((l) => l.source?.sessionN === n)!.origin, `class ${n}`).toBe('archive');
+        expect(resource(d, 42, 'نمونه-1.mp4')!.pieces).toEqual([ZARBI]);
+        expect(resource(d, 45, 'نمونه.mp4')!.pieces).toEqual([DARAMAD_SHUR]);
+        // The owner's own takes are never a resource; nothing became a review,
+        // a preparation or a deadline.
+        expect(d.archiveSources[0]!.sessions.flatMap((s) => s.resources).some((r) => r.path.includes('تمرین-من'))).toBe(false);
+        expect(d.reviews.map((r) => r.id)).toEqual(['rev-unrelated']);
+        expect(d.lessonAgenda).toEqual([]);
+        await goTo(app, '/lessons');
+        expect(await pageText()).not.toMatch(/upcoming/i);
+        await goTo(app, '/items/it-same-title');
+        text = await pageText();
+        expect(text).toContain('نت ضربی اصفهان نوری');
+        expect(text).toContain('نمونه');
+        expect(text).not.toContain('تمرین من');
+
+        // === ROUND 3: a role change, an omission, failures, staleness =========
+        const s41 = 'session-41-06-10-2026';
+        writeFileSyncFs(joinPath(root, s41, `تصحیح-${RENG}.pdf`), readFileSyncFs(joinPath(root, s41, `نت-${RENG}.pdf`)));
+        rmSyncFs(joinPath(root, s41, `نت-${RENG}.pdf`));
+        writeFileSyncFs(
+          joinPath(root, 'RENAME-LOG.csv'),
+          `${readFileSyncFs(joinPath(root, 'RENAME-LOG.csv'), 'utf8')}${s41}/نت-${RENG}.pdf,${s41}/تصحیح-${RENG}.pdf,2026-10-06T10:00:00\n`,
+        );
+        rmSyncFs(joinPath(root, 'session-2-24-10-2023', 'نت-کرشمه-شور-ردیف-میرزاعبدالله.pdf'));
+        const v3 = scanText(root);
+        expect((await publishTool.publishIndex({ transport: fakeTransport(remote), indexText: v3 })).status).toBe('published');
+        await refreshArchive(app);
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+        d = await until(app, (x) => x, (x) => x.archiveSources[0]!.indexHash === JSON.parse(v3).contentHash);
+        expect(resource(d, 41, `تصحیح-${RENG}.pdf`)).toMatchObject({ role: 'تصحیح', pieces: [RENG] });
+        // OMITTED, not deleted: retained, and said so where it is listed.
+        expect(resource(d, 2, 'نت-کرشمه-شور-ردیف-میرزاعبدالله.pdf')!.unavailable).toBe(true);
+        await goTo(app, `/items/${itemOf(d, 'کرشمه-شور-ردیف-میرزاعبدالله')!.id}`);
+        expect(await pageText()).toContain('not described by the latest index');
+
+        // An INTERRUPTED publication leaves the last index in place.
+        writeFileSyncFs(joinPath(root, s41, 'نمونه-9.mp4'), 'x');
+        await expect(publishTool.publishIndex({ transport: fakeTransport(remote, { interrupt: true }), indexText: scanText(root) })).rejects.toThrow();
+        expect(remote.sourceIndex!.text).toBe(v3);
+        await refreshArchive(app);
+        expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+
+        // A REFUSED DIGEST changes nothing.
+        const tampered = JSON.parse(v3);
+        tampered.pieces[0].form = 'tampered';
+        publishSourceIndex(remote, JSON.stringify(tampered), 'commit-tampered');
+        const beforeTamper = JSON.stringify((await readPersistedState(app)).state);
+        await openSettings(app);
+        await page.getByRole('button', { name: 'Refresh Setar archive' }).click();
+        await page.getByRole('alert').first().waitFor({ timeout: 30_000 });
+        expect(await page.getByRole('alert').first().innerText()).toMatch(/does not match its own content hash/);
+        expect(JSON.stringify((await readPersistedState(app)).state)).toBe(beforeTamper);
+
+        // An intentionally STALE publication: named by its hash, loses nothing.
+        publishSourceIndex(remote, v0, 'commit-stale');
+        await refreshArchive(app);
+        expect(await pageText()).toContain(`Index ${JSON.parse(v0).contentHash.slice(0, 12)}`);
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+        d = await db(app);
+        expect(itemOf(d, FRUTON)!.id).toBe(fruton.id);
+        expect(d.archiveSources[0]!.pieces.find((p) => p.key === FRUTON)!.unavailable).toBe(true);
+        expect(d.lessons.find((l) => l.source?.sessionN === 45)).toBeDefined();
+        publishSourceIndex(remote, v3, 'commit-current');
+        await refreshArchive(app);
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+        d = await until(app, (x) => x, (x) => !x.archiveSources[0]!.pieces.find((p) => p.key === FRUTON)!.unavailable);
+        // The owner's Skip and Hide are exactly where they were put.
+        expect(d.archiveSources[0]!.suppressions.map((x) => [x.kind, x.ref, x.itemId ?? null]).sort()).toEqual(
+          [
+            ['piece', RENG, null],
+            ['resource', 'session-40-29-09-2026/نمونه.mp4', fruton.id],
+          ].sort(),
+        );
+
+        // Nothing unrelated moved; no request reached anything but this
+        // machine (the dev server, the local stand-in NAS) or the faked API.
+        expect(unrelated(d)).toBe(before);
+        const strays = requests.filter((u) => {
+          const { protocol, hostname } = new URL(u);
+          return !['data:', 'blob:'].includes(protocol) && !['localhost', '127.0.0.1'].includes(hostname) && hostname !== 'api.github.com';
+        });
+        expect(strays).toEqual([]);
+        expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+      } finally {
+        await app.close();
+        nas.server.close();
+        rmSyncFs(root, { recursive: true, force: true });
+      }
+    }
+  }, 900_000);
+});
