@@ -218,7 +218,7 @@ export const MUTATIONS = [
     find: "  const c = context;\n  if (!c || c.state !== 'running') return;\n  try {\n    const t0 = c.currentTime;",
     replace:
       "  const c = context;\n  if (!c) return;\n  if (c.state !== 'running') { c.addEventListener?.('statechange', () => c.state === 'running' && playPracticeCue()); return; }\n  try {\n    const t0 = c.currentTime;",
-    test: 'practice sound reuses one gesture primed context across all start and resume doors',
+    test: 'practice sound keeps one context primed only by taps and never queues a cue',
   },
   {
     name: 'routine Start moved back into an effect',

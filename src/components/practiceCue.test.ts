@@ -18,7 +18,7 @@ function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'thro
     private listeners: (() => void)[] = [];
     constructor() {
       if (opts.ctorThrows) throw new Error('no audio');
-      log.push({ e: 'ctor' });
+      log.push({ e: 'ctor', ctx: this });
     }
     addEventListener(_t: string, fn: () => void) {
       this.listeners.push(fn);
@@ -121,6 +121,20 @@ describe('the practice sound module', () => {
       await flush();
       expect(log.filter((x) => x.e === 'resume').length, resume).toBe(resumes);
     }
+
+    // --- INTERRUPTED, then resumed by a later tap: a missed boundary stays
+    // missed. Nothing waits on the context to sound late. ----------------------
+    log = [];
+    cue = await load(log);
+    cue.primePracticeSound();
+    await flush();
+    const ctx = log.find((x) => x.e === 'ctor')!.ctx as { setState(s: string): void };
+    ctx.setState('interrupted'); // a call, the lock screen, another app's audio
+    cue.playPracticeCue(); // a boundary passes while it is not running
+    cue.primePracticeSound(); // the owner's next tap resumes it
+    await flush();
+    expect(log.filter((x) => x.e === 'resume')).toHaveLength(2);
+    expect(log.filter((x) => x.e === 'start')).toEqual([]);
 
     // --- A CONSTRUCTOR THAT THROWS: unavailable, until an explicit tap ------
     log = [];
