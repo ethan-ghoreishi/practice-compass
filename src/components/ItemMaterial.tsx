@@ -164,13 +164,13 @@ function ReferenceRow({ file, onHide }: { file: Extract<ItemFile, { source: 'ref
                 : ' · your NAS base URL isn’t valid — check Settings')}
             {resolution.status === 'unsafe' && ' · this link points outside the archive and will not be opened'}
             {provenance ? ` · ${provenance}` : ''}
-            {file.unavailable && ' · no longer in the archive'}
+            {file.unavailable && ' · not described by the latest index — it may still be on the NAS'}
           </span>
         </div>
       </div>
       <button
         className="btn btn-sm"
-        disabled={resolution.status !== 'ok' || file.unavailable === true}
+        disabled={resolution.status !== 'ok'}
         onClick={() => resolution.status === 'ok' && window.open(resolution.url, '_blank', 'noopener,noreferrer')}
       >
         Open

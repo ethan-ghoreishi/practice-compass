@@ -740,7 +740,8 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{meta}</span>' },
   { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Set your NAS base URL in' },
   { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Your NAS base URL isn’t a valid web address' },
-  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
+  // An archive-derived association says so in the same generated isolate (this lane).
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}{fromArchive.has(item.id) ? \' · in this class’s archive\' : \'\'}</span>' },
   { file: 'pages/RoutineRunner.tsx', snippet: '<span className="tiny faint" dir="ltr">{minutes} min</span>' },
   { file: 'pages/StartBlock.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
   { file: 'pages/Insights.tsx', snippet: '<span dir="ltr">{insight.body}</span>' },

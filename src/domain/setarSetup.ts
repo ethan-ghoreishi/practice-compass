@@ -223,11 +223,13 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
 
   // --- 2. KIND: only where the registry's form says ------------------------
   const kindOf = new Map<ID, ItemType>();
+  const undecided = new Set<ID>();
   for (const i of items) {
     kindOf.set(i.id, i.itemType);
     const piece = pieceOf(i);
     if (!piece || i.parentItemId) continue;
     const reading = classifyPiece(piece);
+    if (!reading.kind) undecided.add(i.id);
     const before: SetupValue = { itemType: i.itemType, gusheh: i.persian?.gusheh ?? null };
     const target = (kind: PieceKind): SetupValue => ({
       itemType: kind,
@@ -275,6 +277,10 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
         push({ id, itemId: i.id, field: 'stage', state: 'exception', before, choices, evidence });
       if (i.parentItemId) {
         exception('A part of another item — it is organised under that item.');
+        continue;
+      }
+      if (undecided.has(i.id)) {
+        exception('Its kind is not decided yet — choose that first, then where it belongs.');
         continue;
       }
       if (NOT_PLACED_TYPES.has(kind)) {
@@ -332,6 +338,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
       const stageId = i.stageId;
       if (!stageId || !stageIds.has(stageId) || stageId === formsStage) continue;
       const refs = catalogForStage(stageId).map((e) => catalogReferenceId(stageId, e.key));
+      if (!refs.length) continue; // an owner's own stage carries no suggestions to answer
       const before: SetupValue = { catalogRefs: i.catalogRefs ?? null };
       const answered = refs.filter((ref) => {
         const r = resolveCatalogReference(ref, instrumentId, db.items);
@@ -354,7 +361,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
         })),
         evidence: open.length
           ? 'Answers none of its stage’s suggestions. Link one only if it IS this gusheh — the radif list here is partial.'
-          : 'Its stage has no open suggestion — the radif list here is partial, and that is fine.',
+          : 'Every suggestion of its stage is taken — the radif list here is partial, and that is fine.',
       });
     }
   }
@@ -394,7 +401,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
     const why = key.startsWith('declared:') ? `The registry declares it from «${label}».` : `It answers a ${MIRZA_ABDOLLAH_RADIF.name} reference.`;
     if (i.materialId === target) {
       push({ id, itemId: i.id, field: 'source', state: 'correct', before, after, choices: [], evidence: why });
-    } else if (reading?.family === 'composed-chaharpareh' || reading?.family === 'radif-reng') {
+    } else if (reading?.family === 'composed-chaharpareh' || reading?.family === 'radif-reng' || reading?.family === 'provisional') {
       push({ id, itemId: i.id, field: 'source', state: 'exception', before, choices: [{ label: 'Use this study source', after }], evidence: `${why} ${reading.why}` });
     } else if (i.materialId) {
       const current = db.materials.find((m) => m.id === i.materialId);
@@ -453,6 +460,27 @@ export type SetupOutcome =
 
 const same = (a: unknown, b: unknown) => canonicalStringify(a) === canonicalStringify(b);
 
+/** What a selection's field holds NOW — so a row that vanished because it is done reads as done. */
+function currentOf(db: PracticeDB, id: string): SetupValue | undefined {
+  const [field, itemId, lessonId] = id.split(':');
+  const item = db.items.find((i) => i.id === itemId);
+  if (!item) return undefined;
+  switch (field as SetupField) {
+    case 'status':
+      return { status: item.status };
+    case 'kind':
+      return { itemType: item.itemType, gusheh: item.persian?.gusheh ?? null };
+    case 'stage':
+      return { stageId: item.stageId ?? null };
+    case 'source':
+      return { materialId: item.materialId ?? null };
+    case 'reference':
+      return { catalogRefs: item.catalogRefs ?? null };
+    case 'class':
+      return { linked: lessonAssociations(db).some((a) => a.itemId === itemId && a.lessonId === lessonId) };
+  }
+}
+
 /**
  * Write EXACTLY the selected ids and fields, in one new database — or refuse
  * all of it. Each selection is re-checked against a fresh plan of the
@@ -471,7 +499,9 @@ export function applySetarSetup(db: PracticeDB, ctx: SetupContext, selections: S
   for (const sel of selections) {
     const p = byId.get(sel.id);
     const offered = p ? [...(p.after && p.state === 'proposed' ? [p.after] : []), ...p.choices.map((c) => c.after)] : [];
-    if (p && p.state === 'correct' && same(p.before, sel.after)) continue; // already done
+    // ALREADY DONE is not stale: the field holds exactly what was chosen —
+    // whether the row now reads correct or has gone because it is answered.
+    if (same(currentOf(db, sel.id), sel.after)) continue;
     if (!p || !same(p.before, sel.before) || !offered.some((a) => same(a, sel.after))) {
       stale.push(sel.id);
       continue;

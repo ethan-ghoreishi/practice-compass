@@ -1105,10 +1105,10 @@ export function repairReferencePath(
     // the index describes the file is a separate question, answered below.
     if (wasUrl || stripped !== raw) return { status: 'repaired', path: current };
     if (known.has(current)) return { status: 'unchanged' };
-    return { status: 'attention', reason: 'The archive no longer has a file at this path.', code: 'not-described' };
+    return { status: 'attention', reason: 'The latest index does not describe a file at this path. It may still be on the NAS.', code: 'not-described' };
   }
   if (!known.has(current)) {
-    return { status: 'attention', reason: 'This file was renamed, but the archive no longer has it.', code: 'renamed-gone' };
+    return { status: 'attention', reason: 'This file was renamed, but the latest index does not describe the name it was renamed to.', code: 'renamed-gone' };
   }
   return { status: 'repaired', path: current };
 }

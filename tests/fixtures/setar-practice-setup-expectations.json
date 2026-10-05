@@ -1,0 +1,83 @@
+{
+  "about": "Written by hand from setar-practice-owner-v16.json and the kind policy's own rules — never by running the review. Keys are canonical piece keys for archive-bound items and item ids otherwise. Context: instrument inst-setar, pathway setar-radif; the source column applies once «ردیف-میرزاعبدالله» is mapped to mat-radif.",
+  "context": { "instrumentId": "inst-setar", "pathwayId": "setar-radif", "declared": "ردیف-میرزاعبدالله", "material": "mat-radif" },
+  "rows": {
+    "آواز-دشتی-شور": { "kind": ["correct"], "stage": ["exception"], "status": "resting" },
+    "اتود-وزیری": { "kind": ["exception", ["exercise"]], "stage": ["exception"], "status": "technique or exercise" },
+    "بداهه-درامد-افشاری": { "kind": ["proposed", "improvisation", null], "stage": ["exception"], "status": "resting" },
+    "تمرین-دشتی-1-علیزاده": { "kind": ["proposed", "exercise", null], "stage": ["exception"], "status": "resting" },
+    "جنگ-شهنازی": { "kind": ["correct"], "stage": ["proposed", "setar-radif-forms"], "status": "resting" },
+    "درامد-ابوعطا-ردیف-میرزاعبدالله": {
+      "kind": ["proposed", "gusheh", "درامد"],
+      "stage": ["exception", ["setar-radif-abu-ata"]],
+      "source": ["proposed", "mat-radif"],
+      "status": "resting"
+    },
+    "درامد-افشاری-ردیف-میرزاعبدالله": {
+      "kind": ["proposed", "gusheh", "درامد"],
+      "stage": ["proposed", "setar-radif-afshari"],
+      "source": ["exception", ["mat-radif"]],
+      "status": "resting"
+    },
+    "درامد-اول-بیات-ترک-ردیف-میرزاعبدالله": {
+      "kind": ["proposed", "gusheh", "درامد-اول"],
+      "stage": ["proposed", "setar-radif-bayat-e-tork"],
+      "source": ["proposed", "mat-radif"],
+      "status": "resting"
+    },
+    "درامد-دوم-بیات-ترک-ردیف-میرزاعبدالله": {
+      "kind": ["proposed", "gusheh", "درامد-دوم"],
+      "stage": ["proposed", "setar-radif-bayat-e-tork"],
+      "source": ["proposed", "mat-radif"],
+      "status": "resting"
+    },
+    "درامد-سوم-بیات-ترک-ردیف-میرزاعبدالله": {
+      "kind": ["proposed", "gusheh", "درامد-سوم"],
+      "stage": ["proposed", "setar-radif-bayat-e-tork"],
+      "source": ["proposed", "mat-radif"],
+      "status": "resting"
+    },
+    "درامد-ماهور-ردیف-میرزاعبدالله": {
+      "kind": ["proposed", "gusheh", "درامد"],
+      "stage": ["proposed", "setar-radif-mahur"],
+      "source": ["proposed", "mat-radif"],
+      "status": "resting"
+    },
+    "رنگ-حربی-ماهور-ردیف-میرزاعبدالله": {
+      "kind": ["exception", ["gusheh", "full_piece", "exercise", "improvisation"]],
+      "stage": ["exception"],
+      "source": ["exception", ["mat-radif"]],
+      "status": "resting"
+    },
+    "ماهور-ردیف-میرزاعبدالله": {
+      "kind": ["exception", ["gusheh", "full_piece", "exercise", "improvisation"]],
+      "stage": ["exception"],
+      "source": ["exception", ["mat-radif"]],
+      "status": "resting"
+    },
+    "چهارمضراب-ماهور-صبا": { "kind": ["correct"], "stage": ["proposed", "setar-radif-forms"], "class": ["exception"], "status": null },
+    "چهارپاره-ابوعطا-ردیف-میرزاعبدالله": {
+      "kind": ["proposed", "gusheh", "چهارپاره"],
+      "stage": ["proposed", "setar-radif-abu-ata"],
+      "source": ["proposed", "mat-radif"],
+      "status": "resting"
+    },
+    "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله": {
+      "kind": ["exception", ["gusheh", "full_piece", "exercise", "improvisation"]],
+      "stage": ["exception"],
+      "source": ["exception", ["mat-radif"]],
+      "status": "resting"
+    },
+    "کرشمه-ماهور-ردیف-میرزاعبدالله": {
+      "kind": ["correct"],
+      "stage": ["correct"],
+      "reference": ["exception", 5],
+      "source": ["correct"],
+      "status": null
+    },
+    "it-part": { "stage": ["exception"], "status": "a part of another item" },
+    "it-riz": { "stage": ["exception"], "status": "technique or exercise" },
+    "it-own-gusheh": { "stage": ["proposed", "setar-radif-bayat-e-tork"], "status": "fixing problems" }
+  },
+  "never": ["it-tar-kereshmeh"]
+}

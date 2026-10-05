@@ -78,6 +78,9 @@ import {
   type ReconcileDecision,
   type SourceIndex,
   type SourceSuppression,
+  applySetarSetup,
+  type SetupContext,
+  type SetupSelection,
   SCHEMA_VERSION,
   planDefaultPathways,
   planDefaultStages,
@@ -438,6 +441,13 @@ interface StoreState {
    * null; the caller waits for storage before saying it is saved.
    */
   restoreArchiveSuppression: (archiveId: ID, target: Pick<SourceSuppression, 'kind' | 'ref' | 'itemId'>) => string | null;
+  /**
+   * "Review Setar setup": write EXACTLY the selected rows in one validated
+   * mutation, each re-checked against the value the owner saw. Returns the
+   * refusal, or null; the caller waits for storage before saying Saved, and a
+   * retry writes again even when the rows are already in place.
+   */
+  commitSetarSetup: (input: { context: SetupContext; selections: SetupSelection[]; now?: Date }) => string | null;
   /** Attach a direct NAS reference to an item — no artificial lesson needed. */
   addItemReference: (itemId: ID, ref: { title: string; path: string; kind?: LessonFileKind; notes?: string }) => void;
   /** Remove a direct item reference. Never touches the file it points at. */
@@ -1298,6 +1308,25 @@ export const useStore = create<StoreState>()(
             ),
           },
         }));
+        return null;
+      },
+
+      commitSetarSetup: ({ context, selections, now }) => {
+        // Re-planned against the database as it is NOW, inside the action: a
+        // row that moved, vanished or changed meaning since it was shown
+        // refuses the whole commit (`applySetarSetup`), and a row that
+        // arrived since was never selected, so it cannot join.
+        const outcome = applySetarSetup(get().db, context, selections, now ?? new Date());
+        if (!outcome.ok) return outcome.reason;
+        try {
+          validateDB(outcome.db);
+        } catch (e) {
+          return e instanceof Error ? e.message : 'That change could not be applied.';
+        }
+        // ONE mutation, of `db` alone — the running clock, routine and plan are
+        // not part of it. Always a write: a retry after a refused write must
+        // persist again, even when every row is already in place.
+        set({ db: outcome.db });
         return null;
       },
 

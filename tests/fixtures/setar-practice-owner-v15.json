@@ -1,0 +1,1985 @@
+{
+ "app": "practice-compass",
+ "schemaVersion": 15,
+ "exportedAt": "2026-10-05T08:00:00.000Z",
+ "data": {
+  "schemaVersion": 15,
+  "instruments": [
+   {
+    "id": "inst-setar",
+    "name": "Setar",
+    "family": "Persian",
+    "active": true,
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   },
+   {
+    "id": "inst-tar",
+    "name": "Tar",
+    "family": "Persian",
+    "active": true,
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   }
+  ],
+  "materials": [
+   {
+    "id": "mat-radif",
+    "instrumentId": "inst-setar",
+    "title": "ردیف میرزا عبدالله",
+    "sourceType": "radif",
+    "status": "active",
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   },
+   {
+    "id": "mat-radif-borumand",
+    "instrumentId": "inst-setar",
+    "title": "ردیف میرزا عبدالله (روایت برومند)",
+    "sourceType": "radif",
+    "status": "active",
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   },
+   {
+    "id": "mat-radif-tar",
+    "instrumentId": "inst-tar",
+    "title": "ردیف میرزا عبدالله",
+    "sourceType": "radif",
+    "status": "active",
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   },
+   {
+    "id": "mat-forms",
+    "instrumentId": "inst-setar",
+    "title": "رپرتوار استاد",
+    "sourceType": "repertoire",
+    "status": "active",
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   }
+  ],
+  "items": [
+   {
+    "id": "src-1e53fb5dcf056207",
+    "instrumentId": "inst-setar",
+    "title": "آواز-دشتی-شور",
+    "itemType": "gusheh",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "دشتی/شور",
+     "form": "گوشه",
+     "gusheh": "آواز"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "آواز-دشتی-شور"
+    }
+   },
+   {
+    "id": "src-6ef72bf575216db3",
+    "instrumentId": "inst-setar",
+    "title": "اتود-وزیری",
+    "itemType": "technique",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "form": "اتود",
+     "composer": "وزیری"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "اتود-وزیری"
+    }
+   },
+   {
+    "id": "src-c68113e507642977",
+    "instrumentId": "inst-setar",
+    "title": "بداهه-درامد-افشاری",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "افشاری",
+     "form": "بداهه"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "بداهه-درامد-افشاری"
+    }
+   },
+   {
+    "id": "src-cecabb9927a83707",
+    "instrumentId": "inst-setar",
+    "title": "تمرین-دشتی-1-علیزاده",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "دشتی",
+     "form": "تمرین",
+     "composer": "علیزاده"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "تمرین-دشتی-1-علیزاده"
+    }
+   },
+   {
+    "id": "src-f51b1fd3f6b11be9",
+    "instrumentId": "inst-setar",
+    "materialId": "mat-forms",
+    "title": "جنگ-شهنازی",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "form": "ضربی",
+     "composer": "شهنازی"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "جنگ-شهنازی"
+    }
+   },
+   {
+    "id": "src-5627b6fec3dc5bcc",
+    "instrumentId": "inst-setar",
+    "stageId": "my-stage",
+    "title": "درامد-ابوعطا-ردیف-میرزاعبدالله",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "ابوعطا",
+     "form": "درامد"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "درامد-ابوعطا-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "src-9618f7dbe14069d9",
+    "instrumentId": "inst-setar",
+    "materialId": "mat-radif-borumand",
+    "title": "درامد-افشاری-ردیف-میرزاعبدالله",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "افشاری",
+     "form": "درامد"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "درامد-افشاری-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "src-1796d49e7a447548",
+    "instrumentId": "inst-setar",
+    "title": "درامد-اول-بیات-ترک-ردیف-میرزاعبدالله",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "بیات-ترک",
+     "form": "درامد"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "درامد-اول-بیات-ترک-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "src-2a60eb8957048b83",
+    "instrumentId": "inst-setar",
+    "title": "درامد-دوم-بیات-ترک-ردیف-میرزاعبدالله",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "بیات-ترک",
+     "form": "درامد"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "درامد-دوم-بیات-ترک-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "src-901d056d3d6dac9f",
+    "instrumentId": "inst-setar",
+    "title": "درامد-سوم-بیات-ترک-ردیف-میرزاعبدالله",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "بیات-ترک",
+     "form": "درامد"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "درامد-سوم-بیات-ترک-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "src-d4aa97947a4ae666",
+    "instrumentId": "inst-setar",
+    "title": "درامد-ماهور-ردیف-میرزاعبدالله",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "ماهور",
+     "form": "درامد"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "درامد-ماهور-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "src-35d22fad29072cbf",
+    "instrumentId": "inst-setar",
+    "title": "رنگ-حربی-ماهور-ردیف-میرزاعبدالله",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "ماهور",
+     "form": "رنگ"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "رنگ-حربی-ماهور-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "src-af6a7ff56c061b57",
+    "instrumentId": "inst-setar",
+    "title": "ماهور-ردیف-میرزاعبدالله",
+    "itemType": "gusheh",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "ماهور",
+     "form": "گوشه",
+     "gusheh": "ماهور"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "ماهور-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "src-b31f039e3704d8a4",
+    "instrumentId": "inst-setar",
+    "title": "چهارمضراب-ماهور-صبا",
+    "itemType": "full_piece",
+    "status": "integrated",
+    "importance": 3,
+    "difficulty": 3,
+    "lastPractisedAt": "2026-09-28T18:00:00.000Z",
+    "timesPractised": 9,
+    "totalMinutes": 120,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "ماهور",
+     "form": "چهارمضراب",
+     "composer": "صبا"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "چهارمضراب-ماهور-صبا"
+    }
+   },
+   {
+    "id": "src-2f4f5f3b454517b1",
+    "instrumentId": "inst-setar",
+    "title": "چهارپاره-ابوعطا-ردیف-میرزاعبدالله",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "ابوعطا",
+     "form": "چهارپاره"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "چهارپاره-ابوعطا-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "src-d9411fce694a919c",
+    "instrumentId": "inst-setar",
+    "title": "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله",
+    "itemType": "full_piece",
+    "status": "dormant",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "ماهور",
+     "form": "چهارپاره",
+     "composer": "مرادخانی"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "src-f9b735b010633e36",
+    "instrumentId": "inst-setar",
+    "materialId": "mat-radif",
+    "stageId": "setar-radif-mahur",
+    "title": "کرشمه-ماهور-ردیف-میرزاعبدالله",
+    "itemType": "gusheh",
+    "status": "usable",
+    "importance": 3,
+    "difficulty": 3,
+    "notes": "Teacher: the kereshmeh rhythm, slower.",
+    "lastPractisedAt": "2026-09-30T18:00:00.000Z",
+    "timesPractised": 2,
+    "totalMinutes": 25,
+    "lastResult": "better",
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "ماهور",
+     "form": "گوشه",
+     "gusheh": "کرشمه"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "pieceKey": "کرشمه-ماهور-ردیف-میرزاعبدالله"
+    }
+   },
+   {
+    "id": "it-part",
+    "instrumentId": "inst-setar",
+    "parentItemId": "src-b31f039e3704d8a4",
+    "title": "بخش دوم",
+    "itemType": "section",
+    "status": "new",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   },
+   {
+    "id": "it-riz",
+    "instrumentId": "inst-setar",
+    "title": "ریز (ترمولو)",
+    "itemType": "technique",
+    "status": "fragile",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   },
+   {
+    "id": "it-own-gusheh",
+    "instrumentId": "inst-setar",
+    "title": "آواز بیات ترک (خودم)",
+    "itemType": "gusheh",
+    "status": "repairing",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "persian": {
+     "dastgahAvaz": "بیات ترک",
+     "gusheh": "آواز"
+    },
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   },
+   {
+    "id": "it-tar-kereshmeh",
+    "instrumentId": "inst-tar",
+    "stageId": "tar-radif-mirza-mahur",
+    "title": "کرشمه",
+    "itemType": "gusheh",
+    "status": "usable",
+    "importance": 3,
+    "difficulty": 3,
+    "timesPractised": 0,
+    "totalMinutes": 0,
+    "saturationWarning": false,
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "catalogRefs": [
+     "radif:mirza-abdollah:mahur:daramad-e-mahur"
+    ]
+   }
+  ],
+  "blocks": [
+   {
+    "id": "blk-1",
+    "practiceItemId": "src-f9b735b010633e36",
+    "instrumentId": "inst-setar",
+    "startedAt": "2026-09-29T18:00:00.000Z",
+    "endedAt": "2026-09-29T18:10:00.000Z",
+    "durationMinutes": 10,
+    "mode": "repair",
+    "focus": "rhythm",
+    "result": "same",
+    "createdReview": false,
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   },
+   {
+    "id": "blk-2",
+    "practiceItemId": "src-f9b735b010633e36",
+    "instrumentId": "inst-setar",
+    "startedAt": "2026-09-30T18:00:00.000Z",
+    "endedAt": "2026-09-30T18:15:00.000Z",
+    "durationMinutes": 15,
+    "mode": "repair",
+    "focus": "rhythm",
+    "result": "better",
+    "createdReview": false,
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   }
+  ],
+  "reviews": [
+   {
+    "id": "rev-1",
+    "practiceItemId": "src-f9b735b010633e36",
+    "dueDate": "2026-10-07",
+    "reviewType": "retention",
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   }
+  ],
+  "pathways": [
+   {
+    "id": "setar-radif",
+    "instrumentId": "inst-setar",
+    "name": "سه‌تار · ردیف و رپرتوار",
+    "source": "ردیف میرزا عبدالله + رپرتوار استاد",
+    "description": "نقشه‌ای انعطاف‌پذیر از موسیقی کلاسیک ایرانی برای سه‌تار، بر پایهٔ نظام دستگاه و آواز.",
+    "note": "درس‌های سه‌تار تو استادمحور است و با نیازت تغییر می‌کند — یک هفته گوشه‌های ردیف، هفتهٔ بعد قطعه یا پیش‌درآمدی از یک استاد. این را نقشه‌ای زنده بدان: ترتیبش را عوض کن و گوشه‌ها و قطعه‌هایی را که استادت می‌دهد بیفزای. ترتیب ثابتی برای عجله کردن نیست.",
+    "order": 0,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza",
+    "instrumentId": "inst-setar",
+    "name": "سه‌تار · ردیف میرزا عبدالله",
+    "source": "ردیف میرزا عبدالله (گزیده)",
+    "description": "گزیده‌ای ناقص از گوشه‌های ردیف میرزا عبدالله برای سه‌تار — نه همهٔ ردیف و نه ترتیبی قطعی؛ روایتِ استادت مرجع است. هر گوشه با دستگاهش افزوده می‌شود.",
+    "note": "گوشه‌هایی که پیش‌تر در «سه‌تار · ردیف و رپرتوار» افزوده‌ای اینجا هم افزوده دیده می‌شوند — چیزی دوباره ساخته نمی‌شود. هر وقت مسیر قدیمی را نخواستی، از صفحهٔ همان مسیر «بایگانی» را بزن: پنهان می‌شود و هیچ آیتمی از دست نمی‌رود.",
+    "order": 0,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza",
+    "instrumentId": "inst-tar",
+    "name": "تار · ردیف میرزا عبدالله",
+    "source": "ردیف میرزا عبدالله (گزیده)",
+    "description": "گزیده‌ای ناقص از گوشه‌های ردیف میرزا عبدالله برای تار — نه همهٔ ردیف و نه ترتیبی قطعی؛ روایتِ استادت مرجع است. هر گوشه با دستگاهش افزوده می‌شود.",
+    "note": "همان گزیدهٔ سه‌تار، با تمرین و پیشرفتِ جداگانه برای تار. روش هنرستان و دورهٔ خنیاگر همان‌طور که بودند می‌مانند.",
+    "order": 5,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   }
+  ],
+  "pathwayStages": [
+   {
+    "id": "setar-radif-setup",
+    "pathwayId": "setar-radif",
+    "code": "نشست",
+    "title": "نشستن و وضعیت دست‌ها",
+    "group": "مبانی",
+    "intro": "نشستِ آسوده و پایدار، بنیانِ صدای خوب است و از تنش جلوگیری می‌کند.",
+    "order": 0,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mezrab",
+    "pathwayId": "setar-radif",
+    "code": "مضراب",
+    "title": "تکنیک دست راست (مضراب)",
+    "group": "مبانی",
+    "intro": "مضراب‌های یکدست و روشن، قلبِ صدای سه‌تار است.",
+    "order": 1,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-left-hand",
+    "pathwayId": "setar-radif",
+    "code": "دست چپ",
+    "title": "دست چپ، کوک و زینت‌ها",
+    "group": "مبانی",
+    "order": 2,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-shur",
+    "pathwayId": "setar-radif",
+    "code": "شور",
+    "title": "دستگاه شور",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "شور سنگ‌بنای موسیقی ایرانی است و معمولاً آغازگاهِ هنرجویان — درون‌گرا، لطیف، و مادرِ چهار آواز. توجه کن که چگونه تقریباً همه‌چیز به شاهدِ آن بازمی‌گردد.",
+    "order": 3,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-abu-ata",
+    "pathwayId": "setar-radif",
+    "code": "ابوعطا",
+    "title": "آواز ابوعطا",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور با رنگی سوزناک و مردمی. بشنو که چگونه بر شور تکیه می‌زند و به آن بازمی‌گردد.",
+    "order": 4,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-bayat-e-tork",
+    "pathwayId": "setar-radif",
+    "code": "بیات ترک",
+    "title": "آواز بیات ترک",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور با نمایی روشن‌تر و بازتر — که بسیار در آواز مذهبی شنیده می‌شود.",
+    "order": 5,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-afshari",
+    "pathwayId": "setar-radif",
+    "code": "افشاری",
+    "title": "آواز افشاری",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور — جستجوگر و تلخ‌وشیرین، با کیفیتی سرگردان و ویژه. فرودِ آن به شور، لحظه‌ای است که باید به آن گوش سپرد.",
+    "order": 6,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-dashti",
+    "pathwayId": "setar-radif",
+    "code": "دشتی",
+    "title": "آواز دشتی",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور، غنایی و اندوهگین — صدای بسیاری از نغمه‌های محلی. شاهدِ آن به‌طرزی نامدار می‌لرزد.",
+    "order": 7,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-homayun",
+    "pathwayId": "setar-radif",
+    "code": "همایون",
+    "title": "دستگاه همایون",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "هم‌زمان باشکوه و سوگوار. به جهشِ آغازینِ ویژه‌اش و کششِ بیداد گوش بسپار.",
+    "order": 8,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-esfahan",
+    "pathwayId": "setar-radif",
+    "code": "اصفهان",
+    "title": "آواز بیات اصفهان",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "آوازی از همایون — عاشقانه و گرم، نزدیک به رنگِ مینورِ هارمونیکِ غربی.",
+    "order": 9,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-segah",
+    "pathwayId": "setar-radif",
+    "code": "سه‌گاه",
+    "title": "دستگاه سه‌گاه",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "اندوهگین و التماس‌گر، حول شاهدِ ربع‌پرده‌اش ساخته شده. مخالف اوجِ عاطفیِ آن است — به تغییرِ رجیستر توجه کن.",
+    "order": 10,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-chahargah",
+    "pathwayId": "setar-radif",
+    "code": "چهارگاه",
+    "title": "دستگاه چهارگاه",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "روشن، حماسی، جشن‌گونه — که اغلب با طلوعِ آفتاب مقایسه می‌شود. تقارنِ دانگ‌هایش را حول شاهد حس کن.",
+    "order": 11,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mahur",
+    "pathwayId": "setar-radif",
+    "code": "ماهور",
+    "title": "دستگاه ماهور",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "باز و شادمان — نزدیک‌ترین به گامِ ماژورِ غربی. دلکش گردشِ نامدار است: بشنو که چگونه رنگِ شور را وام می‌گیرد.",
+    "order": 12,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-nava",
+    "pathwayId": "setar-radif",
+    "code": "نوا",
+    "title": "دستگاه نوا",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "آرام، مراقبه‌گون، متعادل — اغلب برای پاسی از شب نگه داشته می‌شود. خویشاوندِ شور؛ به مرکزِ آرام‌ترش توجه کن.",
+    "order": 13,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-rast-panjgah",
+    "pathwayId": "setar-radif",
+    "code": "راست‌پنجگاه",
+    "title": "دستگاه راست‌پنجگاه",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "کمیاب‌ترین دستگاه — باوقار، گسترده، و محبوب برای مدولاسیون میان مُدها.",
+    "order": 14,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-forms",
+    "pathwayId": "setar-radif",
+    "code": "فرم‌ها",
+    "title": "فرم‌های ساخته‌شده و بداهه",
+    "group": "فرم‌های ساخته‌شده و رپرتوار",
+    "intro": "رپرتواری که استادت از استادانِ گوناگون به تو می‌دهد اینجا جای می‌گیرد.",
+    "order": 15,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-shur",
+    "pathwayId": "setar-radif-mirza",
+    "code": "شور",
+    "title": "دستگاه شور",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "شور سنگ‌بنای موسیقی ایرانی است و معمولاً آغازگاهِ هنرجویان — درون‌گرا، لطیف، و مادرِ چهار آواز. توجه کن که چگونه تقریباً همه‌چیز به شاهدِ آن بازمی‌گردد.",
+    "order": 0,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-abu-ata",
+    "pathwayId": "setar-radif-mirza",
+    "code": "ابوعطا",
+    "title": "آواز ابوعطا",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور با رنگی سوزناک و مردمی. بشنو که چگونه بر شور تکیه می‌زند و به آن بازمی‌گردد.",
+    "order": 1,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-bayat-e-tork",
+    "pathwayId": "setar-radif-mirza",
+    "code": "بیات ترک",
+    "title": "آواز بیات ترک",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور با نمایی روشن‌تر و بازتر — که بسیار در آواز مذهبی شنیده می‌شود.",
+    "order": 2,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-afshari",
+    "pathwayId": "setar-radif-mirza",
+    "code": "افشاری",
+    "title": "آواز افشاری",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور — جستجوگر و تلخ‌وشیرین، با کیفیتی سرگردان و ویژه. فرودِ آن به شور، لحظه‌ای است که باید به آن گوش سپرد.",
+    "order": 3,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-dashti",
+    "pathwayId": "setar-radif-mirza",
+    "code": "دشتی",
+    "title": "آواز دشتی",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور، غنایی و اندوهگین — صدای بسیاری از نغمه‌های محلی. شاهدِ آن به‌طرزی نامدار می‌لرزد.",
+    "order": 4,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-homayun",
+    "pathwayId": "setar-radif-mirza",
+    "code": "همایون",
+    "title": "دستگاه همایون",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "هم‌زمان باشکوه و سوگوار. به جهشِ آغازینِ ویژه‌اش و کششِ بیداد گوش بسپار.",
+    "order": 5,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-esfahan",
+    "pathwayId": "setar-radif-mirza",
+    "code": "اصفهان",
+    "title": "آواز بیات اصفهان",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "آوازی از همایون — عاشقانه و گرم، نزدیک به رنگِ مینورِ هارمونیکِ غربی.",
+    "order": 6,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-segah",
+    "pathwayId": "setar-radif-mirza",
+    "code": "سه‌گاه",
+    "title": "دستگاه سه‌گاه",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "اندوهگین و التماس‌گر، حول شاهدِ ربع‌پرده‌اش ساخته شده. مخالف اوجِ عاطفیِ آن است — به تغییرِ رجیستر توجه کن.",
+    "order": 7,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-chahargah",
+    "pathwayId": "setar-radif-mirza",
+    "code": "چهارگاه",
+    "title": "دستگاه چهارگاه",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "روشن، حماسی، جشن‌گونه — که اغلب با طلوعِ آفتاب مقایسه می‌شود. تقارنِ دانگ‌هایش را حول شاهد حس کن.",
+    "order": 8,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-mahur",
+    "pathwayId": "setar-radif-mirza",
+    "code": "ماهور",
+    "title": "دستگاه ماهور",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "باز و شادمان — نزدیک‌ترین به گامِ ماژورِ غربی. دلکش گردشِ نامدار است: بشنو که چگونه رنگِ شور را وام می‌گیرد.",
+    "order": 9,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-nava",
+    "pathwayId": "setar-radif-mirza",
+    "code": "نوا",
+    "title": "دستگاه نوا",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "آرام، مراقبه‌گون، متعادل — اغلب برای پاسی از شب نگه داشته می‌شود. خویشاوندِ شور؛ به مرکزِ آرام‌ترش توجه کن.",
+    "order": 10,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "setar-radif-mirza-rast-panjgah",
+    "pathwayId": "setar-radif-mirza",
+    "code": "راست‌پنجگاه",
+    "title": "دستگاه راست‌پنجگاه",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "کمیاب‌ترین دستگاه — باوقار، گسترده، و محبوب برای مدولاسیون میان مُدها.",
+    "order": 11,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "my-stage",
+    "pathwayId": "setar-radif",
+    "code": "استاد",
+    "title": "ردیف استاد",
+    "order": 99,
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-shur",
+    "pathwayId": "tar-radif-mirza",
+    "code": "شور",
+    "title": "دستگاه شور",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "شور سنگ‌بنای موسیقی ایرانی است و معمولاً آغازگاهِ هنرجویان — درون‌گرا، لطیف، و مادرِ چهار آواز. توجه کن که چگونه تقریباً همه‌چیز به شاهدِ آن بازمی‌گردد.",
+    "order": 0,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-abu-ata",
+    "pathwayId": "tar-radif-mirza",
+    "code": "ابوعطا",
+    "title": "آواز ابوعطا",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور با رنگی سوزناک و مردمی. بشنو که چگونه بر شور تکیه می‌زند و به آن بازمی‌گردد.",
+    "order": 1,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-bayat-e-tork",
+    "pathwayId": "tar-radif-mirza",
+    "code": "بیات ترک",
+    "title": "آواز بیات ترک",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور با نمایی روشن‌تر و بازتر — که بسیار در آواز مذهبی شنیده می‌شود.",
+    "order": 2,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-afshari",
+    "pathwayId": "tar-radif-mirza",
+    "code": "افشاری",
+    "title": "آواز افشاری",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور — جستجوگر و تلخ‌وشیرین، با کیفیتی سرگردان و ویژه. فرودِ آن به شور، لحظه‌ای است که باید به آن گوش سپرد.",
+    "order": 3,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-dashti",
+    "pathwayId": "tar-radif-mirza",
+    "code": "دشتی",
+    "title": "آواز دشتی",
+    "group": "دستگاه شور و آوازهای آن",
+    "intro": "آوازی از شور، غنایی و اندوهگین — صدای بسیاری از نغمه‌های محلی. شاهدِ آن به‌طرزی نامدار می‌لرزد.",
+    "order": 4,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-homayun",
+    "pathwayId": "tar-radif-mirza",
+    "code": "همایون",
+    "title": "دستگاه همایون",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "هم‌زمان باشکوه و سوگوار. به جهشِ آغازینِ ویژه‌اش و کششِ بیداد گوش بسپار.",
+    "order": 5,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-esfahan",
+    "pathwayId": "tar-radif-mirza",
+    "code": "اصفهان",
+    "title": "آواز بیات اصفهان",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "آوازی از همایون — عاشقانه و گرم، نزدیک به رنگِ مینورِ هارمونیکِ غربی.",
+    "order": 6,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-segah",
+    "pathwayId": "tar-radif-mirza",
+    "code": "سه‌گاه",
+    "title": "دستگاه سه‌گاه",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "اندوهگین و التماس‌گر، حول شاهدِ ربع‌پرده‌اش ساخته شده. مخالف اوجِ عاطفیِ آن است — به تغییرِ رجیستر توجه کن.",
+    "order": 7,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-chahargah",
+    "pathwayId": "tar-radif-mirza",
+    "code": "چهارگاه",
+    "title": "دستگاه چهارگاه",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "روشن، حماسی، جشن‌گونه — که اغلب با طلوعِ آفتاب مقایسه می‌شود. تقارنِ دانگ‌هایش را حول شاهد حس کن.",
+    "order": 8,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-mahur",
+    "pathwayId": "tar-radif-mirza",
+    "code": "ماهور",
+    "title": "دستگاه ماهور",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "باز و شادمان — نزدیک‌ترین به گامِ ماژورِ غربی. دلکش گردشِ نامدار است: بشنو که چگونه رنگِ شور را وام می‌گیرد.",
+    "order": 9,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-nava",
+    "pathwayId": "tar-radif-mirza",
+    "code": "نوا",
+    "title": "دستگاه نوا",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "آرام، مراقبه‌گون، متعادل — اغلب برای پاسی از شب نگه داشته می‌شود. خویشاوندِ شور؛ به مرکزِ آرام‌ترش توجه کن.",
+    "order": 10,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   },
+   {
+    "id": "tar-radif-mirza-rast-panjgah",
+    "pathwayId": "tar-radif-mirza",
+    "code": "راست‌پنجگاه",
+    "title": "دستگاه راست‌پنجگاه",
+    "group": "دیگر دستگاه‌ها",
+    "intro": "کمیاب‌ترین دستگاه — باوقار، گسترده، و محبوب برای مدولاسیون میان مُدها.",
+    "order": 11,
+    "createdAt": "2026-06-30T00:00:00.000Z",
+    "updatedAt": "2026-06-30T00:00:00.000Z"
+   }
+  ],
+  "pathwayRoutines": [],
+  "attachments": [
+   {
+    "id": "att-kereshmeh",
+    "ownerType": "item",
+    "ownerId": "src-f9b735b010633e36",
+    "name": "note.txt",
+    "mime": "text/plain",
+    "size": 11,
+    "kind": "other",
+    "createdAt": "2026-10-05T08:00:00.000Z"
+   }
+  ],
+  "lessons": [
+   {
+    "id": "src-04bb22d724e6fc49",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-03",
+    "number": 2,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 2
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-03bb21449efb31de",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-04",
+    "number": 3,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 3
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-02bb1fb130be911f",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-05",
+    "number": 4,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 4
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-ffbb1af8b6aa5b8a",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-08",
+    "number": 7,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 7
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-fdbb17d263c549b0",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-10",
+    "number": 9,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 9
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-5f9a39ae0458e668",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-11",
+    "number": 10,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 10
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-649a418da1f3da7f",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-16",
+    "number": 15,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 15
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-5597eb5967852a3f",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-25",
+    "number": 24,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 24
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-5497e9c6e1995fd4",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-26",
+    "number": 25,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 25
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-5695ae559df1e00f",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-07",
+    "number": 33,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 33
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-4f95a3500c2e80ce",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-08",
+    "number": 34,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 34
+    },
+    "origin": "archive"
+   },
+   {
+    "id": "src-5095a4e3921a4b39",
+    "instrumentId": "inst-setar",
+    "date": "2025-01-09",
+    "number": 35,
+    "itemIds": [],
+    "createdAt": "2026-10-05T08:00:00.000Z",
+    "updatedAt": "2026-10-05T08:00:00.000Z",
+    "source": {
+     "archiveId": "setar-classes",
+     "sessionN": 35
+    },
+    "origin": "archive"
+   }
+  ],
+  "lessonAgenda": [],
+  "archiveSources": [
+   {
+    "id": "setar-classes",
+    "instrumentId": "inst-setar",
+    "indexHash": "918be73f2daa7f800c97b08f92bc1314e6c66a03cb3466bfd8d68a45507f5687",
+    "acceptedAt": "2026-10-05T08:00:00.000Z",
+    "pieces": [
+     {
+      "key": "آواز-دشتی-شور",
+      "form": "گوشه",
+      "piece": "آواز",
+      "dastgah": "دشتی/شور",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       3
+      ],
+      "notes": ""
+     },
+     {
+      "key": "اتود-وزیری",
+      "form": "اتود",
+      "piece": "اتود",
+      "dastgah": "",
+      "composer": "وزیری",
+      "aliases": [],
+      "sessions": [
+       3
+      ],
+      "notes": ""
+     },
+     {
+      "key": "بداهه-درامد-افشاری",
+      "form": "بداهه",
+      "piece": "بداهه-درامد",
+      "dastgah": "افشاری",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       35
+      ],
+      "notes": ""
+     },
+     {
+      "key": "تمرین-دشتی-1-علیزاده",
+      "form": "تمرین",
+      "piece": "تمرین-دشتی-1",
+      "dastgah": "دشتی",
+      "composer": "علیزاده",
+      "aliases": [],
+      "sessions": [
+       4
+      ],
+      "notes": ""
+     },
+     {
+      "key": "جنگ-شهنازی",
+      "form": "(قطعه)",
+      "piece": "جنگ",
+      "dastgah": "",
+      "composer": "شهنازی",
+      "aliases": [],
+      "sessions": [
+       33
+      ],
+      "notes": ""
+     },
+     {
+      "key": "درامد-ابوعطا-ردیف-میرزاعبدالله",
+      "form": "درامد",
+      "piece": "درامد",
+      "dastgah": "ابوعطا",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       2
+      ],
+      "notes": ""
+     },
+     {
+      "key": "درامد-افشاری-ردیف-میرزاعبدالله",
+      "form": "درامد",
+      "piece": "درامد",
+      "dastgah": "افشاری",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       34
+      ],
+      "notes": ""
+     },
+     {
+      "key": "درامد-اول-بیات-ترک-ردیف-میرزاعبدالله",
+      "form": "درامد",
+      "piece": "درامد-اول",
+      "dastgah": "بیات-ترک",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       24
+      ],
+      "notes": ""
+     },
+     {
+      "key": "درامد-دوم-بیات-ترک-ردیف-میرزاعبدالله",
+      "form": "درامد",
+      "piece": "درامد-دوم",
+      "dastgah": "بیات-ترک",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       24
+      ],
+      "notes": ""
+     },
+     {
+      "key": "درامد-سوم-بیات-ترک-ردیف-میرزاعبدالله",
+      "form": "درامد",
+      "piece": "درامد-سوم",
+      "dastgah": "بیات-ترک",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       25
+      ],
+      "notes": ""
+     },
+     {
+      "key": "درامد-ماهور-ردیف-میرزاعبدالله",
+      "form": "درامد",
+      "piece": "درامد",
+      "dastgah": "ماهور",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       7
+      ],
+      "notes": ""
+     },
+     {
+      "key": "رنگ-حربی-ماهور-ردیف-میرزاعبدالله",
+      "form": "رنگ",
+      "piece": "رنگ-حربی",
+      "dastgah": "ماهور",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       15
+      ],
+      "notes": ""
+     },
+     {
+      "key": "ماهور-ردیف-میرزاعبدالله",
+      "form": "گوشه",
+      "piece": "ماهور",
+      "dastgah": "ماهور",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       7
+      ],
+      "notes": "PROVISIONAL: identity unconfirmed.",
+      "provisional": true
+     },
+     {
+      "key": "چهارمضراب-ماهور-صبا",
+      "form": "چهارمضراب",
+      "piece": "چهارمضراب",
+      "dastgah": "ماهور",
+      "composer": "صبا",
+      "aliases": [],
+      "sessions": [
+       9
+      ],
+      "notes": ""
+     },
+     {
+      "key": "چهارپاره-ابوعطا-ردیف-میرزاعبدالله",
+      "form": "چهارپاره",
+      "piece": "چهارپاره",
+      "dastgah": "ابوعطا",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       4
+      ],
+      "notes": ""
+     },
+     {
+      "key": "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله",
+      "form": "چهارپاره",
+      "piece": "چهارپاره-مرادخانی",
+      "dastgah": "ماهور",
+      "composer": "مرادخانی",
+      "aliases": [],
+      "sessions": [
+       10
+      ],
+      "notes": ""
+     },
+     {
+      "key": "کرشمه-ماهور-ردیف-میرزاعبدالله",
+      "form": "گوشه",
+      "piece": "کرشمه",
+      "dastgah": "ماهور",
+      "composer": "",
+      "aliases": [],
+      "sessions": [
+       7
+      ],
+      "notes": ""
+     }
+    ],
+    "sessions": [
+     {
+      "n": 2,
+      "date": "2025-01-03",
+      "folder": "session-2-03-01-2025",
+      "roster": [
+       "درامد-ابوعطا-ردیف-میرزاعبدالله"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-2-03-01-2025/نت-درامد-ابوعطا-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت درامد ابوعطا ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "درامد-ابوعطا-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "درامد-ابوعطا-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 3,
+      "date": "2025-01-04",
+      "folder": "session-3-04-01-2025",
+      "roster": [
+       "آواز-دشتی-شور",
+       "اتود-وزیری"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-3-04-01-2025/نت-آواز-دشتی-شور.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت آواز دشتی شور",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "آواز-دشتی-شور"
+        ],
+        "group": null
+       },
+       {
+        "path": "session-3-04-01-2025/نت-اتود-وزیری.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت اتود وزیری",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "اتود-وزیری"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "آواز-دشتی-شور",
+        "roles": [
+         "نت"
+        ]
+       },
+       {
+        "key": "اتود-وزیری",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 4,
+      "date": "2025-01-05",
+      "folder": "session-4-05-01-2025",
+      "roster": [
+       "تمرین-دشتی-1-علیزاده",
+       "چهارپاره-ابوعطا-ردیف-میرزاعبدالله"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-4-05-01-2025/نت-تمرین-دشتی-1-علیزاده.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت تمرین دشتی 1 علیزاده",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "تمرین-دشتی-1-علیزاده"
+        ],
+        "group": null
+       },
+       {
+        "path": "session-4-05-01-2025/نت-چهارپاره-ابوعطا-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت چهارپاره ابوعطا ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "چهارپاره-ابوعطا-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "تمرین-دشتی-1-علیزاده",
+        "roles": [
+         "نت"
+        ]
+       },
+       {
+        "key": "چهارپاره-ابوعطا-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 7,
+      "date": "2025-01-08",
+      "folder": "session-7-08-01-2025",
+      "roster": [
+       "درامد-ماهور-ردیف-میرزاعبدالله",
+       "ماهور-ردیف-میرزاعبدالله",
+       "کرشمه-ماهور-ردیف-میرزاعبدالله"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": true,
+      "resources": [
+       {
+        "path": "session-7-08-01-2025/ضبط-کلاس.mp4",
+        "role": "ضبط-کلاس",
+        "kind": "video",
+        "title": "ضبط کلاس",
+        "part": null,
+        "size": 9000,
+        "pieces": [],
+        "group": null
+       },
+       {
+        "path": "session-7-08-01-2025/نت-درامد-ماهور-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت درامد ماهور ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "درامد-ماهور-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       },
+       {
+        "path": "session-7-08-01-2025/نت-ماهور-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت ماهور ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "ماهور-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       },
+       {
+        "path": "session-7-08-01-2025/نت-کرشمه-ماهور-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت کرشمه ماهور ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "کرشمه-ماهور-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       },
+       {
+        "path": "session-7-08-01-2025/نمونه-1.mp4",
+        "role": "نمونه",
+        "kind": "video",
+        "title": "نمونه 1",
+        "part": 1,
+        "size": 5000,
+        "pieces": [
+         "درامد-ماهور-ردیف-میرزاعبدالله",
+         "ماهور-ردیف-میرزاعبدالله",
+         "کرشمه-ماهور-ردیف-میرزاعبدالله"
+        ],
+        "group": "نمونه:"
+       },
+       {
+        "path": "session-7-08-01-2025/نمونه-2.mp4",
+        "role": "نمونه",
+        "kind": "video",
+        "title": "نمونه 2",
+        "part": 2,
+        "size": 5000,
+        "pieces": [
+         "درامد-ماهور-ردیف-میرزاعبدالله",
+         "ماهور-ردیف-میرزاعبدالله",
+         "کرشمه-ماهور-ردیف-میرزاعبدالله"
+        ],
+        "group": "نمونه:"
+       }
+      ],
+      "members": [
+       {
+        "key": "درامد-ماهور-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت",
+         "نمونه"
+        ]
+       },
+       {
+        "key": "ماهور-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت",
+         "نمونه"
+        ]
+       },
+       {
+        "key": "کرشمه-ماهور-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت",
+         "نمونه"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 9,
+      "date": "2025-01-10",
+      "folder": "session-9-10-01-2025",
+      "roster": [
+       "چهارمضراب-ماهور-صبا"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-9-10-01-2025/نت-چهارمضراب-ماهور-صبا.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت چهارمضراب ماهور صبا",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "چهارمضراب-ماهور-صبا"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "چهارمضراب-ماهور-صبا",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 10,
+      "date": "2025-01-11",
+      "folder": "session-10-11-01-2025",
+      "roster": [
+       "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-10-11-01-2025/نت-چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت چهارپاره مرادخانی ماهور ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 15,
+      "date": "2025-01-16",
+      "folder": "session-15-16-01-2025",
+      "roster": [
+       "رنگ-حربی-ماهور-ردیف-میرزاعبدالله"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-15-16-01-2025/نت-رنگ-حربی-ماهور-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت رنگ حربی ماهور ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "رنگ-حربی-ماهور-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "رنگ-حربی-ماهور-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 24,
+      "date": "2025-01-25",
+      "folder": "session-24-25-01-2025",
+      "roster": [
+       "درامد-اول-بیات-ترک-ردیف-میرزاعبدالله",
+       "درامد-دوم-بیات-ترک-ردیف-میرزاعبدالله"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-24-25-01-2025/نت-درامد-اول-بیات-ترک-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت درامد اول بیات ترک ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "درامد-اول-بیات-ترک-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       },
+       {
+        "path": "session-24-25-01-2025/نت-درامد-دوم-بیات-ترک-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت درامد دوم بیات ترک ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "درامد-دوم-بیات-ترک-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "درامد-اول-بیات-ترک-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت"
+        ]
+       },
+       {
+        "key": "درامد-دوم-بیات-ترک-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 25,
+      "date": "2025-01-26",
+      "folder": "session-25-26-01-2025",
+      "roster": [
+       "درامد-سوم-بیات-ترک-ردیف-میرزاعبدالله"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-25-26-01-2025/نت-درامد-سوم-بیات-ترک-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت درامد سوم بیات ترک ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "درامد-سوم-بیات-ترک-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "درامد-سوم-بیات-ترک-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 33,
+      "date": "2025-01-07",
+      "folder": "session-33-07-01-2025",
+      "roster": [
+       "جنگ-شهنازی"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-33-07-01-2025/نت-جنگ-شهنازی.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت جنگ شهنازی",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "جنگ-شهنازی"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "جنگ-شهنازی",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 34,
+      "date": "2025-01-08",
+      "folder": "session-34-08-01-2025",
+      "roster": [
+       "درامد-افشاری-ردیف-میرزاعبدالله"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-34-08-01-2025/نت-درامد-افشاری-ردیف-میرزاعبدالله.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت درامد افشاری ردیف میرزاعبدالله",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "درامد-افشاری-ردیف-میرزاعبدالله"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "درامد-افشاری-ردیف-میرزاعبدالله",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     },
+     {
+      "n": 35,
+      "date": "2025-01-09",
+      "folder": "session-35-09-01-2025",
+      "roster": [
+       "بداهه-درامد-افشاری"
+      ],
+      "rosterTrusted": true,
+      "hasClassRecording": false,
+      "resources": [
+       {
+        "path": "session-35-09-01-2025/نت-بداهه-درامد-افشاری.pdf",
+        "role": "نت",
+        "kind": "score",
+        "title": "نت بداهه درامد افشاری",
+        "part": null,
+        "size": 1000,
+        "pieces": [
+         "بداهه-درامد-افشاری"
+        ],
+        "group": null
+       }
+      ],
+      "members": [
+       {
+        "key": "بداهه-درامد-افشاری",
+        "roles": [
+         "نت"
+        ]
+       }
+      ]
+     }
+    ],
+    "renames": [],
+    "diagnostics": [],
+    "suppressions": [
+     {
+      "kind": "link",
+      "ref": "9:چهارمضراب-ماهور-صبا",
+      "at": "2026-10-05T08:00:00.000Z"
+     }
+    ]
+   }
+  ],
+  "musicTerms": []
+ },
+ "files": [
+  {
+   "id": "att-kereshmeh",
+   "ownerId": "src-f9b735b010633e36",
+   "mime": "text/plain",
+   "name": "note.txt",
+   "data": "b3duZXIgYnl0ZXM="
+  }
+ ]
+}

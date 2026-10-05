@@ -886,7 +886,7 @@ describe('reconciling the archive with the owner’s own records', () => {
     // nothing left to change, so a second refresh writes nothing.
     expect(repairReferencePath('session-25-05-08-2025/mine.mp4', renames, known)).toEqual({
       status: 'attention',
-      reason: 'The archive no longer has a file at this path.',
+      reason: 'The latest index does not describe a file at this path. It may still be on the NAS.',
       code: 'not-described',
     });
     // The archive never offers a personal recording as material for a piece.
@@ -1062,7 +1062,7 @@ describe('reconciling the archive with the owner’s own records', () => {
     };
     const broken = planArchiveImport({ db: installedLegacy, index: dangling, instrumentId: SETAR, now: NOW });
     expect(broken.repairedLessons).toEqual([]);
-    expect(broken.attention.some((a) => /renamed, but the archive no longer has it/.test(a.reason))).toBe(true);
+    expect(broken.attention.some((a) => /renamed, but the latest index does not describe the name it was renamed to/.test(a.reason))).toBe(true);
     const afterBroken = applyArchiveImport(installedLegacy, broken);
     expect(afterBroken.lessons.find((l) => l.id === 'L1')!.recordings).toEqual(storedOne.recordings);
 
@@ -1677,5 +1677,176 @@ describe('archive metadata against the accepted baseline', () => {
     expect(at(taken.next, 'صلح-شهنازی').persian!.form).toBe('رنگ');
     expect(at(taken.next, 'صلح-شهنازی').persian!.composer).toBe('شهنازی');
     expect(run(taken.next, idx('c', changed), [choose] as never[]).next).toBe(taken.next);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-5 — every consumer of a rename reads the SAME exact log, and nothing
+// reads a filename. Indexes here are built by the real scanner from in-memory
+// inventories; expected outcomes are written by hand.
+// ---------------------------------------------------------------------------
+
+import { itemFiles, lessonFiles } from './itemFiles';
+
+describe('renames reach every consumer exactly', () => {
+  const { buildIndex: scan } = scannerModule as {
+    buildIndex(input: { registryText: string; inventory: { path: string; size: number }[]; renameLog: { present: true; text: string } }): unknown;
+  };
+  const S1 = 'session-1-26-09-2023';
+  const REGISTRY = [
+    'canonical_fa,form,piece,dastgah,composer,source,aliases_seen,sessions,roles_present,notes',
+    'رنگ-ماهور-درویش-خان,رنگ,رنگ,ماهور,درویش-خان,,,1,,',
+    'چهارمضراب-اول-دشتی-صبا,چهارمضراب,چهارمضراب-اول,دشتی,صبا,,,1,,',
+    'ضربی-تازه-آزمون,ضربی,ضربی,نوا,,,,57,,',
+  ].join('\n');
+  const BASE = 'https://nas.example/setar-classes';
+  const LOG0 = [
+    'old_path,new_path,timestamp',
+    `${S1}/video-1.mp4,${S1}/ضبط-کلاس-1.mp4,t`,
+    `${S1}/video-2.mp4,${S1}/ضبط-کلاس-2.mp4,t`,
+    `${S1}/video-3.mp4,${S1}/ضبط-کلاس-3.mp4,t`,
+    // A loop and a fork: no destination can be read from either.
+    `${S1}/loop-a.mp4,${S1}/loop-b.mp4,t`,
+    `${S1}/loop-b.mp4,${S1}/loop-a.mp4,t`,
+    `${S1}/fork.mp4,${S1}/fork-x.mp4,t`,
+    `${S1}/fork.mp4,${S1}/fork-y.mp4,t`,
+    // A row whose destination is not on disk.
+    `${S1}/lost.mp4,${S1}/lost-now.mp4,t`,
+  ];
+  const shared = [
+    `${S1}/نت-رنگ-ماهور-درویش-خان.pdf`,
+    `${S1}/نت-چهارمضراب-اول-دشتی-صبا.pdf`,
+    `${S1}/تمرین-من-رنگ-ماهور-درویش-خان.mp4`,
+  ];
+  const index = (files: string[], log: string[], future: string[] = []) =>
+    decodeSourceIndex(
+      scan({
+        registryText: REGISTRY,
+        inventory: [...shared, ...files, ...future].map((path) => ({ path, size: 100 })),
+        renameLog: { present: true, text: `${log.join('\n')}\n` },
+      }),
+    );
+  const AUTHORED: Lesson['recordings'] = [
+    // Authored rows, each with its OWN id, title and notes.
+    { id: 'rec-legacy', title: 'Class 1, first part (mine)', notes: 'watch 12:30', path: `setar-classes/${S1}/video-1.mp4`, kind: 'video', createdAt: NOW.toISOString() },
+    { id: 'rec-url', title: 'Third part', path: `${BASE}/${S1}/ضبط-کلاس-3.mp4`, kind: 'video', createdAt: NOW.toISOString() },
+    { id: 'rec-foreign', title: 'Somewhere else', path: 'https://elsewhere.example/x.mp4', kind: 'video', createdAt: NOW.toISOString() },
+    { id: 'rec-take', title: 'My take', path: `${S1}/تمرین-من-رنگ-ماهور-درویش-خان.mp4`, kind: 'video', createdAt: NOW.toISOString() },
+    { id: 'rec-loop', title: 'Loop', path: `${S1}/loop-a.mp4`, kind: 'video', createdAt: NOW.toISOString() },
+    { id: 'rec-lost', title: 'Lost', path: `${S1}/lost.mp4`, kind: 'video', createdAt: NOW.toISOString() },
+  ];
+  const run = (db: PracticeDB, idx: SourceIndex) => {
+    const p = planArchiveImport({ db, index: idx, instrumentId: SETAR, verifiedBase: BASE, now: NOW });
+    return { p, next: applyArchiveImport(db, p) };
+  };
+  const recs = (db: PracticeDB) => db.lessons.find((l) => l.id === 'L-1')!.recordings!;
+  const paths = (db: PracticeDB) => Object.fromEntries(recs(db).map((r) => [r.id, r.path]));
+  const sourceOf = (db: PracticeDB) => db.archiveSources.find((s) => s.id === 'setar-classes')!;
+  const s1Rows = (db: PracticeDB) =>
+    Object.fromEntries(sourceOf(db).sessions.find((s) => s.n === 1)!.resources.map((r) => [r.path, { role: r.role, pieces: [...r.pieces].sort(), unavailable: !!r.unavailable }]));
+
+  it('setar rename consumers preserve authored metadata and never infer missing provenance', () => {
+    // --- AS FIRST INDEXED: three class recordings, an owner's legacy class --
+    const owner = baseDB({
+      lessons: [lesson({ id: 'L-1', date: '2023-09-26', number: 1, notes: 'class one, my notes', recordings: AUTHORED })],
+    });
+    const v0 = index([`${S1}/ضبط-کلاس-1.mp4`, `${S1}/ضبط-کلاس-2.mp4`, `${S1}/ضبط-کلاس-3.mp4`], LOG0);
+    const first = run(owner, v0);
+    // ADOPTED on instrument + date + number + exact path evidence, not created.
+    expect(first.p.adoptedLessons.map((l) => l.id)).toEqual(['L-1']);
+    expect(first.p.newLessons).toEqual([]);
+    // Path repair: the legacy prefix and the verified URL become archive-relative
+    // (the first through the log); a foreign URL, a take and a loop do not move.
+    expect(paths(first.next)).toEqual({
+      'rec-legacy': `${S1}/ضبط-کلاس-1.mp4`,
+      'rec-url': `${S1}/ضبط-کلاس-3.mp4`,
+      'rec-foreign': 'https://elsewhere.example/x.mp4',
+      'rec-take': `${S1}/تمرین-من-رنگ-ماهور-درویش-خان.mp4`,
+      'rec-loop': `${S1}/loop-a.mp4`,
+      'rec-lost': `${S1}/lost.mp4`,
+    });
+    // Authored ids, titles and notes survive every repair.
+    expect(recs(first.next).map((r) => [r.id, r.title, r.notes])).toEqual(AUTHORED.map((r) => [r.id, r.title, r.notes]));
+    // The log's own findings are attention; an undescribed take is NOT.
+    const reasons = first.p.attention.map((a) => `${a.path} ${a.reason}`).join('\n');
+    expect(reasons).toMatch(/loop-a\.mp4 Rename log loops through this path/);
+    expect(reasons).toMatch(/fork\.mp4 Rename log names more than one destination/);
+    expect(reasons).toMatch(/lost\.mp4 This file was renamed, but the latest index does not describe the name it was renamed to/);
+    expect(reasons).not.toMatch(/تمرین-من/);
+    // The owner hides one recording everywhere and one demo on one item only.
+    const rang = first.next.items.find((i) => i.source?.pieceKey === 'رنگ-ماهور-درویش-خان')!;
+    let hidden = { ...first.next, archiveSources: withSuppression(first.next.archiveSources, 'setar-classes', { kind: 'resource', ref: `${S1}/ضبط-کلاس-2.mp4`, at: NOW.toISOString() }) };
+    hidden = { ...hidden, archiveSources: withSuppression(hidden.archiveSources, 'setar-classes', { kind: 'resource', ref: `${S1}/ضبط-کلاس-1.mp4`, itemId: rang.id, at: NOW.toISOString() }) };
+
+    // --- RENAMED ON DISK, NOT LOGGED: نمونه-N now, ضبط-کلاس-N gone ----------
+    const renamedFiles = [`${S1}/نمونه-1.mp4`, `${S1}/نمونه-2.mp4`, `${S1}/نمونه-3.mp4`];
+    const v1 = index(renamedFiles, LOG0);
+    const unlogged = run(hidden, v1);
+    // The new files are the archive's: demonstrations, scoped to the roster.
+    const rows1 = s1Rows(unlogged.next);
+    for (const f of renamedFiles) expect(rows1[f]).toEqual({ role: 'نمونه', pieces: ['رنگ-ماهور-درویش-خان', 'چهارمضراب-اول-دشتی-صبا'].sort(), unavailable: false });
+    // The old ones are NOT matched to them by number, title or size: kept,
+    // flagged, still class recordings, and labelled "not described".
+    for (const n of [1, 2, 3]) expect(rows1[`${S1}/ضبط-کلاس-${n}.mp4`]).toEqual({ role: 'ضبط-کلاس', pieces: [], unavailable: true });
+    const l1 = lessonFiles(unlogged.next, 'L-1').filter((f) => f.source === 'reference');
+    expect(l1.filter((f) => f.unavailable).map((f) => f.path).sort()).toEqual([`${S1}/ضبط-کلاس-1.mp4`, `${S1}/ضبط-کلاس-3.mp4`].sort());
+    // Authored paths and hides stay EXACTLY where the owner left them.
+    expect(paths(unlogged.next)).toEqual(paths(first.next));
+    expect(sourceOf(unlogged.next).suppressions.map((s) => s.ref).sort()).toEqual([`${S1}/ضبط-کلاس-1.mp4`, `${S1}/ضبط-کلاس-2.mp4`].sort());
+    // The demo reaches the piece; nothing claims the old recording became it.
+    expect(itemFiles(unlogged.next, rang.id).filter((f) => f.source === 'reference').map((f) => f.path)).toEqual(
+      expect.arrayContaining(renamedFiles),
+    );
+
+    // --- THE OWNER LOGS THE EXACT CONTINUATIONS -----------------------------
+    const LOG1 = [...LOG0, ...[1, 2, 3].map((n) => `${S1}/ضبط-کلاس-${n}.mp4,${S1}/نمونه-${n}.mp4,t`)];
+    const v2 = index(renamedFiles, LOG1, [`session-57-02-02-2027/نت-ضربی-تازه-آزمون.pdf`]);
+    const logged = run(unlogged.next, v2);
+    // Moved, not gone: the old rows drop out; nothing is listed twice.
+    const rows2 = s1Rows(logged.next);
+    for (const n of [1, 2, 3]) expect(rows2[`${S1}/ضبط-کلاس-${n}.mp4`]).toBeUndefined();
+    expect(lessonFiles(logged.next, 'L-1').filter((f) => f.source === 'reference' && f.unavailable)).toEqual([]);
+    // A hide FOLLOWS its file — scope intact — exactly as the log says.
+    expect(
+      sourceOf(logged.next)
+        .suppressions.map((s) => `${s.ref}|${s.itemId ?? ''}`)
+        .sort(),
+    ).toEqual([`${S1}/نمونه-1.mp4|${rang.id}`, `${S1}/نمونه-2.mp4|`].sort());
+    const refs = (id: string) => itemFiles(logged.next, id).flatMap((f) => (f.source === 'reference' ? [f.path] : []));
+    expect(refs(rang.id)).not.toContain(`${S1}/نمونه-1.mp4`);
+    const dashti = logged.next.items.find((i) => i.source?.pieceKey === 'چهارمضراب-اول-دشتی-صبا')!;
+    expect(refs(dashti.id)).toContain(`${S1}/نمونه-1.mp4`);
+    // Authored references follow the WHOLE chain; ids, titles, notes survive.
+    expect(paths(logged.next)['rec-legacy']).toBe(`${S1}/نمونه-1.mp4`);
+    expect(paths(logged.next)['rec-url']).toBe(`${S1}/نمونه-3.mp4`);
+    expect(paths(logged.next)['rec-loop']).toBe(`${S1}/loop-a.mp4`);
+    expect(recs(logged.next).map((r) => [r.id, r.title, r.notes])).toEqual(AUTHORED.map((r) => [r.id, r.title, r.notes]));
+    expect(logged.next.lessons.find((l) => l.id === 'L-1')!.notes).toBe('class one, my notes');
+    // A future session and a new key arrive with no code change.
+    expect(sourceOf(logged.next).sessions.find((s) => s.n === 57)!.resources[0]!.pieces).toEqual(['ضربی-تازه-آزمون']);
+    // Repeating is a no-op, by identity.
+    expect(run(logged.next, v2).next).toBe(logged.next);
+
+    // --- A ROLE CHANGE the log names, and a CROSS-SESSION move --------------
+    const S57 = 'session-57-02-02-2027';
+    const S58 = 'session-58-09-02-2027';
+    const LOG2 = [...LOG1, `${S57}/نت-ضربی-تازه-آزمون.pdf,${S58}/تصحیح-ضربی-تازه-آزمون.pdf,t`];
+    const moved = index(renamedFiles, LOG2, [`${S58}/تصحیح-ضربی-تازه-آزمون.pdf`]);
+    const zarbi = logged.next.items.find((i) => i.source?.pieceKey === 'ضربی-تازه-آزمون')!;
+    const hideZarbi = { ...logged.next, archiveSources: withSuppression(logged.next.archiveSources, 'setar-classes', { kind: 'resource', ref: `${S57}/نت-ضربی-تازه-آزمون.pdf`, itemId: zarbi.id, at: NOW.toISOString() }) };
+    const crossed = run(hideZarbi, moved);
+    const s58 = sourceOf(crossed.next).sessions.find((s) => s.n === 58)!;
+    expect(s58.resources.map((r) => [r.path, r.role])).toEqual([[`${S58}/تصحیح-ضربی-تازه-آزمون.pdf`, 'تصحیح']]);
+    // The old session does not list it as missing; the hide moved with it.
+    expect(sourceOf(crossed.next).sessions.find((s) => s.n === 57)!.resources).toEqual([]);
+    expect(sourceOf(crossed.next).suppressions.some((s) => s.ref === `${S58}/تصحیح-ضربی-تازه-آزمون.pdf` && s.itemId === zarbi.id)).toBe(true);
+
+    // --- DEGRADED, then FULL again: nothing of the owner's is lost ----------
+    const degraded = run(logged.next, index([], LOG1));
+    expect(s1Rows(degraded.next)[`${S1}/نمونه-1.mp4`]!.unavailable).toBe(true);
+    const restored = run(degraded.next, v2);
+    expect(s1Rows(restored.next)[`${S1}/نمونه-1.mp4`]!.unavailable).toBe(false);
+    expect(recs(restored.next)).toEqual(recs(logged.next));
+    expect(sourceOf(restored.next).suppressions).toEqual(sourceOf(logged.next).suppressions);
   });
 });

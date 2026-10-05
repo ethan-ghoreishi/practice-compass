@@ -11,6 +11,7 @@ import {
   ITEM_STATUS_LABELS,
   LESSON_FILE_KIND_ORDER,
   lessonFiles,
+  associationsForLesson,
   lessonsForInstrument,
   isUpcomingLesson,
   nextLessonFor,
@@ -692,12 +693,14 @@ function LessonItems({ lesson }: { lesson: Lesson }) {
       .map((e) => [(e as { itemId: string }).itemId, e.id] as const),
   );
 
-  const linked = (lesson.itemIds ?? [])
-    .map((id) => db.items.find((i) => i.id === id))
-    .filter((i): i is NonNullable<typeof i> => !!i);
-  const linkable = db.items.filter(
-    (i) => i.instrumentId === lesson.instrumentId && !(lesson.itemIds ?? []).includes(i.id),
-  );
+  // ONE relation: what the owner linked, plus what this class's archive
+  // session lists (unless they unlinked it) — each item once. The archive's
+  // half is PROVENANCE, never practice and never a preparation.
+  const associations = associationsForLesson(db, lesson.id);
+  const linked = associations.map((a) => a.item);
+  const fromArchive = new Set(associations.filter((a) => a.derived && !a.explicit).map((a) => a.itemId));
+  const associated = new Set(associations.map((a) => a.itemId));
+  const linkable = db.items.filter((i) => i.instrumentId === lesson.instrumentId && !associated.has(i.id));
 
   return (
     <div className="stack-sm">
@@ -743,7 +746,7 @@ function LessonItems({ lesson }: { lesson: Lesson }) {
                     dir="ltr" isolate keeps it from inheriting a Farsi
                     title's RTL base. */}
                 <div className="tiny faint">
-                  <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>
+                  <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}{fromArchive.has(item.id) ? ' · in this class’s archive' : ''}</span>
                 </div>
               </Link>
               <button
