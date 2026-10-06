@@ -24,8 +24,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-30T18:21:01.710Z
-        commit: 6edd44de1c9160f055444e02c7de6bf18b50ddb3
+        at: 2026-10-06T21:40:43.654Z
+        commit: aea881a1772577e48ea79fd940ac0b8bb30d0cf1
     - actor: Practice Compass
       action: Builds a whole snapshot of the device's data and files, hashes it, and
         compares it three ways against the repo and the last synced hash.
@@ -34,8 +34,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-30T18:21:01.710Z
-        commit: 6edd44de1c9160f055444e02c7de6bf18b50ddb3
+        at: 2026-10-06T21:40:43.654Z
+        commit: aea881a1772577e48ea79fd940ac0b8bb30d0cf1
     - actor: Practice Compass
       action: Publishes the snapshot atomically when this device is ahead — blobs,
         then tree, then commit, then a fast-forward-only reference update.
@@ -47,8 +47,8 @@ truth:
         - The device is online and the token is valid for that repo
       evidence:
         method: manual
-        at: 2026-09-30T18:21:01.710Z
-        commit: 6edd44de1c9160f055444e02c7de6bf18b50ddb3
+        at: 2026-10-06T21:40:43.654Z
+        commit: aea881a1772577e48ea79fd940ac0b8bb30d0cf1
     - actor: Practice Compass
       action: Archives the current copy on this device before applying an incoming
         snapshot.
@@ -57,8 +57,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-30T18:21:01.710Z
-        commit: 6edd44de1c9160f055444e02c7de6bf18b50ddb3
+        at: 2026-10-06T21:40:43.654Z
+        commit: aea881a1772577e48ea79fd940ac0b8bb30d0cf1
     - actor: The musician
       action: Chooses a side when both copies changed.
       shows: A two-button choice; which side is newer is shown only as a hint, never
@@ -69,8 +69,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-30T18:21:01.710Z
-        commit: 6edd44de1c9160f055444e02c7de6bf18b50ddb3
+        at: 2026-10-06T21:40:43.654Z
+        commit: aea881a1772577e48ea79fd940ac0b8bb30d0cf1
     - actor: Practice Compass
       action: Syncs again on its own when the app opens, 30 quiet seconds after
         changes, and when the device comes back online.
@@ -78,8 +78,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-09-30T18:21:01.710Z
-        commit: 6edd44de1c9160f055444e02c7de6bf18b50ddb3
+        at: 2026-10-06T21:40:43.654Z
+        commit: aea881a1772577e48ea79fd940ac0b8bb30d0cf1
   endsWith: Both devices hold the same practice data, every replacement was
     explicit, and no copy was ever destroyed.
   variations:
