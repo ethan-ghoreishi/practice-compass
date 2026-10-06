@@ -1,0 +1,11 @@
+{
+  "id": "20261005-make-setar-archive-recovery-repertoire-c-e964",
+  "contractId": "20261005-make-setar-archive-recovery-repertoire-c-e964",
+  "patchId": "c002ddb2a6b8852cee7ffeeba657e01090a82603",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-10-06T17:24:49.273Z",
+  "algorithm": "ed25519",
+  "signature": "WENOnvoOphmZK1MfxuACnL5eHGSSN/jF0h05Sp9ReUEn9H6ICxHtFwhdogvgnDjPFvpFxj0dDPW9lkrfspWZDg==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}
