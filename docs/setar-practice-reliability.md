@@ -212,6 +212,10 @@ having touched nothing.
 | term suggestions back to a datalist only | `src/components/MusicalTermField.tsx` | ac-12 | failed (caught) |
 | removal from a pathway that also unbinds the item | `src/store/useStore.ts` | ac-16 | failed (caught) |
 | removal from a pathway by deleting the item | `src/store/useStore.ts` | ac-16 | failed (caught) |
+| a Test sound request that plays after a later tap | `src/components/practiceCue.ts` | ac-14 | failed (caught) |
+| a setup choice re-premised from the live plan | `src/components/SetarSetupReview.tsx` | ac-11 | failed (caught) |
+| a created study source forgotten once it exists (replay turns stale) | `src/domain/setarSetup.ts` | ac-10 | failed (caught) |
+| a rename template that ignores the log header | `scripts/scan-setar-classes.mjs` | ac-1 | failed (caught) |
 
 Recorded 2026-10-06: all 26 caught, every source restored byte for byte. The
 first run MISSED one — a cue queued on a not-running context went unnoticed by
