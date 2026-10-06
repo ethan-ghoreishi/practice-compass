@@ -449,7 +449,9 @@ describe('browsing, and coming back to it', () => {
       await pathsOnTar();
       // Study sources opened while browsing Tar starts a new source ON Tar.
       await page.getByRole('link', { name: 'Study sources' }).click();
-      await page.getByRole('button', { name: /New/ }).click();
+      // Exactly Study sources' "New": until the lazy page has rendered, the
+      // Pathways view's "New pathway" is still on screen.
+      await page.getByRole('button', { name: 'New', exact: true }).click();
       expect(await page.locator('main').getByRole('combobox', { name: 'Instrument' }).inputValue()).toBe('inst-tar');
       await page.getByRole('link', { name: /Back/ }).click();
       await pathsOnTar();
