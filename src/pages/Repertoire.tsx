@@ -76,20 +76,33 @@ const VIEWS: { key: RepertoireView; label: string }[] = [
  * instrument, query and filters survive opening an item and coming back, and
  * browser back/forward walk through them. Opening an instrument here never
  * changes the instrument Today is practising.
+ *
+ * A change is a function of the browse state AS THE URL HOLDS IT NOW, never
+ * of the state this render captured: the router renders a URL change in a
+ * transition, so on a slow device a second control can fire before the first
+ * change has rendered, and building on the rendered state would erase it.
+ * History writes the URL synchronously, so it is always current.
  */
-function useBrowseState(): [BrowseState, (next: BrowseState, opts?: { replace?: boolean }) => void, string] {
+type BrowseUpdate = (change: (current: BrowseState) => BrowseState, opts?: { replace?: boolean }) => void;
+
+function useBrowseState(): [BrowseState, BrowseUpdate, string] {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
   const db = useStore((s) => s.db);
   const sessionInstrumentId = useStore((s) => s.sessionInstrumentId);
   const active = db.instruments.filter((i) => i.active);
-  const state = readBrowseState(params, active, sessionInstrumentId, {
-    statuses: ITEM_STATUS_ORDER,
-    types: Object.keys(ITEM_TYPE_LABELS),
-    quick: QUICK.map((q) => q.key),
-  });
-  const update = (next: BrowseState, opts?: { replace?: boolean }) =>
-    setParams(browseParams(next), { replace: opts?.replace ?? false });
+  const read = (from: URLSearchParams) =>
+    readBrowseState(from, active, sessionInstrumentId, {
+      statuses: ITEM_STATUS_ORDER,
+      types: Object.keys(ITEM_TYPE_LABELS),
+      quick: QUICK.map((q) => q.key),
+    });
+  const state = read(params);
+  // The app runs under a HashRouter: the live query is the hash's.
+  const update: BrowseUpdate = (change, opts) =>
+    setParams(browseParams(change(read(new URLSearchParams(window.location.hash.split('?')[1] ?? '')))), {
+      replace: opts?.replace ?? false,
+    });
   return [state, update, `${location.pathname}?${browseParams(state).toString()}`];
 }
 
@@ -129,7 +142,7 @@ export default function Repertoire() {
               key={v.key}
               className={`option${state.view === v.key ? ' selected' : ''}`}
               aria-pressed={state.view === v.key}
-              onClick={() => update({ ...state, view: v.key })}
+              onClick={() => update((s) => ({ ...s, view: v.key }))}
             >
               {v.label}
             </button>
@@ -140,7 +153,7 @@ export default function Repertoire() {
             <button
               className={`option${!state.instrumentId ? ' selected' : ''}`}
               aria-pressed={!state.instrumentId}
-              onClick={() => update({ ...clearBrowseFilters(state), q: state.q, instrumentId: '' })}
+              onClick={() => update((s) => ({ ...clearBrowseFilters(s), q: s.q, instrumentId: '' }))}
             >
               All
             </button>
@@ -149,7 +162,7 @@ export default function Repertoire() {
                 key={i.id}
                 className={`option${state.instrumentId === i.id ? ' selected' : ''}`}
                 aria-pressed={state.instrumentId === i.id}
-                onClick={() => update({ ...clearBrowseFilters(state), q: state.q, instrumentId: i.id })}
+                onClick={() => update((s) => ({ ...clearBrowseFilters(s), q: s.q, instrumentId: i.id }))}
               >
                 <span dir="auto">{i.name}</span>
               </button>
@@ -180,7 +193,7 @@ function SearchBox({
   label: string;
   placeholder: string;
   state: BrowseState;
-  update: (n: BrowseState, o?: { replace?: boolean }) => void;
+  update: BrowseUpdate;
 }) {
   return (
     <input
@@ -190,15 +203,18 @@ function SearchBox({
       aria-label={label}
       placeholder={placeholder}
       value={state.q}
-      onChange={(e) => update({ ...state, q: e.target.value }, { replace: true })}
+      onChange={(e) => {
+        const q = e.target.value;
+        update((s) => ({ ...s, q }), { replace: true });
+      }}
     />
   );
 }
 
-function ClearFilters({ state, update }: { state: BrowseState; update: (n: BrowseState) => void }) {
+function ClearFilters({ state, update }: { state: BrowseState; update: BrowseUpdate }) {
   if (!hasBrowseFilters(state)) return null;
   return (
-    <button className="btn btn-ghost btn-sm" style={{ width: 'fit-content' }} onClick={() => update(clearBrowseFilters(state))}>
+    <button className="btn btn-ghost btn-sm" style={{ width: 'fit-content' }} onClick={() => update(clearBrowseFilters)}>
       Clear filters
     </button>
   );
@@ -233,7 +249,7 @@ function MyRepertoireView({
 }: {
   db: DB;
   state: BrowseState;
-  update: (n: BrowseState, o?: { replace?: boolean }) => void;
+  update: BrowseUpdate;
   here: string;
 }) {
   const now = useMemo(() => new Date(), []);
@@ -268,7 +284,10 @@ function MyRepertoireView({
                   className="select"
                   aria-label={FACET_LABELS[facet]}
                   value={found.applied[facet] ?? ''}
-                  onChange={(e) => update({ ...state, [facet]: e.target.value || undefined })}
+                  onChange={(e) => {
+                    const value = e.target.value || undefined;
+                    update((s) => ({ ...s, [facet]: value }));
+                  }}
                 >
                   <option value="">Any</option>
                   {found.facets[facet].map((o) => (
@@ -285,7 +304,10 @@ function MyRepertoireView({
               className="select"
               aria-label="Group by"
               value={state.group ?? ''}
-              onChange={(e) => update({ ...state, group: (e.target.value || undefined) as RepertoireGroupParam | undefined })}
+              onChange={(e) => {
+                const group = (e.target.value || undefined) as RepertoireGroupParam | undefined;
+                update((s) => ({ ...s, group }));
+              }}
             >
               <option value="">Dastgāh or source</option>
               {(Object.keys(GROUP_LABELS) as RepertoireGroupParam[]).map((g) => (
@@ -580,7 +602,7 @@ function AllItemsView({
 }: {
   db: DB;
   state: BrowseState;
-  update: (n: BrowseState, o?: { replace?: boolean }) => void;
+  update: BrowseUpdate;
   here: string;
 }) {
   const now = useMemo(() => new Date(), []);
@@ -610,12 +632,13 @@ function AllItemsView({
   const texts = useMemo(() => repertoireSearchTexts(db), [db]);
   const quick = new Set(state.quick as Quick[]);
 
-  const toggleQuick = (k: Quick) => {
-    const next = new Set(quick);
-    if (next.has(k)) next.delete(k);
-    else next.add(k);
-    update({ ...state, quick: QUICK.map((q) => q.key).filter((key) => next.has(key)) });
-  };
+  const toggleQuick = (k: Quick) =>
+    update((s) => {
+      const next = new Set(s.quick);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return { ...s, quick: QUICK.map((q) => q.key).filter((key) => next.has(key)) };
+    });
 
   const visible = scored
     .map((s) => s.item)
@@ -644,7 +667,10 @@ function AllItemsView({
             className="select"
             aria-label="Status"
             value={state.status ?? ''}
-            onChange={(e) => update({ ...state, status: (e.target.value as ItemStatus | '') || undefined })}
+            onChange={(e) => {
+              const status = (e.target.value as ItemStatus | '') || undefined;
+              update((s) => ({ ...s, status }));
+            }}
           >
             <option value="">Any status</option>
             {ITEM_STATUS_ORDER.map((s) => (
@@ -657,7 +683,10 @@ function AllItemsView({
             className="select"
             aria-label="Type"
             value={state.type ?? ''}
-            onChange={(e) => update({ ...state, type: (e.target.value as ItemType | '') || undefined })}
+            onChange={(e) => {
+              const type = (e.target.value as ItemType | '') || undefined;
+              update((s) => ({ ...s, type }));
+            }}
           >
             <option value="">Any type</option>
             {TYPE_OPTIONS.map((o) => (
