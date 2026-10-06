@@ -96,7 +96,7 @@ The owner's confirmed answers for that corpus are
 | Invariant | Writers | Consumers (each fixed or checked clean) | Proof |
 | --- | --- | --- | --- |
 | A roster is the registry's; every role-named file counts against it, registered or not | `PIECES.csv` (owner only) | scanner inventory loop (`session.named` before the type/registry filters), attribution (`rosterTrusted`), diagnostics, `attentionReport` (§2 sections 2–3) | ac-1, ac-4 |
-| A new piece is declared, never inferred | owner, from an UNCONFIRMED `--attention` draft against the actual header | scanner registry filter, `attentionReport` drafts (header order, extra columns, quoting kept), app (no filename parsing) | ac-1, ac-4 |
+| A new piece is declared, never inferred | owner, from an UNCONFIRMED `--attention` draft against the actual header | scanner registry filter, `attentionReport` drafts (header order, extra columns, quoting kept) and `formatAttention` (the header it prints is re-quoted with `csvCell`, for the registry and the rename log, so it still describes the row beneath it), app (no filename parsing) | ac-1, ac-4 |
 | `studySource` is provenance: absent = unknown, `''` = none, text verbatim; wrong type refused | scanner `parseRegistry` (only when the column exists) | digest, `decodeSourceIndex`, `parseSourceIndex` (fetch + file doors), `checkSourceGraph`, `validateDB` + v16 step, adoption (`sourceReconcile`), setup source groups, import/export/sync/restore/hydration/recovery | ac-2 (+ io companion) |
 | A rename is exact evidence or nothing | RENAME-LOG.csv (owner only) | `planArchiveImport` repair, suppression re-key, `itemFiles`/`lessonFiles`, ItemMaterial "not described" label | ac-5, ac-4 |
 | A suppression is lifted only as its exact `{kind, ref, itemId}` | `restoreArchiveSuppression` | Recovery list (ArchiveRefresh), refresh planning (`isSuppressed`), `sessionMembership` | ac-3 |
@@ -116,7 +116,11 @@ The owner's confirmed answers for that corpus are
 - **Intake:** registered / unregistered / registered-but-unlisted pieces ×
   empty / consistent / inconsistent rosters × the real 10-column header,
   a reordered header with an extra column, and an 8-column one × future,
-  non-consecutive and three-digit session numbers.
+  non-consecutive and three-digit session numbers × a header cell holding a
+  comma or a quote (registry `"teacher, ""comment"""`, rename log
+  `"audit,note"`), judged on the PRINTED header and template by a reader the
+  scanner does not own: a rescan cannot tell, because the scanner reads the
+  file's own header.
 - **Provenance:** absent, `''`, known, unknown text; `null`, number, object.
 - **Renames:** single, multi-hop, cross-session, unlogged, cyclic, forked ×
   destination present/absent × global/item-scoped hide.
@@ -125,6 +129,12 @@ The owner's confirmed answers for that corpus are
   term / alias / ambiguous / composite × `(قطعه)`, ZWNJ/hyphen, provisional.
 - **Premises:** typed empty/literal/ref × rename / meaning change / same label
   different identity × deleted / rebound / moved item / proposal drift.
+- **Study-source creation:** one group / two groups in one Apply × refused write
+  → Try again with the original `new:<group>` selections → "Saved." finalising
+  each group to ITS OWN source → reload → asking to create again (names the
+  existing source; no third). Domain: `setar setup commits selected rows
+  atomically idempotently and without collateral changes`; controls: `setar
+  setup review is usable through controls and survives interruption`.
 - **Cue doors:** Today, Start, StageDetail, PathwayDetail, RoutineDuration,
   RoutineRunner bare URL, Session Plan, Resume on Active and on Close × running /
   suspended / interrupted / throwing / hanging contexts.
@@ -216,8 +226,16 @@ having touched nothing.
 | a setup choice re-premised from the live plan | `src/components/SetarSetupReview.tsx` | ac-11 | failed (caught) |
 | a created study source forgotten once it exists (replay turns stale) | `src/domain/setarSetup.ts` | ac-10 | failed (caught) |
 | a rename template that ignores the log header | `scripts/scan-setar-classes.mjs` | ac-1 | failed (caught) |
+| a registry draft header printed without its CSV quoting | `scripts/scan-setar-classes.mjs` | ac-1 | failed (caught) |
+| a rename-log header printed without its CSV quoting | `scripts/scan-setar-classes.mjs` | ac-1 | failed (caught) |
+| every created study source finalised to the first group's | `src/components/SetarSetupReview.tsx` | ac-11 | failed (caught) |
+| a created study source never finalised on the screen | `src/components/SetarSetupReview.tsx` | ac-11 | failed (caught) |
+| a retry of an already-applied creation that writes nothing | `src/store/useStore.ts` | ac-10 | failed (caught) |
 
-Recorded 2026-10-06: all 26 caught, every source restored byte for byte. The
+Recorded 2026-10-06: all 35 caught, every source restored byte for byte (the
+last five were each run alone with `--only=<name>` after the second rework, at
+the assertions their findings named: the second group's selector holding the
+first group's source, and a selector left on `create` after "Saved."). The
 first run MISSED one — a cue queued on a not-running context went unnoticed by
 ac-14, whose stand-in never resumes a context after a missed boundary. The
 practiceCue companion now drives exactly that (interrupted → boundary → the

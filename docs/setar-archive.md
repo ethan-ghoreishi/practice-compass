@@ -120,7 +120,8 @@ is archive-relative. It lists:
 
 1. **Pieces named by files but missing from PIECES.csv**: each key, the sessions
    and roles it was seen in, why it is excluded, and an UNCONFIRMED draft row built
-   against the registry's ACTUAL header (any order, any extra columns). The draft
+   against the registry's ACTUAL header (any order, any extra columns; a header cell
+   holding a comma or a quote is printed quoted, as the file writes it). The draft
    carries the identity and nothing else; no form, dastgāh, composer, source or
    session is read off a filename.
 2. **Unnamed demonstrations kept with their lesson**, saying whether the roster is
