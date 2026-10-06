@@ -1,97 +1,41 @@
 ---
 id: 20261005-make-setar-archive-recovery-repertoire-c-e964
 contractId: 20261005-make-setar-archive-recovery-repertoire-c-e964
-patchId: 8ff4619f521ec0849e6c30c2b31329b6f0cc5ae5
+patchId: 33cf801043e6ae0e6ea55d8600a8a847b0480dc6
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: setup-review-premise-and-acknowledgement
-    summary: "P1: SetarSetupReview rebuilds before-values from the live plan for
-      status, kind, stage, source, reference and class choices, bypassing
-      stale-selection refusal. Its captured current key and unconditional saved
-      reset also discard newer selections while persistence is pending. Preserve
-      the reviewed premise/proposal and bind acknowledgement to the live draft."
-    counterexample: "Choose Keeping fresh while an item is dormant, then sync it to
-      repairing before Apply. The production component handler submits
-      before={status:repairing} and writes maintenance; applySetarSetup refuses
-      the original dormant premise. Choosing a second item while the first save
-      is pending is cleared by the first saved callback without being written.
-      Instances: SetarSetupReview.tsx:71,80,108-119,293-298,319. Consumers
-      checked clean for this invariant: applySetarSetup with a carried premise,
-      ArchiveRefresh typed metadata decisions, ui acknowledgement sequencing,
-      ItemForm, Materials and MusicTerms live draft readers, immutable Recovery
-      and StageDetail source actions. Extend setar setup commits selected rows
-      atomically idempotently and without collateral changes and setar setup
-      review is usable through controls and survives interruption; current
-      browser drift is unrelated."
-  - family: setup-study-source-identity-and-idempotence
-    summary: "P1: Study-source creation loses group identity across acknowledgement
-      and replay. The saved callback assigns the first selected item's
-      materialId to every create group; new:<group> is not translated to its
-      created id for retries, and Try again omits source finalisation."
-    counterexample: "Create sources for two distinct declarations in one Apply. The
-      production handler creates two distinct materials but its saved callback
-      sets both source selectors to the first material. Replaying one original
-      create selection against the resulting database is rejected as stale
-      instead of a no-op. Instances: setarSetup.ts:398,511,524-537;
-      SetarSetupReview.tsx:301-307,319. Consumers checked clean: per-group
-      creation within one domain commit, explicit existing-source selection and
-      instrument filtering, ItemForm createdSource retry, Materials draft.id
-      retry, keyed course-source reuse. Extend setar setup commits selected rows
-      atomically idempotently and without collateral changes and setar setup
-      review is usable through controls and survives interruption to multi-group
-      creation, failed creation persistence and unchanged replay."
-  - family: practice-sound-pending-request-lifecycle
-    summary: "P2: testPracticeSound queues unsuperseded callbacks on resume promises
-      and calls resume twice per suspended tap. Old test/recovery requests can
-      sound together when a later gesture resumes the context, violating the
-      no-queued-old-tones acceptance."
-    counterexample: "With a suspended context whose resume promises remain pending,
-      call testPracticeSound three times: six promises accumulate and no pulse
-      plays. Later prime the context, mark it running and resolve the earlier
-      promises: six late oscillator pulses and three vibrations are emitted.
-      Instances: practiceCue.ts:133-146; Settings Test practice sound;
-      ActiveBlock SoundNote and its RoutineRunner reuse. Consumers checked
-      clean: direct playPracticeCue while suspended, prime-only block/routine
-      Start and Resume doors, atomic store marker claims and both boundary
-      callers. Extend practice sound reuses one gesture primed context across
-      all start and resume doors and practice sound keeps one context primed
-      only by taps and never queues a cue to pending requests that later
-      settle."
   - family: header-aware-source-metadata-drafts
-    summary: "P2: The rename-log attention template prints the actual header but
-      always puts old and new paths in the first two columns. Valid reordered or
-      extended headers produce incorrect exact rename declarations."
-    counterexample: "For new_path,timestamp,old_path, formatAttention emits <the
-      missing path>,<its current path>,. Filling those placeholders puts the old
-      path into new_path, the current path into timestamp and leaves old_path
-      empty. Reversing just old_path/new_path reverses the declaration.
-      Instance: scan-setar-classes.mjs:982-983. Consumers checked clean:
-      readTable/buildIndex rename readers honour header names; new registry
-      drafts map header names; roster amendments target sessions and preserve
-      other raw cells; app rename consumers follow exact graph pairs. Extend
-      setar durable intake preserves registry authority and exact rename
-      evidence without changing media with reordered and extra-column rename
-      logs."
-  - family: setar-setup-direction-aware-values
-    summary: "P2: SetarSetupReview pins independently authored before/after values
-      and mixed evidence to LTR and puts direction on a bare item title instead
-      of its title/detail group. The direction ledger records that title as a
-      group, leaving the violation undetected."
-    counterexample: "Organisation renders a Farsi gusheh, owner-written stage title
-      or study-source title inside span dir=ltr at SetarSetupReview.tsx:240-246.
-      Its organisation title is strong dir=auto at 234, while the containing
-      detail group has no direction. Instances include kind/gusheh, stage and
-      source output in show(), and evidence interpolating composer, dastgah,
-      stage and source labels in setarSetup.ts. Consumers checked clean for the
-      same new-value surfaces: ArchiveRefresh DifferenceRow and Recovery
-      authored-value isolates, MusicalTermField suggestions and RoutineRunner
-      bare-URL title group. Extend portable term and recovery controls preserve
-      direction focus and scroll ownership to setup rows and correct
-      direction.test.ts:195 rather than endorsing the bare title."
-createdAt: 2026-10-05T23:38:10.517Z
-sealedAt: 2026-10-05T23:53:49.238Z
+    summary: "P2: formatAttention loses CSV quoting when printing registry and
+      rename-log headers, so valid quoted extension headers no longer describe
+      their accompanying draft rows."
+    counterexample: 'The accepted header new_path,"audit,note",old_path prints as
+      new_path,audit,note,old_path. Parsing that printed header with the filled
+      three-cell template leaves old_path empty and assigns the old path to
+      note. Instances: scripts/scan-setar-classes.mjs:945,984. Checked clean:
+      parseCsvCells/readTable, new registry draft cells, raw-cell roster
+      amendments, rename template column placement and downstream exact rename
+      consumers. Extend setar durable intake preserves registry authority and
+      exact rename evidence without changing media to quoted extension headers.'
+  - family: setup-study-source-identity-and-idempotence
+    summary: "P2: Required multi-group creation acknowledgement and failed-creation
+      persistence proof remains absent from the named setup checks, despite the
+      domain identity repair."
+    counterexample: "The named browser test selects only mat-radif and never
+      exercises create-group finalisation at SetarSetupReview.tsx:179-183. The
+      domain test covers successful two-group creation/replay, but its
+      failed-write case at setarSetup.test.ts:305 applies a kind change with an
+      existing-source context. Missing proof instances: group finalisation,
+      failed creation persistence, Try again and repeat/reload. Checked clean:
+      deterministic group IDs, production domain creation/replay,
+      existing-source instrument filtering, shared acknowledgement sequencing,
+      ItemForm and Materials retries, and keyed course-source selection. Extend
+      setar setup review is usable through controls and survives interruption
+      and setar setup commits selected rows atomically idempotently and without
+      collateral changes to those creation cases."
+createdAt: 2026-10-06T11:11:06.099Z
+sealedAt: 2026-10-06T11:47:56.476Z
 ---
 
 # Review: Make Setar archive recovery, repertoire corrections and iPhone practice reliable
@@ -105,375 +49,8 @@ sealedAt: 2026-10-05T23:53:49.238Z
 - **Contract:** 20261005-make-setar-archive-recovery-repertoire-c-e964
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/45
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `8ff4619f521ec0849e6c30c2b31329b6f0cc5ae5`
+- **Diff patch-id:** `33cf801043e6ae0e6ea55d8600a8a847b0480dc6`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
-
-## The plan the owner approved
-
-Verbatim. `assumptions` and `possibleConflicts` are the Planner's advisory
-reading — check them against the diff rather than accepting them.
-
-````yaml
-# Approved intent: Make Setar archive recovery, repertoire corrections and iPhone practice reliable
-
-The owner imported this plan and confirmed the change. Its approved meaning is
-recorded here verbatim; the transport snapshot is deliberately omitted.
-
-- **Kind:** existing-flow
-- **Risk tier:** heavy
-- **Builder:** claude
-
-## What the owner asked for
-
-This is the wording the owner and the planning agent settled on together, taken
-from the plan itself — not a description reconstructed afterwards.
-
-> Plan one broad but coherent Practice Compass lane, with Claude as builder, for the seven current owner-facing issues below. Planning only in this session; do not implement.
-> 
-> 1. Session 40: after adding session-40-29-09-2026, Refresh imports its videos but excludes نت-پیش-درامد-چهارگاه-فروتن.pdf and نت-چهارمضراب-چهارگاه-عبادی.pdf and their practice items. It reports both piece keys absent from the registry, with 0 additions/updates/decisions and 2 needing attention. Rerunning the NAS task does not help. Deleting Class 40 and refreshing does not restore it. Trace scan → publication → refresh → bindings/suppression → Lessons/items and provide low-admin recovery, distinguishing intended behaviour from defects.
-> 2. Session 1: after renaming ضبط-کلاس-1 through ضبط-کلاس-3 to نمونه-1 through نمونه-3 and indexing/refreshing, the class retains old names and expected items lack the files. Trace exact rename provenance and refresh rather than assuming a defect.
-> 3. Refresh repeatedly offers بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله gusheh بسته‌نگار → بسته-نگار, and جنگ-شهنازی and صلح-شهنازی form ضربی → (قطعه), despite deliberate owner edits. Establish authority and avoid stale/meaningless repeated choices while preserving those edits.
-> 4. iPhone Form and Dastgāh/Āvāz inputs offer no predefined terms while typing; Musical terms is correct and MacBook works. Investigate cross-device input/UI causes.
-> 5. Provide a sufficiently clear timer target signal using existing boundary/audio/vibration/PWA behaviour within iPhone platform limits. No second timer or unsupported alarm guarantee.
-> 6. Make accidental pathway additions safely reversible: + becomes green Play and the owner sees only deletion as an inverse. Assess the intended model; do not assume deletion.
-> 7. Safely bring current Setar data towards Keeping fresh, correct stages in سه‌تار · ردیف و رپرتوار, correct class associations, Gusheh (radif)/Composed piece classification and ردیف میرزا عبدالله study source where appropriate. Identify exceptions and provide an idempotent, reviewable approach, without a blanket migration or unrelated data overwrite.
-> 
-> Read current AGENTS.md, DECISIONS.md, docs/tests and recent history first. Treat reports as symptoms. Trace every implementation/consumer and the invariant/failure family, search siblings/counterexamples/platform variants/stale parallel paths, and identify wrong-layer or false-confidence tests. Include only still-real material adjacent defects sharing these flows. Every acceptance must have a reproducible proof route and state-discriminating regression/family/mutation evidence where useful before the first reviewer pass. Preserve user data, compatibility and deliberate edits. Automate practical proof and keep OWNER testing minimal and restricted to what automation cannot establish. Planning and automated investigation of real NAS/Setar media are read-only. Never propose destructive media operations, the retired deployment path or rsync --delete. Return only validated import-ready Prismatica Start JSON.
-> 
-> Revision: keep this as ONE broad HEAVY lane covering all existing scope and preserve the investigation, root-cause findings, acceptance and OWNER checks. Session 40 and Session 1 are concrete regressions, not the limit. Provide a predictable low-admin intake path for Session 41, 42 and later, new identities, added/changed files and occasional renames, without another code lane or developer-generated worksheet. Retain the registry unless evidence justifies otherwise; identify the minimal safe authority/input and make any required maintenance generic, clear and actionable. Prove synthetic future numbers and identities. Re-check actual Start/Resume → boundary → nextSignal/acknowledgement → existing audio/vibration/visual behaviour, creation/resume/lifecycle/routing, Mac and iPhone Safari/PWA before prescribing a correction. Use the smallest evidence-supported fix within the single clock/boundary model. Automated proof covers signalling mechanics and exactly-once behaviour; OWNER covers actual audibility/platform behaviour. No locked/background/iOS alarm guarantee. Sweep consumers, siblings and stale tests, and design focused regression/mutation proof before the first review.
-
-## Why
-
-One source-to-owned-practice lane. Reuse exact source identity, accepted-graph baselines, scoped suppressions, durable catalogue bindings and the existing clock. Correct missing provenance/consumer wiring and expose existing safe recovery/inverse actions. A reusable scanner attention report keeps ongoing source declarations low-admin. Portable suggestions and correctly reached gesture-enabled cues complete the same musician-facing loop. A narrowly additive saved field and reviewable batch corrections justify HEAVY scrutiny, with family proof available before the first independent review.
-
-## Today
-
-Investigated clean main 93dadcb10cbda2650a53829b76538bcd6b25e133, current AGENTS.md, DECISIONS.md 2026-09-17/29 and 2026-10-01, docs/setar-archive.md, docs/nas-topology.md, docs/repertoire-experience.md and relevant source/tests/history. September archive reworks established exact rename chains, graph validation and durable suppression; c021b46 introduced reference/vocabulary semantics and 97953e7 protected media-adjacent tools.
-
-Read-only scanToIndex on the mounted Sandisk copy, 2026-10-05: 104 pieces, 40 sessions, hash b5c2e94976db0e6a89f33e927a1653176e933fd266a0de6ff2e4bc08bdc5e718, exactly the two reported Session 40 diagnostics. Both canonical keys are missing from PIECES.csv; roster 40 is empty. Unknown named PDFs are deliberately excluded; class video stays lesson-level, and the unnamed demo has no piece scope. In-memory addition of correctly ordered registry rows with session 40 membership indexes both scores and scopes the demo to both. The actual CSV has ten columns including source and roles_present: appending the scanner's eight required columns in that order would misplace sessions. The scanner drops the source column, although 69 rows explicitly declare ردیف-میرزاعبدالله.
-
-Class deletion deliberately persists a session suppression. resetArchiveSuppression/withoutSuppression have no production UI; tests restore by calling the store directly. Reset currently matches kind/ref alone, so exposing it unchanged would also clear sibling item-scoped hides. Lifting suppression cannot recover deleted authored notes/files.
-
-Session 1's current local index correctly emits نمونه-1/2/3, ordered and scoped to رنگ-ماهور-درویش-خان and چهارمضراب-اول-دشتی-صبا. RENAME-LOG.csv stops historical video paths at ضبط-کلاس-N, without continuations to نمونه-N. Unlogged old resources are intentionally retained as unavailable; authored recording titles intentionally survive path repair. The live DSM runtime, latest GitHub publication and private browser database were not accessed. Older published state, missing item source bindings and suppression remain alternatives for the reported missing material, not confirmed resolver defects.
-
-planArchiveImport offers every unequal registry field each refresh rather than comparing it with the accepted source baseline. Literals use byte equality; only term references compare semantic identity. There is no Keep mine choice; the authority-claiming heading is misleading for a spelling difference or generic (قطعه). A separate sibling bug is reproduced in memory: label-based decisionMatchesSuggestion accepts a term-a → term-b premise change when labels match. Such ambiguous imported vocabularies pass validateMusicTerms, and the existing metadata test explicitly endorses label fallback.
-
-MusicalTermField relies entirely on native datalist names. Browser journeys fill finished names and prove storage, not visible partial-query selection. That is a platform-dependent UI exposure, not proof of the precise iPhone failure.
-
-Rechecked the full cue path on this HEAD. startItemSession delegates to startSession; beginPlanSegment also starts that same block. Block and routine Start/Resume store methods establish/resume wall-clock state and contain no audio creation or resume. Today/StageDetail/PathwayDetail routine Start buttons navigate and RoutineRunner starts from an effect; RoutineDuration already starts inside its click handler. SessionPlan first creates a pending plan, then its explicit Begin starts each real block. ActiveBlock and RoutineRunner tick while running, compute elapsed wall time, call nextSignal in an effect, write signalledThrough, then call playSignalCue. Routine Skip calls acknowledgeThrough; block target remains visual/overtime and does not auto-finish, whereas routine natural completion keeps its existing save behaviour. No sound is intended while paused.
-
-A tone IS intended: playSignalCue attempts vibrate(80), creates a NEW AudioContext/webkitAudioContext at the boundary, connects oscillator → gain → destination, schedules 880 Hz with gain 0.2 decaying over 0.3 seconds, and closes only on oscillator onended. There is no resume() or gesture prime anywhere in this path. Read-only Node execution of the actual extracted effects/cue with fake running and suspended ports at 59/60/61 seconds reaches marker → vibrate → oscillator exactly once per ordinary observation in both screens; a suspended port is never resumed. This establishes call reachability in that bounded harness, not mounted React or hardware audibility. Suspended audio time may not advance to onended, so per-boundary contexts can remain allocated. Replaying the same captured effect after the store has immutably replaced its active record produces TWO cue attempts: the setters unconditionally write, without a claim result. src/main.tsx uses StrictMode; a mounted development/remount regression must prove this family rather than assuming the pure nextSignal tests cover effect replay.
-
-On Mac, policy/site activation may allow a fresh context to run, so missing sound is not universally an unlock diagnosis. On iPhone Safari, delayed context creation without a gesture is vulnerable to autoplay restrictions; interruption can suspend audio again. Installed PWA uses the same cue code and supplies no native alarm route. The graph is connected correctly; 0.3-second decay is potentially easy to miss, but current evidence cannot determine the owner's hardware volume, mute/output routing, interrupted state or exact browser policy. There is no existing local notification/service-worker alarm implementation. Existing pure signal and wake tests prove decisions, not gesture integration or sound. [Web Audio best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices) support gesture creation/resume; [AudioContext state documentation](https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/state) and [WebKit interruption report](https://bugs.webkit.org/show_bug.cgi?id=273511) support lifecycle variants, not a claim that the owner's version has that exact bug.
-
-StageDetail already has safe Remove from pathway, Unlink reference and hidden Restore under ⋯. The inverse exists but is poorly exposed, or the owner runs an older build. membersForSession already derives archive associations and respects unlink suppression but has no production consumer: Lessons and ItemDetail inspect itemIds only. itemFiles independently requires the correct source binding. Classification tests also miss real registry exceptions: six radif درامد variants, two distinct چهارپاره contexts, اتود-وزیری, تمرین-دشتی-1-علیزاده and personal-only بداهه-درامد-افشاری. itemForPiece treats every non-گوشه as full_piece. A composer-attributed چهارپاره-مرادخانی also declares radif source, demonstrating that provenance is not sufficient kind authority. Keeping fresh describes learned material; archive presence proves no learning.
-
-Additional reproduced scanner sibling: buildIndex with roster [known], an unnamed demo and an unregistered named score diagnoses the score but leaves rosterTrusted=true and assigns the demo to known. The excluded filename vanished before roster consistency was evaluated. This is a real false-attribution defect, unlike intentional exclusion of the PDF.
-The scanner already accepts arbitrary session-N-DD-MM-YYYY folders and stable registered identities. Ongoing intake is primarily source declaration, not per-session code. Named registered material is scoped exactly; an unnamed demo additionally needs a confirmed roster. A new path has no identity relation to an old path without the log. Replacing bytes at the same path retains the reference and opens the current NAS bytes, even if semantic index fields/hash do not change. File omissions are retained as not described, not proof of deletion. These cases require distinct guidance rather than a Session-40-only worksheet.
-
-## Instead
-
-One lane anchored in work-a-pathway-stage, also affecting existing log-a-class, capture-a-practice-item, browse-my-repertoire, practise-todays-recommendation, run-a-session-plan, back-up-and-restore and sync-devices-via-github. Reconcile those existing Flow descriptions after building; introduce no new top-level Flow.
-
-1. Recover through existing archive mechanisms. Keep exact registry identity, unknown-piece exclusion and suppression of deliberately deleted entities. Fix scanner roster trust at its shared attribution boundary: retain recognised named-piece disagreement evidence before filtering unsupported/unregistered assets. A conflicting named piece, including one absent from the registry, prevents unnamed-demo expansion; keep the demo lesson-level and diagnose the uncertainty. Never invent the missing roster from filenames. Add a collapsed recovery disclosure to ArchiveRefresh listing suppressed sessions/pieces/links/resources with precise global or item scope. Restore only the chosen tuple, including itemId, with persistence acknowledgement and stale-preview revalidation, then use normal preview/commit to re-import current source entities. Preserve all other decisions. Explain that source re-import does not recover deleted notes/attachments. Surface diagnostics and suppressed counts even for an already-current graph; distinguish pending/completed changes and metadata choices, and never call Refresh a NAS rescan.
-
-Make intake durable for all normal future sessions/file changes. Retain PIECES.csv as the byte-exact identity and declared-roster authority, and RENAME-LOG.csv as exact path provenance. Reuse the existing scanner, parsers and stable two-read source observation; add an optional read-only --attention mode in scripts/scan-setar-classes.mjs. It emits an actionable report/drafts to stdout only, refuses --out in this mode, and never edits registry, log or media. Normal scheduled scan/publication remains unchanged. This is an operator aid, not a second scanner, importer, persistent ledger or general registry editor. Report paths are archive-relative; no credential/root enters logs or app data.
-
-The report groups each missing canonical key with observed sessions/roles/files and explains why it is excluded; emits a clearly UNCONFIRMED new-row draft against the registry's ACTUAL header; distinguishes existing-key roster amendments from new identity; and exposes invalid naming, unsupported assets, inconsistent/empty roster attribution and invalid rename-chain evidence with the minimal safe action. Observations are candidates, never a confirmed roster. A row needs only an owner-confirmed exact identity; optional musical fields can remain unknown. Confirm assigned session membership only when needed for unnamed-demo attribution or when declaring actual teaching assignment. No learned status, type, study source or musical meaning is inferred from filename components. For an existing row, preserve all other session declarations, cells, quoting and additional columns; no eight-column positional append. Reuse CSV escaping for copyable drafts and show what must be confirmed before use. For renames, expose current relative paths and the existing old reference/log chain, with a reusable old_path,new_path template. The owner supplies the exact old→new pair; do not suggest a guessed match from size, numbers or similarity. Missing old-path evidence is explicitly unresolved. Keep the app free of filename/reason parsing: the scanner writes actionable diagnostic wording and ArchiveRefresh renders it plus the generic runbook route, current relative references and binding/suppression explanations.
-
-Document one reusable owner checklist in docs/setar-archive.md, linked from the collapsed attention/recovery surface: (a) ordinary supported files for registered identities require only the existing NAS job/latest publication then Refresh; named files need no redundant per-file registration; (b) a genuinely new identity requires one confirmed registry declaration, using the on-demand report rather than a developer worksheet; (c) unnamed demos remain lesson-level until an independently confirmed roster is declared, with empty versus inconsistent roster explained; (d) a renamed/moved file needs one append-only, exact log continuation if old references/hides are to follow it, after checking existing chains/forks; (e) additions and valid role changes propagate from the new index, same-path byte replacement opens the current NAS file, and omitted paths remain not described with explicit hide/repoint choices. Deliberate suppressions still require explicit restoration. No routine intake requires a code edit, reseeding or another lane. Distinguish scan failure, old runtime, successful unchanged publication, stale published hash, missing registry evidence, unresolved binding and suppression, so repeated task runs are not prescribed for a declaration problem.
-
-Keep the two Session 40 registration proposals and three Session 1 log continuations as worked regression examples of that SAME workflow, not its implementation or ceiling. Musical metadata remains owner/teacher-confirmed. Validate generic drafts and owner-confirmed changes only on temporary corpora, including sessions 41, 42 and a non-consecutive number, new arbitrary identities, and repeat runs. Only the owner applies reviewed source metadata; automated investigation/testing is read-only against real media/registry/logs. Existing NAS task then Refresh suffices after compatible runtime update.
-
-2. Exact rename propagation remains shared. Logged chains update source-generated names/roles/scopes and owned lesson reference paths, while preserving authored titles, notes, rows and ids. Never infer unlogged mappings from part numbers, basename, size, mtime or similarity. Unavailable rows say Not described by the latest index, not that NAS bytes are certainly gone. Distinguish generated old resources from authored old labels, show binding/suppression explanations and reuse Link/Create separately/Skip for uncertain owned records.
-
-Wire one shared association selector over explicit lesson.itemIds plus membersForSession resolved through exact bound item identities and instrument, deduplicated by id. Consume it in Lessons, ItemDetail Connected to, its lesson summary, Connections and linkable lists. Label archive associations as provenance, not practice or preparation. Derived Unlink uses the existing narrow link suppression; derived Relink clears that suppression rather than copying membership into itemIds. Manual links remain authored. Association unlinking does not delete independently scoped item material; hiding material is separate.
-
-3. Owner fields remain authoritative after seeding. Offer normal-refresh metadata only when the relevant proposed field changed from the last accepted source field. Unchanged source values never challenge later owner edits. Reuse the accepted graph as the durable baseline, with Use archive value / Keep my value and explicit Apply wording that retains unchosen owner fields while accepting source facts. Do not add a metadata-decision ledger. First adoption preserves owner fields, with any optional comparison before adoption rather than recurring next refresh. An optional Review differences action can inspect already-existing mismatches without changing them.
-
-Resolve both literals and refs through existing unique term resolution for dastgah/form/composer; ambiguous/unknown/composite values stay literal. Do not normalise arbitrary gusheh spellings or source identity: بسته‌نگار remains exact owner text. Exact (قطعه) is generic and cannot improve an existing specific form such as ضربی. Use the heading Archive metadata differs. Bind each choice to record id, typed current value and exact proposed value; labels are not identity. Changes to target, field, relevant term meaning or proposal require a fresh preview. Preview/commit summaries agree and no-op refreshes preserve object identity/rev.
-
-4. Carry PIECES.csv's optional source as SourcePiece.studySource through scanner, semantic digest, decoder, checkSourceGraph, accepted/retained graph and exports. Missing is unknown legacy evidence; present empty is explicit empty evidence; present wrong types refuse. Do not infer it from keys, titles or notes. Keep index v1 as a backwards-compatible additive optional field: actual base-reader proof must show older readers safely ignore it without changing existing meanings, and new readers accept old indexes. Bump PracticeDB to schema 16 for the persisted field; migration only advances the version and retains absence, without clock reads, reseeding or item repairs. Base v15 DB readers refuse v16 safely. Deploy compatible app first, then copy all three NAS runtime files using the existing runbook.
-
-5. Add optional Review Setar setup alongside archive recovery, using the actual current device database. Select instrument/pathway explicitly where identity is uncertain; never infer a different Setar instrument from a renamed label. Show per-field before/after/evidence, already-correct rows and exceptions. Bulk accept evidenced proposals; unresolved cases stay unselected with an explicit choice. A separate owner-selected Keeping fresh batch covers only displayed current Setar item ids, with unrecorded/new, resting, fragile/repairing, techniques and parts visible for exclusion. This is not a migration or future import policy.
-
-Kind proposals distinguish ordinary gushehs, six radif daramad variants, radif versus composer-attributed chaharpareh, etudes/exercises, personal improvisation, parts and unknown/provisional/composite identities. Declared source provenance alone never establishes kind. Change itemType/gusheh only when selected; retain form/composer/dastgah unless separately selected. The same classification policy seeds new explicit تمرین/اتود as exercise, clear composed works as full_piece and ordinary گوشه as gusheh, asks about ambiguous kinds, and keeps personal-only improvisation as source evidence without silently minting a composed repertoire work. Never delete pre-existing exceptions.
-
-Propose radif placement from resolved modal context in the selected mixed Setar pathway, composed work in its existing composed/forms stage, and explicit exceptions for technical items, parts, custom/missing stages, composite modal identity or conflicting deliberate placement. Placement does not imply catalogue linking. Link only an owner-confirmed stable reference through existing legacy/identity refusal; generic form-category suggestions do not identify individual works and the partial radif catalogue may lack a match. Preserve reference/hidden intent. Propose ردیف میرزا عبدالله from declared studySource or confirmed radif references; choose an existing same-instrument Material explicitly, or create one once after selection. Duplicate candidates, conflicting materialId, different recensions and composed variants are reviewed, never deduplicated by title. Class associations use the shared relation, with manual additions/suppression changes selected explicitly.
-
-Commit only displayed selected ids/fields in one validated store mutation, checking rev and exact before-values, acknowledging persistence and providing a retry that really writes. Preserve active block/routine/plan snapshots, notes, blocks, reviews, dates/provenance, ratings/counters, attachments/bytes, unrelated instruments/items and all unselected fields. A completed rerun is a no-op. Nothing runs automatically on load, hydration, import, sync or ordinary Refresh.
-
-6. Replace native-datalist dependence in every MusicalTermField consumer with one portable suggestions surface alongside free text, with no UA branch or dependency. Reuse vocabulary, termSuggestions and existing search aliases/normalisation for bounded visible matching native buttons and an explicit browse-all choice. Selection stores stable term id. Preserve unedited literals, aliases, clearing, unknown/composite/ambiguous text, composition events, touch/focus/Tab/screen-reader use, archived-term policy, direction and main-only scroll on new/edit forms. Do not automatically accept partial matches. Primary platform evidence: [WebKit datalist regression](https://bugs.webkit.org/show_bug.cgi?id=305719). This motivates independence from the native popup; it does not prove the owner's exact iOS defect.
-
-7. Correct the evidenced gesture/context lifecycle gap in the EXISTING cue, rather than replacing the timer or nextSignal. Before behaviour edits, reproduce the actual screen/marker/cue path through mounted browser controls with instrumented AudioContext, vibration and fixed wall time; preserve the red/current trace alongside the correction. The in-memory evidence above is not a substitute for that route. Record constructor, state, synchronous resume invocation, oscillator scheduling/routing and marker claim in order, with explicit limits on what fake ports and browser audio graphs prove.
-
-Use one page-lifetime AudioContext shared by the existing cue callers, created lazily and resumed synchronously during actual Start/Resume/Test sound click handlers, before any await/navigation. Do not create a fresh context in the later boundary effect or close the shared context after each oscillator. Keep the connected oscillator/gain path; clean up short-lived nodes. Treat running as engine readiness, never proof of audible hardware output. Rejected, hanging, suspended, interrupted, closed or unsupported states do not block starting/practising, throw a page error, queue an old cue or silently claim readiness. A closed context can be replaced only on an explicit gesture after its predecessor is closed; do not keep parallel contexts or retry/recreate forever. State changes can update a calm unavailable/interrupted indication and a one-tap sound recovery on the practice screen; they cannot unlock from render/effect or replay consumed boundaries. Do not force an audio-session category, play continuous/silent background audio or add a workaround dependency without new concrete evidence.
-
-Sweep Today recommendation/review/direct starts, StartBlock, ItemDetail/next item, StageDetail, routine cards/duration/essentials, pending/initial/later Session Plan segments, ActiveBlock Resume, CloseBlock Resume, RoutineRunner Resume and direct routine URLs. Starting a pending plan alone does not start its clock: each actual Begin must retain gesture activation. Routine card Start remains one tap: move actual start into the originating click handler using existing segmentsForRun, as RoutineDuration already does, then navigate; a bare routine URL offers explicit Start rather than silently starting from an effect. Existing running routes resume/redirect without replacing work; navigating to an already running clock does not restart it. Update the existing routine-notes browser journey's initial direct-route assumption to click Start, retaining its cross-boundary ownership proof.
-
-Strengthen acknowledgement at the existing store marker setters, not with another timer/counter. Have an atomic claim return whether this call advanced the marker for the still-current captured clock; only a successful claim attempts the cue. Reject stale/replaced/paused clock claims, repeated effect setup and already-consumed boundaries. A refused claim advances nothing, so current valid observation can reconcile. Preserve nextSignal's at-most-one catch-up announcement and acknowledgeThrough's silent Skip. Audio failure still consumes the valid announcement and preserves the visual cue; sound recovery never retries historical boundaries. Verify synchronous/repeated effects, navigation/remount, interruption, final routine save and cancellation/replacement interleavings before review.
-
-Settings Test practice sound uses that same context/cue and changes no practice record, minutes, marker, result or wake lock. Address clarity with a short, bounded two-pulse cue using the existing oscillator/envelope, not a new sound asset/system. The current 880 Hz/0.2/0.3-second cue is the measured starting point; prove scheduling/envelope/routing automatically and certify normal-volume distinguishability only on real devices. Keep pulse count/duration/gain in one small implementation, not a configurable cue library or an A/B product flow. Actual device failure is diagnosed using recorded context state and output/mute/volume/interruption, then corrected at the evidenced layer; do not treat louder gain as a permission fix.
-
-Retain persistent block target/overtime, routine arrival window and best-effort vibration, single wake-lock ownership, existing minutes and routine completion. Edit AGENTS.md's audio rule in place to permit explicit Start/Resume/Test/recovery gestures including Resume on an active screen, while forbidding effect/render unlock. Mac policy, iPhone Safari and installed PWA have separate real-device outcomes; unsupported vibration and media-volume/mute/output routing are not promised away. Hidden/locked execution and timely sound cannot be guaranteed; foreground catch-up remains the same wall-clock/marker decision. [AudioContext interruption/state](https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/state) informs recovery limits; [Apple Web Push requirements](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers) do not provide an offline local alarm. Add no notification/push service. The native phone timer may be mentioned only as an optional external locked-screen alarm, never integrated as a second practice clock.
-
-8. Make Remove from pathway (keeps item) visible after Add and clearly available on owned rows, reusing planRemoveFromPathway. Explain this pathway's hide/detach while retaining the library item, bindings and data; retain Play as primary. Hidden Restore resolves the same owned item, never creates it again. Keep advanced Unlink and destructive Delete distinct. Ambiguous legacy evidence refuses visibly. Sweep ordinary, shared-radif and course references plus progress/next/Today/plan/routine consumers.
-
-Build checklist / next three actions: (1, highest leverage) commit independent family fixtures, expected outcomes and reader/writer matrix before behaviour edits, reproducing failures at their actual layers. (2) Build source decoding/reconciliation, shared association and selected-patch review before recovery UI; prove each local writer remains inbound-valid. (3) Wire portable terms, sound gestures and visible safe removal; run the focused route, targeted mutations and required lint/typecheck/npm test/build/secrets checks. Before first review, docs/setar-practice-reliability.md maps every invariant/consumer/equivalence class/interaction to the exact named acceptance and command. Rework addresses the named failure and sweeps its family, not endless unchanged wholesale reruns.
-
-## Advisory — the planning agent's reading, not established fact
-
-The two lists below are the planning agent's interpretation. Deterministic code
-checked that this plan is complete, in scope, correctly bound, and correctly
-tiered; it did not and cannot check whether this reading of the app is right.
-Verify them against the code.
-
-**Assumptions**
-
-- A1: Sandisk inspection proves this local corpus only. Live DSM runtime/publication and private browser state were not read; bounded runtime comparison and actual-device review distinguish those alternatives.
-- A2: Registry authority covers exact identity, declared provenance and roster. Musical meaning/learning and deliberate metadata remain the owner's/teacher's authority.
-- A3: Keeping fresh is a selected batch over current listed ids with visible exceptions, not automatic eligibility for future imports.
-
-**Possible conflicts**
-
-- The schema has one anchor flowId. Supporting affected existing Flows named above require post-build reconciliation, not a fictional new Flow.
-- Current audio instructions prohibit unlock on practice screens. Change that rule only to permit explicit Start/Resume/Test gestures; no hard do-not is waived.
-- Radif provenance includes a composed chaharpareh and the shipped selection is partial. Leave uncertain kind/recension/reference/stage unselected; invent no repertoire authority.
-- Old v15 devices refuse v16 snapshots. Update both production devices before sharing new state; an isolated preview must not connect to real sync. NAS runtime copies require an explicit update.
-
-## The complete approved plan
-
-```json
-{
-  "format": "prismatica/start@1",
-  "request": "Plan one broad but coherent Practice Compass lane, with Claude as builder, for the seven current owner-facing issues below. Planning only in this session; do not implement.\n\n1. Session 40: after adding session-40-29-09-2026, Refresh imports its videos but excludes نت-پیش-درامد-چهارگاه-فروتن.pdf and نت-چهارمضراب-چهارگاه-عبادی.pdf and their practice items. It reports both piece keys absent from the registry, with 0 additions/updates/decisions and 2 needing attention. Rerunning the NAS task does not help. Deleting Class 40 and refreshing does not restore it. Trace scan → publication → refresh → bindings/suppression → Lessons/items and provide low-admin recovery, distinguishing intended behaviour from defects.\n2. Session 1: after renaming ضبط-کلاس-1 through ضبط-کلاس-3 to نمونه-1 through نمونه-3 and indexing/refreshing, the class retains old names and expected items lack the files. Trace exact rename provenance and refresh rather than assuming a defect.\n3. Refresh repeatedly offers بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله gusheh بسته‌نگار → بسته-نگار, and جنگ-شهنازی and صلح-شهنازی form ضربی → (قطعه), despite deliberate owner edits. Establish authority and avoid stale/meaningless repeated choices while preserving those edits.\n4. iPhone Form and Dastgāh/Āvāz inputs offer no predefined terms while typing; Musical terms is correct and MacBook works. Investigate cross-device input/UI causes.\n5. Provide a sufficiently clear timer target signal using existing boundary/audio/vibration/PWA behaviour within iPhone platform limits. No second timer or unsupported alarm guarantee.\n6. Make accidental pathway additions safely reversible: + becomes green Play and the owner sees only deletion as an inverse. Assess the intended model; do not assume deletion.\n7. Safely bring current Setar data towards Keeping fresh, correct stages in سه‌تار · ردیف و رپرتوار, correct class associations, Gusheh (radif)/Composed piece classification and ردیف میرزا عبدالله study source where appropriate. Identify exceptions and provide an idempotent, reviewable approach, without a blanket migration or unrelated data overwrite.\n\nRead current AGENTS.md, DECISIONS.md, docs/tests and recent history first. Treat reports as symptoms. Trace every implementation/consumer and the invariant/failure family, search siblings/counterexamples/platform variants/stale parallel paths, and identify wrong-layer or false-confidence tests. Include only still-real material adjacent defects sharing these flows. Every acceptance must have a reproducible proof route and state-discriminating regression/family/mutation evidence where useful before the first reviewer pass. Preserve user data, compatibility and deliberate edits. Automate practical proof and keep OWNER testing minimal and restricted to what automation cannot establish. Planning and automated investigation of real NAS/Setar media are read-only. Never propose destructive media operations, the retired deployment path or rsync --delete. Return only validated import-ready Prismatica Start JSON.\n\nRevision: keep this as ONE broad HEAVY lane covering all existing scope and preserve the investigation, root-cause findings, acceptance and OWNER checks. Session 40 and Session 1 are concrete regressions, not the limit. Provide a predictable low-admin intake path for Session 41, 42 and later, new identities, added/changed files and occasional renames, without another code lane or developer-generated worksheet. Retain the registry unless evidence justifies otherwise; identify the minimal safe authority/input and make any required maintenance generic, clear and actionable. Prove synthetic future numbers and identities. Re-check actual Start/Resume → boundary → nextSignal/acknowledgement → existing audio/vibration/visual behaviour, creation/resume/lifecycle/routing, Mac and iPhone Safari/PWA before prescribing a correction. Use the smallest evidence-supported fix within the single clock/boundary model. Automated proof covers signalling mechanics and exactly-once behaviour; OWNER covers actual audibility/platform behaviour. No locked/background/iOS alarm guarantee. Sweep consumers, siblings and stale tests, and design focused regression/mutation proof before the first review.",
-  "builder": "claude",
-  "summary": "Make Setar archive recovery, repertoire corrections and iPhone practice reliable",
-  "rationale": "One source-to-owned-practice lane. Reuse exact source identity, accepted-graph baselines, scoped suppressions, durable catalogue bindings and the existing clock. Correct missing provenance/consumer wiring and expose existing safe recovery/inverse actions. A reusable scanner attention report keeps ongoing source declarations low-admin. Portable suggestions and correctly reached gesture-enabled cues complete the same musician-facing loop. A narrowly additive saved field and reviewable batch corrections justify HEAVY scrutiny, with family proof available before the first independent review.",
-  "kind": "existing-flow",
-  "flowId": "work-a-pathway-stage",
-  "currentBehaviour": "Investigated clean main 93dadcb10cbda2650a53829b76538bcd6b25e133, current AGENTS.md, DECISIONS.md 2026-09-17/29 and 2026-10-01, docs/setar-archive.md, docs/nas-topology.md, docs/repertoire-experience.md and relevant source/tests/history. September archive reworks established exact rename chains, graph validation and durable suppression; c021b46 introduced reference/vocabulary semantics and 97953e7 protected media-adjacent tools.\n\nRead-only scanToIndex on the mounted Sandisk copy, 2026-10-05: 104 pieces, 40 sessions, hash b5c2e94976db0e6a89f33e927a1653176e933fd266a0de6ff2e4bc08bdc5e718, exactly the two reported Session 40 diagnostics. Both canonical keys are missing from PIECES.csv; roster 40 is empty. Unknown named PDFs are deliberately excluded; class video stays lesson-level, and the unnamed demo has no piece scope. In-memory addition of correctly ordered registry rows with session 40 membership indexes both scores and scopes the demo to both. The actual CSV has ten columns including source and roles_present: appending the scanner's eight required columns in that order would misplace sessions. The scanner drops the source column, although 69 rows explicitly declare ردیف-میرزاعبدالله.\n\nClass deletion deliberately persists a session suppression. resetArchiveSuppression/withoutSuppression have no production UI; tests restore by calling the store directly. Reset currently matches kind/ref alone, so exposing it unchanged would also clear sibling item-scoped hides. Lifting suppression cannot recover deleted authored notes/files.\n\nSession 1's current local index correctly emits نمونه-1/2/3, ordered and scoped to رنگ-ماهور-درویش-خان and چهارمضراب-اول-دشتی-صبا. RENAME-LOG.csv stops historical video paths at ضبط-کلاس-N, without continuations to نمونه-N. Unlogged old resources are intentionally retained as unavailable; authored recording titles intentionally survive path repair. The live DSM runtime, latest GitHub publication and private browser database were not accessed. Older published state, missing item source bindings and suppression remain alternatives for the reported missing material, not confirmed resolver defects.\n\nplanArchiveImport offers every unequal registry field each refresh rather than comparing it with the accepted source baseline. Literals use byte equality; only term references compare semantic identity. There is no Keep mine choice; the authority-claiming heading is misleading for a spelling difference or generic (قطعه). A separate sibling bug is reproduced in memory: label-based decisionMatchesSuggestion accepts a term-a → term-b premise change when labels match. Such ambiguous imported vocabularies pass validateMusicTerms, and the existing metadata test explicitly endorses label fallback.\n\nMusicalTermField relies entirely on native datalist names. Browser journeys fill finished names and prove storage, not visible partial-query selection. That is a platform-dependent UI exposure, not proof of the precise iPhone failure.\n\nRechecked the full cue path on this HEAD. startItemSession delegates to startSession; beginPlanSegment also starts that same block. Block and routine Start/Resume store methods establish/resume wall-clock state and contain no audio creation or resume. Today/StageDetail/PathwayDetail routine Start buttons navigate and RoutineRunner starts from an effect; RoutineDuration already starts inside its click handler. SessionPlan first creates a pending plan, then its explicit Begin starts each real block. ActiveBlock and RoutineRunner tick while running, compute elapsed wall time, call nextSignal in an effect, write signalledThrough, then call playSignalCue. Routine Skip calls acknowledgeThrough; block target remains visual/overtime and does not auto-finish, whereas routine natural completion keeps its existing save behaviour. No sound is intended while paused.\n\nA tone IS intended: playSignalCue attempts vibrate(80), creates a NEW AudioContext/webkitAudioContext at the boundary, connects oscillator → gain → destination, schedules 880 Hz with gain 0.2 decaying over 0.3 seconds, and closes only on oscillator onended. There is no resume() or gesture prime anywhere in this path. Read-only Node execution of the actual extracted effects/cue with fake running and suspended ports at 59/60/61 seconds reaches marker → vibrate → oscillator exactly once per ordinary observation in both screens; a suspended port is never resumed. This establishes call reachability in that bounded harness, not mounted React or hardware audibility. Suspended audio time may not advance to onended, so per-boundary contexts can remain allocated. Replaying the same captured effect after the store has immutably replaced its active record produces TWO cue attempts: the setters unconditionally write, without a claim result. src/main.tsx uses StrictMode; a mounted development/remount regression must prove this family rather than assuming the pure nextSignal tests cover effect replay.\n\nOn Mac, policy/site activation may allow a fresh context to run, so missing sound is not universally an unlock diagnosis. On iPhone Safari, delayed context creation without a gesture is vulnerable to autoplay restrictions; interruption can suspend audio again. Installed PWA uses the same cue code and supplies no native alarm route. The graph is connected correctly; 0.3-second decay is potentially easy to miss, but current evidence cannot determine the owner's hardware volume, mute/output routing, interrupted state or exact browser policy. There is no existing local notification/service-worker alarm implementation. Existing pure signal and wake tests prove decisions, not gesture integration or sound. [Web Audio best practices](https://developer.mozilla.org/en-US/docs/Web/API/Web_Audio_API/Best_practices) support gesture creation/resume; [AudioContext state documentation](https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/state) and [WebKit interruption report](https://bugs.webkit.org/show_bug.cgi?id=273511) support lifecycle variants, not a claim that the owner's version has that exact bug.\n\nStageDetail already has safe Remove from pathway, Unlink reference and hidden Restore under ⋯. The inverse exists but is poorly exposed, or the owner runs an older build. membersForSession already derives archive associations and respects unlink suppression but has no production consumer: Lessons and ItemDetail inspect itemIds only. itemFiles independently requires the correct source binding. Classification tests also miss real registry exceptions: six radif درامد variants, two distinct چهارپاره contexts, اتود-وزیری, تمرین-دشتی-1-علیزاده and personal-only بداهه-درامد-افشاری. itemForPiece treats every non-گوشه as full_piece. A composer-attributed چهارپاره-مرادخانی also declares radif source, demonstrating that provenance is not sufficient kind authority. Keeping fresh describes learned material; archive presence proves no learning.\n\nAdditional reproduced scanner sibling: buildIndex with roster [known], an unnamed demo and an unregistered named score diagnoses the score but leaves rosterTrusted=true and assigns the demo to known. The excluded filename vanished before roster consistency was evaluated. This is a real false-attribution defect, unlike intentional exclusion of the PDF.\nThe scanner already accepts arbitrary session-N-DD-MM-YYYY folders and stable registered identities. Ongoing intake is primarily source declaration, not per-session code. Named registered material is scoped exactly; an unnamed demo additionally needs a confirmed roster. A new path has no identity relation to an old path without the log. Replacing bytes at the same path retains the reference and opens the current NAS bytes, even if semantic index fields/hash do not change. File omissions are retained as not described, not proof of deletion. These cases require distinct guidance rather than a Session-40-only worksheet.",
-  "desiredBehaviour": "One lane anchored in work-a-pathway-stage, also affecting existing log-a-class, capture-a-practice-item, browse-my-repertoire, practise-todays-recommendation, run-a-session-plan, back-up-and-restore and sync-devices-via-github. Reconcile those existing Flow descriptions after building; introduce no new top-level Flow.\n\n1. Recover through existing archive mechanisms. Keep exact registry identity, unknown-piece exclusion and suppression of deliberately deleted entities. Fix scanner roster trust at its shared attribution boundary: retain recognised named-piece disagreement evidence before filtering unsupported/unregistered assets. A conflicting named piece, including one absent from the registry, prevents unnamed-demo expansion; keep the demo lesson-level and diagnose the uncertainty. Never invent the missing roster from filenames. Add a collapsed recovery disclosure to ArchiveRefresh listing suppressed sessions/pieces/links/resources with precise global or item scope. Restore only the chosen tuple, including itemId, with persistence acknowledgement and stale-preview revalidation, then use normal preview/commit to re-import current source entities. Preserve all other decisions. Explain that source re-import does not recover deleted notes/attachments. Surface diagnostics and suppressed counts even for an already-current graph; distinguish pending/completed changes and metadata choices, and never call Refresh a NAS rescan.\n\nMake intake durable for all normal future sessions/file changes. Retain PIECES.csv as the byte-exact identity and declared-roster authority, and RENAME-LOG.csv as exact path provenance. Reuse the existing scanner, parsers and stable two-read source observation; add an optional read-only --attention mode in scripts/scan-setar-classes.mjs. It emits an actionable report/drafts to stdout only, refuses --out in this mode, and never edits registry, log or media. Normal scheduled scan/publication remains unchanged. This is an operator aid, not a second scanner, importer, persistent ledger or general registry editor. Report paths are archive-relative; no credential/root enters logs or app data.\n\nThe report groups each missing canonical key with observed sessions/roles/files and explains why it is excluded; emits a clearly UNCONFIRMED new-row draft against the registry's ACTUAL header; distinguishes existing-key roster amendments from new identity; and exposes invalid naming, unsupported assets, inconsistent/empty roster attribution and invalid rename-chain evidence with the minimal safe action. Observations are candidates, never a confirmed roster. A row needs only an owner-confirmed exact identity; optional musical fields can remain unknown. Confirm assigned session membership only when needed for unnamed-demo attribution or when declaring actual teaching assignment. No learned status, type, study source or musical meaning is inferred from filename components. For an existing row, preserve all other session declarations, cells, quoting and additional columns; no eight-column positional append. Reuse CSV escaping for copyable drafts and show what must be confirmed before use. For renames, expose current relative paths and the existing old reference/log chain, with a reusable old_path,new_path template. The owner supplies the exact old→new pair; do not suggest a guessed match from size, numbers or similarity. Missing old-path evidence is explicitly unresolved. Keep the app free of filename/reason parsing: the scanner writes actionable diagnostic wording and ArchiveRefresh renders it plus the generic runbook route, current relative references and binding/suppression explanations.\n\nDocument one reusable owner checklist in docs/setar-archive.md, linked from the collapsed attention/recovery surface: (a) ordinary supported files for registered identities require only the existing NAS job/latest publication then Refresh; named files need no redundant per-file registration; (b) a genuinely new identity requires one confirmed registry declaration, using the on-demand report rather than a developer worksheet; (c) unnamed demos remain lesson-level until an independently confirmed roster is declared, with empty versus inconsistent roster explained; (d) a renamed/moved file needs one append-only, exact log continuation if old references/hides are to follow it, after checking existing chains/forks; (e) additions and valid role changes propagate from the new index, same-path byte replacement opens the current NAS file, and omitted paths remain not described with explicit hide/repoint choices. Deliberate suppressions still require explicit restoration. No routine intake requires a code edit, reseeding or another lane. Distinguish scan failure, old runtime, successful unchanged publication, stale published hash, missing registry evidence, unresolved binding and suppression, so repeated task runs are not prescribed for a declaration problem.\n\nKeep the two Session 40 registration proposals and three Session 1 log continuations as worked regression examples of that SAME workflow, not its implementation or ceiling. Musical metadata remains owner/teacher-confirmed. Validate generic drafts and owner-confirmed changes only on temporary corpora, including sessions 41, 42 and a non-consecutive number, new arbitrary identities, and repeat runs. Only the owner applies reviewed source metadata; automated investigation/testing is read-only against real media/registry/logs. Existing NAS task then Refresh suffices after compatible runtime update.\n\n2. Exact rename propagation remains shared. Logged chains update source-generated names/roles/scopes and owned lesson reference paths, while preserving authored titles, notes, rows and ids. Never infer unlogged mappings from part numbers, basename, size, mtime or similarity. Unavailable rows say Not described by the latest index, not that NAS bytes are certainly gone. Distinguish generated old resources from authored old labels, show binding/suppression explanations and reuse Link/Create separately/Skip for uncertain owned records.\n\nWire one shared association selector over explicit lesson.itemIds plus membersForSession resolved through exact bound item identities and instrument, deduplicated by id. Consume it in Lessons, ItemDetail Connected to, its lesson summary, Connections and linkable lists. Label archive associations as provenance, not practice or preparation. Derived Unlink uses the existing narrow link suppression; derived Relink clears that suppression rather than copying membership into itemIds. Manual links remain authored. Association unlinking does not delete independently scoped item material; hiding material is separate.\n\n3. Owner fields remain authoritative after seeding. Offer normal-refresh metadata only when the relevant proposed field changed from the last accepted source field. Unchanged source values never challenge later owner edits. Reuse the accepted graph as the durable baseline, with Use archive value / Keep my value and explicit Apply wording that retains unchosen owner fields while accepting source facts. Do not add a metadata-decision ledger. First adoption preserves owner fields, with any optional comparison before adoption rather than recurring next refresh. An optional Review differences action can inspect already-existing mismatches without changing them.\n\nResolve both literals and refs through existing unique term resolution for dastgah/form/composer; ambiguous/unknown/composite values stay literal. Do not normalise arbitrary gusheh spellings or source identity: بسته‌نگار remains exact owner text. Exact (قطعه) is generic and cannot improve an existing specific form such as ضربی. Use the heading Archive metadata differs. Bind each choice to record id, typed current value and exact proposed value; labels are not identity. Changes to target, field, relevant term meaning or proposal require a fresh preview. Preview/commit summaries agree and no-op refreshes preserve object identity/rev.\n\n4. Carry PIECES.csv's optional source as SourcePiece.studySource through scanner, semantic digest, decoder, checkSourceGraph, accepted/retained graph and exports. Missing is unknown legacy evidence; present empty is explicit empty evidence; present wrong types refuse. Do not infer it from keys, titles or notes. Keep index v1 as a backwards-compatible additive optional field: actual base-reader proof must show older readers safely ignore it without changing existing meanings, and new readers accept old indexes. Bump PracticeDB to schema 16 for the persisted field; migration only advances the version and retains absence, without clock reads, reseeding or item repairs. Base v15 DB readers refuse v16 safely. Deploy compatible app first, then copy all three NAS runtime files using the existing runbook.\n\n5. Add optional Review Setar setup alongside archive recovery, using the actual current device database. Select instrument/pathway explicitly where identity is uncertain; never infer a different Setar instrument from a renamed label. Show per-field before/after/evidence, already-correct rows and exceptions. Bulk accept evidenced proposals; unresolved cases stay unselected with an explicit choice. A separate owner-selected Keeping fresh batch covers only displayed current Setar item ids, with unrecorded/new, resting, fragile/repairing, techniques and parts visible for exclusion. This is not a migration or future import policy.\n\nKind proposals distinguish ordinary gushehs, six radif daramad variants, radif versus composer-attributed chaharpareh, etudes/exercises, personal improvisation, parts and unknown/provisional/composite identities. Declared source provenance alone never establishes kind. Change itemType/gusheh only when selected; retain form/composer/dastgah unless separately selected. The same classification policy seeds new explicit تمرین/اتود as exercise, clear composed works as full_piece and ordinary گوشه as gusheh, asks about ambiguous kinds, and keeps personal-only improvisation as source evidence without silently minting a composed repertoire work. Never delete pre-existing exceptions.\n\nPropose radif placement from resolved modal context in the selected mixed Setar pathway, composed work in its existing composed/forms stage, and explicit exceptions for technical items, parts, custom/missing stages, composite modal identity or conflicting deliberate placement. Placement does not imply catalogue linking. Link only an owner-confirmed stable reference through existing legacy/identity refusal; generic form-category suggestions do not identify individual works and the partial radif catalogue may lack a match. Preserve reference/hidden intent. Propose ردیف میرزا عبدالله from declared studySource or confirmed radif references; choose an existing same-instrument Material explicitly, or create one once after selection. Duplicate candidates, conflicting materialId, different recensions and composed variants are reviewed, never deduplicated by title. Class associations use the shared relation, with manual additions/suppression changes selected explicitly.\n\nCommit only displayed selected ids/fields in one validated store mutation, checking rev and exact before-values, acknowledging persistence and providing a retry that really writes. Preserve active block/routine/plan snapshots, notes, blocks, reviews, dates/provenance, ratings/counters, attachments/bytes, unrelated instruments/items and all unselected fields. A completed rerun is a no-op. Nothing runs automatically on load, hydration, import, sync or ordinary Refresh.\n\n6. Replace native-datalist dependence in every MusicalTermField consumer with one portable suggestions surface alongside free text, with no UA branch or dependency. Reuse vocabulary, termSuggestions and existing search aliases/normalisation for bounded visible matching native buttons and an explicit browse-all choice. Selection stores stable term id. Preserve unedited literals, aliases, clearing, unknown/composite/ambiguous text, composition events, touch/focus/Tab/screen-reader use, archived-term policy, direction and main-only scroll on new/edit forms. Do not automatically accept partial matches. Primary platform evidence: [WebKit datalist regression](https://bugs.webkit.org/show_bug.cgi?id=305719). This motivates independence from the native popup; it does not prove the owner's exact iOS defect.\n\n7. Correct the evidenced gesture/context lifecycle gap in the EXISTING cue, rather than replacing the timer or nextSignal. Before behaviour edits, reproduce the actual screen/marker/cue path through mounted browser controls with instrumented AudioContext, vibration and fixed wall time; preserve the red/current trace alongside the correction. The in-memory evidence above is not a substitute for that route. Record constructor, state, synchronous resume invocation, oscillator scheduling/routing and marker claim in order, with explicit limits on what fake ports and browser audio graphs prove.\n\nUse one page-lifetime AudioContext shared by the existing cue callers, created lazily and resumed synchronously during actual Start/Resume/Test sound click handlers, before any await/navigation. Do not create a fresh context in the later boundary effect or close the shared context after each oscillator. Keep the connected oscillator/gain path; clean up short-lived nodes. Treat running as engine readiness, never proof of audible hardware output. Rejected, hanging, suspended, interrupted, closed or unsupported states do not block starting/practising, throw a page error, queue an old cue or silently claim readiness. A closed context can be replaced only on an explicit gesture after its predecessor is closed; do not keep parallel contexts or retry/recreate forever. State changes can update a calm unavailable/interrupted indication and a one-tap sound recovery on the practice screen; they cannot unlock from render/effect or replay consumed boundaries. Do not force an audio-session category, play continuous/silent background audio or add a workaround dependency without new concrete evidence.\n\nSweep Today recommendation/review/direct starts, StartBlock, ItemDetail/next item, StageDetail, routine cards/duration/essentials, pending/initial/later Session Plan segments, ActiveBlock Resume, CloseBlock Resume, RoutineRunner Resume and direct routine URLs. Starting a pending plan alone does not start its clock: each actual Begin must retain gesture activation. Routine card Start remains one tap: move actual start into the originating click handler using existing segmentsForRun, as RoutineDuration already does, then navigate; a bare routine URL offers explicit Start rather than silently starting from an effect. Existing running routes resume/redirect without replacing work; navigating to an already running clock does not restart it. Update the existing routine-notes browser journey's initial direct-route assumption to click Start, retaining its cross-boundary ownership proof.\n\nStrengthen acknowledgement at the existing store marker setters, not with another timer/counter. Have an atomic claim return whether this call advanced the marker for the still-current captured clock; only a successful claim attempts the cue. Reject stale/replaced/paused clock claims, repeated effect setup and already-consumed boundaries. A refused claim advances nothing, so current valid observation can reconcile. Preserve nextSignal's at-most-one catch-up announcement and acknowledgeThrough's silent Skip. Audio failure still consumes the valid announcement and preserves the visual cue; sound recovery never retries historical boundaries. Verify synchronous/repeated effects, navigation/remount, interruption, final routine save and cancellation/replacement interleavings before review.\n\nSettings Test practice sound uses that same context/cue and changes no practice record, minutes, marker, result or wake lock. Address clarity with a short, bounded two-pulse cue using the existing oscillator/envelope, not a new sound asset/system. The current 880 Hz/0.2/0.3-second cue is the measured starting point; prove scheduling/envelope/routing automatically and certify normal-volume distinguishability only on real devices. Keep pulse count/duration/gain in one small implementation, not a configurable cue library or an A/B product flow. Actual device failure is diagnosed using recorded context state and output/mute/volume/interruption, then corrected at the evidenced layer; do not treat louder gain as a permission fix.\n\nRetain persistent block target/overtime, routine arrival window and best-effort vibration, single wake-lock ownership, existing minutes and routine completion. Edit AGENTS.md's audio rule in place to permit explicit Start/Resume/Test/recovery gestures including Resume on an active screen, while forbidding effect/render unlock. Mac policy, iPhone Safari and installed PWA have separate real-device outcomes; unsupported vibration and media-volume/mute/output routing are not promised away. Hidden/locked execution and timely sound cannot be guaranteed; foreground catch-up remains the same wall-clock/marker decision. [AudioContext interruption/state](https://developer.mozilla.org/en-US/docs/Web/API/BaseAudioContext/state) informs recovery limits; [Apple Web Push requirements](https://developer.apple.com/documentation/usernotifications/sending-web-push-notifications-in-web-apps-and-browsers) do not provide an offline local alarm. Add no notification/push service. The native phone timer may be mentioned only as an optional external locked-screen alarm, never integrated as a second practice clock.\n\n8. Make Remove from pathway (keeps item) visible after Add and clearly available on owned rows, reusing planRemoveFromPathway. Explain this pathway's hide/detach while retaining the library item, bindings and data; retain Play as primary. Hidden Restore resolves the same owned item, never creates it again. Keep advanced Unlink and destructive Delete distinct. Ambiguous legacy evidence refuses visibly. Sweep ordinary, shared-radif and course references plus progress/next/Today/plan/routine consumers.\n\nBuild checklist / next three actions: (1, highest leverage) commit independent family fixtures, expected outcomes and reader/writer matrix before behaviour edits, reproducing failures at their actual layers. (2) Build source decoding/reconciliation, shared association and selected-patch review before recovery UI; prove each local writer remains inbound-valid. (3) Wire portable terms, sound gestures and visible safe removal; run the focused route, targeted mutations and required lint/typecheck/npm test/build/secrets checks. Before first review, docs/setar-practice-reliability.md maps every invariant/consumer/equivalence class/interaction to the exact named acceptance and command. Rework addresses the named failure and sweeps its family, not endless unchanged wholesale reruns.",
-  "mustNotChange": [
-    "One item, one mode, one focus, one result, one next action; two ordinary creation doors; optional low-admin metadata.",
-    "Byte-exact source keys, deterministic source ids, stable catalogue refs, legacy text, and distinct placement/binding/owned work.",
-    "Archive facts never fabricate learning, recorded practice, results, reviews, progress or deadlines; imported classes remain history.",
-    "Review scheduling authority, only-close review advancement, unfinished-practice replacement guards and attachment-byte safety.",
-    "IndexedDB truth, explicit whole-snapshot GitHub conflicts, independent backups, device-local secrets/base, free/offline operation and current CSP.",
-    "Shared pure domain decisions, acknowledged saves, existing wall-clock/marker/skip rules and single wake-lock ownership.",
-    "Real-media read-only investigation/testing, no symlink following, fabricated filename identity, destructive archive operations, retired deployment or rsync --delete."
-  ],
-  "assumptions": [
-    "A1: Sandisk inspection proves this local corpus only. Live DSM runtime/publication and private browser state were not read; bounded runtime comparison and actual-device review distinguish those alternatives.",
-    "A2: Registry authority covers exact identity, declared provenance and roster. Musical meaning/learning and deliberate metadata remain the owner's/teacher's authority.",
-    "A3: Keeping fresh is a selected batch over current listed ids with visible exceptions, not automatic eligibility for future imports."
-  ],
-  "possibleConflicts": [
-    "The schema has one anchor flowId. Supporting affected existing Flows named above require post-build reconciliation, not a fictional new Flow.",
-    "Current audio instructions prohibit unlock on practice screens. Change that rule only to permit explicit Start/Resume/Test gestures; no hard do-not is waived.",
-    "Radif provenance includes a composed chaharpareh and the shipped selection is partial. Leave uncertain kind/recension/reference/stage unselected; invent no repertoire authority.",
-    "Old v15 devices refuse v16 snapshots. Update both production devices before sharing new state; an isolated preview must not connect to real sync. NAS runtime copies require an explicit update."
-  ],
-  "scope": {
-    "allow": [
-      "AGENTS.md",
-      "DECISIONS.md",
-      "docs/setar-archive.md",
-      "docs/nas-topology.md",
-      "docs/repertoire-experience.md",
-      "docs/setar-practice-reliability.md",
-      "scripts/scan-setar-classes.mjs",
-      "scripts/check-setar-practice-families.mjs",
-      "src/domain/sourceArchive.ts",
-      "src/domain/sourceReconcile.ts",
-      "src/domain/setarSetup.ts",
-      "src/domain/itemFiles.ts",
-      "src/domain/musicTerms.ts",
-      "src/domain/types.ts",
-      "src/domain/migrations.ts",
-      "src/domain/io.ts",
-      "src/domain/index.ts",
-      "src/store/useStore.ts",
-      "src/store/archiveIndex.ts",
-      "src/components/ArchiveRefresh.tsx",
-      "src/components/SetarSetupReview.tsx",
-      "src/components/MusicalTermField.tsx",
-      "src/components/ItemMaterial.tsx",
-      "src/components/practiceCue.ts",
-      "src/components/useScreenAwake.ts",
-      "src/components/RoutineDuration.tsx",
-      "src/pages/Lessons.tsx",
-      "src/pages/ItemDetail.tsx",
-      "src/pages/StageDetail.tsx",
-      "src/pages/PathwayDetail.tsx",
-      "src/pages/Today.tsx",
-      "src/pages/StartBlock.tsx",
-      "src/pages/ActiveBlock.tsx",
-      "src/pages/CloseBlock.tsx",
-      "src/pages/RoutineRunner.tsx",
-      "src/pages/SessionPlan.tsx",
-      "src/pages/Settings.tsx",
-      "src/styles/global.css",
-      "src/domain/sourceReconcile.test.ts",
-      "src/domain/setarSetup.test.ts",
-      "src/domain/io.test.ts",
-      "src/domain/migrations.test.ts",
-      "src/domain/musicTerms.test.ts",
-      "src/domain/practiceSignal.test.ts",
-      "src/domain/referenceCatalog.test.ts",
-      "src/domain/itemFiles.test.ts",
-      "src/store/archiveIndex.test.ts",
-      "src/components/practiceCue.test.ts",
-      "src/components/screenAwake.test.ts",
-      "src/components/direction.test.ts",
-      "tests/setar-practice-source.test.ts",
-      "tests/setar-practice-inbound.browser.test.ts",
-      "tests/setar-practice.browser.test.ts",
-      "tests/setar-practice-relations.test.ts",
-      "tests/setar-practice-proof.test.ts",
-      "tests/musical-term-suggestions.browser.test.ts",
-      "tests/practice-cues.browser.test.ts",
-      "tests/setarArchive.browser.test.ts",
-      "tests/setarInbound.browser.test.ts",
-      "tests/repertoire-experience.browser.test.ts",
-      "tests/repertoire-inbound.browser.test.ts",
-      "tests/agent-context.test.ts",
-      "tests/owned-writes.test.ts",
-      "tests/fixtures/setar-practice-source-v1.json",
-      "tests/fixtures/setar-practice-source-expectations.json",
-      "tests/fixtures/setar-practice-owner-v15.json",
-      "tests/fixtures/setar-practice-owner-v16.json",
-      "tests/fixtures/setar-practice-setup-expectations.json",
-      "tests/practice-information.browser.test.ts"
-    ],
-    "forbid": [
-      ".github/**",
-      "src/domain/courseData.ts",
-      "src/domain/khonyagarData.ts",
-      "scripts/deploy-nas.sh",
-      "scripts/nas-mirror.mjs",
-      "scripts/publish-setar-index.mjs",
-      "scripts/run-setar-index.sh",
-      "package.json",
-      "package-lock.json"
-    ]
-  },
-  "exclusions": [
-    "No backend/push service/auth/native app/paid service/dependency, second timer, audio analysis or background alarm guarantee.",
-    "No fingerprinting, fuzzy relocation, archive identity/protocol redesign, app NAS crawler, branch/path changes, sync redesign or second importer. Optional studySource is the only saved shape extension.",
-    "No automatic bulk repair, title merge/source deduplication, deletion as an inverse, overwrite of unrelated fields or interpretation of source prose as authority.",
-    "No live media/registry/log/browser-data/GitHub writes by the planner or automated builder investigation; only the owner applies reviewed generic source metadata drafts and selected private-data changes.",
-    "No general cleanup, viewport redesign, canon expansion, course regeneration, infrastructure redesign or unrelated AGENTS open-gap fixes.",
-    "No unwired readIndexFile UI, generalized registry administration, metadata-decision ledger or new recovery-history collection."
-  ],
-  "acceptance": [
-    {
-      "description": "tests/setar-practice-source.test.ts: run the scanner's generic --attention CLI on temporary corpora, stdout-only versus refused --out, checking a normal unchanged scan has identical source semantics. Use real/reordered/quoted ten-column headers with extra columns and existing notes/roster cells. Report new key/observed session/role, clearly unconfirmed drafts and minimal actionable next step; apply independently authored OWNER-confirmed metadata patches on temp fixtures only, then rescan. Session 40's two keys and Session 1's three continuations remain regressions. Add parameterised 41/42/non-consecutive future numbers and wholly new identities; known piece/new session requires no redundant registration for named files, whereas unnamed demos require a confirmed roster. No developer-generated per-session worksheet, hard-coded future key or inferred roster may pass. Cross unknown/registered keys, absent/correct/inconsistent rosters, numeric demo parts, personal takes, duplicate keys, quoted commas, cycle/fork/cross-session moves, same-path role-compatible byte replacement, additions/omissions and interrupted reads. Independently authored expectations prove scopes and unchanged fixture media bytes under report/scan; only fixture owner steps change source metadata. Unknown recognised named files with empty/non-empty registry rosters block inferred demo attribution even if filtered earlier; correct registration plus confirmed roster restores it. Invalid inputs explain or fail safely without publishing a partial draft as confirmed. Repeating a correct report/scan/owner patch is idempotent. Removing disagreement checks or substituting positional CSV append must fail this named test.",
-      "test": "setar durable intake preserves registry authority and exact rename evidence without changing media"
-    },
-    {
-      "description": "One named acceptance in tests/setar-practice-inbound.browser.test.ts owns the matrix, with uniquely named supporting domain tests. Missing/empty/known/unknown versus null/number/object studySource runs through scanner/digest, parseSourceIndex, fetch/file decoder, checkSourceGraph, validateDB, both persist migrate/merge, state/full import, pull, Keep remote, archive restore and cold recovery. Base-HEAD reader accepts the additive v1 index without changed old meanings and safely refuses v16 DB. Clock-free idempotent migration retains missing evidence. Compare canonical export/hash and attachment bytes, malformed refusal before blob replacement, too-new refusal and unfinished-practice guards. Chromium blobs; WebKit state-only.",
-      "test": "setar study provenance survives compatible indexes and every saved data boundary"
-    },
-    {
-      "description": "tests/setar-practice.browser.test.ts: Chromium/WebKit × phone/desktop × piece/session/link/global-resource/item-scoped-resource × current/missing entity. Include one shared path hidden on two different items, deletion versus manual class, stale preview and failed-save/retry/reload/reinstall. Only selected tuple clears; Class 40 source facts return once without claiming recovery of deleted notes/files. Normal Refresh never resurrects suppressed data, and no-op UI still shows attention counts. Include future sessions and simultaneous source changes; generic restoration is never special-cased to 40.",
-      "test": "setar recovery restores only the selected suppression through owner controls"
-    },
-    {
-      "description": "tests/setar-practice.browser.test.ts: actual scanner-built fixture → injected publisher → fake GitHub SHA-pinned fetch → digest/graph → controls/commit → Lessons and both pieces. Cross unchanged/interrupted/racing publication, intentionally stale publication, refused digest and Skip/link/hide. Each PDF scopes to its piece, demo to confirmed roster, class recording to lesson, personal takes to no material list. Verify commit/hash displayed and unrelated practice preserved. No live credential/network/NAS request. Repeat the full control journey with independently constructed Session 41/42/non-consecutive folders and new keys: attention → generic report/draft → explicit fixture owner confirmation → scanner → injected existing publisher → SHA-pinned refresh → source-bound item/lesson material. Add registered PDFs/videos, unnamed demos, role change, multi-hop exact rename, omissions and same-path byte replacement. A unchanged semantic hash on same-size replacement is intentional: the reference still targets current NAS bytes, with no fingerprint/cache identity invention. Temporary fake media endpoints/targets may prove resolver mechanics, never live NAS audibility/reachability. Unresolved keys/rosters/renames show the minimal safe action and import only the independently supported facts; no fresh code lane is needed. Future-dated imported lessons remain archive history, new items remain dormant with zero practice, and neither roster nor catalogue placement implies a preparation deadline or review progress.",
-      "test": "setar publish fetch and refresh carry source corrections to lessons and item material"
-    },
-    {
-      "description": "src/domain/sourceReconcile.test.ts: source-generated resources/authored refs/legacy prefixes/verified and foreign URLs × single/multi-hop/cross-session/unlogged/cyclic/forked renames × absent/present destination × global/item-scoped hide. Independently assert adoption, retainMissing, path repair, suppression re-key, lessonFiles/itemFiles. Generated Class 1 names/roles/scopes change only on exact evidence; authored ids/titles/notes survive. Unlogged rows remain labelled not described. Repeat is a no-op; degraded→full source recovers without owner loss. Cross future session numbers/new keys and namespace-compatible role changes; app parsing a filename or silently matching disappeared/added paths cannot pass.",
-      "test": "setar rename consumers preserve authored metadata and never infer missing provenance"
-    },
-    {
-      "description": "tests/setar-practice-relations.test.ts: explicit/derived/both/unresolved membership × same title/different id/instrument × unavailable/deleted entities × suppression scopes. One selector serves Lessons, Connected to, lesson summary, Connections and linkable choices without duplicate ids. Browser companion drives Unlink/Relink/reload: derived relink clears only its link suppression, never copies source membership into itemIds/agenda. Independently scoped material and authored manual associations remain.",
-      "test": "setar association readers agree without copying source membership into owner history"
-    },
-    {
-      "description": "src/domain/sourceReconcile.test.ts: every field × unchanged/changed relevant source/unrelated hash churn/first adoption/disappearance/reappearance × empty/literal/ref/unique alias/ambiguous/composite × generic (قطعه)/gusheh hyphen-ZWNJ/provisional confidence. Keep reported بسته‌نگار and ضربی exactly. Keep mine settles through repeat/reload/reinstall using accepted graph; Review differences stays opt-in. Assert summaries/write agreement, object identity and rev on no-op.",
-      "test": "setar metadata refresh offers only new meaningful source proposals"
-    },
-    {
-      "description": "src/store/archiveIndex.test.ts with uniquely named control companion: all four fields × typed empty/literal/ref × term rename/meaning change/same-label different-id × deleted/rebound/moved item/proposal drift/unrelated notes. UI passes typed premise/proposal; stale choices cause fresh preview and zero overwrite. Correct the existing test endorsing label identity. Chosen fields write once, untouched fields survive and failed persistence retries durably.",
-      "test": "setar metadata choices refuse every changed identity and premise before a write"
-    },
-    {
-      "description": "src/domain/setarSetup.test.ts: independently declared ordinary gushehs/six daramads/two chaharpareh contexts/etude/exercise/personal-only improv/parts/technique/unknown/provisional/composite × missing/custom/conflicting stages × partial/missing/shared Setar-Tar refs × duplicate/other-recension materials. Status, kind, placement, reference, source and class proposals stay separate. Radif provenance alone cannot classify kind and form-category refs never identify works. New import defaults preserve dormant/zero practice; pre-existing exceptions are reviewed, never deleted.",
-      "test": "setar setup proposals distinguish learning organisation and source evidence"
-    },
-    {
-      "description": "src/domain/setarSetup.test.ts plus store support: correct/selected/excluded/later-arriving rows × instrument/pathway/rev/typed-premise drift × conflicting legacy/live refs × validation/save failure and retry. Apply exact displayed ids/fields in one set. Compare ALL untouched notes/history/reviews/dates/provenance/ratings/counts/clocks/routines/plans/attachments and bytes. Create selected source once, never cross-instrument/title-deduplicate. Written states pass validateDB round-trip; completed repeat has same object/rev.",
-      "test": "setar setup commits selected rows atomically idempotently and without collateral changes"
-    },
-    {
-      "description": "tests/setar-practice.browser.test.ts: synthetic owner-shaped fixtures, actual review controls, distinct Keeping fresh batch/exclusions and duplicate-source/ambiguous-stage choices. Change unrelated data during preview, fail/retry save, reload and repeat in both engines. Evidence/before/after visible; Saved waits for acknowledgement. No private owner dump, debug hook or source-regex journey; no unseen row joins selection.",
-      "test": "setar setup review is usable through controls and survives interruption"
-    },
-    {
-      "description": "tests/musical-term-suggestions.browser.test.ts: new/edit × three fields × phone/desktop × Chromium/WebKit. Type partial Farsi/Latin/name/alias; select VISIBLE matches by touch/click/keyboard; browse all/clear/unknown/composite/ambiguous/composition input. Include custom/renamed/archived terms, preserved other literals, focus/blur and no premature submit, reload/offline. Finished-name fill or option-markup existence cannot pass.",
-      "test": "musical term suggestions can be found and selected while typing in both engines"
-    },
-    {
-      "description": "One exact test in tests/setar-practice.browser.test.ts with uniquely named term companion: both engines/light-dark/390x844/long mismatched-language text/large text/keyboard focus/44px actions. Extend literal-dir ledgers; verify independently directed values and start alignment. Only main scrolls; no fixed/sticky/guessed viewport workaround; drafts remain usable. Existing contrast and instruction budget gates stay green.",
-      "test": "portable term and recovery controls preserve direction focus and scroll ownership"
-    },
-    {
-      "description": "One acceptance in tests/practice-cues.browser.test.ts, supported by src/components/practiceCue.test.ts: BEFORE behaviour edits, drive current mounted Start/Resume and natural target controls and record the evidenced marker→cue→new context/no resume failure, rather than inferring integration from a pure signal test. Corrected entry matrix covers Today recommendation/review/direct, StartBlock, item/next, stage, routine cards/duration/essentials, pending-plan creation versus each initial/later Begin, ActiveBlock/CloseBlock/RoutineRunner Resume, Settings Test sound and practice-screen sound recovery. Inject AudioContext/vibration/wake ports and observe constructor/resume invocation synchronously inside the click before awaits/navigation; later boundaries reuse the same context. Observe oscillator→gain→destination, bounded two-pulse start/stop/envelope and node cleanup. Bare routine URL requires Start; card Start remains one tap; existing clock routes never replace/restart work. Update and rerun the existing routine Working-notes journey without dropping ownership assertions. Running/suspended/interrupted/closed/unsupported/constructor throw/resume throw/reject/never-settle/concurrent repeated gestures and refused-dual-clock cases cannot leak/stack contexts, block practice, falsely claim audible output, queue old tones or change saved data. Test/recovery cue changes neither clocks/markers/wake lock nor history. Add one smoke route using the real browser WebAudio engine with normal policy, observing running state and scheduled completion; no forced autoplay flag or hardware-audibility assertion. Real PWA speaker/mute behaviour remains OWNER.",
-      "test": "practice sound reuses one gesture primed context across all start and resume doors"
-    },
-    {
-      "description": "tests/practice-cues.browser.test.ts: fixed-clock block/plan/routine × natural target/intermediate/final/pause-resume/zero-time repeated skips/multi-boundary background catch-up/reload/absent marker. Drive actual mounted screens and record marker claim, visual state, cue attempt and saved outcome in order. Normal foreground reached boundaries produce exactly one claim/cue attempt; jump across multiple boundaries produces ONE catch-up attempt, not one per missed boundary. Replay the same captured effect, development StrictMode setup/remount, navigation, concurrent observation, stale/replaced/paused clock, final-save/cancel interleavings and a failed/pending/interrupted audio path. Only an atomic still-current-clock claim may attempt sound; consumed boundaries never replay on audio recovery or Resume, and Skip never cues. Persistent visual target/overtime/window survives unsupported sound. Independent wall-clock expectations match ALL saved minutes/results/reviews; blocks never auto-finish and existing routine completion/working-note ownership remains unchanged. Include actual store-marker methods, not an in-test model or source regex. Pure nextSignal/wake checks support mechanics; they cannot certify mounted effect exactly-once or hardware audibility.",
-      "test": "practice cues preserve wall clock boundaries and every recorded minute"
-    },
-    {
-      "description": "tests/setar-practice.browser.test.ts: Add→visible Remove→hidden Restore→Play, fresh/enriched/practised × ordinary/shared radif/course × second pathway × placed-unlinked/ambiguous legacy. Same id, notes/history/reviews/files/source/class/routine links survive. Only selected pathway visibility/placement changes; bindings stay; repeat Add/Restore cannot duplicate. Sweep stage/progress/next/currentStage/Today/plan/routine visibility. Unlink/Delete remain distinct.",
-      "test": "pathway removal and restoration visibly retain the existing owned item"
-    },
-    {
-      "description": "tests/setar-practice-proof.test.ts checks the focused runner's list/manifest mode without recursively running itself. node scripts/check-setar-practice-families.mjs resolves titles one-to-one and runs committed fixtures/fixed seeds/clocks and both-engine control companions through practiceBrowser; missing browsers fail, all page errors remain, private Vite caches. Before first review record named failure for individually dropping provenance at scanner/decoder/inbound sites, widening restoration scope, missing relation consumer, same-label premises, reoffering unchanged metadata, bypassing selected-patch guard, omitted gesture door, datalist-only selection and delete/unbind removal. Restore each temporary mutation; source scans/documentation alone cannot prove behaviour. Extend mutations to a hard-coded session ceiling/key, auto-confirmed roster/draft, malformed header-preservation, unlogged rename guess, per-boundary context recreation, missing resume/state gate, unconditional marker claim or effect replay, queued delayed sound, and moving routine Start back into an effect. Each targeted mutation must fail the corresponding focused behavioural check and leave unrelated tests out of the proof argument. Include the future-intake report and actual pre-fix cue trace in the reader/writer matrix before implementation.",
-      "test": "setar practice family proof rejects targeted partial fixes before review"
-    },
-    {
-      "description": "Preserve one bounded real-device session: Mac normal browser plus iPhone Safari and installed PWA over verified secure context, recording build/browser/iOS/keyboard/output route and volume. iPhone checks partial Farsi/Latin term selection/draft retention/native keyboard dismissal. On each platform use Test sound, then short foreground block and routine boundaries, Pause/Resume and one background/lock-return interruption. Compare actual audibility/clear two-pulse recognition at normal media volume with the visual cue; record observed mute/output/interruption behaviour and recovery gesture with context state, never a locked-screen deadline guarantee. Starting a routine from its card stays one tap. Hardware/OS policy/native keyboard are the only reasons this is OWNER: all entry wiring, waveform scheduling, boundaries, persistence and interruption mechanics are automated. Unmerged v16 preview uses isolated data/origin with no real sync; retain native Safari versus installed PWA evidence separately.",
-      "test": "manual:OWNER"
-    },
-    {
-      "description": "Preserve one bounded live recovery/intent check: owner uses the SAME generic intake report/runbook that future sessions use, reviews/applies the two confirmed Session 40 registry declarations/roster and three Session 1 exact log continuations, updates all three NAS runtime files after compatible app deployment, runs the existing job and compares publication/commit/hash with Refresh. Explicitly restore Class 40 and open both PDFs/three ordered demos from Lessons and intended source-bound items on Mac/iPhone. Review actual private-data exceptions before selected Setar correction. No additional real future class is required for OWNER: synthetic future numbers/new identities/changed files and report/actions are automated. Builder supplies generic read-only comparison/reporting rather than a bespoke repair worksheet; real DSM/Drive/media reachability, genuine old→new declarations and musical intent remain OWNER. Re-import cannot recover deleted notes/bytes; independent backup is needed. No automated media/registry/log writes, retired deployment, deletion or credential logging.",
-      "test": "manual:OWNER"
-    }
-  ],
-  "risk": {
-    "touchesAuth": false,
-    "touchesPayments": false,
-    "touchesSavedData": true,
-    "copyOnly": false,
-    "rationale": "HEAVY: saved schema/provenance, scoped durable restoration and selected bulk metadata/placement/source writes cross identity and transaction boundaries. Real media is read-only; auth/publisher targeting and payment concerns are unchanged."
-  },
-  "delta": {
-    "today": "Taking archive-backed work into a pathway is difficult to understand and reverse: omissions/suppressions are opaque, class associations invisible, unchanged source fields repeatedly challenge owner edits and native suggestions/audio differ across devices.",
-    "instead": "Import ordinary future sessions predictably, see the minimal safe declaration for missing source evidence, restore only what you choose, review Setar organisation without rewriting practice, retain deliberate metadata, remove/restore pathway membership while keeping the owned item, choose terms on either device and hear a gesture-enabled cue with an honest visual fallback.",
-    "keep": [
-      "Owned items remain the only practice units.",
-      "Exact source/catalogue identity and explicit choices govern reuse.",
-      "Source evidence never fabricates learning or practice; media stays on the NAS."
-    ],
-    "assumptions": [],
-    "showMe": "Run node scripts/check-setar-practice-families.mjs on committed independent fixtures and both browser engines: generic intake report with future numbers/new identities plus scan/publish/fetch/refresh, scoped restore, associations, selected repairs/refusals, metadata deltas, visible term selection, actual Start/Resume/marker-claim/cue ports and effect replay, and Add/remove/restore. Provide focused mutation failures before review; reserve only native-device and live-source/owner-intent checks for OWNER."
-  },
-  "desiredRules": [],
-  "docsDelta": [
-    "AGENTS.md",
-    "DECISIONS.md",
-    "docs/setar-archive.md",
-    "docs/nas-topology.md",
-    "docs/repertoire-experience.md",
-    "docs/setar-practice-reliability.md"
-  ]
-}
-```
-````
 
 ## The Delta this change was framed from
 
@@ -505,59 +82,985 @@ Run node scripts/check-setar-practice-families.mjs on committed independent fixt
 
 
 
-## Files in this diff
+## Re-review after a rejection — scoped to the rework
 
-- AGENTS.md
-- DECISIONS.md
-- docs/nas-topology.md
-- docs/repertoire-experience.md
-- docs/setar-archive.md
-- docs/setar-practice-reliability.md
-- scripts/check-setar-practice-families.mjs
-- scripts/scan-setar-classes.mjs
-- src/components/ArchiveRefresh.tsx
-- src/components/ItemMaterial.tsx
-- src/components/MusicalTermField.tsx
-- src/components/SetarSetupReview.tsx
-- src/components/direction.test.ts
-- src/components/practiceCue.test.ts
-- src/components/practiceCue.ts
-- src/components/useScreenAwake.ts
-- src/domain/index.ts
-- src/domain/io.test.ts
-- src/domain/migrations.ts
-- src/domain/setarSetup.test.ts
-- src/domain/setarSetup.ts
-- src/domain/sourceArchive.ts
-- src/domain/sourceReconcile.test.ts
-- src/domain/sourceReconcile.ts
-- src/domain/types.ts
-- src/pages/ActiveBlock.tsx
-- src/pages/ItemDetail.tsx
-- src/pages/Lessons.tsx
-- src/pages/PathwayDetail.tsx
-- src/pages/RoutineRunner.tsx
-- src/pages/Settings.tsx
-- src/pages/StageDetail.tsx
-- src/pages/Today.tsx
-- src/store/archiveIndex.test.ts
-- src/store/useStore.ts
-- src/styles/global.css
-- tests/agent-context.test.ts
-- tests/fixtures/setar-practice-owner-v15.json
-- tests/fixtures/setar-practice-owner-v16.json
-- tests/fixtures/setar-practice-setup-expectations.json
-- tests/fixtures/setar-practice-source-expectations.json
-- tests/fixtures/setar-practice-source-v1.json
-- tests/musical-term-suggestions.browser.test.ts
-- tests/practice-cues.browser.test.ts
-- tests/practice-information.browser.test.ts
-- tests/setar-practice-inbound.browser.test.ts
-- tests/setar-practice-proof.test.ts
-- tests/setar-practice-relations.test.ts
-- tests/setar-practice-source.test.ts
-- tests/setar-practice.browser.test.ts
-- tests/setarArchive.browser.test.ts
+The last review of this contract asked for changes. This is NOT the whole plan
+restated: it is what changed since the previously reviewed head, the findings
+that review recorded, and the paths the rework touched — read any file you need
+from the lane. The same Check already bound to this head is not to be rerun
+wholesale.
+
+Verify each prior finding's FAMILY across every consumer in the repository, not
+only the lines this rework changed: a family is closed when no instance of its
+invariant survives anywhere, and a fix that reached one consumer while a sibling
+still breaks it is not closed.
+
+**Approved intent:** `.prismatica/intents/20261005-make-setar-archive-recovery-repertoire-c-e964.md`
+
+**Findings from the previous review:**
+
+- **setup-review-premise-and-acknowledgement** — P1: SetarSetupReview rebuilds before-values from the live plan for status, kind, stage, source, reference and class choices, bypassing stale-selection refusal. Its captured current key and unconditional saved reset also discard newer selections while persistence is pending. Preserve the reviewed premise/proposal and bind acknowledgement to the live draft.
+  _counterexample:_ Choose Keeping fresh while an item is dormant, then sync it to repairing before Apply. The production component handler submits before={status:repairing} and writes maintenance; applySetarSetup refuses the original dormant premise. Choosing a second item while the first save is pending is cleared by the first saved callback without being written. Instances: SetarSetupReview.tsx:71,80,108-119,293-298,319. Consumers checked clean for this invariant: applySetarSetup with a carried premise, ArchiveRefresh typed metadata decisions, ui acknowledgement sequencing, ItemForm, Materials and MusicTerms live draft readers, immutable Recovery and StageDetail source actions. Extend setar setup commits selected rows atomically idempotently and without collateral changes and setar setup review is usable through controls and survives interruption; current browser drift is unrelated.
+- **setup-study-source-identity-and-idempotence** — P1: Study-source creation loses group identity across acknowledgement and replay. The saved callback assigns the first selected item's materialId to every create group; new:<group> is not translated to its created id for retries, and Try again omits source finalisation.
+  _counterexample:_ Create sources for two distinct declarations in one Apply. The production handler creates two distinct materials but its saved callback sets both source selectors to the first material. Replaying one original create selection against the resulting database is rejected as stale instead of a no-op. Instances: setarSetup.ts:398,511,524-537; SetarSetupReview.tsx:301-307,319. Consumers checked clean: per-group creation within one domain commit, explicit existing-source selection and instrument filtering, ItemForm createdSource retry, Materials draft.id retry, keyed course-source reuse. Extend setar setup commits selected rows atomically idempotently and without collateral changes and setar setup review is usable through controls and survives interruption to multi-group creation, failed creation persistence and unchanged replay.
+- **practice-sound-pending-request-lifecycle** — P2: testPracticeSound queues unsuperseded callbacks on resume promises and calls resume twice per suspended tap. Old test/recovery requests can sound together when a later gesture resumes the context, violating the no-queued-old-tones acceptance.
+  _counterexample:_ With a suspended context whose resume promises remain pending, call testPracticeSound three times: six promises accumulate and no pulse plays. Later prime the context, mark it running and resolve the earlier promises: six late oscillator pulses and three vibrations are emitted. Instances: practiceCue.ts:133-146; Settings Test practice sound; ActiveBlock SoundNote and its RoutineRunner reuse. Consumers checked clean: direct playPracticeCue while suspended, prime-only block/routine Start and Resume doors, atomic store marker claims and both boundary callers. Extend practice sound reuses one gesture primed context across all start and resume doors and practice sound keeps one context primed only by taps and never queues a cue to pending requests that later settle.
+- **header-aware-source-metadata-drafts** — P2: The rename-log attention template prints the actual header but always puts old and new paths in the first two columns. Valid reordered or extended headers produce incorrect exact rename declarations.
+  _counterexample:_ For new_path,timestamp,old_path, formatAttention emits <the missing path>,<its current path>,. Filling those placeholders puts the old path into new_path, the current path into timestamp and leaves old_path empty. Reversing just old_path/new_path reverses the declaration. Instance: scan-setar-classes.mjs:982-983. Consumers checked clean: readTable/buildIndex rename readers honour header names; new registry drafts map header names; roster amendments target sessions and preserve other raw cells; app rename consumers follow exact graph pairs. Extend setar durable intake preserves registry authority and exact rename evidence without changing media with reordered and extra-column rename logs.
+- **setar-setup-direction-aware-values** — P2: SetarSetupReview pins independently authored before/after values and mixed evidence to LTR and puts direction on a bare item title instead of its title/detail group. The direction ledger records that title as a group, leaving the violation undetected.
+  _counterexample:_ Organisation renders a Farsi gusheh, owner-written stage title or study-source title inside span dir=ltr at SetarSetupReview.tsx:240-246. Its organisation title is strong dir=auto at 234, while the containing detail group has no direction. Instances include kind/gusheh, stage and source output in show(), and evidence interpolating composer, dastgah, stage and source labels in setarSetup.ts. Consumers checked clean for the same new-value surfaces: ArchiveRefresh DifferenceRow and Recovery authored-value isolates, MusicalTermField suggestions and RoutineRunner bare-URL title group. Extend portable term and recovery controls preserve direction focus and scroll ownership to setup rows and correct direction.test.ts:195 rather than endorsing the bare title.
+
+**What changed since the previously reviewed head:**
+
+```diff
+diff --git a/docs/setar-practice-reliability.md b/docs/setar-practice-reliability.md
+index 82b6a0cebadda0a8cfb0f1616b062e001f55eef9..932da970c051998c245ccd2d7d4d5eacbacfe1b8 100644
+--- a/docs/setar-practice-reliability.md
++++ b/docs/setar-practice-reliability.md
+@@ -212,6 +212,10 @@ having touched nothing.
+ | term suggestions back to a datalist only | `src/components/MusicalTermField.tsx` | ac-12 | failed (caught) |
+ | removal from a pathway that also unbinds the item | `src/store/useStore.ts` | ac-16 | failed (caught) |
+ | removal from a pathway by deleting the item | `src/store/useStore.ts` | ac-16 | failed (caught) |
++| a Test sound request that plays after a later tap | `src/components/practiceCue.ts` | ac-14 | failed (caught) |
++| a setup choice re-premised from the live plan | `src/components/SetarSetupReview.tsx` | ac-11 | failed (caught) |
++| a created study source forgotten once it exists (replay turns stale) | `src/domain/setarSetup.ts` | ac-10 | failed (caught) |
++| a rename template that ignores the log header | `scripts/scan-setar-classes.mjs` | ac-1 | failed (caught) |
+ 
+ Recorded 2026-10-06: all 26 caught, every source restored byte for byte. The
+ first run MISSED one — a cue queued on a not-running context went unnoticed by
+diff --git a/scripts/check-setar-practice-families.mjs b/scripts/check-setar-practice-families.mjs
+index 9d1dce2a8907adc7e4efda5659a35141b318c17f..073e8f6a7a5741b65c57a5452f045aa7207fbced 100644
+--- a/scripts/check-setar-practice-families.mjs
++++ b/scripts/check-setar-practice-families.mjs
+@@ -209,7 +209,7 @@ export const MUTATIONS = [
+   {
+     name: 'no resume or state gate in the prime',
+     file: 'src/components/practiceCue.ts',
+-    find: "    if (context.state !== 'running') {\n      // INVOKED now, inside the gesture; its promise is only observed.\n      Promise.resolve(context.resume()).then(update, update);\n    }",
++    find: "    if (context.state !== 'running') {\n      // INVOKED now, inside the gesture; its promise is only observed.\n      resumed = Promise.resolve(context.resume()).then(update, update);\n    }",
+     replace: '',
+     test: 'practice sound reuses one gesture primed context across all start and resume doors',
+   },
+@@ -258,6 +258,34 @@ export const MUTATIONS = [
+     replace: '      removeFromPathway: (itemId, pathwayId) => {\n        if (pathwayId) { get().deleteItem(itemId); return null; }',
+     test: 'pathway removal and restoration visibly retain the existing owned item',
+   },
++  {
++    name: 'a Test sound request that plays after a later tap',
++    file: 'src/components/practiceCue.ts',
++    find: "    if (mine === gesture && c === context && c.state === 'running') playPracticeCue();",
++    replace: "    if (c === context && c.state === 'running') playPracticeCue();",
++    test: 'practice sound keeps one context primed only by taps and never queues a cue',
++  },
++  {
++    name: 'a setup choice re-premised from the live plan',
++    file: 'src/components/SetarSetupReview.tsx',
++    find: '    const sent = selectionsOf(draftRef.current);',
++    replace: '    const sent = selectionsOf(draftRef.current).map((x) => ({ ...x, before: plan.proposals.find((p) => p.id === x.id)?.before ?? x.before }));',
++    test: 'setar setup review is usable through controls and survives interruption',
++  },
++  {
++    name: 'a created study source forgotten once it exists (replay turns stale)',
++    file: 'src/domain/setarSetup.ts',
++    find: '  return db.materials.some((m) => m.id === made) ? { materialId: made } : v;',
++    replace: '  return v;',
++    test: 'setar setup commits selected rows atomically idempotently and without collateral changes',
++  },
++  {
++    name: 'a rename template that ignores the log header',
++    file: 'scripts/scan-setar-classes.mjs',
++    find: "    line(`       ${logCols.map((h) => (h === 'old_path' ? '<the missing path>' : h === 'new_path' ? '<its current path>' : '')).join(',')}`);",
++    replace: "    line('       <the missing path>,<its current path>');",
++    test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
++  },
+ ];
+ 
+ const isBrowser = (file) => file.includes('.browser.');
+diff --git a/scripts/scan-setar-classes.mjs b/scripts/scan-setar-classes.mjs
+index 893d8b54b1c9f0bf349362b05cf89fb1c8f77424..af8187ad2ee0c9d1de114935bce34e7e3ffe4916 100644
+--- a/scripts/scan-setar-classes.mjs
++++ b/scripts/scan-setar-classes.mjs
+@@ -979,8 +979,10 @@ export function formatAttention(r) {
+     line(g.unlogged.length ? '     files in that folder that no log row names:' : '     every file in that folder is already named by the log.');
+     for (const u of g.unlogged) line(`       ${u}`);
+     line('     If a missing name was renamed to one of these, append ONE exact row per file to RENAME-LOG.csv:');
+-    line(`       ${(r.logHeader.length ? r.logHeader : ['old_path', 'new_path']).join(',')}`);
+-    line(`       <the missing path>,<its current path>${r.logHeader.length > 2 ? ','.repeat(r.logHeader.length - 2) : ''}`);
++    // One cell per header COLUMN, by name — a reordered or extended log keeps old and new in their own columns.
++    const logCols = r.logHeader.includes('old_path') && r.logHeader.includes('new_path') ? r.logHeader : ['old_path', 'new_path'];
++    line(`       ${logCols.join(',')}`);
++    line(`       ${logCols.map((h) => (h === 'old_path' ? '<the missing path>' : h === 'new_path' ? '<its current path>' : '')).join(',')}`);
+     line('     Only you know which became which: nothing here pairs them by number, size or similarity. Unpaired, the old name stays "not described".');
+   }
+   line();
+diff --git a/src/components/SetarSetupReview.tsx b/src/components/SetarSetupReview.tsx
+index 76a361923b299b254bedf3ffeea34ddddbde1f0c..e385bb0c05586d8368f8e41e1c9c10e4d7ddd1d8 100644
+--- a/src/components/SetarSetupReview.tsx
++++ b/src/components/SetarSetupReview.tsx
+@@ -1,9 +1,10 @@
+-import { useMemo, useState, type ReactNode } from 'react';
++import { useMemo, useRef, useState, type ReactNode } from 'react';
+ import { useStore } from '../store/useStore';
+ import {
+   ITEM_STATUS_LABELS,
+   SETAR_ARCHIVE_ID,
+   archiveFor,
++  setupSourceId,
+   canonicalStringify,
+   planSetarSetup,
+   type ID,
+@@ -38,25 +39,64 @@ const KIND: Record<string, string> = {
+   improvisation: 'improvisation',
+ };
+ 
+-function show(db: PracticeDB, v: SetupValue | undefined): string {
+-  if (!v) return '—';
+-  if ('status' in v) return ITEM_STATUS_LABELS[v.status];
+-  if ('itemType' in v) return `${KIND[v.itemType] ?? v.itemType}${v.gusheh ? ` · ${v.gusheh}` : ''}`;
++/** A value as text, split into generated English and the owner's own words. */
++type Part = { text: string; authored?: boolean };
++function parts(db: PracticeDB, v: SetupValue | undefined): Part[] {
++  if (!v) return [{ text: '—' }];
++  if ('status' in v) return [{ text: ITEM_STATUS_LABELS[v.status] }];
++  if ('itemType' in v) return [{ text: `${KIND[v.itemType] ?? v.itemType}${v.gusheh ? ' · ' : ''}` }, ...(v.gusheh ? [{ text: v.gusheh, authored: true }] : [])];
+   if ('stageId' in v) {
+-    const st = v.stageId ? db.pathwayStages.find((s) => s.id === v.stageId) : undefined;
+-    return v.stageId ? (st ? `${st.code}${st.title !== st.code ? ` · ${st.title}` : ''}` : 'another stage') : 'not placed';
++    if (!v.stageId) return [{ text: 'not placed' }];
++    const st = db.pathwayStages.find((s) => s.id === v.stageId);
++    return st ? [{ text: `${st.code}${st.title !== st.code ? ` · ${st.title}` : ''}`, authored: true }] : [{ text: 'another stage' }];
+   }
+   if ('materialId' in v) {
+-    if (!v.materialId) return 'none';
+-    if (v.materialId.startsWith('new:')) return 'a new study source';
+-    return db.materials.find((m) => m.id === v.materialId)?.title ?? 'another study source';
++    if (!v.materialId) return [{ text: 'none' }];
++    if (v.materialId.startsWith('new:')) return [{ text: 'a new study source' }];
++    const title = db.materials.find((m) => m.id === v.materialId)?.title;
++    return title ? [{ text: title, authored: true }] : [{ text: 'another study source' }];
+   }
+-  if ('catalogRefs' in v) return v.catalogRefs?.length ? `answers ${v.catalogRefs.length}` : 'answers none';
+-  return v.linked ? 'linked' : 'unlinked';
++  if ('catalogRefs' in v) return [{ text: v.catalogRefs?.length ? `answers ${v.catalogRefs.length}` : 'answers none' }];
++  return [{ text: v.linked ? 'linked' : 'unlinked' }];
++}
++const show = (db: PracticeDB, v: SetupValue | undefined): string => parts(db, v).map((x) => x.text).join('');
++
++/** The same value for the screen: generated English isolated LTR, the owner's words each resolving their own direction. */
++function Value({ db, v }: { db: PracticeDB; v: SetupValue | undefined }) {
++  return (
++    <>
++      {parts(db, v).map((x, i) =>
++        x.authored ? (
++          <span key={i} dir="auto">
++            {x.text}
++          </span>
++        ) : (
++          <span key={i} dir="ltr">
++            {x.text}
++          </span>
++        ),
++      )}
++    </>
++  );
+ }
+ 
+ const same = (a: unknown, b: unknown) => canonicalStringify(a) === canonicalStringify(b);
+ 
++/** What the owner chose AND the value they saw when they chose it — the premise a commit is checked against. */
++type Pick = { before: SetupValue; after: SetupValue };
++interface Draft {
++  /** id → the pick (null: deliberately left as it is). */
++  choices: Record<string, Pick | null>;
++  /** The rows SHOWN when choosing began, with the premise they were shown with: only these may be selected by default — a row that arrives later is shown, never auto-joined. */
++  seen: Record<string, Pick> | null;
++}
++
++const selectionsOf = (d: Draft): SetupSelection[] =>
++  [...new Set([...Object.keys(d.seen ?? {}), ...Object.keys(d.choices)])].flatMap((id) => {
++    const pick = id in d.choices ? d.choices[id] : d.seen?.[id];
++    return pick && !same(pick.after, pick.before) ? [{ id, before: pick.before, after: pick.after }] : [];
++  });
++
+ export default function SetarSetupReview() {
+   const db = useStore((s) => s.db);
+   const commit = useStore((s) => s.commitSetarSetup);
+@@ -67,23 +107,31 @@ export default function SetarSetupReview() {
+   const [instrumentId, setInstrumentId] = useState<ID>(archive?.instrumentId ?? '');
+   const [pathwayId, setPathwayId] = useState<ID>('');
+   const [sources, setSources] = useState<NonNullable<SetupContext['sources']>>({});
+-  // id → the value chosen (null: deliberately left as it is).
+-  const [choices, setChoices] = useState<Record<string, SetupValue | null>>({});
+-  // The rows SHOWN when the owner started choosing: only these may be
+-  // selected by default — a row that arrives later is shown, never auto-joined.
+-  const [seen, setSeen] = useState<Set<string> | null>(null);
++  // The draft is written by the handlers (state for the screen, a ref for the
++  // save that settles later) — never mirrored from an effect.
++  const [draft, setDraftState] = useState<Draft>({ choices: {}, seen: null });
++  const draftRef = useRef(draft);
++  const setDraft = (next: Draft) => {
++    draftRef.current = next;
++    setDraftState(next);
++  };
+ 
+   const context: SetupContext = useMemo(
+     () => ({ instrumentId, ...(pathwayId ? { pathwayId } : {}), sources }),
+     [instrumentId, pathwayId, sources],
+   );
+   const plan = useMemo(() => (instrumentId ? planSetarSetup(db, context) : null), [db, context, instrumentId]);
+-  // Derived once per review (React's guarded set-during-render pattern).
+-  if (plan && !seen) setSeen(new Set(plan.proposals.map((p) => p.id)));
++  // Derived once per review (React's guarded set-during-render pattern): each
++  // proposed row is selected with the premise it is SHOWN with.
++  if (plan && !draft.seen) {
++    setDraft({
++      ...draft,
++      seen: Object.fromEntries(plan.proposals.flatMap((p) => (p.state === 'proposed' && p.after ? [[p.id, { before: p.before, after: p.after }]] : []))),
++    });
++  }
+ 
+   const restart = () => {
+-    setChoices({});
+-    setSeen(null);
++    setDraft({ choices: {}, seen: null });
+     saves.reset('setup');
+   };
+ 
+@@ -105,21 +153,41 @@ export default function SetarSetupReview() {
+     );
+   }
+ 
+-  const chosenFor = (p: SetupProposal): SetupValue | undefined => {
+-    if (p.id in choices) return choices[p.id] ?? undefined;
+-    return p.state === 'proposed' && seen?.has(p.id) ? p.after : undefined;
+-  };
+-  const choose = (id: string, v: SetupValue | null) => setChoices((c) => ({ ...c, [id]: v }));
++  const chosenFor = (p: SetupProposal): Pick | undefined => (p.id in draft.choices ? (draft.choices[p.id] ?? undefined) : draft.seen?.[p.id]);
++  // The pick carries what the owner SAW (`p.before` NOW is what the store checks it against).
++  const choose = (p: SetupProposal, after: SetupValue | null) =>
++    setDraft({ ...draftRef.current, choices: { ...draftRef.current.choices, [p.id]: after ? { before: p.before, after } : null } });
+   const status = plan.proposals.filter((p) => p.field === 'status');
+   const rows = plan.proposals.filter((p) => p.field !== 'status');
+   const byItem = new Map<ID, SetupProposal[]>();
+   for (const p of rows) byItem.set(p.itemId, [...(byItem.get(p.itemId) ?? []), p]);
+-  const selections: SetupSelection[] = plan.proposals.flatMap((p) => {
+-    const after = chosenFor(p);
+-    return after && !same(after, p.before) ? [{ id: p.id, before: p.before, after }] : [];
+-  });
++  const selections = selectionsOf(draft);
+   const title = (id: ID) => db.items.find((i) => i.id === id)?.title ?? id;
+ 
++  // ONE save, for what is on screen NOW: the settle reads the live draft, so a
++  // second item chosen while this write is pending is written next, never cleared.
++  const save = () => {
++    const sent = selectionsOf(draftRef.current);
++    saves.run('setup', canonicalStringify(sent), () => commit({ context, selections: sent }), {
++      current: () => canonicalStringify(selectionsOf(draftRef.current)),
++      again: save,
++      saved: () => {
++        setDraft({ choices: {}, seen: null });
++        // A source made here is, from now on, THAT group's source — each group
++        // its own — so a rerun reads it as done rather than making another.
++        const made = useStore.getState().db.materials;
++        setSources((cur) =>
++          Object.fromEntries(
++            Object.entries(cur).map(([key, v]) => {
++              const id = setupSourceId(instrumentId, key);
++              return [key, 'create' in v && made.some((m) => m.id === id) ? { materialId: id } : v];
++            }),
++          ),
++        );
++      },
++    });
++  };
++
+   return (
+     <SetupShell>
+       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+@@ -193,13 +261,11 @@ export default function SetarSetupReview() {
+           type="button"
+           className="btn btn-sm"
+           style={{ alignSelf: 'flex-start' }}
+-          onClick={() =>
+-            setChoices((c) => {
+-              const next = { ...c };
+-              for (const p of status) if (p.state !== 'correct' && !/—/.test(p.evidence)) next[p.id] = p.choices[0]!.after;
+-              return next;
+-            })
+-          }
++          onClick={() => {
++            const choices = { ...draftRef.current.choices };
++            for (const p of status) if (p.state !== 'correct' && !/—/.test(p.evidence)) choices[p.id] = { before: p.before, after: p.choices[0]!.after };
++            setDraft({ ...draftRef.current, choices });
++          }}
+         >
+           Choose every item without a note
+         </button>
+@@ -211,10 +277,10 @@ export default function SetarSetupReview() {
+                 aria-label={`Keeping fresh: ${title(p.itemId)}`}
+                 disabled={p.state === 'correct'}
+                 checked={p.state === 'correct' || !!chosenFor(p)}
+-                onChange={(e) => choose(p.id, e.target.checked ? p.choices[0]!.after : null)}
++                onChange={(e) => choose(p, e.target.checked ? p.choices[0]!.after : null)}
+               />
+-              <span className="small grow" style={{ textAlign: 'start' }}>
+-                <span dir="auto">{title(p.itemId)}</span>{' '}
++              <span className="small grow" dir="auto" style={{ textAlign: 'start' }}>
++                <span>{title(p.itemId)}</span>{' '}
+                 <span className="tiny faint" dir="ltr">
+                   {p.evidence}
+                 </span>
+@@ -230,17 +296,19 @@ export default function SetarSetupReview() {
+           const open = ps.filter((p) => p.state !== 'correct');
+           if (open.length === 0) return null;
+           return (
+-            <div key={itemId} className="card card-quiet stack-sm" role="group" aria-label={`Setup of ${title(itemId)}`}>
+-              <strong className="small" dir="auto" style={{ textAlign: 'start' }}>
+-                {title(itemId)}
+-              </strong>
++            <div key={itemId} className="card card-quiet stack-sm" role="group" dir="auto" aria-label={`Setup of ${title(itemId)}`} style={{ textAlign: 'start' }}>
++              <strong className="small">{title(itemId)}</strong>
+               {open.map((p) => (
+                 <div key={p.id} className="stack-sm">
+                   <div className="tiny" style={{ textAlign: 'start' }}>
+-                    <span dir="ltr">
+-                      {FIELD[p.field]}: {show(db, p.before)}
+-                      {p.state === 'proposed' ? ` → ${show(db, p.after)}` : ''}
+-                    </span>
++                    <span dir="ltr">{FIELD[p.field]}: </span>
++                    <Value db={db} v={p.before} />
++                    {p.state === 'proposed' ? (
++                      <>
++                        <span dir="ltr"> → </span>
++                        <Value db={db} v={p.after} />
++                      </>
++                    ) : null}
+                   </div>
+                   <div className="tiny faint" style={{ textAlign: 'start' }}>
+                     <span dir="ltr">{p.evidence}</span>
+@@ -251,7 +319,7 @@ export default function SetarSetupReview() {
+                         type="checkbox"
+                         aria-label={`${FIELD[p.field]} of ${title(itemId)}: ${show(db, p.after)}`}
+                         checked={!!chosenFor(p)}
+-                        onChange={(e) => choose(p.id, e.target.checked ? p.after! : null)}
++                        onChange={(e) => choose(p, e.target.checked ? p.after! : null)}
+                       />
+                       <span dir="ltr">Apply</span>
+                     </label>
+@@ -259,10 +327,10 @@ export default function SetarSetupReview() {
+                     <select
+                       className="input"
+                       aria-label={`${FIELD[p.field]} of ${title(itemId)}`}
+-                      value={p.choices.findIndex((c) => same(c.after, chosenFor(p)))}
++                      value={p.choices.findIndex((c) => same(c.after, chosenFor(p)?.after))}
+                       onChange={(e) => {
+                         const i = Number(e.target.value);
+-                        choose(p.id, i < 0 ? null : p.choices[i]!.after);
++                        choose(p, i < 0 ? null : p.choices[i]!.after);
+                       }}
+                     >
+                       <option value={-1}>Leave it as it is</option>
+@@ -284,40 +352,15 @@ export default function SetarSetupReview() {
+       </div>
+ 
+       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+-        <button
+-          type="button"
+-          className="btn btn-primary"
+-          disabled={selections.length === 0}
+-          onClick={() => {
+-            const key = canonicalStringify(selections);
+-            saves.run('setup', key, () => commit({ context, selections }), {
+-              current: () => key,
+-              again: () => undefined,
+-              saved: () => {
+-                setChoices({});
+-                setSeen(null);
+-                // A study source made here is named from now on, so a rerun
+-                // reads it as done rather than making another.
+-                setSources((s) =>
+-                  Object.fromEntries(
+-                    Object.entries(s).map(([k, v]) => {
+-                      if (!('create' in v)) return [k, v];
+-                      const madeFor = selections.find((x) => x.id.startsWith('source:'));
+-                      const id = madeFor ? useStore.getState().db.items.find((i) => i.id === madeFor.id.split(':')[1])?.materialId : undefined;
+-                      return [k, id ? { materialId: id } : v];
+-                    }),
+-                  ),
+-                );
+-              },
+-            });
+-          }}
+-        >
++        <button type="button" className="btn btn-primary" disabled={selections.length === 0} onClick={save}>
+           Apply {selections.length} selected
+         </button>
+-        <SaveStatus
+-          ack={saves.states.setup}
+-          onRetry={() => saves.run('setup', saves.states.setup!.carried, () => commit({ context, selections }))}
+-        />
++        <SaveStatus ack={saves.states.setup} onRetry={save} />
++        {saves.states.setup?.status === 'refused' ? (
++          <button type="button" className="btn btn-sm" onClick={restart}>
++            Look again
++          </button>
++        ) : null}
+       </div>
+     </SetupShell>
+   );
+diff --git a/src/components/direction.test.ts b/src/components/direction.test.ts
+index 4b795752a21b5cf183761cc89e9d0a73c7911fcf..2f4d57d566d08d5e96422de788cf39cd8933ae07 100644
+--- a/src/components/direction.test.ts
++++ b/src/components/direction.test.ts
+@@ -188,11 +188,14 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string
+   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
+   { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
+-  // Review Setar setup (this lane): a declared source's own text, then each
+-  // item's own title in the Keeping fresh list and on its organisation card.
++  // Review Setar setup (this lane): a declared source's own text, an owner's
++  // value in a before/after line (its own isolate), then the two GROUPS —
++  // a Keeping fresh row and an organisation card — each resolving from its
++  // bare title, the group's first strong text.
+   { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
+   { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
+-  { file: "components/SetarSetupReview.tsx", tagName: "strong", classValue: "small" },
++  { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "small grow" },
++  { file: "components/SetarSetupReview.tsx", tagName: "div", classValue: "card card-quiet stack-sm" },
+   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
+   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
+   { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },
+@@ -663,6 +666,8 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
+   // value the archive proposes are authored independently of each other.
+   { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
+   { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
++  // Review Setar setup: each owner-authored before/after value, in its own isolate.
++  { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="auto">' },
+   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.constraint}</span>' },
+   // Instrument names used to be tracked here too, one exact snippet per site.
+   // A sealed review found that shape structurally insufficient FOUR times
+@@ -711,6 +716,9 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
+  * call site can see whether its OWN return value is isolated.
+  */
+ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
++  // Review Setar setup: generated labels and evidence (authored values inside it carry their own bidi isolate).
++  { file: 'components/SetarSetupReview.tsx', snippet: '<span dir="ltr">{p.evidence}</span>' },
++  { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="ltr">' },
+   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
+   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
+   { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
+diff --git a/src/components/practiceCue.test.ts b/src/components/practiceCue.test.ts
+index 7dd9f51a4e72f423fea702177eea26c27874cc78..ac43ecbf104a864783c4265049851f226708c53f 100644
+--- a/src/components/practiceCue.test.ts
++++ b/src/components/practiceCue.test.ts
+@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
+ 
+ type Log = { e: string; [k: string]: unknown }[];
+ 
+-function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'throws' | 'rejects' | 'hangs' } = {}) {
++function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'throws' | 'rejects' | 'hangs' | 'manual' } = {}) {
+   class Ctx {
+     state: string = 'suspended';
+     currentTime = 5;
+@@ -32,6 +32,8 @@ function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'thro
+       if (opts.resume === 'throws') throw new Error('refused');
+       if (opts.resume === 'rejects') return Promise.reject(new Error('rejected'));
+       if (opts.resume === 'hangs') return new Promise(() => undefined);
++      // Settles only when the test says so — never changes the state itself.
++      if (opts.resume === 'manual') return new Promise<void>((done) => log.push({ e: 'pending', done }));
+       this.setState('running');
+       return Promise.resolve();
+     }
+@@ -158,6 +160,34 @@ describe('the practice sound module', () => {
+     cue.testPracticeSound();
+     await flush();
+     expect(log.filter((x) => x.e === 'start')).toHaveLength(2);
++
++    // --- PENDING REQUESTS never sound late ---------------------------------
++    // Three taps whose resume has not settled: ONE resume each (not two), and
++    // when the context is later readied by another tap and the old promises
++    // finally settle, no earlier request plays.
++    log = [];
++    cue = await load(log, { resume: 'manual' });
++    cue.testPracticeSound();
++    cue.testPracticeSound();
++    cue.testPracticeSound();
++    expect(log.filter((x) => x.e === 'resume')).toHaveLength(3);
++    const settle = () => log.filter((x) => x.e === 'pending').forEach((x) => (x.done as () => void)());
++    const ctx2 = log.find((x) => x.e === 'ctor')!.ctx as { setState(s: string): void };
++    ctx2.setState('running'); // a later gesture readied it
++    cue.primePracticeSound(); // that tap supersedes every pending Test request
++    settle();
++    await flush();
++    expect(log.filter((x) => x.e === 'start')).toEqual([]);
++    expect(log.filter((x) => x.e === 'vibrate')).toEqual([]);
++    // The LATEST tap's own request does play when its resume lands.
++    log = [];
++    cue = await load(log, { resume: 'manual' });
++    cue.testPracticeSound();
++    cue.testPracticeSound();
++    (log.find((x) => x.e === 'ctor')!.ctx as { setState(s: string): void }).setState('running');
++    settle();
++    await flush();
++    expect(log.filter((x) => x.e === 'start')).toHaveLength(2); // the latest request only
+   });
+ });
+ 
+diff --git a/src/components/practiceCue.ts b/src/components/practiceCue.ts
+index cabc9a4aa088ac9829eb7b70ff773df1b53d4c28..a4601eab56117bcd6c3431df72e3c9f3395196f6 100644
+--- a/src/components/practiceCue.ts
++++ b/src/components/practiceCue.ts
+@@ -29,6 +29,9 @@ type Ctor = new () => AudioContext;
+ let context: AudioContext | null = null;
+ let refused = false;
+ let state: PracticeSoundState = 'off';
++// Bumped by every tap that readies the sound: a Test sound request whose
++// resume lands after a LATER tap is an old request, and plays nothing.
++let gesture = 0;
+ const listeners = new Set<() => void>();
+ 
+ function audioCtor(): Ctor | undefined {
+@@ -58,12 +61,15 @@ function update(): void {
+  * one was closed — only then, so two never coexist), and asks a suspended one
+  * to resume. A refusal, a rejection or a promise that never settles is
+  * absorbed: starting practice never waits on sound, and never fails for it.
++ * Returns the one resume this tap asked for (it settles, never rejects), if any.
+  */
+-export function primePracticeSound(): void {
++export function primePracticeSound(): Promise<void> | undefined {
++  gesture += 1;
++  let resumed: Promise<void> | undefined;
+   const Ctx = audioCtor();
+   if (!Ctx) {
+     update();
+-    return;
++    return undefined;
+   }
+   try {
+     if (!context || context.state === 'closed') {
+@@ -76,7 +82,7 @@ export function primePracticeSound(): void {
+     }
+     if (context.state !== 'running') {
+       // INVOKED now, inside the gesture; its promise is only observed.
+-      Promise.resolve(context.resume()).then(update, update);
++      resumed = Promise.resolve(context.resume()).then(update, update);
+     }
+   } catch {
+     // A constructor that throws, or a resume() that throws: unavailable until
+@@ -84,6 +90,7 @@ export function primePracticeSound(): void {
+     refused = !context;
+   }
+   update();
++  return resumed;
+ }
+ 
+ /** The cue's shape, in one place: two short 880 Hz pulses. */
+@@ -131,25 +138,20 @@ export function playPracticeCue(): void {
+  * touches no clock, marker, record or wake lock.
+  */
+ export function testPracticeSound(): void {
+-  primePracticeSound();
++  const resumed = primePracticeSound();
++  const mine = gesture;
+   const c = context;
+   if (!c) return;
+   if (c.state === 'running') {
+     playPracticeCue();
+     return;
+   }
+-  // The resume this very tap asked for: play when (and only if) it lands. A
+-  // resume that throws, rejects or never settles simply plays nothing.
+-  try {
+-    Promise.resolve(c.resume()).then(
+-      () => {
+-        if (c === context && c.state === 'running') playPracticeCue();
+-      },
+-      () => undefined,
+-    );
+-  } catch {
+-    // best-effort only
+-  }
++  // The resume this very tap asked for (never a second one): play when, and
++  // only if, it lands while this is still the latest tap. A resume that throws,
++  // rejects or never settles plays nothing, and an older tap's never plays late.
++  resumed?.then(() => {
++    if (mine === gesture && c === context && c.state === 'running') playPracticeCue();
++  });
+ }
+ 
+ function subscribe(fn: () => void): () => void {
+diff --git a/src/domain/setarSetup.test.ts b/src/domain/setarSetup.test.ts
+index 44269f711577a0dc79cd824c326c5f275761977b..b9701c7aaf889825622068892791ebe98bc1afbd 100644
+--- a/src/domain/setarSetup.test.ts
++++ b/src/domain/setarSetup.test.ts
+@@ -273,6 +273,31 @@ describe('the Setar setup review', () => {
+     expect(s().commitSetarSetup({ context: named, selections: again.filter((p) => p.state === 'correct').map((p) => ({ id: p.id, before: p.before, after: p.before })), now: NOW })).toBeNull();
+     expect(s().db).toBe(afterCreate);
+ 
++    // --- TWO DISTINCT GROUPS created in ONE apply keep their own identity ------
++    // Each declared text is its own study source; replaying the very same
++    // selections (a retry after a refused write, a second tab) names the
++    // sources already made — a no-op, never stale and never a second source.
++    const two = structuredClone(OWNER) as PracticeDB;
++    const second = 'منبع-دوم-آزمون';
++    two.archiveSources[0]!.pieces = two.archiveSources[0]!.pieces.map((p) => (p.key === 'چهارمضراب-ماهور-صبا' ? { ...p, studySource: second } : p));
++    const bothCreate: SetupContext = { ...CTX, sources: { [DECLARED]: { create: true }, [`declared:${second}`]: { create: true } } };
++    const bothSel = planSetarSetup(two, bothCreate).proposals.filter((p) => p.field === 'source' && p.state === 'proposed').map((p) => sel(p));
++    const secondItem = idOf(two, 'چهارمضراب-ماهور-صبا');
++    expect(bothSel.some((x) => x.id === `source:${secondItem}`)).toBe(true);
++    const first = applySetarSetup(two, bothCreate, bothSel, NOW);
++    if (!first.ok) throw new Error(first.reason);
++    const madeTwo = first.db.materials.filter((m) => !two.materials.some((o) => o.id === m.id));
++    expect(madeTwo.map((m) => m.title).sort()).toEqual([EXPECT.context.declared, second].sort());
++    const materialOf = (db: PracticeDB, itemId: string) => db.items.find((i) => i.id === itemId)!.materialId;
++    expect(materialOf(first.db, secondItem)).toBe(madeTwo.find((m) => m.title === second)!.id);
++    expect(materialOf(first.db, idOf(two, 'درامد-ماهور-ردیف-میرزاعبدالله'))).toBe(madeTwo.find((m) => m.title === EXPECT.context.declared)!.id);
++    const replay = applySetarSetup(first.db, bothCreate, bothSel, NOW);
++    if (!replay.ok) throw new Error(replay.reason);
++    expect(replay.db).toBe(first.db);
++    // A group whose source exists but a later row arrives: it joins THAT source, once.
++    const lateTwo = applySetarSetup(first.db, bothCreate, bothSel.slice(0, 1), NOW);
++    expect(lateTwo.ok && lateTwo.db.materials.length).toBe(first.db.materials.length);
++
+     // --- A REFUSED WRITE: the store says nothing it cannot keep, and Try again writes
+     useStore.setState({ db: OWNER });
+     const { storageSettled } = await import('../store/idb');
+diff --git a/src/domain/setarSetup.ts b/src/domain/setarSetup.ts
+index 81798189eaec5f9e91e701503a134437b2b31f79..83d7f456cfd20027b6091e4a5ec656cb12038933 100644
+--- a/src/domain/setarSetup.ts
++++ b/src/domain/setarSetup.ts
+@@ -1,6 +1,6 @@
+ import type { ID, ItemStatus, ItemType, Material, Pathway, PracticeDB, PracticeItem } from './types';
+ import type { SourcePiece } from './sourceArchive';
+-import { archiveFor, lessonAssociations, sessionMembership } from './sourceArchive';
++import { archiveFor, lessonAssociations, sessionMembership, setupSourceId } from './sourceArchive';
+ import { MIRZA_ABDOLLAH_RADIF } from './referenceCatalog';
+ import { catalogForStage, stageIdFor } from './pathwaySeed';
+ import { catalogReferenceId, resolveCatalogReference } from './courseSeed';
+@@ -25,6 +25,15 @@ import { ITEM_STATUS_LABELS } from './labels';
+ // ---------------------------------------------------------------------------
+ 
+ /** The kinds the registry's own form vocabulary can establish. */
++/**
++ * An independently authored value inside generated English evidence, wrapped
++ * in a first-strong BIDI ISOLATE (U+2068…U+2069) — the native counterpart of
++ * `dir="auto"` — so a Farsi form, composer, stage or source title resolves its
++ * own direction instead of inheriting the sentence's. Nothing here detects a
++ * script or reorders text.
++ */
++const iso = (value: string): string => `\u2068${value}\u2069`;
++
+ export type PieceKind = Extract<ItemType, 'gusheh' | 'full_piece' | 'exercise' | 'improvisation'>;
+ 
+ export type KindFamily =
+@@ -69,7 +78,7 @@ export function classifyPiece(piece: Pick<SourcePiece, 'form' | 'composer' | 'pr
+   if (form === 'درامد') return { kind: 'gusheh', family: 'radif-daramad', why: 'The registry names it a درامد — the opening gusheh of its dastgāh.' };
+   if (form === 'چهارپاره') {
+     return composer
+-      ? { kind: null, family: 'composed-chaharpareh', why: `A چهارپاره attributed to ${composer}: a radif section or a composed piece — yours to say.` }
++      ? { kind: null, family: 'composed-chaharpareh', why: `A چهارپاره attributed to ${iso(composer)}: a radif section or a composed piece — yours to say.` }
+       : { kind: 'gusheh', family: 'radif-chaharpareh', why: 'A چهارپاره with no composer: a section of the radif.' };
+   }
+   if (form === 'رنگ' && !composer) {
+@@ -81,9 +90,9 @@ export function classifyPiece(piece: Pick<SourcePiece, 'form' | 'composer' | 'pr
+     return { kind: 'improvisation', family: 'improvisation', why: 'The registry names it a بداهه — your own improvisation, not a composed work.' };
+   }
+   if (COMPOSED_FORMS.has(form) || (form === 'رنگ' && composer)) {
+-    return { kind: 'full_piece', family: 'composed', why: `The registry names it a ${form}${composer ? ` by ${composer}` : ''}.` };
++    return { kind: 'full_piece', family: 'composed', why: `The registry names it a ${iso(form)}${composer ? ` by ${iso(composer)}` : ''}.` };
+   }
+-  return { kind: null, family: 'unknown', why: form ? `The registry's form «${form}» does not say what kind of item this is.` : 'The registry gives no form.' };
++  return { kind: null, family: 'unknown', why: form ? `The registry's form «${iso(form)}» does not say what kind of item this is.` : 'The registry gives no form.' };
+ }
+ 
+ /** What the import USED to seed — `full_piece` for every non-گوشه — so a seeded value is told from an owner's choice. */
+@@ -190,7 +199,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
+   const stageIds = new Set(pathway ? db.pathwayStages.filter((s) => s.pathwayId === pathway.id).map((s) => s.id) : []);
+   const stageName = (id: ID | undefined) => {
+     const st = id ? db.pathwayStages.find((s) => s.id === id) : undefined;
+-    return st ? `${st.code}${st.title && st.title !== st.code ? ` · ${st.title}` : ''}` : 'a stage of another pathway';
++    return st ? iso(`${st.code}${st.title && st.title !== st.code ? ` · ${st.title}` : ''}`) : 'a stage of another pathway';
+   };
+   const materials = db.materials.filter((m) => m.instrumentId === instrumentId);
+   const pieceOf = (item: PracticeItem): SourcePiece | undefined =>
+@@ -307,9 +316,9 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
+           continue;
+         }
+         target = radifStageFor(pathway.id, r.term.id);
+-        why = `A gusheh of ${r.term.name}.`;
++        why = `A gusheh of ${iso(r.term.name)}.`;
+         if (!target || !stageIds.has(target)) {
+-          exception(`A gusheh of ${r.term.name}, but this pathway has no stage for it.`);
++          exception(`A gusheh of ${iso(r.term.name)}, but this pathway has no stage for it.`);
+           continue;
+         }
+       } else if (kind === 'full_piece') {
+@@ -395,7 +404,9 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
+     if (!key) continue;
+     const choice = ctx.sources?.[key];
+     const before: SetupValue = { materialId: i.materialId ?? null };
+-    const target = choice && 'materialId' in choice ? choice.materialId : choice ? `new:${key}` : undefined;
++    // A source this review already made for the group is THE source, not a second.
++    const made = setupSourceId(instrumentId, key);
++    const target = choice && 'materialId' in choice ? choice.materialId : choice ? (materials.some((m) => m.id === made) ? made : `new:${key}`) : undefined;
+     const label = groups.get(key)!.label;
+     const id = `source:${i.id}`;
+     if (!target) continue; // the group's own question comes first
+@@ -405,7 +416,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
+       const piece = pieceOf(i);
+       return piece ? classifyPiece(piece) : undefined;
+     })();
+-    const why = key.startsWith('declared:') ? `The registry declares it from «${label}».` : `It answers a ${MIRZA_ABDOLLAH_RADIF.name} reference.`;
++    const why = key.startsWith('declared:') ? `The registry declares it from «${iso(label)}».` : `It answers a ${iso(MIRZA_ABDOLLAH_RADIF.name)} reference.`;
+     if (i.materialId === target) {
+       push({ id, itemId: i.id, field: 'source', state: 'correct', before, after, choices: [], evidence: why });
+     } else if (reading?.family === 'composed-chaharpareh' || reading?.family === 'radif-reng' || reading?.family === 'provisional') {
+@@ -419,7 +430,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
+         state: 'exception',
+         before,
+         choices: [{ label: 'Use this study source instead', after }],
+-        evidence: `${why} You set «${current?.title ?? 'another source'}»; that stays unless you choose.`,
++        evidence: `${why} You set «${iso(current?.title ?? 'another source')}»; that stays unless you choose.`,
+       });
+     } else {
+       push({ id, itemId: i.id, field: 'source', state: 'proposed', before, after, choices: [], evidence: why });
+@@ -467,6 +478,12 @@ export type SetupOutcome =
+ 
+ const same = (a: unknown, b: unknown) => canonicalStringify(a) === canonicalStringify(b);
+ 
++function existingSource(db: PracticeDB, instrumentId: ID, v: SetupValue): SetupValue {
++  if (!('materialId' in v) || !v.materialId?.startsWith('new:')) return v;
++  const made = setupSourceId(instrumentId, v.materialId.slice('new:'.length));
++  return db.materials.some((m) => m.id === made) ? { materialId: made } : v;
++}
++
+ /** What a selection's field holds NOW — so a row that vanished because it is done reads as done. */
+ function currentOf(db: PracticeDB, id: string): SetupValue | undefined {
+   const [field, itemId, lessonId] = id.split(':');
+@@ -503,7 +520,9 @@ export function applySetarSetup(db: PracticeDB, ctx: SetupContext, selections: S
+   const byId = new Map(plan.proposals.map((p) => [p.id, p]));
+   const stale: string[] = [];
+   const todo: { p: SetupProposal; after: SetupValue }[] = [];
+-  for (const sel of selections) {
++  for (const chosen of selections) {
++    // `new:<group>` names the source to MAKE; once it exists it is that source.
++    const sel = { ...chosen, after: existingSource(db, ctx.instrumentId, chosen.after) };
+     const p = byId.get(sel.id);
+     const offered = p ? [...(p.after && p.state === 'proposed' ? [p.after] : []), ...p.choices.map((c) => c.after)] : [];
+     // ALREADY DONE is not stale: the field holds exactly what was chosen —
+@@ -526,13 +545,16 @@ export function applySetarSetup(db: PracticeDB, ctx: SetupContext, selections: S
+     if (!target.startsWith('new:')) return target;
+     const key = target.slice('new:'.length);
+     if (!created.has(key)) {
+-      const group = plan.sourceGroups.find((g) => g.key === key)!;
+-      const m = createMaterial(
+-        { instrumentId: ctx.instrumentId, title: group.label, sourceType: group.kind === 'reference' ? 'radif' : 'other' },
+-        now,
+-      );
+-      materials = [...materials, m];
+-      created.set(key, m.id);
++      const id = setupSourceId(ctx.instrumentId, key);
++      if (!materials.some((x) => x.id === id)) {
++        const group = plan.sourceGroups.find((g) => g.key === key)!;
++        const m = createMaterial(
++          { instrumentId: ctx.instrumentId, title: group.label, sourceType: group.kind === 'reference' ? 'radif' : 'other' },
++          now,
++        );
++        materials = [...materials, { ...m, id }];
++      }
++      created.set(key, id);
+     }
+     return created.get(key)!;
+   };
+diff --git a/src/domain/sourceArchive.ts b/src/domain/sourceArchive.ts
+index d1b2cd4f96939806a92474fdb06f3d0ffa7d2299..4451cceb62eef52152a9ca312387c68a88818c58 100644
+--- a/src/domain/sourceArchive.ts
++++ b/src/domain/sourceArchive.ts
+@@ -207,6 +207,16 @@ export function sourceResourceId(archiveId: string, path: string): ID {
+   return `src-${stableHash(`${archiveId}${NUL}asset${NUL}${path}`)}`;
+ }
+ 
++/**
++ * Deterministic id for the study source "Review Setar setup" creates for one
++ * evidence group of one instrument — so the same selection, replayed, names
++ * the source it already made instead of making (or refusing) another. It is
++ * the group's key, never a title, that decides it; never cross-instrument.
++ */
++export function setupSourceId(instrumentId: ID, groupKey: string): ID {
++  return `src-${stableHash(`${instrumentId}${NUL}setup-source${NUL}${groupKey}`)}`;
++}
++
+ // --- decoding --------------------------------------------------------------
+ 
+ /** The fixed role vocabulary, byte-exact from the archive's own contract. */
+diff --git a/tests/setar-practice-source.test.ts b/tests/setar-practice-source.test.ts
+index 479bbca626f3b1478bf18f8667ceefe614c0ad7c..72a999a2e71cf590734c5f2cda112468c8a632e5 100644
+--- a/tests/setar-practice-source.test.ts
++++ b/tests/setar-practice-source.test.ts
+@@ -310,6 +310,26 @@ describe('the Setar archive intake, on temporary corpora', () => {
+       expect(moved['session-2-24-10-2023/نت-درآمد-شور-ردیف-میرزاعبدالله-2.pdf']).toEqual(['درآمد-شور-ردیف-میرزاعبدالله']);
+       expect(moved['session-2-24-10-2023/نت-کرشمه-شور-ردیف-میرزاعبدالله.pdf']).toBeUndefined();
+ 
++      // --- A REORDERED, EXTENDED RENAME LOG: the template follows the header ---
++      // `new_path,timestamp,old_path` is a valid log. The same pairs mean the
++      // same thing, and the printed row puts each path in ITS OWN column — the
++      // old path in old_path, the current path in new_path, timestamp empty.
++      const reordered = writeCorpus('real');
++      roots.push(reordered);
++      const inOrder = scan(reordered);
++      writeFileSync(
++        join(reordered, 'RENAME-LOG.csv'),
++        `${['new_path,timestamp,old_path', ...CORPUS.renameLog.rows.map((r) => {
++          const [oldPath, newPath, at] = r.split(',');
++          return `${newPath},${at},${oldPath}`;
++        })].join('\n')}\n`,
++      );
++      expect(scan(reordered).contentHash).toBe(inOrder.contentHash);
++      const odd = report(reordered);
++      expect(odd.text).toContain('new_path,timestamp,old_path');
++      expect(odd.text).toContain('       <its current path>,,<the missing path>');
++      expect(odd.text).not.toContain('<the missing path>,<its current path>');
++
+       // --- INVALID INPUT EXPLAINS, AND NO DRAFT IS PRINTED AS CONFIRMED -------
+       const bad = writeCorpus('real');
+       roots.push(bad);
+diff --git a/tests/setar-practice.browser.test.ts b/tests/setar-practice.browser.test.ts
+index 3f2d453f3333df50253639bfec72af69f0e61058..1f646bcde2b36acd3aa89afa7afa6ed6c7eda3f0 100644
+--- a/tests/setar-practice.browser.test.ts
++++ b/tests/setar-practice.browser.test.ts
+@@ -979,6 +979,56 @@ describe('Review Setar setup, interrupted', () => {
+         // The row the owner cleared is offered again, as a proposal, not applied.
+         expect(await page.getByRole('group', { name: `Setup of ${TORK2.title}` }).getByRole('checkbox', { name: /^Place of / }).count(), where).toBe(1);
+         expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(after));
++
++        // --- THE PREMISE the owner saw is the one the commit checks ------------
++        // Keeping fresh is chosen for a RESTING item; another device then moves
++        // it to Repairing. Apply must refuse the dormant premise it was shown,
++        // never rebuild it from the live row and write maintenance over it.
++        await page.getByText(/Keeping fresh — choose which items/).click();
++        await fresh(JANG.title).check();
++        const drift = structuredClone(await db(app)) as Db;
++        drift.items.find((i) => i.id === JANG.id)!.status = 'repairing';
++        publishRemote(remote, remoteStateText(drift), await hashState(drift), 100);
++        await page.getByRole('button', { name: 'Sync now' }).click();
++        await until(app, (x) => x.items.find((i) => i.id === JANG.id)!.status, (v) => v === 'repairing');
++        const drifted = await db(app);
++        await page.getByRole('button', { name: /^Apply \d+ selected$/ }).click();
++        await page.getByText(/changed since the review was shown/).waitFor({ timeout: 10_000 });
++        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(drifted));
++        expect(await page.getByText('Saved.').count(), where).toBe(0);
++        await page.getByRole('button', { name: 'Look again' }).click();
++        // Looking again starts from what is there now: the stale choice is gone.
++        expect(await fresh(JANG.title).isChecked(), where).toBe(false);
++
++        // --- A SECOND CHOICE made while the first save is pending is not lost ---
++        // Hold IndexedDB so the first write cannot settle, choose another item,
++        // then let storage answer: "Saved." may only speak for what was written,
++        // so the newer choice is written next instead of being cleared unseen.
++        await fresh(SABA.title).check();
++        await page.evaluate(
++          () =>
++            new Promise<void>((resolve) => {
++              const w = window as unknown as { __held?: boolean };
++              const open = indexedDB.open('practice-compass');
++              open.onsuccess = () => {
++                const store = open.result.transaction('kv', 'readwrite').objectStore('kv');
++                w.__held = true;
++                const ping = () => {
++                  if (w.__held) store.get('__hold').onsuccess = ping;
++                };
++                ping();
++                resolve();
++              };
++            }),
++        );
++        await page.getByRole('button', { name: /^Apply \d+ selected$/ }).click();
++        await page.getByText('Saving…').first().waitFor({ timeout: 10_000 });
++        await fresh(JANG.title).check();
++        await page.evaluate(() => ((window as unknown as { __held?: boolean }).__held = false));
++        await until(app, (x) => x.items.find((i) => i.id === JANG.id)!.status, (v) => v === 'maintenance');
++        const settled = await db(app);
++        expect([settled.items.find((i) => i.id === SABA.id)!.status, settled.items.find((i) => i.id === JANG.id)!.status], where).toEqual(['maintenance', 'maintenance']);
++        await page.getByText('Saved.').first().waitFor({ timeout: 10_000 });
+         expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
+       } finally {
+         await app.close();
+@@ -1334,6 +1384,47 @@ describe('recovery and difference controls, on a phone', () => {
+           expect((await focused(page)).name, where).toMatch(/^Restore /);
+           facts = await layoutFacts(page);
+           expect([facts.pageScrolls, facts.sideways, facts.pinned], where).toEqual([false, false, []]);
++
++          // --- REVIEW SETAR SETUP: each row a group, each value its own direction
++          // A Farsi title beside English generated copy and a Farsi stage; an
++          // English title beside Farsi values. The group resolves from its bare
++          // title, the owner's values from themselves, the generated copy is LTR.
++          await page.getByText('Review Setar setup').click();
++          if (await page.getByText('Which instrument is your Setar?').count()) {
++            await page.locator('details', { hasText: 'Which instrument is your Setar?' }).last().locator('select').selectOption('inst-setar');
++          }
++          await page.getByRole('combobox', { name: 'Pathway to place items in' }).selectOption('setar-radif');
++          await page.getByRole('combobox', { name: 'Study source for ردیف-میرزاعبدالله' }).selectOption('mat-radif');
++          const MAHUR_TITLE = by(DARAMAD_MAHUR).title;
++          const facts4 = async (title: string) => {
++            const card = page.getByRole('group', { name: `Setup of ${title}` });
++            await card.waitFor({ timeout: 10_000 });
++            return card.evaluate((el) => {
++              const strong = el.querySelector('strong')!;
++              const cs = getComputedStyle(el);
++              return {
++                direction: cs.direction,
++                align: cs.textAlign,
++                titleDir: strong.getAttribute('dir'),
++                bareTitleFirst: el.firstElementChild === strong,
++                owner: [...el.querySelectorAll('span[dir="auto"]')].map((n) => [n.textContent ?? '', getComputedStyle(n).direction]),
++                generated: [...el.querySelectorAll('span[dir="ltr"]')].map((n) => getComputedStyle(n).direction),
++              };
++            });
++          };
++          for (const [title, want, hasValue] of [[MAHUR_TITLE, 'rtl', true], [LONG_EN, 'ltr', false]] as const) {
++            const f = await facts4(title);
++            expect(f.direction, `${where}: ${title} resolves from its own title`).toBe(want);
++            expect([f.align, f.titleDir, f.bareTitleFirst], `${where}: ${title}`).toEqual(['start', null, true]);
++            expect(f.generated.every((d) => d === 'ltr'), where).toBe(true);
++            // An owner's Farsi value reads RTL even inside an English-titled card, and vice versa.
++            expect(f.owner.filter(([t]) => /[؀-ۿ]/.test(t)).every(([, d]) => d === 'rtl'), `${where}: ${title}`).toBe(true);
++            if (hasValue) expect(f.owner.length, `${where}: ${title} shows an owner value`).toBeGreaterThan(0);
++          }
++          // The evidence's embedded owner words sit in bidi isolates (U+2068..U+2069) inside LTR copy.
++          expect(await page.getByRole('group', { name: `Setup of ${MAHUR_TITLE}` }).innerText(), where).toMatch(/\u2068[^\u2069]+\u2069/);
++          facts = await layoutFacts(page);
++          expect([facts.pageScrolls, facts.sideways, facts.pinned], where).toEqual([false, false, []]);
+           expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
+         } finally {
+           await app.close();
+```
+
+**Paths the rework touched:**
+
+- `docs/setar-practice-reliability.md`
+- `scripts/check-setar-practice-families.mjs`
+- `scripts/scan-setar-classes.mjs`
+- `src/components/SetarSetupReview.tsx`
+- `src/components/direction.test.ts`
+- `src/components/practiceCue.test.ts`
+- `src/components/practiceCue.ts`
+- `src/domain/setarSetup.test.ts`
+- `src/domain/setarSetup.ts`
+- `src/domain/sourceArchive.ts`
+- `tests/setar-practice-source.test.ts`
+- `tests/setar-practice.browser.test.ts`
+
+**The builder's rework commit messages — claims to verify against the diff, never evidence:**
+
+```
+9d0e8ff Rework review findings: setup premises, source identity, sound requests, rename template, setup direction
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+
+241b9a4 Record the four new family mutations
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+```
 
 ## Check against the contract
 
