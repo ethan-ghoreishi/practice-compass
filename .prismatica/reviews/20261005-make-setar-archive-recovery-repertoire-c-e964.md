@@ -1,41 +1,12 @@
 ---
 id: 20261005-make-setar-archive-recovery-repertoire-c-e964
 contractId: 20261005-make-setar-archive-recovery-repertoire-c-e964
-patchId: 33cf801043e6ae0e6ea55d8600a8a847b0480dc6
+patchId: c002ddb2a6b8852cee7ffeeba657e01090a82603
 reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: header-aware-source-metadata-drafts
-    summary: "P2: formatAttention loses CSV quoting when printing registry and
-      rename-log headers, so valid quoted extension headers no longer describe
-      their accompanying draft rows."
-    counterexample: 'The accepted header new_path,"audit,note",old_path prints as
-      new_path,audit,note,old_path. Parsing that printed header with the filled
-      three-cell template leaves old_path empty and assigns the old path to
-      note. Instances: scripts/scan-setar-classes.mjs:945,984. Checked clean:
-      parseCsvCells/readTable, new registry draft cells, raw-cell roster
-      amendments, rename template column placement and downstream exact rename
-      consumers. Extend setar durable intake preserves registry authority and
-      exact rename evidence without changing media to quoted extension headers.'
-  - family: setup-study-source-identity-and-idempotence
-    summary: "P2: Required multi-group creation acknowledgement and failed-creation
-      persistence proof remains absent from the named setup checks, despite the
-      domain identity repair."
-    counterexample: "The named browser test selects only mat-radif and never
-      exercises create-group finalisation at SetarSetupReview.tsx:179-183. The
-      domain test covers successful two-group creation/replay, but its
-      failed-write case at setarSetup.test.ts:305 applies a kind change with an
-      existing-source context. Missing proof instances: group finalisation,
-      failed creation persistence, Try again and repeat/reload. Checked clean:
-      deterministic group IDs, production domain creation/replay,
-      existing-source instrument filtering, shared acknowledgement sequencing,
-      ItemForm and Materials retries, and keyed course-source selection. Extend
-      setar setup review is usable through controls and survives interruption
-      and setar setup commits selected rows atomically idempotently and without
-      collateral changes to those creation cases."
-createdAt: 2026-10-06T11:11:06.099Z
-sealedAt: 2026-10-06T11:47:56.476Z
+verdict: approve
+createdAt: 2026-10-06T14:23:51.888Z
+sealedAt: 2026-10-06T17:24:37.626Z
 ---
 
 # Review: Make Setar archive recovery, repertoire corrections and iPhone practice reliable
@@ -49,7 +20,7 @@ sealedAt: 2026-10-06T11:47:56.476Z
 - **Contract:** 20261005-make-setar-archive-recovery-repertoire-c-e964
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/45
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `33cf801043e6ae0e6ea55d8600a8a847b0480dc6`
+- **Diff patch-id:** `c002ddb2a6b8852cee7ffeeba657e01090a82603`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
 ## The Delta this change was framed from
@@ -99,965 +70,450 @@ still breaks it is not closed.
 
 **Findings from the previous review:**
 
-- **setup-review-premise-and-acknowledgement** — P1: SetarSetupReview rebuilds before-values from the live plan for status, kind, stage, source, reference and class choices, bypassing stale-selection refusal. Its captured current key and unconditional saved reset also discard newer selections while persistence is pending. Preserve the reviewed premise/proposal and bind acknowledgement to the live draft.
-  _counterexample:_ Choose Keeping fresh while an item is dormant, then sync it to repairing before Apply. The production component handler submits before={status:repairing} and writes maintenance; applySetarSetup refuses the original dormant premise. Choosing a second item while the first save is pending is cleared by the first saved callback without being written. Instances: SetarSetupReview.tsx:71,80,108-119,293-298,319. Consumers checked clean for this invariant: applySetarSetup with a carried premise, ArchiveRefresh typed metadata decisions, ui acknowledgement sequencing, ItemForm, Materials and MusicTerms live draft readers, immutable Recovery and StageDetail source actions. Extend setar setup commits selected rows atomically idempotently and without collateral changes and setar setup review is usable through controls and survives interruption; current browser drift is unrelated.
-- **setup-study-source-identity-and-idempotence** — P1: Study-source creation loses group identity across acknowledgement and replay. The saved callback assigns the first selected item's materialId to every create group; new:<group> is not translated to its created id for retries, and Try again omits source finalisation.
-  _counterexample:_ Create sources for two distinct declarations in one Apply. The production handler creates two distinct materials but its saved callback sets both source selectors to the first material. Replaying one original create selection against the resulting database is rejected as stale instead of a no-op. Instances: setarSetup.ts:398,511,524-537; SetarSetupReview.tsx:301-307,319. Consumers checked clean: per-group creation within one domain commit, explicit existing-source selection and instrument filtering, ItemForm createdSource retry, Materials draft.id retry, keyed course-source reuse. Extend setar setup commits selected rows atomically idempotently and without collateral changes and setar setup review is usable through controls and survives interruption to multi-group creation, failed creation persistence and unchanged replay.
-- **practice-sound-pending-request-lifecycle** — P2: testPracticeSound queues unsuperseded callbacks on resume promises and calls resume twice per suspended tap. Old test/recovery requests can sound together when a later gesture resumes the context, violating the no-queued-old-tones acceptance.
-  _counterexample:_ With a suspended context whose resume promises remain pending, call testPracticeSound three times: six promises accumulate and no pulse plays. Later prime the context, mark it running and resolve the earlier promises: six late oscillator pulses and three vibrations are emitted. Instances: practiceCue.ts:133-146; Settings Test practice sound; ActiveBlock SoundNote and its RoutineRunner reuse. Consumers checked clean: direct playPracticeCue while suspended, prime-only block/routine Start and Resume doors, atomic store marker claims and both boundary callers. Extend practice sound reuses one gesture primed context across all start and resume doors and practice sound keeps one context primed only by taps and never queues a cue to pending requests that later settle.
-- **header-aware-source-metadata-drafts** — P2: The rename-log attention template prints the actual header but always puts old and new paths in the first two columns. Valid reordered or extended headers produce incorrect exact rename declarations.
-  _counterexample:_ For new_path,timestamp,old_path, formatAttention emits <the missing path>,<its current path>,. Filling those placeholders puts the old path into new_path, the current path into timestamp and leaves old_path empty. Reversing just old_path/new_path reverses the declaration. Instance: scan-setar-classes.mjs:982-983. Consumers checked clean: readTable/buildIndex rename readers honour header names; new registry drafts map header names; roster amendments target sessions and preserve other raw cells; app rename consumers follow exact graph pairs. Extend setar durable intake preserves registry authority and exact rename evidence without changing media with reordered and extra-column rename logs.
-- **setar-setup-direction-aware-values** — P2: SetarSetupReview pins independently authored before/after values and mixed evidence to LTR and puts direction on a bare item title instead of its title/detail group. The direction ledger records that title as a group, leaving the violation undetected.
-  _counterexample:_ Organisation renders a Farsi gusheh, owner-written stage title or study-source title inside span dir=ltr at SetarSetupReview.tsx:240-246. Its organisation title is strong dir=auto at 234, while the containing detail group has no direction. Instances include kind/gusheh, stage and source output in show(), and evidence interpolating composer, dastgah, stage and source labels in setarSetup.ts. Consumers checked clean for the same new-value surfaces: ArchiveRefresh DifferenceRow and Recovery authored-value isolates, MusicalTermField suggestions and RoutineRunner bare-URL title group. Extend portable term and recovery controls preserve direction focus and scroll ownership to setup rows and correct direction.test.ts:195 rather than endorsing the bare title.
+- **header-aware-source-metadata-drafts** — P2: formatAttention loses CSV quoting when printing registry and rename-log headers, so valid quoted extension headers no longer describe their accompanying draft rows.
+  _counterexample:_ The accepted header new_path,"audit,note",old_path prints as new_path,audit,note,old_path. Parsing that printed header with the filled three-cell template leaves old_path empty and assigns the old path to note. Instances: scripts/scan-setar-classes.mjs:945,984. Checked clean: parseCsvCells/readTable, new registry draft cells, raw-cell roster amendments, rename template column placement and downstream exact rename consumers. Extend setar durable intake preserves registry authority and exact rename evidence without changing media to quoted extension headers.
+- **setup-study-source-identity-and-idempotence** — P2: Required multi-group creation acknowledgement and failed-creation persistence proof remains absent from the named setup checks, despite the domain identity repair.
+  _counterexample:_ The named browser test selects only mat-radif and never exercises create-group finalisation at SetarSetupReview.tsx:179-183. The domain test covers successful two-group creation/replay, but its failed-write case at setarSetup.test.ts:305 applies a kind change with an existing-source context. Missing proof instances: group finalisation, failed creation persistence, Try again and repeat/reload. Checked clean: deterministic group IDs, production domain creation/replay, existing-source instrument filtering, shared acknowledgement sequencing, ItemForm and Materials retries, and keyed course-source selection. Extend setar setup review is usable through controls and survives interruption and setar setup commits selected rows atomically idempotently and without collateral changes to those creation cases.
 
 **What changed since the previously reviewed head:**
 
 ```diff
+diff --git a/docs/setar-archive.md b/docs/setar-archive.md
+index de173383c0c4b88168462b6ec2c7119246169364..0bb51f78f3ac3c819175d602412d26e669388d92 100644
+--- a/docs/setar-archive.md
++++ b/docs/setar-archive.md
+@@ -120,7 +120,8 @@ is archive-relative. It lists:
+ 
+ 1. **Pieces named by files but missing from PIECES.csv**: each key, the sessions
+    and roles it was seen in, why it is excluded, and an UNCONFIRMED draft row built
+-   against the registry's ACTUAL header (any order, any extra columns). The draft
++   against the registry's ACTUAL header (any order, any extra columns; a header cell
++   holding a comma or a quote is printed quoted, as the file writes it). The draft
+    carries the identity and nothing else; no form, dastgāh, composer, source or
+    session is read off a filename.
+ 2. **Unnamed demonstrations kept with their lesson**, saying whether the roster is
 diff --git a/docs/setar-practice-reliability.md b/docs/setar-practice-reliability.md
-index 82b6a0cebadda0a8cfb0f1616b062e001f55eef9..932da970c051998c245ccd2d7d4d5eacbacfe1b8 100644
+index 932da970c051998c245ccd2d7d4d5eacbacfe1b8..b443d2ec9ac744b5c93630c3bd7ebbf67e801894 100644
 --- a/docs/setar-practice-reliability.md
 +++ b/docs/setar-practice-reliability.md
-@@ -212,6 +212,10 @@ having touched nothing.
- | term suggestions back to a datalist only | `src/components/MusicalTermField.tsx` | ac-12 | failed (caught) |
- | removal from a pathway that also unbinds the item | `src/store/useStore.ts` | ac-16 | failed (caught) |
- | removal from a pathway by deleting the item | `src/store/useStore.ts` | ac-16 | failed (caught) |
-+| a Test sound request that plays after a later tap | `src/components/practiceCue.ts` | ac-14 | failed (caught) |
-+| a setup choice re-premised from the live plan | `src/components/SetarSetupReview.tsx` | ac-11 | failed (caught) |
-+| a created study source forgotten once it exists (replay turns stale) | `src/domain/setarSetup.ts` | ac-10 | failed (caught) |
-+| a rename template that ignores the log header | `scripts/scan-setar-classes.mjs` | ac-1 | failed (caught) |
- 
- Recorded 2026-10-06: all 26 caught, every source restored byte for byte. The
+@@ -96,7 +96,7 @@ The owner's confirmed answers for that corpus are
+ | Invariant | Writers | Consumers (each fixed or checked clean) | Proof |
+ | --- | --- | --- | --- |
+ | A roster is the registry's; every role-named file counts against it, registered or not | `PIECES.csv` (owner only) | scanner inventory loop (`session.named` before the type/registry filters), attribution (`rosterTrusted`), diagnostics, `attentionReport` (§2 sections 2–3) | ac-1, ac-4 |
+-| A new piece is declared, never inferred | owner, from an UNCONFIRMED `--attention` draft against the actual header | scanner registry filter, `attentionReport` drafts (header order, extra columns, quoting kept), app (no filename parsing) | ac-1, ac-4 |
++| A new piece is declared, never inferred | owner, from an UNCONFIRMED `--attention` draft against the actual header | scanner registry filter, `attentionReport` drafts (header order, extra columns, quoting kept) and `formatAttention` (the header it prints is re-quoted with `csvCell`, for the registry and the rename log, so it still describes the row beneath it), app (no filename parsing) | ac-1, ac-4 |
+ | `studySource` is provenance: absent = unknown, `''` = none, text verbatim; wrong type refused | scanner `parseRegistry` (only when the column exists) | digest, `decodeSourceIndex`, `parseSourceIndex` (fetch + file doors), `checkSourceGraph`, `validateDB` + v16 step, adoption (`sourceReconcile`), setup source groups, import/export/sync/restore/hydration/recovery | ac-2 (+ io companion) |
+ | A rename is exact evidence or nothing | RENAME-LOG.csv (owner only) | `planArchiveImport` repair, suppression re-key, `itemFiles`/`lessonFiles`, ItemMaterial "not described" label | ac-5, ac-4 |
+ | A suppression is lifted only as its exact `{kind, ref, itemId}` | `restoreArchiveSuppression` | Recovery list (ArchiveRefresh), refresh planning (`isSuppressed`), `sessionMembership` | ac-3 |
+@@ -116,7 +116,11 @@ The owner's confirmed answers for that corpus are
+ - **Intake:** registered / unregistered / registered-but-unlisted pieces ×
+   empty / consistent / inconsistent rosters × the real 10-column header,
+   a reordered header with an extra column, and an 8-column one × future,
+-  non-consecutive and three-digit session numbers.
++  non-consecutive and three-digit session numbers × a header cell holding a
++  comma or a quote (registry `"teacher, ""comment"""`, rename log
++  `"audit,note"`), judged on the PRINTED header and template by a reader the
++  scanner does not own: a rescan cannot tell, because the scanner reads the
++  file's own header.
+ - **Provenance:** absent, `''`, known, unknown text; `null`, number, object.
+ - **Renames:** single, multi-hop, cross-session, unlogged, cyclic, forked ×
+   destination present/absent × global/item-scoped hide.
+@@ -125,6 +129,12 @@ The owner's confirmed answers for that corpus are
+   term / alias / ambiguous / composite × `(قطعه)`, ZWNJ/hyphen, provisional.
+ - **Premises:** typed empty/literal/ref × rename / meaning change / same label
+   different identity × deleted / rebound / moved item / proposal drift.
++- **Study-source creation:** one group / two groups in one Apply × refused write
++  → Try again with the original `new:<group>` selections → "Saved." finalising
++  each group to ITS OWN source → reload → asking to create again (names the
++  existing source; no third). Domain: `setar setup commits selected rows
++  atomically idempotently and without collateral changes`; controls: `setar
++  setup review is usable through controls and survives interruption`.
+ - **Cue doors:** Today, Start, StageDetail, PathwayDetail, RoutineDuration,
+   RoutineRunner bare URL, Session Plan, Resume on Active and on Close × running /
+   suspended / interrupted / throwing / hanging contexts.
+@@ -216,8 +226,16 @@ having touched nothing.
+ | a setup choice re-premised from the live plan | `src/components/SetarSetupReview.tsx` | ac-11 | failed (caught) |
+ | a created study source forgotten once it exists (replay turns stale) | `src/domain/setarSetup.ts` | ac-10 | failed (caught) |
+ | a rename template that ignores the log header | `scripts/scan-setar-classes.mjs` | ac-1 | failed (caught) |
+-
+-Recorded 2026-10-06: all 26 caught, every source restored byte for byte. The
++| a registry draft header printed without its CSV quoting | `scripts/scan-setar-classes.mjs` | ac-1 | failed (caught) |
++| a rename-log header printed without its CSV quoting | `scripts/scan-setar-classes.mjs` | ac-1 | failed (caught) |
++| every created study source finalised to the first group's | `src/components/SetarSetupReview.tsx` | ac-11 | failed (caught) |
++| a created study source never finalised on the screen | `src/components/SetarSetupReview.tsx` | ac-11 | failed (caught) |
++| a retry of an already-applied creation that writes nothing | `src/store/useStore.ts` | ac-10 | failed (caught) |
++
++Recorded 2026-10-06: all 35 caught, every source restored byte for byte (the
++last five were each run alone with `--only=<name>` after the second rework, at
++the assertions their findings named: the second group's selector holding the
++first group's source, and a selector left on `create` after "Saved."). The
  first run MISSED one — a cue queued on a not-running context went unnoticed by
+ ac-14, whose stand-in never resumes a context after a missed boundary. The
+ practiceCue companion now drives exactly that (interrupted → boundary → the
 diff --git a/scripts/check-setar-practice-families.mjs b/scripts/check-setar-practice-families.mjs
-index 9d1dce2a8907adc7e4efda5659a35141b318c17f..073e8f6a7a5741b65c57a5452f045aa7207fbced 100644
+index 073e8f6a7a5741b65c57a5452f045aa7207fbced..1c7fcc6a90a2a290fa2b786a9271383c58daa8bb 100644
 --- a/scripts/check-setar-practice-families.mjs
 +++ b/scripts/check-setar-practice-families.mjs
-@@ -209,7 +209,7 @@ export const MUTATIONS = [
-   {
-     name: 'no resume or state gate in the prime',
-     file: 'src/components/practiceCue.ts',
--    find: "    if (context.state !== 'running') {\n      // INVOKED now, inside the gesture; its promise is only observed.\n      Promise.resolve(context.resume()).then(update, update);\n    }",
-+    find: "    if (context.state !== 'running') {\n      // INVOKED now, inside the gesture; its promise is only observed.\n      resumed = Promise.resolve(context.resume()).then(update, update);\n    }",
-     replace: '',
-     test: 'practice sound reuses one gesture primed context across all start and resume doors',
-   },
-@@ -258,6 +258,34 @@ export const MUTATIONS = [
-     replace: '      removeFromPathway: (itemId, pathwayId) => {\n        if (pathwayId) { get().deleteItem(itemId); return null; }',
-     test: 'pathway removal and restoration visibly retain the existing owned item',
+@@ -286,6 +286,41 @@ export const MUTATIONS = [
+     replace: "    line('       <the missing path>,<its current path>');",
+     test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
    },
 +  {
-+    name: 'a Test sound request that plays after a later tap',
-+    file: 'src/components/practiceCue.ts',
-+    find: "    if (mine === gesture && c === context && c.state === 'running') playPracticeCue();",
-+    replace: "    if (c === context && c.state === 'running') playPracticeCue();",
-+    test: 'practice sound keeps one context primed only by taps and never queues a cue',
++    name: 'a registry draft header printed without its CSV quoting',
++    file: 'scripts/scan-setar-classes.mjs',
++    find: "${r.registryHeader.map(csvCell).join(',')}",
++    replace: "${r.registryHeader.join(',')}",
++    test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
 +  },
 +  {
-+    name: 'a setup choice re-premised from the live plan',
++    name: 'a rename-log header printed without its CSV quoting',
++    file: 'scripts/scan-setar-classes.mjs',
++    find: "    line(`       ${logCols.map(csvCell).join(',')}`);",
++    replace: "    line(`       ${logCols.join(',')}`);",
++    test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
++  },
++  {
++    name: 'every created study source finalised to the first group\'s',
 +    file: 'src/components/SetarSetupReview.tsx',
-+    find: '    const sent = selectionsOf(draftRef.current);',
-+    replace: '    const sent = selectionsOf(draftRef.current).map((x) => ({ ...x, before: plan.proposals.find((p) => p.id === x.id)?.before ?? x.before }));',
++    find: 'const id = setupSourceId(instrumentId, key);',
++    replace: 'const id = setupSourceId(instrumentId, Object.keys(cur)[0]!);',
 +    test: 'setar setup review is usable through controls and survives interruption',
 +  },
 +  {
-+    name: 'a created study source forgotten once it exists (replay turns stale)',
-+    file: 'src/domain/setarSetup.ts',
-+    find: '  return db.materials.some((m) => m.id === made) ? { materialId: made } : v;',
-+    replace: '  return v;',
-+    test: 'setar setup commits selected rows atomically idempotently and without collateral changes',
++    name: 'a created study source never finalised on the screen',
++    file: 'src/components/SetarSetupReview.tsx',
++    find: "return [key, 'create' in v && made.some((m) => m.id === id) ? { materialId: id } : v];",
++    replace: 'return [key, v];',
++    test: 'setar setup review is usable through controls and survives interruption',
 +  },
 +  {
-+    name: 'a rename template that ignores the log header',
-+    file: 'scripts/scan-setar-classes.mjs',
-+    find: "    line(`       ${logCols.map((h) => (h === 'old_path' ? '<the missing path>' : h === 'new_path' ? '<its current path>' : '')).join(',')}`);",
-+    replace: "    line('       <the missing path>,<its current path>');",
-+    test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
++    name: 'a retry of an already-applied creation that writes nothing',
++    file: 'src/store/useStore.ts',
++    find: '        set({ db: outcome.db });\n        return null;',
++    replace: '        if (outcome.db !== get().db) set({ db: outcome.db });\n        return null;',
++    test: 'setar setup commits selected rows atomically idempotently and without collateral changes',
 +  },
  ];
  
  const isBrowser = (file) => file.includes('.browser.');
 diff --git a/scripts/scan-setar-classes.mjs b/scripts/scan-setar-classes.mjs
-index 893d8b54b1c9f0bf349362b05cf89fb1c8f77424..af8187ad2ee0c9d1de114935bce34e7e3ffe4916 100644
+index af8187ad2ee0c9d1de114935bce34e7e3ffe4916..b5417e4a7c6070e547dcaa5d35ec0dcd6f549d8f 100644
 --- a/scripts/scan-setar-classes.mjs
 +++ b/scripts/scan-setar-classes.mjs
-@@ -979,8 +979,10 @@ export function formatAttention(r) {
-     line(g.unlogged.length ? '     files in that folder that no log row names:' : '     every file in that folder is already named by the log.');
-     for (const u of g.unlogged) line(`       ${u}`);
+@@ -942,7 +942,7 @@ export function formatAttention(r) {
+     for (const f of n.files) line(`       ${f}`);
+     line('     why it is not imported: PIECES.csv is the identity table, and an unregistered name is never guessed into a piece.');
+     line('     to import it: confirm this exact spelling IS the piece (it becomes canonical_fa byte for byte), then add one row.');
+-    line(`     UNCONFIRMED draft row for the header ${r.registryHeader.join(',')}:`);
++    line(`     UNCONFIRMED draft row for the header ${r.registryHeader.map(csvCell).join(',')}:`);
+     line(`       ${n.draft}`);
+     line('     Musical fields may stay empty. Put a session number in `sessions` only if that class taught it.');
+   }
+@@ -981,7 +981,7 @@ export function formatAttention(r) {
      line('     If a missing name was renamed to one of these, append ONE exact row per file to RENAME-LOG.csv:');
--    line(`       ${(r.logHeader.length ? r.logHeader : ['old_path', 'new_path']).join(',')}`);
--    line(`       <the missing path>,<its current path>${r.logHeader.length > 2 ? ','.repeat(r.logHeader.length - 2) : ''}`);
-+    // One cell per header COLUMN, by name — a reordered or extended log keeps old and new in their own columns.
-+    const logCols = r.logHeader.includes('old_path') && r.logHeader.includes('new_path') ? r.logHeader : ['old_path', 'new_path'];
-+    line(`       ${logCols.join(',')}`);
-+    line(`       ${logCols.map((h) => (h === 'old_path' ? '<the missing path>' : h === 'new_path' ? '<its current path>' : '')).join(',')}`);
+     // One cell per header COLUMN, by name — a reordered or extended log keeps old and new in their own columns.
+     const logCols = r.logHeader.includes('old_path') && r.logHeader.includes('new_path') ? r.logHeader : ['old_path', 'new_path'];
+-    line(`       ${logCols.join(',')}`);
++    line(`       ${logCols.map(csvCell).join(',')}`);
+     line(`       ${logCols.map((h) => (h === 'old_path' ? '<the missing path>' : h === 'new_path' ? '<its current path>' : '')).join(',')}`);
      line('     Only you know which became which: nothing here pairs them by number, size or similarity. Unpaired, the old name stays "not described".');
    }
-   line();
-diff --git a/src/components/SetarSetupReview.tsx b/src/components/SetarSetupReview.tsx
-index 76a361923b299b254bedf3ffeea34ddddbde1f0c..e385bb0c05586d8368f8e41e1c9c10e4d7ddd1d8 100644
---- a/src/components/SetarSetupReview.tsx
-+++ b/src/components/SetarSetupReview.tsx
-@@ -1,9 +1,10 @@
--import { useMemo, useState, type ReactNode } from 'react';
-+import { useMemo, useRef, useState, type ReactNode } from 'react';
- import { useStore } from '../store/useStore';
- import {
-   ITEM_STATUS_LABELS,
-   SETAR_ARCHIVE_ID,
-   archiveFor,
-+  setupSourceId,
-   canonicalStringify,
-   planSetarSetup,
-   type ID,
-@@ -38,25 +39,64 @@ const KIND: Record<string, string> = {
-   improvisation: 'improvisation',
- };
- 
--function show(db: PracticeDB, v: SetupValue | undefined): string {
--  if (!v) return '—';
--  if ('status' in v) return ITEM_STATUS_LABELS[v.status];
--  if ('itemType' in v) return `${KIND[v.itemType] ?? v.itemType}${v.gusheh ? ` · ${v.gusheh}` : ''}`;
-+/** A value as text, split into generated English and the owner's own words. */
-+type Part = { text: string; authored?: boolean };
-+function parts(db: PracticeDB, v: SetupValue | undefined): Part[] {
-+  if (!v) return [{ text: '—' }];
-+  if ('status' in v) return [{ text: ITEM_STATUS_LABELS[v.status] }];
-+  if ('itemType' in v) return [{ text: `${KIND[v.itemType] ?? v.itemType}${v.gusheh ? ' · ' : ''}` }, ...(v.gusheh ? [{ text: v.gusheh, authored: true }] : [])];
-   if ('stageId' in v) {
--    const st = v.stageId ? db.pathwayStages.find((s) => s.id === v.stageId) : undefined;
--    return v.stageId ? (st ? `${st.code}${st.title !== st.code ? ` · ${st.title}` : ''}` : 'another stage') : 'not placed';
-+    if (!v.stageId) return [{ text: 'not placed' }];
-+    const st = db.pathwayStages.find((s) => s.id === v.stageId);
-+    return st ? [{ text: `${st.code}${st.title !== st.code ? ` · ${st.title}` : ''}`, authored: true }] : [{ text: 'another stage' }];
-   }
-   if ('materialId' in v) {
--    if (!v.materialId) return 'none';
--    if (v.materialId.startsWith('new:')) return 'a new study source';
--    return db.materials.find((m) => m.id === v.materialId)?.title ?? 'another study source';
-+    if (!v.materialId) return [{ text: 'none' }];
-+    if (v.materialId.startsWith('new:')) return [{ text: 'a new study source' }];
-+    const title = db.materials.find((m) => m.id === v.materialId)?.title;
-+    return title ? [{ text: title, authored: true }] : [{ text: 'another study source' }];
-   }
--  if ('catalogRefs' in v) return v.catalogRefs?.length ? `answers ${v.catalogRefs.length}` : 'answers none';
--  return v.linked ? 'linked' : 'unlinked';
-+  if ('catalogRefs' in v) return [{ text: v.catalogRefs?.length ? `answers ${v.catalogRefs.length}` : 'answers none' }];
-+  return [{ text: v.linked ? 'linked' : 'unlinked' }];
-+}
-+const show = (db: PracticeDB, v: SetupValue | undefined): string => parts(db, v).map((x) => x.text).join('');
-+
-+/** The same value for the screen: generated English isolated LTR, the owner's words each resolving their own direction. */
-+function Value({ db, v }: { db: PracticeDB; v: SetupValue | undefined }) {
-+  return (
-+    <>
-+      {parts(db, v).map((x, i) =>
-+        x.authored ? (
-+          <span key={i} dir="auto">
-+            {x.text}
-+          </span>
-+        ) : (
-+          <span key={i} dir="ltr">
-+            {x.text}
-+          </span>
-+        ),
-+      )}
-+    </>
-+  );
- }
- 
- const same = (a: unknown, b: unknown) => canonicalStringify(a) === canonicalStringify(b);
- 
-+/** What the owner chose AND the value they saw when they chose it — the premise a commit is checked against. */
-+type Pick = { before: SetupValue; after: SetupValue };
-+interface Draft {
-+  /** id → the pick (null: deliberately left as it is). */
-+  choices: Record<string, Pick | null>;
-+  /** The rows SHOWN when choosing began, with the premise they were shown with: only these may be selected by default — a row that arrives later is shown, never auto-joined. */
-+  seen: Record<string, Pick> | null;
-+}
-+
-+const selectionsOf = (d: Draft): SetupSelection[] =>
-+  [...new Set([...Object.keys(d.seen ?? {}), ...Object.keys(d.choices)])].flatMap((id) => {
-+    const pick = id in d.choices ? d.choices[id] : d.seen?.[id];
-+    return pick && !same(pick.after, pick.before) ? [{ id, before: pick.before, after: pick.after }] : [];
-+  });
-+
- export default function SetarSetupReview() {
-   const db = useStore((s) => s.db);
-   const commit = useStore((s) => s.commitSetarSetup);
-@@ -67,23 +107,31 @@ export default function SetarSetupReview() {
-   const [instrumentId, setInstrumentId] = useState<ID>(archive?.instrumentId ?? '');
-   const [pathwayId, setPathwayId] = useState<ID>('');
-   const [sources, setSources] = useState<NonNullable<SetupContext['sources']>>({});
--  // id → the value chosen (null: deliberately left as it is).
--  const [choices, setChoices] = useState<Record<string, SetupValue | null>>({});
--  // The rows SHOWN when the owner started choosing: only these may be
--  // selected by default — a row that arrives later is shown, never auto-joined.
--  const [seen, setSeen] = useState<Set<string> | null>(null);
-+  // The draft is written by the handlers (state for the screen, a ref for the
-+  // save that settles later) — never mirrored from an effect.
-+  const [draft, setDraftState] = useState<Draft>({ choices: {}, seen: null });
-+  const draftRef = useRef(draft);
-+  const setDraft = (next: Draft) => {
-+    draftRef.current = next;
-+    setDraftState(next);
-+  };
- 
-   const context: SetupContext = useMemo(
-     () => ({ instrumentId, ...(pathwayId ? { pathwayId } : {}), sources }),
-     [instrumentId, pathwayId, sources],
-   );
-   const plan = useMemo(() => (instrumentId ? planSetarSetup(db, context) : null), [db, context, instrumentId]);
--  // Derived once per review (React's guarded set-during-render pattern).
--  if (plan && !seen) setSeen(new Set(plan.proposals.map((p) => p.id)));
-+  // Derived once per review (React's guarded set-during-render pattern): each
-+  // proposed row is selected with the premise it is SHOWN with.
-+  if (plan && !draft.seen) {
-+    setDraft({
-+      ...draft,
-+      seen: Object.fromEntries(plan.proposals.flatMap((p) => (p.state === 'proposed' && p.after ? [[p.id, { before: p.before, after: p.after }]] : []))),
-+    });
-+  }
- 
-   const restart = () => {
--    setChoices({});
--    setSeen(null);
-+    setDraft({ choices: {}, seen: null });
-     saves.reset('setup');
-   };
- 
-@@ -105,21 +153,41 @@ export default function SetarSetupReview() {
-     );
-   }
- 
--  const chosenFor = (p: SetupProposal): SetupValue | undefined => {
--    if (p.id in choices) return choices[p.id] ?? undefined;
--    return p.state === 'proposed' && seen?.has(p.id) ? p.after : undefined;
--  };
--  const choose = (id: string, v: SetupValue | null) => setChoices((c) => ({ ...c, [id]: v }));
-+  const chosenFor = (p: SetupProposal): Pick | undefined => (p.id in draft.choices ? (draft.choices[p.id] ?? undefined) : draft.seen?.[p.id]);
-+  // The pick carries what the owner SAW (`p.before` NOW is what the store checks it against).
-+  const choose = (p: SetupProposal, after: SetupValue | null) =>
-+    setDraft({ ...draftRef.current, choices: { ...draftRef.current.choices, [p.id]: after ? { before: p.before, after } : null } });
-   const status = plan.proposals.filter((p) => p.field === 'status');
-   const rows = plan.proposals.filter((p) => p.field !== 'status');
-   const byItem = new Map<ID, SetupProposal[]>();
-   for (const p of rows) byItem.set(p.itemId, [...(byItem.get(p.itemId) ?? []), p]);
--  const selections: SetupSelection[] = plan.proposals.flatMap((p) => {
--    const after = chosenFor(p);
--    return after && !same(after, p.before) ? [{ id: p.id, before: p.before, after }] : [];
--  });
-+  const selections = selectionsOf(draft);
-   const title = (id: ID) => db.items.find((i) => i.id === id)?.title ?? id;
- 
-+  // ONE save, for what is on screen NOW: the settle reads the live draft, so a
-+  // second item chosen while this write is pending is written next, never cleared.
-+  const save = () => {
-+    const sent = selectionsOf(draftRef.current);
-+    saves.run('setup', canonicalStringify(sent), () => commit({ context, selections: sent }), {
-+      current: () => canonicalStringify(selectionsOf(draftRef.current)),
-+      again: save,
-+      saved: () => {
-+        setDraft({ choices: {}, seen: null });
-+        // A source made here is, from now on, THAT group's source — each group
-+        // its own — so a rerun reads it as done rather than making another.
-+        const made = useStore.getState().db.materials;
-+        setSources((cur) =>
-+          Object.fromEntries(
-+            Object.entries(cur).map(([key, v]) => {
-+              const id = setupSourceId(instrumentId, key);
-+              return [key, 'create' in v && made.some((m) => m.id === id) ? { materialId: id } : v];
-+            }),
-+          ),
-+        );
-+      },
-+    });
-+  };
-+
-   return (
-     <SetupShell>
-       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-@@ -193,13 +261,11 @@ export default function SetarSetupReview() {
-           type="button"
-           className="btn btn-sm"
-           style={{ alignSelf: 'flex-start' }}
--          onClick={() =>
--            setChoices((c) => {
--              const next = { ...c };
--              for (const p of status) if (p.state !== 'correct' && !/—/.test(p.evidence)) next[p.id] = p.choices[0]!.after;
--              return next;
--            })
--          }
-+          onClick={() => {
-+            const choices = { ...draftRef.current.choices };
-+            for (const p of status) if (p.state !== 'correct' && !/—/.test(p.evidence)) choices[p.id] = { before: p.before, after: p.choices[0]!.after };
-+            setDraft({ ...draftRef.current, choices });
-+          }}
-         >
-           Choose every item without a note
-         </button>
-@@ -211,10 +277,10 @@ export default function SetarSetupReview() {
-                 aria-label={`Keeping fresh: ${title(p.itemId)}`}
-                 disabled={p.state === 'correct'}
-                 checked={p.state === 'correct' || !!chosenFor(p)}
--                onChange={(e) => choose(p.id, e.target.checked ? p.choices[0]!.after : null)}
-+                onChange={(e) => choose(p, e.target.checked ? p.choices[0]!.after : null)}
-               />
--              <span className="small grow" style={{ textAlign: 'start' }}>
--                <span dir="auto">{title(p.itemId)}</span>{' '}
-+              <span className="small grow" dir="auto" style={{ textAlign: 'start' }}>
-+                <span>{title(p.itemId)}</span>{' '}
-                 <span className="tiny faint" dir="ltr">
-                   {p.evidence}
-                 </span>
-@@ -230,17 +296,19 @@ export default function SetarSetupReview() {
-           const open = ps.filter((p) => p.state !== 'correct');
-           if (open.length === 0) return null;
-           return (
--            <div key={itemId} className="card card-quiet stack-sm" role="group" aria-label={`Setup of ${title(itemId)}`}>
--              <strong className="small" dir="auto" style={{ textAlign: 'start' }}>
--                {title(itemId)}
--              </strong>
-+            <div key={itemId} className="card card-quiet stack-sm" role="group" dir="auto" aria-label={`Setup of ${title(itemId)}`} style={{ textAlign: 'start' }}>
-+              <strong className="small">{title(itemId)}</strong>
-               {open.map((p) => (
-                 <div key={p.id} className="stack-sm">
-                   <div className="tiny" style={{ textAlign: 'start' }}>
--                    <span dir="ltr">
--                      {FIELD[p.field]}: {show(db, p.before)}
--                      {p.state === 'proposed' ? ` → ${show(db, p.after)}` : ''}
--                    </span>
-+                    <span dir="ltr">{FIELD[p.field]}: </span>
-+                    <Value db={db} v={p.before} />
-+                    {p.state === 'proposed' ? (
-+                      <>
-+                        <span dir="ltr"> → </span>
-+                        <Value db={db} v={p.after} />
-+                      </>
-+                    ) : null}
-                   </div>
-                   <div className="tiny faint" style={{ textAlign: 'start' }}>
-                     <span dir="ltr">{p.evidence}</span>
-@@ -251,7 +319,7 @@ export default function SetarSetupReview() {
-                         type="checkbox"
-                         aria-label={`${FIELD[p.field]} of ${title(itemId)}: ${show(db, p.after)}`}
-                         checked={!!chosenFor(p)}
--                        onChange={(e) => choose(p.id, e.target.checked ? p.after! : null)}
-+                        onChange={(e) => choose(p, e.target.checked ? p.after! : null)}
-                       />
-                       <span dir="ltr">Apply</span>
-                     </label>
-@@ -259,10 +327,10 @@ export default function SetarSetupReview() {
-                     <select
-                       className="input"
-                       aria-label={`${FIELD[p.field]} of ${title(itemId)}`}
--                      value={p.choices.findIndex((c) => same(c.after, chosenFor(p)))}
-+                      value={p.choices.findIndex((c) => same(c.after, chosenFor(p)?.after))}
-                       onChange={(e) => {
-                         const i = Number(e.target.value);
--                        choose(p.id, i < 0 ? null : p.choices[i]!.after);
-+                        choose(p, i < 0 ? null : p.choices[i]!.after);
-                       }}
-                     >
-                       <option value={-1}>Leave it as it is</option>
-@@ -284,40 +352,15 @@ export default function SetarSetupReview() {
-       </div>
- 
-       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
--        <button
--          type="button"
--          className="btn btn-primary"
--          disabled={selections.length === 0}
--          onClick={() => {
--            const key = canonicalStringify(selections);
--            saves.run('setup', key, () => commit({ context, selections }), {
--              current: () => key,
--              again: () => undefined,
--              saved: () => {
--                setChoices({});
--                setSeen(null);
--                // A study source made here is named from now on, so a rerun
--                // reads it as done rather than making another.
--                setSources((s) =>
--                  Object.fromEntries(
--                    Object.entries(s).map(([k, v]) => {
--                      if (!('create' in v)) return [k, v];
--                      const madeFor = selections.find((x) => x.id.startsWith('source:'));
--                      const id = madeFor ? useStore.getState().db.items.find((i) => i.id === madeFor.id.split(':')[1])?.materialId : undefined;
--                      return [k, id ? { materialId: id } : v];
--                    }),
--                  ),
--                );
--              },
--            });
--          }}
--        >
-+        <button type="button" className="btn btn-primary" disabled={selections.length === 0} onClick={save}>
-           Apply {selections.length} selected
-         </button>
--        <SaveStatus
--          ack={saves.states.setup}
--          onRetry={() => saves.run('setup', saves.states.setup!.carried, () => commit({ context, selections }))}
--        />
-+        <SaveStatus ack={saves.states.setup} onRetry={save} />
-+        {saves.states.setup?.status === 'refused' ? (
-+          <button type="button" className="btn btn-sm" onClick={restart}>
-+            Look again
-+          </button>
-+        ) : null}
-       </div>
-     </SetupShell>
-   );
-diff --git a/src/components/direction.test.ts b/src/components/direction.test.ts
-index 4b795752a21b5cf183761cc89e9d0a73c7911fcf..2f4d57d566d08d5e96422de788cf39cd8933ae07 100644
---- a/src/components/direction.test.ts
-+++ b/src/components/direction.test.ts
-@@ -188,11 +188,14 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string
-   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
-   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
-   { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
--  // Review Setar setup (this lane): a declared source's own text, then each
--  // item's own title in the Keeping fresh list and on its organisation card.
-+  // Review Setar setup (this lane): a declared source's own text, an owner's
-+  // value in a before/after line (its own isolate), then the two GROUPS —
-+  // a Keeping fresh row and an organisation card — each resolving from its
-+  // bare title, the group's first strong text.
-   { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
-   { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
--  { file: "components/SetarSetupReview.tsx", tagName: "strong", classValue: "small" },
-+  { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "small grow" },
-+  { file: "components/SetarSetupReview.tsx", tagName: "div", classValue: "card card-quiet stack-sm" },
-   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
-   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
-   { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },
-@@ -663,6 +666,8 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
-   // value the archive proposes are authored independently of each other.
-   { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
-   { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
-+  // Review Setar setup: each owner-authored before/after value, in its own isolate.
-+  { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="auto">' },
-   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.constraint}</span>' },
-   // Instrument names used to be tracked here too, one exact snippet per site.
-   // A sealed review found that shape structurally insufficient FOUR times
-@@ -711,6 +716,9 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
-  * call site can see whether its OWN return value is isolated.
-  */
- const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
-+  // Review Setar setup: generated labels and evidence (authored values inside it carry their own bidi isolate).
-+  { file: 'components/SetarSetupReview.tsx', snippet: '<span dir="ltr">{p.evidence}</span>' },
-+  { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="ltr">' },
-   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
-   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
-   { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
-diff --git a/src/components/practiceCue.test.ts b/src/components/practiceCue.test.ts
-index 7dd9f51a4e72f423fea702177eea26c27874cc78..ac43ecbf104a864783c4265049851f226708c53f 100644
---- a/src/components/practiceCue.test.ts
-+++ b/src/components/practiceCue.test.ts
-@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
- 
- type Log = { e: string; [k: string]: unknown }[];
- 
--function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'throws' | 'rejects' | 'hangs' } = {}) {
-+function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'throws' | 'rejects' | 'hangs' | 'manual' } = {}) {
-   class Ctx {
-     state: string = 'suspended';
-     currentTime = 5;
-@@ -32,6 +32,8 @@ function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'thro
-       if (opts.resume === 'throws') throw new Error('refused');
-       if (opts.resume === 'rejects') return Promise.reject(new Error('rejected'));
-       if (opts.resume === 'hangs') return new Promise(() => undefined);
-+      // Settles only when the test says so — never changes the state itself.
-+      if (opts.resume === 'manual') return new Promise<void>((done) => log.push({ e: 'pending', done }));
-       this.setState('running');
-       return Promise.resolve();
-     }
-@@ -158,6 +160,34 @@ describe('the practice sound module', () => {
-     cue.testPracticeSound();
-     await flush();
-     expect(log.filter((x) => x.e === 'start')).toHaveLength(2);
-+
-+    // --- PENDING REQUESTS never sound late ---------------------------------
-+    // Three taps whose resume has not settled: ONE resume each (not two), and
-+    // when the context is later readied by another tap and the old promises
-+    // finally settle, no earlier request plays.
-+    log = [];
-+    cue = await load(log, { resume: 'manual' });
-+    cue.testPracticeSound();
-+    cue.testPracticeSound();
-+    cue.testPracticeSound();
-+    expect(log.filter((x) => x.e === 'resume')).toHaveLength(3);
-+    const settle = () => log.filter((x) => x.e === 'pending').forEach((x) => (x.done as () => void)());
-+    const ctx2 = log.find((x) => x.e === 'ctor')!.ctx as { setState(s: string): void };
-+    ctx2.setState('running'); // a later gesture readied it
-+    cue.primePracticeSound(); // that tap supersedes every pending Test request
-+    settle();
-+    await flush();
-+    expect(log.filter((x) => x.e === 'start')).toEqual([]);
-+    expect(log.filter((x) => x.e === 'vibrate')).toEqual([]);
-+    // The LATEST tap's own request does play when its resume lands.
-+    log = [];
-+    cue = await load(log, { resume: 'manual' });
-+    cue.testPracticeSound();
-+    cue.testPracticeSound();
-+    (log.find((x) => x.e === 'ctor')!.ctx as { setState(s: string): void }).setState('running');
-+    settle();
-+    await flush();
-+    expect(log.filter((x) => x.e === 'start')).toHaveLength(2); // the latest request only
-   });
- });
- 
-diff --git a/src/components/practiceCue.ts b/src/components/practiceCue.ts
-index cabc9a4aa088ac9829eb7b70ff773df1b53d4c28..a4601eab56117bcd6c3431df72e3c9f3395196f6 100644
---- a/src/components/practiceCue.ts
-+++ b/src/components/practiceCue.ts
-@@ -29,6 +29,9 @@ type Ctor = new () => AudioContext;
- let context: AudioContext | null = null;
- let refused = false;
- let state: PracticeSoundState = 'off';
-+// Bumped by every tap that readies the sound: a Test sound request whose
-+// resume lands after a LATER tap is an old request, and plays nothing.
-+let gesture = 0;
- const listeners = new Set<() => void>();
- 
- function audioCtor(): Ctor | undefined {
-@@ -58,12 +61,15 @@ function update(): void {
-  * one was closed — only then, so two never coexist), and asks a suspended one
-  * to resume. A refusal, a rejection or a promise that never settles is
-  * absorbed: starting practice never waits on sound, and never fails for it.
-+ * Returns the one resume this tap asked for (it settles, never rejects), if any.
-  */
--export function primePracticeSound(): void {
-+export function primePracticeSound(): Promise<void> | undefined {
-+  gesture += 1;
-+  let resumed: Promise<void> | undefined;
-   const Ctx = audioCtor();
-   if (!Ctx) {
-     update();
--    return;
-+    return undefined;
-   }
-   try {
-     if (!context || context.state === 'closed') {
-@@ -76,7 +82,7 @@ export function primePracticeSound(): void {
-     }
-     if (context.state !== 'running') {
-       // INVOKED now, inside the gesture; its promise is only observed.
--      Promise.resolve(context.resume()).then(update, update);
-+      resumed = Promise.resolve(context.resume()).then(update, update);
-     }
-   } catch {
-     // A constructor that throws, or a resume() that throws: unavailable until
-@@ -84,6 +90,7 @@ export function primePracticeSound(): void {
-     refused = !context;
-   }
-   update();
-+  return resumed;
- }
- 
- /** The cue's shape, in one place: two short 880 Hz pulses. */
-@@ -131,25 +138,20 @@ export function playPracticeCue(): void {
-  * touches no clock, marker, record or wake lock.
-  */
- export function testPracticeSound(): void {
--  primePracticeSound();
-+  const resumed = primePracticeSound();
-+  const mine = gesture;
-   const c = context;
-   if (!c) return;
-   if (c.state === 'running') {
-     playPracticeCue();
-     return;
-   }
--  // The resume this very tap asked for: play when (and only if) it lands. A
--  // resume that throws, rejects or never settles simply plays nothing.
--  try {
--    Promise.resolve(c.resume()).then(
--      () => {
--        if (c === context && c.state === 'running') playPracticeCue();
--      },
--      () => undefined,
--    );
--  } catch {
--    // best-effort only
--  }
-+  // The resume this very tap asked for (never a second one): play when, and
-+  // only if, it lands while this is still the latest tap. A resume that throws,
-+  // rejects or never settles plays nothing, and an older tap's never plays late.
-+  resumed?.then(() => {
-+    if (mine === gesture && c === context && c.state === 'running') playPracticeCue();
-+  });
- }
- 
- function subscribe(fn: () => void): () => void {
 diff --git a/src/domain/setarSetup.test.ts b/src/domain/setarSetup.test.ts
-index 44269f711577a0dc79cd824c326c5f275761977b..b9701c7aaf889825622068892791ebe98bc1afbd 100644
+index b9701c7aaf889825622068892791ebe98bc1afbd..8a4edf1b53ef331adc05c025a04b6b97576ef662 100644
 --- a/src/domain/setarSetup.test.ts
 +++ b/src/domain/setarSetup.test.ts
-@@ -273,6 +273,31 @@ describe('the Setar setup review', () => {
-     expect(s().commitSetarSetup({ context: named, selections: again.filter((p) => p.state === 'correct').map((p) => ({ id: p.id, before: p.before, after: p.before })), now: NOW })).toBeNull();
-     expect(s().db).toBe(afterCreate);
+@@ -298,10 +298,46 @@ describe('the Setar setup review', () => {
+     const lateTwo = applySetarSetup(first.db, bothCreate, bothSel.slice(0, 1), NOW);
+     expect(lateTwo.ok && lateTwo.db.materials.length).toBe(first.db.materials.length);
  
-+    // --- TWO DISTINCT GROUPS created in ONE apply keep their own identity ------
-+    // Each declared text is its own study source; replaying the very same
-+    // selections (a retry after a refused write, a second tab) names the
-+    // sources already made — a no-op, never stale and never a second source.
-+    const two = structuredClone(OWNER) as PracticeDB;
-+    const second = 'منبع-دوم-آزمون';
-+    two.archiveSources[0]!.pieces = two.archiveSources[0]!.pieces.map((p) => (p.key === 'چهارمضراب-ماهور-صبا' ? { ...p, studySource: second } : p));
-+    const bothCreate: SetupContext = { ...CTX, sources: { [DECLARED]: { create: true }, [`declared:${second}`]: { create: true } } };
-+    const bothSel = planSetarSetup(two, bothCreate).proposals.filter((p) => p.field === 'source' && p.state === 'proposed').map((p) => sel(p));
-+    const secondItem = idOf(two, 'چهارمضراب-ماهور-صبا');
-+    expect(bothSel.some((x) => x.id === `source:${secondItem}`)).toBe(true);
-+    const first = applySetarSetup(two, bothCreate, bothSel, NOW);
-+    if (!first.ok) throw new Error(first.reason);
-+    const madeTwo = first.db.materials.filter((m) => !two.materials.some((o) => o.id === m.id));
-+    expect(madeTwo.map((m) => m.title).sort()).toEqual([EXPECT.context.declared, second].sort());
-+    const materialOf = (db: PracticeDB, itemId: string) => db.items.find((i) => i.id === itemId)!.materialId;
-+    expect(materialOf(first.db, secondItem)).toBe(madeTwo.find((m) => m.title === second)!.id);
-+    expect(materialOf(first.db, idOf(two, 'درامد-ماهور-ردیف-میرزاعبدالله'))).toBe(madeTwo.find((m) => m.title === EXPECT.context.declared)!.id);
-+    const replay = applySetarSetup(first.db, bothCreate, bothSel, NOW);
-+    if (!replay.ok) throw new Error(replay.reason);
-+    expect(replay.db).toBe(first.db);
-+    // A group whose source exists but a later row arrives: it joins THAT source, once.
-+    const lateTwo = applySetarSetup(first.db, bothCreate, bothSel.slice(0, 1), NOW);
-+    expect(lateTwo.ok && lateTwo.db.materials.length).toBe(first.db.materials.length);
++    // --- A REFUSED WRITE of a CREATION: memory keeps what it made, Try again writes it ONCE
++    // Two groups are created in one Apply and the disk refuses. What is on
++    // screen still holds the original selections (their `new:<group>` premise);
++    // Try again sends exactly those, and must be a real write of the state in
++    // memory — not stale, not a third source, each group still its OWN source.
++    const { storageSettled } = await import('../store/idb');
++    const failNext = () => (globalThis as { __failNextWrite?: () => void }).__failNextWrite!();
++    useStore.setState({ db: two });
++    failNext();
++    expect(s().commitSetarSetup({ context: bothCreate, selections: bothSel, now: NOW })).toBeNull();
++    await expect(storageSettled()).rejects.toThrow();
++    const inMemory = s().db;
++    const created = inMemory.materials.filter((m) => !two.materials.some((o) => o.id === m.id));
++    expect(created.map((m) => m.title).sort()).toEqual([EXPECT.context.declared, second].sort());
++    expect(s().commitSetarSetup({ context: bothCreate, selections: bothSel, now: NOW })).toBeNull();
++    await expect(storageSettled()).resolves.toBeUndefined();
++    expect(s().db).toBe(inMemory);
++    expect(s().db.materials).toHaveLength(two.materials.length + 2);
++    // Once "Saved." finalises the screen, each group names ITS source and every
++    // row this Apply selected reads as done; one group's source taken for both
++    // would put the other's item in conflict with the source it already has.
++    const idByTitle = (title: string) => created.find((m) => m.title === title)!.id;
++    const finalised: SetupContext = {
++      ...CTX,
++      sources: { [DECLARED]: { materialId: idByTitle(EXPECT.context.declared) }, [`declared:${second}`]: { materialId: idByTitle(second) } },
++    };
++    const sourceRows = (ctx: SetupContext) => planSetarSetup(s().db, ctx).proposals.filter((p) => p.field === 'source');
++    // (An item the owner pointed at another recension stays an exception, as it was.)
++    const done = sourceRows(finalised);
++    expect(done.filter((p) => p.state === 'proposed')).toEqual([]);
++    expect(bothSel.map((x) => done.find((p) => p.id === x.id)!.state)).toEqual(bothSel.map(() => 'correct'));
++    const bothToFirst: SetupContext = { ...CTX, sources: { [DECLARED]: finalised.sources![DECLARED]!, [`declared:${second}`]: finalised.sources![DECLARED]! } };
++    expect(sourceRows(bothToFirst).find((p) => p.itemId === secondItem)!.state).toBe('exception');
++    expect(done.find((p) => p.itemId === secondItem)!.state).toBe('correct');
++    expect(s().commitSetarSetup({ context: finalised, selections: bothSel, now: NOW })).toBeNull();
++    expect(s().db).toBe(inMemory);
 +
      // --- A REFUSED WRITE: the store says nothing it cannot keep, and Try again writes
      useStore.setState({ db: OWNER });
-     const { storageSettled } = await import('../store/idb');
-diff --git a/src/domain/setarSetup.ts b/src/domain/setarSetup.ts
-index 81798189eaec5f9e91e701503a134437b2b31f79..83d7f456cfd20027b6091e4a5ec656cb12038933 100644
---- a/src/domain/setarSetup.ts
-+++ b/src/domain/setarSetup.ts
-@@ -1,6 +1,6 @@
- import type { ID, ItemStatus, ItemType, Material, Pathway, PracticeDB, PracticeItem } from './types';
- import type { SourcePiece } from './sourceArchive';
--import { archiveFor, lessonAssociations, sessionMembership } from './sourceArchive';
-+import { archiveFor, lessonAssociations, sessionMembership, setupSourceId } from './sourceArchive';
- import { MIRZA_ABDOLLAH_RADIF } from './referenceCatalog';
- import { catalogForStage, stageIdFor } from './pathwaySeed';
- import { catalogReferenceId, resolveCatalogReference } from './courseSeed';
-@@ -25,6 +25,15 @@ import { ITEM_STATUS_LABELS } from './labels';
- // ---------------------------------------------------------------------------
+-    const { storageSettled } = await import('../store/idb');
+-    (globalThis as { __failNextWrite?: () => void }).__failNextWrite!();
++    failNext();
+     expect(s().commitSetarSetup({ context: WITH_SOURCE, selections: selections.slice(0, 1), now: NOW })).toBeNull();
+     await expect(storageSettled()).rejects.toThrow();
+     // The retry is a REAL write of the state already in memory.
+diff --git a/tests/setar-practice-proof.test.ts b/tests/setar-practice-proof.test.ts
+index ad9c2b760f6f5079c2f0f6560f0b91055997aa71..7c120dc5e7e5f2ac886aaee9571738ad2868c81c 100644
+--- a/tests/setar-practice-proof.test.ts
++++ b/tests/setar-practice-proof.test.ts
+@@ -55,6 +55,11 @@ const REQUIRED_FAMILIES: RegExp[] = [
+   /^an unconditional marker claim/,
+   /^a delayed cue queued/,
+   /^routine Start moved back into an effect$/,
++  /^a registry draft header printed without its CSV quoting$/,
++  /^a rename-log header printed without its CSV quoting$/,
++  /^every created study source finalised to the first group/,
++  /^a created study source never finalised on the screen$/,
++  /^a retry of an already-applied creation that writes nothing$/,
+ ];
  
- /** The kinds the registry's own form vocabulary can establish. */
-+/**
-+ * An independently authored value inside generated English evidence, wrapped
-+ * in a first-strong BIDI ISOLATE (U+2068…U+2069) — the native counterpart of
-+ * `dir="auto"` — so a Farsi form, composer, stage or source title resolves its
-+ * own direction instead of inheriting the sentence's. Nothing here detects a
-+ * script or reorders text.
-+ */
-+const iso = (value: string): string => `\u2068${value}\u2069`;
-+
- export type PieceKind = Extract<ItemType, 'gusheh' | 'full_piece' | 'exercise' | 'improvisation'>;
- 
- export type KindFamily =
-@@ -69,7 +78,7 @@ export function classifyPiece(piece: Pick<SourcePiece, 'form' | 'composer' | 'pr
-   if (form === 'درامد') return { kind: 'gusheh', family: 'radif-daramad', why: 'The registry names it a درامد — the opening gusheh of its dastgāh.' };
-   if (form === 'چهارپاره') {
-     return composer
--      ? { kind: null, family: 'composed-chaharpareh', why: `A چهارپاره attributed to ${composer}: a radif section or a composed piece — yours to say.` }
-+      ? { kind: null, family: 'composed-chaharpareh', why: `A چهارپاره attributed to ${iso(composer)}: a radif section or a composed piece — yours to say.` }
-       : { kind: 'gusheh', family: 'radif-chaharpareh', why: 'A چهارپاره with no composer: a section of the radif.' };
-   }
-   if (form === 'رنگ' && !composer) {
-@@ -81,9 +90,9 @@ export function classifyPiece(piece: Pick<SourcePiece, 'form' | 'composer' | 'pr
-     return { kind: 'improvisation', family: 'improvisation', why: 'The registry names it a بداهه — your own improvisation, not a composed work.' };
-   }
-   if (COMPOSED_FORMS.has(form) || (form === 'رنگ' && composer)) {
--    return { kind: 'full_piece', family: 'composed', why: `The registry names it a ${form}${composer ? ` by ${composer}` : ''}.` };
-+    return { kind: 'full_piece', family: 'composed', why: `The registry names it a ${iso(form)}${composer ? ` by ${iso(composer)}` : ''}.` };
-   }
--  return { kind: null, family: 'unknown', why: form ? `The registry's form «${form}» does not say what kind of item this is.` : 'The registry gives no form.' };
-+  return { kind: null, family: 'unknown', why: form ? `The registry's form «${iso(form)}» does not say what kind of item this is.` : 'The registry gives no form.' };
- }
- 
- /** What the import USED to seed — `full_piece` for every non-گوشه — so a seeded value is told from an owner's choice. */
-@@ -190,7 +199,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
-   const stageIds = new Set(pathway ? db.pathwayStages.filter((s) => s.pathwayId === pathway.id).map((s) => s.id) : []);
-   const stageName = (id: ID | undefined) => {
-     const st = id ? db.pathwayStages.find((s) => s.id === id) : undefined;
--    return st ? `${st.code}${st.title && st.title !== st.code ? ` · ${st.title}` : ''}` : 'a stage of another pathway';
-+    return st ? iso(`${st.code}${st.title && st.title !== st.code ? ` · ${st.title}` : ''}`) : 'a stage of another pathway';
-   };
-   const materials = db.materials.filter((m) => m.instrumentId === instrumentId);
-   const pieceOf = (item: PracticeItem): SourcePiece | undefined =>
-@@ -307,9 +316,9 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
-           continue;
-         }
-         target = radifStageFor(pathway.id, r.term.id);
--        why = `A gusheh of ${r.term.name}.`;
-+        why = `A gusheh of ${iso(r.term.name)}.`;
-         if (!target || !stageIds.has(target)) {
--          exception(`A gusheh of ${r.term.name}, but this pathway has no stage for it.`);
-+          exception(`A gusheh of ${iso(r.term.name)}, but this pathway has no stage for it.`);
-           continue;
-         }
-       } else if (kind === 'full_piece') {
-@@ -395,7 +404,9 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
-     if (!key) continue;
-     const choice = ctx.sources?.[key];
-     const before: SetupValue = { materialId: i.materialId ?? null };
--    const target = choice && 'materialId' in choice ? choice.materialId : choice ? `new:${key}` : undefined;
-+    // A source this review already made for the group is THE source, not a second.
-+    const made = setupSourceId(instrumentId, key);
-+    const target = choice && 'materialId' in choice ? choice.materialId : choice ? (materials.some((m) => m.id === made) ? made : `new:${key}`) : undefined;
-     const label = groups.get(key)!.label;
-     const id = `source:${i.id}`;
-     if (!target) continue; // the group's own question comes first
-@@ -405,7 +416,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
-       const piece = pieceOf(i);
-       return piece ? classifyPiece(piece) : undefined;
-     })();
--    const why = key.startsWith('declared:') ? `The registry declares it from «${label}».` : `It answers a ${MIRZA_ABDOLLAH_RADIF.name} reference.`;
-+    const why = key.startsWith('declared:') ? `The registry declares it from «${iso(label)}».` : `It answers a ${iso(MIRZA_ABDOLLAH_RADIF.name)} reference.`;
-     if (i.materialId === target) {
-       push({ id, itemId: i.id, field: 'source', state: 'correct', before, after, choices: [], evidence: why });
-     } else if (reading?.family === 'composed-chaharpareh' || reading?.family === 'radif-reng' || reading?.family === 'provisional') {
-@@ -419,7 +430,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
-         state: 'exception',
-         before,
-         choices: [{ label: 'Use this study source instead', after }],
--        evidence: `${why} You set «${current?.title ?? 'another source'}»; that stays unless you choose.`,
-+        evidence: `${why} You set «${iso(current?.title ?? 'another source')}»; that stays unless you choose.`,
-       });
-     } else {
-       push({ id, itemId: i.id, field: 'source', state: 'proposed', before, after, choices: [], evidence: why });
-@@ -467,6 +478,12 @@ export type SetupOutcome =
- 
- const same = (a: unknown, b: unknown) => canonicalStringify(a) === canonicalStringify(b);
- 
-+function existingSource(db: PracticeDB, instrumentId: ID, v: SetupValue): SetupValue {
-+  if (!('materialId' in v) || !v.materialId?.startsWith('new:')) return v;
-+  const made = setupSourceId(instrumentId, v.materialId.slice('new:'.length));
-+  return db.materials.some((m) => m.id === made) ? { materialId: made } : v;
-+}
-+
- /** What a selection's field holds NOW — so a row that vanished because it is done reads as done. */
- function currentOf(db: PracticeDB, id: string): SetupValue | undefined {
-   const [field, itemId, lessonId] = id.split(':');
-@@ -503,7 +520,9 @@ export function applySetarSetup(db: PracticeDB, ctx: SetupContext, selections: S
-   const byId = new Map(plan.proposals.map((p) => [p.id, p]));
-   const stale: string[] = [];
-   const todo: { p: SetupProposal; after: SetupValue }[] = [];
--  for (const sel of selections) {
-+  for (const chosen of selections) {
-+    // `new:<group>` names the source to MAKE; once it exists it is that source.
-+    const sel = { ...chosen, after: existingSource(db, ctx.instrumentId, chosen.after) };
-     const p = byId.get(sel.id);
-     const offered = p ? [...(p.after && p.state === 'proposed' ? [p.after] : []), ...p.choices.map((c) => c.after)] : [];
-     // ALREADY DONE is not stale: the field holds exactly what was chosen —
-@@ -526,13 +545,16 @@ export function applySetarSetup(db: PracticeDB, ctx: SetupContext, selections: S
-     if (!target.startsWith('new:')) return target;
-     const key = target.slice('new:'.length);
-     if (!created.has(key)) {
--      const group = plan.sourceGroups.find((g) => g.key === key)!;
--      const m = createMaterial(
--        { instrumentId: ctx.instrumentId, title: group.label, sourceType: group.kind === 'reference' ? 'radif' : 'other' },
--        now,
--      );
--      materials = [...materials, m];
--      created.set(key, m.id);
-+      const id = setupSourceId(ctx.instrumentId, key);
-+      if (!materials.some((x) => x.id === id)) {
-+        const group = plan.sourceGroups.find((g) => g.key === key)!;
-+        const m = createMaterial(
-+          { instrumentId: ctx.instrumentId, title: group.label, sourceType: group.kind === 'reference' ? 'radif' : 'other' },
-+          now,
-+        );
-+        materials = [...materials, { ...m, id }];
-+      }
-+      created.set(key, id);
-     }
-     return created.get(key)!;
-   };
-diff --git a/src/domain/sourceArchive.ts b/src/domain/sourceArchive.ts
-index d1b2cd4f96939806a92474fdb06f3d0ffa7d2299..4451cceb62eef52152a9ca312387c68a88818c58 100644
---- a/src/domain/sourceArchive.ts
-+++ b/src/domain/sourceArchive.ts
-@@ -207,6 +207,16 @@ export function sourceResourceId(archiveId: string, path: string): ID {
-   return `src-${stableHash(`${archiveId}${NUL}asset${NUL}${path}`)}`;
- }
- 
-+/**
-+ * Deterministic id for the study source "Review Setar setup" creates for one
-+ * evidence group of one instrument — so the same selection, replayed, names
-+ * the source it already made instead of making (or refusing) another. It is
-+ * the group's key, never a title, that decides it; never cross-instrument.
-+ */
-+export function setupSourceId(instrumentId: ID, groupKey: string): ID {
-+  return `src-${stableHash(`${instrumentId}${NUL}setup-source${NUL}${groupKey}`)}`;
-+}
-+
- // --- decoding --------------------------------------------------------------
- 
- /** The fixed role vocabulary, byte-exact from the archive's own contract. */
+ describe('the Setar practice family proof route', () => {
 diff --git a/tests/setar-practice-source.test.ts b/tests/setar-practice-source.test.ts
-index 479bbca626f3b1478bf18f8667ceefe614c0ad7c..72a999a2e71cf590734c5f2cda112468c8a632e5 100644
+index 72a999a2e71cf590734c5f2cda112468c8a632e5..268ed400fe7cba00c18ca75a6fd065d179e5687c 100644
 --- a/tests/setar-practice-source.test.ts
 +++ b/tests/setar-practice-source.test.ts
-@@ -310,6 +310,26 @@ describe('the Setar archive intake, on temporary corpora', () => {
-       expect(moved['session-2-24-10-2023/نت-درآمد-شور-ردیف-میرزاعبدالله-2.pdf']).toEqual(['درآمد-شور-ردیف-میرزاعبدالله']);
-       expect(moved['session-2-24-10-2023/نت-کرشمه-شور-ردیف-میرزاعبدالله.pdf']).toBeUndefined();
+@@ -136,6 +136,34 @@ function splitTop(line: string): string[] {
+   return out;
+ }
  
-+      // --- A REORDERED, EXTENDED RENAME LOG: the template follows the header ---
-+      // `new_path,timestamp,old_path` is a valid log. The same pairs mean the
-+      // same thing, and the printed row puts each path in ITS OWN column — the
-+      // old path in old_path, the current path in new_path, timestamp empty.
-+      const reordered = writeCorpus('real');
-+      roots.push(reordered);
-+      const inOrder = scan(reordered);
++/**
++ * One CSV line into its cells (a quote groups, `""` is a quote) and back. Written
++ * here on purpose: what the report PRINTS is judged by a reader and a writer that
++ * are not the scanner's own.
++ */
++function cellsOf(line: string): string[] {
++  const out: string[] = [];
++  let cur = '';
++  let quoted = false;
++  for (let i = 0; i < line.length; i += 1) {
++    const c = line[i]!;
++    if (quoted) {
++      if (c === '"' && line[i + 1] === '"') {
++        cur += '"';
++        i += 1;
++      } else if (c === '"') quoted = false;
++      else cur += c;
++    } else if (c === '"') quoted = true;
++    else if (c === ',') {
++      out.push(cur);
++      cur = '';
++    } else cur += c;
++  }
++  out.push(cur);
++  return out;
++}
++const csvLine = (cells: string[]) => cells.map((c) => (/[",\r\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',');
++
+ const scopes = (index: Index) =>
+   Object.fromEntries(index.sessions.flatMap((s) => s.resources.map((r) => [r.path, [...r.pieces].sort()])));
+ const trusted = (index: Index) => Object.fromEntries(index.sessions.map((s) => [String(s.n), s.rosterTrusted]));
+@@ -330,6 +358,72 @@ describe('the Setar archive intake, on temporary corpora', () => {
+       expect(odd.text).toContain('       <its current path>,,<the missing path>');
+       expect(odd.text).not.toContain('<the missing path>,<its current path>');
+ 
++      // --- A QUOTED EXTENSION HEADER: the report prints it as the file writes it ---
++      // A header cell holding a comma or a quote, printed bare, splits into two
++      // columns and shifts every cell after it — the printed header would no
++      // longer describe the printed draft. The scanner never notices (it reads
++      // the file's own header), so the PRINTED text is what is judged here.
++      const registryHeader = 'canonical_fa,form,piece,dastgah,composer,source,aliases_seen,sessions,roles_present,notes,"teacher, ""comment"""';
++      const registryCells = [...EXPECT.variants.real.header.split(','), 'teacher, "comment"'];
++      const extension = 'handed out, then "corrected"';
++      const plain = writeCorpus('real', future);
++      const quotedRegistry = writeCorpus('real', future);
++      roots.push(plain, quotedRegistry);
 +      writeFileSync(
-+        join(reordered, 'RENAME-LOG.csv'),
-+        `${['new_path,timestamp,old_path', ...CORPUS.renameLog.rows.map((r) => {
-+          const [oldPath, newPath, at] = r.split(',');
-+          return `${newPath},${at},${oldPath}`;
++        join(quotedRegistry, 'PIECES.csv'),
++        `${[registryHeader, ...CORPUS.registry.rows.map((r) => `${r},${csvLine([extension])}`)].join('\n')}\n`,
++      );
++      // The extra column changes no source meaning.
++      expect(scan(quotedRegistry).contentHash).toBe(scan(plain).contentHash);
++      const qr = report(quotedRegistry);
++      expect(qr.text).toContain(`UNCONFIRMED draft row for the header ${registryHeader}:`);
++      const printedDrafts = [...qr.text.matchAll(/UNCONFIRMED draft row for the header (.+):\n {7}(.+)\n/g)];
++      expect(printedDrafts.map((m) => cellsOf(m[2]!)[0]).sort()).toEqual(Object.keys(EXPECT.before.newIdentities).sort());
++      for (const m of printedDrafts) {
++        // Read by the PRINTED header: the same cells as the file's, and the
++        // draft has one cell for each — the key in canonical_fa, nothing else.
++        const header = cellsOf(m[1]!);
++        const draft = cellsOf(m[2]!);
++        expect(header).toEqual(registryCells);
++        expect(draft).toHaveLength(registryCells.length);
++        const byName = Object.fromEntries(header.map((h, i) => [h, draft[i]]));
++        expect(byName.canonical_fa).toBe(draft[0]);
++        expect(draft.slice(1).every((c) => c === '')).toBe(true);
++      }
++      // An amended row keeps its extension cell exactly as the owner wrote it.
++      expect(qr.data.rosterCandidates.find((c) => c.key === 'چهارپاره-مرادخانی')!.draft).toBe(`${EXPECT.variants.real.rosterDraft},${csvLine([extension])}`);
++
++      // The same for a rename log whose extension column holds a comma: the
++      // printed header and the template beneath it are one row's worth of columns.
++      const logHeader = 'new_path,"audit,note",old_path';
++      const logCells = ['new_path', 'audit,note', 'old_path'];
++      const quotedLog = writeCorpus('real');
++      roots.push(quotedLog);
++      writeFileSync(
++        join(quotedLog, 'RENAME-LOG.csv'),
++        `${[logHeader, ...CORPUS.renameLog.rows.map((r) => {
++          const [oldPath, newPath] = cellsOf(r);
++          return csvLine([newPath!, 'moved, by hand', oldPath!]);
 +        })].join('\n')}\n`,
 +      );
-+      expect(scan(reordered).contentHash).toBe(inOrder.contentHash);
-+      const odd = report(reordered);
-+      expect(odd.text).toContain('new_path,timestamp,old_path');
-+      expect(odd.text).toContain('       <its current path>,,<the missing path>');
-+      expect(odd.text).not.toContain('<the missing path>,<its current path>');
++      expect(scan(quotedLog).contentHash).toBe(inOrder.contentHash);
++      const ql = report(quotedLog).text.split('\n');
++      const heads = ql.flatMap((l, i) => (l === `       ${logHeader}` ? [i] : []));
++      // One printed header and template for each folder with a gap (sessions 1 and 2).
++      expect(heads).toHaveLength(2);
++      const MISSING = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
++      const CURRENT = 'session-1-26-09-2023/نمونه-1.mp4';
++      for (const i of heads) {
++        const header = cellsOf(ql[i]!.trim());
++        expect(header).toEqual(logCells);
++        const filled = cellsOf(ql[i + 1]!.trim().replace('<the missing path>', MISSING).replace('<its current path>', CURRENT));
++        expect(filled).toHaveLength(logCells.length);
++        expect(Object.fromEntries(header.map((h, k) => [h, filled[k]]))).toEqual({ old_path: MISSING, new_path: CURRENT, 'audit,note': '' });
++      }
++      // The owner pastes that filled row; the exact chain now ends at the current name.
++      ownerAppendLog(quotedLog, [ql[heads[0]! + 1]!.trim().replace('<the missing path>', MISSING).replace('<its current path>', CURRENT)]);
++      expect(terminal(scan(quotedLog), 'session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4')).toBe(CURRENT);
 +
        // --- INVALID INPUT EXPLAINS, AND NO DRAFT IS PRINTED AS CONFIRMED -------
        const bad = writeCorpus('real');
        roots.push(bad);
 diff --git a/tests/setar-practice.browser.test.ts b/tests/setar-practice.browser.test.ts
-index 3f2d453f3333df50253639bfec72af69f0e61058..1f646bcde2b36acd3aa89afa7afa6ed6c7eda3f0 100644
+index 1f646bcde2b36acd3aa89afa7afa6ed6c7eda3f0..4716623ee2a9b7cde7859d9ded2dc6479fb259a2 100644
 --- a/tests/setar-practice.browser.test.ts
 +++ b/tests/setar-practice.browser.test.ts
-@@ -979,6 +979,56 @@ describe('Review Setar setup, interrupted', () => {
-         // The row the owner cleared is offered again, as a proposal, not applied.
-         expect(await page.getByRole('group', { name: `Setup of ${TORK2.title}` }).getByRole('checkbox', { name: /^Place of / }).count(), where).toBe(1);
-         expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(after));
-+
-+        // --- THE PREMISE the owner saw is the one the commit checks ------------
-+        // Keeping fresh is chosen for a RESTING item; another device then moves
-+        // it to Repairing. Apply must refuse the dormant premise it was shown,
-+        // never rebuild it from the live row and write maintenance over it.
-+        await page.getByText(/Keeping fresh — choose which items/).click();
-+        await fresh(JANG.title).check();
-+        const drift = structuredClone(await db(app)) as Db;
-+        drift.items.find((i) => i.id === JANG.id)!.status = 'repairing';
-+        publishRemote(remote, remoteStateText(drift), await hashState(drift), 100);
-+        await page.getByRole('button', { name: 'Sync now' }).click();
-+        await until(app, (x) => x.items.find((i) => i.id === JANG.id)!.status, (v) => v === 'repairing');
-+        const drifted = await db(app);
-+        await page.getByRole('button', { name: /^Apply \d+ selected$/ }).click();
-+        await page.getByText(/changed since the review was shown/).waitFor({ timeout: 10_000 });
-+        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(drifted));
-+        expect(await page.getByText('Saved.').count(), where).toBe(0);
-+        await page.getByRole('button', { name: 'Look again' }).click();
-+        // Looking again starts from what is there now: the stale choice is gone.
-+        expect(await fresh(JANG.title).isChecked(), where).toBe(false);
-+
-+        // --- A SECOND CHOICE made while the first save is pending is not lost ---
-+        // Hold IndexedDB so the first write cannot settle, choose another item,
-+        // then let storage answer: "Saved." may only speak for what was written,
-+        // so the newer choice is written next instead of being cleared unseen.
-+        await fresh(SABA.title).check();
-+        await page.evaluate(
-+          () =>
-+            new Promise<void>((resolve) => {
-+              const w = window as unknown as { __held?: boolean };
-+              const open = indexedDB.open('practice-compass');
-+              open.onsuccess = () => {
-+                const store = open.result.transaction('kv', 'readwrite').objectStore('kv');
-+                w.__held = true;
-+                const ping = () => {
-+                  if (w.__held) store.get('__hold').onsuccess = ping;
-+                };
-+                ping();
-+                resolve();
-+              };
-+            }),
-+        );
-+        await page.getByRole('button', { name: /^Apply \d+ selected$/ }).click();
-+        await page.getByText('Saving…').first().waitFor({ timeout: 10_000 });
-+        await fresh(JANG.title).check();
-+        await page.evaluate(() => ((window as unknown as { __held?: boolean }).__held = false));
-+        await until(app, (x) => x.items.find((i) => i.id === JANG.id)!.status, (v) => v === 'maintenance');
-+        const settled = await db(app);
-+        expect([settled.items.find((i) => i.id === SABA.id)!.status, settled.items.find((i) => i.id === JANG.id)!.status], where).toEqual(['maintenance', 'maintenance']);
-+        await page.getByText('Saved.').first().waitFor({ timeout: 10_000 });
-         expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
-       } finally {
+@@ -1034,7 +1034,79 @@ describe('Review Setar setup, interrupted', () => {
          await app.close();
-@@ -1334,6 +1384,47 @@ describe('recovery and difference controls, on a phone', () => {
-           expect((await focused(page)).name, where).toMatch(/^Restore /);
-           facts = await layoutFacts(page);
-           expect([facts.pageScrolls, facts.sideways, facts.pinned], where).toEqual([false, false, []]);
+       }
+     }
+-  }, 600_000);
 +
-+          // --- REVIEW SETAR SETUP: each row a group, each value its own direction
-+          // A Farsi title beside English generated copy and a Farsi stage; an
-+          // English title beside Farsi values. The group resolves from its bare
-+          // title, the owner's values from themselves, the generated copy is LTR.
-+          await page.getByText('Review Setar setup').click();
-+          if (await page.getByText('Which instrument is your Setar?').count()) {
-+            await page.locator('details', { hasText: 'Which instrument is your Setar?' }).last().locator('select').selectOption('inst-setar');
-+          }
-+          await page.getByRole('combobox', { name: 'Pathway to place items in' }).selectOption('setar-radif');
-+          await page.getByRole('combobox', { name: 'Study source for ردیف-میرزاعبدالله' }).selectOption('mat-radif');
-+          const MAHUR_TITLE = by(DARAMAD_MAHUR).title;
-+          const facts4 = async (title: string) => {
-+            const card = page.getByRole('group', { name: `Setup of ${title}` });
-+            await card.waitFor({ timeout: 10_000 });
-+            return card.evaluate((el) => {
-+              const strong = el.querySelector('strong')!;
-+              const cs = getComputedStyle(el);
-+              return {
-+                direction: cs.direction,
-+                align: cs.textAlign,
-+                titleDir: strong.getAttribute('dir'),
-+                bareTitleFirst: el.firstElementChild === strong,
-+                owner: [...el.querySelectorAll('span[dir="auto"]')].map((n) => [n.textContent ?? '', getComputedStyle(n).direction]),
-+                generated: [...el.querySelectorAll('span[dir="ltr"]')].map((n) => getComputedStyle(n).direction),
-+              };
-+            });
-+          };
-+          for (const [title, want, hasValue] of [[MAHUR_TITLE, 'rtl', true], [LONG_EN, 'ltr', false]] as const) {
-+            const f = await facts4(title);
-+            expect(f.direction, `${where}: ${title} resolves from its own title`).toBe(want);
-+            expect([f.align, f.titleDir, f.bareTitleFirst], `${where}: ${title}`).toEqual(['start', null, true]);
-+            expect(f.generated.every((d) => d === 'ltr'), where).toBe(true);
-+            // An owner's Farsi value reads RTL even inside an English-titled card, and vice versa.
-+            expect(f.owner.filter(([t]) => /[؀-ۿ]/.test(t)).every(([, d]) => d === 'rtl'), `${where}: ${title}`).toBe(true);
-+            if (hasValue) expect(f.owner.length, `${where}: ${title} shows an owner value`).toBeGreaterThan(0);
-+          }
-+          // The evidence's embedded owner words sit in bidi isolates (U+2068..U+2069) inside LTR copy.
-+          expect(await page.getByRole('group', { name: `Setup of ${MAHUR_TITLE}` }).innerText(), where).toMatch(/\u2068[^\u2069]+\u2069/);
-+          facts = await layoutFacts(page);
-+          expect([facts.pageScrolls, facts.sideways, facts.pinned], where).toEqual([false, false, []]);
-           expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
-         } finally {
-           await app.close();
++    // --- CREATING a study source for TWO groups, through the controls --------
++    // The registry declares two different study sources. The owner creates both
++    // in ONE Apply while the disk refuses, tries again, reloads and repeats.
++    // What the screen shows after "Saved." is the only trace of the group
++    // finalisation: each group must name ITS OWN source, never the first one's.
++    const FIRST_SOURCE = 'ردیف-میرزاعبدالله';
++    const SECOND_SOURCE = 'منبع-دوم-آزمون';
++    const twoGroups = structuredClone(base) as Db;
++    twoGroups.archiveSources[0]!.pieces = twoGroups.archiveSources[0]!.pieces.map((p) => (p.key === 'چهارمضراب-ماهور-صبا' ? { ...p, studySource: SECOND_SOURCE } : p));
++    for (const engine of ['chromium', 'webkit'] as Engine[]) {
++      const where = `${engine} (two created sources)`;
++      const app = await seeded(engine, { ...twoGroups, attachments: [] }, { width: 390, height: 844 });
++      const { page } = app;
++      try {
++        const before = await db(app);
++        await page.getByText('Review Setar setup').click();
++        await expect.poll(() => page.getByRole('combobox', { name: 'Instrument to review' }).inputValue()).toBe('inst-setar');
++        const firstSelect = () => page.getByRole('combobox', { name: `Study source for ${FIRST_SOURCE}` });
++        const secondSelect = () => page.getByRole('combobox', { name: `Study source for ${SECOND_SOURCE}` });
++        await firstSelect().selectOption('create');
++        await secondSelect().selectOption('create');
++        // Each row is offered against ITS OWN declared text.
++        const saba = await page.getByRole('group', { name: `Setup of ${SABA.title}` }).innerText();
++        expect(saba, where).toMatch(/Study source: none → a new study source/);
++        expect(saba, where).toContain(SECOND_SOURCE);
++
++        // A refused write is not "Saved."; what the owner chose stays on screen.
++        await breakStorage(page);
++        await page.getByRole('button', { name: /^Apply \d+ selected$/ }).click();
++        await page.getByText(/Not saved/).first().waitFor({ timeout: 10_000 });
++        expect(await page.getByText('Saved.').count(), where).toBe(0);
++        expect([await firstSelect().inputValue(), await secondSelect().inputValue()], where).toEqual(['create', 'create']);
++        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(before));
++
++        // Try again WRITES what is in memory: two sources, once.
++        await repairStorage(page);
++        await page.getByRole('button', { name: 'Try again' }).click();
++        await page.getByText('Saved.').first().waitFor({ timeout: 10_000 });
++        const after = await until(app, (x) => x, (x) => x.materials.length === before.materials.length + 2);
++        const made = after.materials.filter((m) => !before.materials.some((o) => o.id === m.id));
++        expect(made.map((m) => m.title).sort(), where).toEqual([FIRST_SOURCE, SECOND_SOURCE].sort());
++        const sourceId = (title: string) => made.find((m) => m.title === title)!.id;
++        // Each item points at the source of ITS group.
++        expect(after.items.find((i) => i.id === SABA.id)!.materialId, where).toBe(sourceId(SECOND_SOURCE));
++        expect(after.items.find((i) => i.id === MAHUR.id)!.materialId, where).toBe(sourceId(FIRST_SOURCE));
++        const moved = after.items.filter((i) => i.materialId !== before.items.find((o) => o.id === i.id)!.materialId);
++        expect(moved.filter((i) => i.materialId === sourceId(SECOND_SOURCE)).map((i) => i.id), where).toEqual([SABA.id]);
++        expect(moved.every((i) => [sourceId(FIRST_SOURCE), sourceId(SECOND_SOURCE)].includes(i.materialId!)), where).toBe(true);
++
++        // "Saved." finalised the screen: each group names its OWN source.
++        expect([await firstSelect().inputValue(), await secondSelect().inputValue()], where).toEqual([sourceId(FIRST_SOURCE), sourceId(SECOND_SOURCE)]);
++        expect(await page.getByRole('checkbox', { name: /^Study source of / }).count(), where).toBe(0);
++
++        // RELOAD and REPEAT: asking to create them again names the ones that
++        // exist — nothing is proposed, and no third source is made.
++        await reload(app);
++        await openSettings(app);
++        await page.getByText('Review Setar setup').click();
++        await firstSelect().selectOption('create');
++        await secondSelect().selectOption('create');
++        expect(await page.getByRole('checkbox', { name: /^Study source of / }).count(), where).toBe(0);
++        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(after));
++        await firstSelect().selectOption(sourceId(FIRST_SOURCE));
++        await secondSelect().selectOption(sourceId(SECOND_SOURCE));
++        expect(await page.getByRole('checkbox', { name: /^Study source of / }).count(), where).toBe(0);
++        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(after));
++        expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
++      } finally {
++        await app.close();
++      }
++    }
++  }, 900_000);
+ });
+ 
+ // ---------------------------------------------------------------------------
 ```
 
 **Paths the rework touched:**
 
+- `docs/setar-archive.md`
 - `docs/setar-practice-reliability.md`
 - `scripts/check-setar-practice-families.mjs`
 - `scripts/scan-setar-classes.mjs`
-- `src/components/SetarSetupReview.tsx`
-- `src/components/direction.test.ts`
-- `src/components/practiceCue.test.ts`
-- `src/components/practiceCue.ts`
 - `src/domain/setarSetup.test.ts`
-- `src/domain/setarSetup.ts`
-- `src/domain/sourceArchive.ts`
+- `tests/setar-practice-proof.test.ts`
 - `tests/setar-practice-source.test.ts`
 - `tests/setar-practice.browser.test.ts`
 
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
 
 ```
-9d0e8ff Rework review findings: setup premises, source identity, sound requests, rename template, setup direction
+294aea7 Rework review findings: quoted headers in attention drafts, multi-group source creation proof
+
+The attention report printed registry and rename-log headers without CSV
+quoting, so a header cell holding a comma or a quote no longer described the
+draft row beneath it. Headers now go through csvCell, and the named intake
+test judges the printed header and template with an independent reader.
+
+The setup checks now drive two study-source groups created in one Apply
+through a refused write, Try again, group finalisation, reload and repeat,
+with mutations that fail them.
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
 
-241b9a4 Record the four new family mutations
+f947129 Record the five new family mutations and the quoted-header and multi-group classes
 
 Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
 ```
