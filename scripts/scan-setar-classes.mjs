@@ -942,7 +942,7 @@ export function formatAttention(r) {
     for (const f of n.files) line(`       ${f}`);
     line('     why it is not imported: PIECES.csv is the identity table, and an unregistered name is never guessed into a piece.');
     line('     to import it: confirm this exact spelling IS the piece (it becomes canonical_fa byte for byte), then add one row.');
-    line(`     UNCONFIRMED draft row for the header ${r.registryHeader.join(',')}:`);
+    line(`     UNCONFIRMED draft row for the header ${r.registryHeader.map(csvCell).join(',')}:`);
     line(`       ${n.draft}`);
     line('     Musical fields may stay empty. Put a session number in `sessions` only if that class taught it.');
   }
@@ -981,7 +981,7 @@ export function formatAttention(r) {
     line('     If a missing name was renamed to one of these, append ONE exact row per file to RENAME-LOG.csv:');
     // One cell per header COLUMN, by name — a reordered or extended log keeps old and new in their own columns.
     const logCols = r.logHeader.includes('old_path') && r.logHeader.includes('new_path') ? r.logHeader : ['old_path', 'new_path'];
-    line(`       ${logCols.join(',')}`);
+    line(`       ${logCols.map(csvCell).join(',')}`);
     line(`       ${logCols.map((h) => (h === 'old_path' ? '<the missing path>' : h === 'new_path' ? '<its current path>' : '')).join(',')}`);
     line('     Only you know which became which: nothing here pairs them by number, size or similarity. Unpaired, the old name stays "not described".');
   }

@@ -286,6 +286,41 @@ export const MUTATIONS = [
     replace: "    line('       <the missing path>,<its current path>');",
     test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
   },
+  {
+    name: 'a registry draft header printed without its CSV quoting',
+    file: 'scripts/scan-setar-classes.mjs',
+    find: "${r.registryHeader.map(csvCell).join(',')}",
+    replace: "${r.registryHeader.join(',')}",
+    test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
+  },
+  {
+    name: 'a rename-log header printed without its CSV quoting',
+    file: 'scripts/scan-setar-classes.mjs',
+    find: "    line(`       ${logCols.map(csvCell).join(',')}`);",
+    replace: "    line(`       ${logCols.join(',')}`);",
+    test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
+  },
+  {
+    name: 'every created study source finalised to the first group\'s',
+    file: 'src/components/SetarSetupReview.tsx',
+    find: 'const id = setupSourceId(instrumentId, key);',
+    replace: 'const id = setupSourceId(instrumentId, Object.keys(cur)[0]!);',
+    test: 'setar setup review is usable through controls and survives interruption',
+  },
+  {
+    name: 'a created study source never finalised on the screen',
+    file: 'src/components/SetarSetupReview.tsx',
+    find: "return [key, 'create' in v && made.some((m) => m.id === id) ? { materialId: id } : v];",
+    replace: 'return [key, v];',
+    test: 'setar setup review is usable through controls and survives interruption',
+  },
+  {
+    name: 'a retry of an already-applied creation that writes nothing',
+    file: 'src/store/useStore.ts',
+    find: '        set({ db: outcome.db });\n        return null;',
+    replace: '        if (outcome.db !== get().db) set({ db: outcome.db });\n        return null;',
+    test: 'setar setup commits selected rows atomically idempotently and without collateral changes',
+  },
 ];
 
 const isBrowser = (file) => file.includes('.browser.');

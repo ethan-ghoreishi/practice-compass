@@ -1034,7 +1034,79 @@ describe('Review Setar setup, interrupted', () => {
         await app.close();
       }
     }
-  }, 600_000);
+
+    // --- CREATING a study source for TWO groups, through the controls --------
+    // The registry declares two different study sources. The owner creates both
+    // in ONE Apply while the disk refuses, tries again, reloads and repeats.
+    // What the screen shows after "Saved." is the only trace of the group
+    // finalisation: each group must name ITS OWN source, never the first one's.
+    const FIRST_SOURCE = 'ردیف-میرزاعبدالله';
+    const SECOND_SOURCE = 'منبع-دوم-آزمون';
+    const twoGroups = structuredClone(base) as Db;
+    twoGroups.archiveSources[0]!.pieces = twoGroups.archiveSources[0]!.pieces.map((p) => (p.key === 'چهارمضراب-ماهور-صبا' ? { ...p, studySource: SECOND_SOURCE } : p));
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      const where = `${engine} (two created sources)`;
+      const app = await seeded(engine, { ...twoGroups, attachments: [] }, { width: 390, height: 844 });
+      const { page } = app;
+      try {
+        const before = await db(app);
+        await page.getByText('Review Setar setup').click();
+        await expect.poll(() => page.getByRole('combobox', { name: 'Instrument to review' }).inputValue()).toBe('inst-setar');
+        const firstSelect = () => page.getByRole('combobox', { name: `Study source for ${FIRST_SOURCE}` });
+        const secondSelect = () => page.getByRole('combobox', { name: `Study source for ${SECOND_SOURCE}` });
+        await firstSelect().selectOption('create');
+        await secondSelect().selectOption('create');
+        // Each row is offered against ITS OWN declared text.
+        const saba = await page.getByRole('group', { name: `Setup of ${SABA.title}` }).innerText();
+        expect(saba, where).toMatch(/Study source: none → a new study source/);
+        expect(saba, where).toContain(SECOND_SOURCE);
+
+        // A refused write is not "Saved."; what the owner chose stays on screen.
+        await breakStorage(page);
+        await page.getByRole('button', { name: /^Apply \d+ selected$/ }).click();
+        await page.getByText(/Not saved/).first().waitFor({ timeout: 10_000 });
+        expect(await page.getByText('Saved.').count(), where).toBe(0);
+        expect([await firstSelect().inputValue(), await secondSelect().inputValue()], where).toEqual(['create', 'create']);
+        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(before));
+
+        // Try again WRITES what is in memory: two sources, once.
+        await repairStorage(page);
+        await page.getByRole('button', { name: 'Try again' }).click();
+        await page.getByText('Saved.').first().waitFor({ timeout: 10_000 });
+        const after = await until(app, (x) => x, (x) => x.materials.length === before.materials.length + 2);
+        const made = after.materials.filter((m) => !before.materials.some((o) => o.id === m.id));
+        expect(made.map((m) => m.title).sort(), where).toEqual([FIRST_SOURCE, SECOND_SOURCE].sort());
+        const sourceId = (title: string) => made.find((m) => m.title === title)!.id;
+        // Each item points at the source of ITS group.
+        expect(after.items.find((i) => i.id === SABA.id)!.materialId, where).toBe(sourceId(SECOND_SOURCE));
+        expect(after.items.find((i) => i.id === MAHUR.id)!.materialId, where).toBe(sourceId(FIRST_SOURCE));
+        const moved = after.items.filter((i) => i.materialId !== before.items.find((o) => o.id === i.id)!.materialId);
+        expect(moved.filter((i) => i.materialId === sourceId(SECOND_SOURCE)).map((i) => i.id), where).toEqual([SABA.id]);
+        expect(moved.every((i) => [sourceId(FIRST_SOURCE), sourceId(SECOND_SOURCE)].includes(i.materialId!)), where).toBe(true);
+
+        // "Saved." finalised the screen: each group names its OWN source.
+        expect([await firstSelect().inputValue(), await secondSelect().inputValue()], where).toEqual([sourceId(FIRST_SOURCE), sourceId(SECOND_SOURCE)]);
+        expect(await page.getByRole('checkbox', { name: /^Study source of / }).count(), where).toBe(0);
+
+        // RELOAD and REPEAT: asking to create them again names the ones that
+        // exist — nothing is proposed, and no third source is made.
+        await reload(app);
+        await openSettings(app);
+        await page.getByText('Review Setar setup').click();
+        await firstSelect().selectOption('create');
+        await secondSelect().selectOption('create');
+        expect(await page.getByRole('checkbox', { name: /^Study source of / }).count(), where).toBe(0);
+        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(after));
+        await firstSelect().selectOption(sourceId(FIRST_SOURCE));
+        await secondSelect().selectOption(sourceId(SECOND_SOURCE));
+        expect(await page.getByRole('checkbox', { name: /^Study source of / }).count(), where).toBe(0);
+        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(after));
+        expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    }
+  }, 900_000);
 });
 
 // ---------------------------------------------------------------------------

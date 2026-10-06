@@ -298,10 +298,46 @@ describe('the Setar setup review', () => {
     const lateTwo = applySetarSetup(first.db, bothCreate, bothSel.slice(0, 1), NOW);
     expect(lateTwo.ok && lateTwo.db.materials.length).toBe(first.db.materials.length);
 
+    // --- A REFUSED WRITE of a CREATION: memory keeps what it made, Try again writes it ONCE
+    // Two groups are created in one Apply and the disk refuses. What is on
+    // screen still holds the original selections (their `new:<group>` premise);
+    // Try again sends exactly those, and must be a real write of the state in
+    // memory — not stale, not a third source, each group still its OWN source.
+    const { storageSettled } = await import('../store/idb');
+    const failNext = () => (globalThis as { __failNextWrite?: () => void }).__failNextWrite!();
+    useStore.setState({ db: two });
+    failNext();
+    expect(s().commitSetarSetup({ context: bothCreate, selections: bothSel, now: NOW })).toBeNull();
+    await expect(storageSettled()).rejects.toThrow();
+    const inMemory = s().db;
+    const created = inMemory.materials.filter((m) => !two.materials.some((o) => o.id === m.id));
+    expect(created.map((m) => m.title).sort()).toEqual([EXPECT.context.declared, second].sort());
+    expect(s().commitSetarSetup({ context: bothCreate, selections: bothSel, now: NOW })).toBeNull();
+    await expect(storageSettled()).resolves.toBeUndefined();
+    expect(s().db).toBe(inMemory);
+    expect(s().db.materials).toHaveLength(two.materials.length + 2);
+    // Once "Saved." finalises the screen, each group names ITS source and every
+    // row this Apply selected reads as done; one group's source taken for both
+    // would put the other's item in conflict with the source it already has.
+    const idByTitle = (title: string) => created.find((m) => m.title === title)!.id;
+    const finalised: SetupContext = {
+      ...CTX,
+      sources: { [DECLARED]: { materialId: idByTitle(EXPECT.context.declared) }, [`declared:${second}`]: { materialId: idByTitle(second) } },
+    };
+    const sourceRows = (ctx: SetupContext) => planSetarSetup(s().db, ctx).proposals.filter((p) => p.field === 'source');
+    // (An item the owner pointed at another recension stays an exception, as it was.)
+    const done = sourceRows(finalised);
+    expect(done.filter((p) => p.state === 'proposed')).toEqual([]);
+    expect(bothSel.map((x) => done.find((p) => p.id === x.id)!.state)).toEqual(bothSel.map(() => 'correct'));
+    const bothToFirst: SetupContext = { ...CTX, sources: { [DECLARED]: finalised.sources![DECLARED]!, [`declared:${second}`]: finalised.sources![DECLARED]! } };
+    expect(sourceRows(bothToFirst).find((p) => p.itemId === secondItem)!.state).toBe('exception');
+    expect(done.find((p) => p.itemId === secondItem)!.state).toBe('correct');
+    expect(s().commitSetarSetup({ context: finalised, selections: bothSel, now: NOW })).toBeNull();
+    expect(s().db).toBe(inMemory);
+
     // --- A REFUSED WRITE: the store says nothing it cannot keep, and Try again writes
     useStore.setState({ db: OWNER });
-    const { storageSettled } = await import('../store/idb');
-    (globalThis as { __failNextWrite?: () => void }).__failNextWrite!();
+    failNext();
     expect(s().commitSetarSetup({ context: WITH_SOURCE, selections: selections.slice(0, 1), now: NOW })).toBeNull();
     await expect(storageSettled()).rejects.toThrow();
     // The retry is a REAL write of the state already in memory.

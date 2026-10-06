@@ -55,6 +55,11 @@ const REQUIRED_FAMILIES: RegExp[] = [
   /^an unconditional marker claim/,
   /^a delayed cue queued/,
   /^routine Start moved back into an effect$/,
+  /^a registry draft header printed without its CSV quoting$/,
+  /^a rename-log header printed without its CSV quoting$/,
+  /^every created study source finalised to the first group/,
+  /^a created study source never finalised on the screen$/,
+  /^a retry of an already-applied creation that writes nothing$/,
 ];
 
 describe('the Setar practice family proof route', () => {

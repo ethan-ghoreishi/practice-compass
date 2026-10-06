@@ -136,6 +136,34 @@ function splitTop(line: string): string[] {
   return out;
 }
 
+/**
+ * One CSV line into its cells (a quote groups, `""` is a quote) and back. Written
+ * here on purpose: what the report PRINTS is judged by a reader and a writer that
+ * are not the scanner's own.
+ */
+function cellsOf(line: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const c = line[i]!;
+    if (quoted) {
+      if (c === '"' && line[i + 1] === '"') {
+        cur += '"';
+        i += 1;
+      } else if (c === '"') quoted = false;
+      else cur += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ',') {
+      out.push(cur);
+      cur = '';
+    } else cur += c;
+  }
+  out.push(cur);
+  return out;
+}
+const csvLine = (cells: string[]) => cells.map((c) => (/[",\r\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',');
+
 const scopes = (index: Index) =>
   Object.fromEntries(index.sessions.flatMap((s) => s.resources.map((r) => [r.path, [...r.pieces].sort()])));
 const trusted = (index: Index) => Object.fromEntries(index.sessions.map((s) => [String(s.n), s.rosterTrusted]));
@@ -329,6 +357,72 @@ describe('the Setar archive intake, on temporary corpora', () => {
       expect(odd.text).toContain('new_path,timestamp,old_path');
       expect(odd.text).toContain('       <its current path>,,<the missing path>');
       expect(odd.text).not.toContain('<the missing path>,<its current path>');
+
+      // --- A QUOTED EXTENSION HEADER: the report prints it as the file writes it ---
+      // A header cell holding a comma or a quote, printed bare, splits into two
+      // columns and shifts every cell after it — the printed header would no
+      // longer describe the printed draft. The scanner never notices (it reads
+      // the file's own header), so the PRINTED text is what is judged here.
+      const registryHeader = 'canonical_fa,form,piece,dastgah,composer,source,aliases_seen,sessions,roles_present,notes,"teacher, ""comment"""';
+      const registryCells = [...EXPECT.variants.real.header.split(','), 'teacher, "comment"'];
+      const extension = 'handed out, then "corrected"';
+      const plain = writeCorpus('real', future);
+      const quotedRegistry = writeCorpus('real', future);
+      roots.push(plain, quotedRegistry);
+      writeFileSync(
+        join(quotedRegistry, 'PIECES.csv'),
+        `${[registryHeader, ...CORPUS.registry.rows.map((r) => `${r},${csvLine([extension])}`)].join('\n')}\n`,
+      );
+      // The extra column changes no source meaning.
+      expect(scan(quotedRegistry).contentHash).toBe(scan(plain).contentHash);
+      const qr = report(quotedRegistry);
+      expect(qr.text).toContain(`UNCONFIRMED draft row for the header ${registryHeader}:`);
+      const printedDrafts = [...qr.text.matchAll(/UNCONFIRMED draft row for the header (.+):\n {7}(.+)\n/g)];
+      expect(printedDrafts.map((m) => cellsOf(m[2]!)[0]).sort()).toEqual(Object.keys(EXPECT.before.newIdentities).sort());
+      for (const m of printedDrafts) {
+        // Read by the PRINTED header: the same cells as the file's, and the
+        // draft has one cell for each — the key in canonical_fa, nothing else.
+        const header = cellsOf(m[1]!);
+        const draft = cellsOf(m[2]!);
+        expect(header).toEqual(registryCells);
+        expect(draft).toHaveLength(registryCells.length);
+        const byName = Object.fromEntries(header.map((h, i) => [h, draft[i]]));
+        expect(byName.canonical_fa).toBe(draft[0]);
+        expect(draft.slice(1).every((c) => c === '')).toBe(true);
+      }
+      // An amended row keeps its extension cell exactly as the owner wrote it.
+      expect(qr.data.rosterCandidates.find((c) => c.key === 'چهارپاره-مرادخانی')!.draft).toBe(`${EXPECT.variants.real.rosterDraft},${csvLine([extension])}`);
+
+      // The same for a rename log whose extension column holds a comma: the
+      // printed header and the template beneath it are one row's worth of columns.
+      const logHeader = 'new_path,"audit,note",old_path';
+      const logCells = ['new_path', 'audit,note', 'old_path'];
+      const quotedLog = writeCorpus('real');
+      roots.push(quotedLog);
+      writeFileSync(
+        join(quotedLog, 'RENAME-LOG.csv'),
+        `${[logHeader, ...CORPUS.renameLog.rows.map((r) => {
+          const [oldPath, newPath] = cellsOf(r);
+          return csvLine([newPath!, 'moved, by hand', oldPath!]);
+        })].join('\n')}\n`,
+      );
+      expect(scan(quotedLog).contentHash).toBe(inOrder.contentHash);
+      const ql = report(quotedLog).text.split('\n');
+      const heads = ql.flatMap((l, i) => (l === `       ${logHeader}` ? [i] : []));
+      // One printed header and template for each folder with a gap (sessions 1 and 2).
+      expect(heads).toHaveLength(2);
+      const MISSING = 'session-1-26-09-2023/ضبط-کلاس-1.mp4';
+      const CURRENT = 'session-1-26-09-2023/نمونه-1.mp4';
+      for (const i of heads) {
+        const header = cellsOf(ql[i]!.trim());
+        expect(header).toEqual(logCells);
+        const filled = cellsOf(ql[i + 1]!.trim().replace('<the missing path>', MISSING).replace('<its current path>', CURRENT));
+        expect(filled).toHaveLength(logCells.length);
+        expect(Object.fromEntries(header.map((h, k) => [h, filled[k]]))).toEqual({ old_path: MISSING, new_path: CURRENT, 'audit,note': '' });
+      }
+      // The owner pastes that filled row; the exact chain now ends at the current name.
+      ownerAppendLog(quotedLog, [ql[heads[0]! + 1]!.trim().replace('<the missing path>', MISSING).replace('<its current path>', CURRENT)]);
+      expect(terminal(scan(quotedLog), 'session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4')).toBe(CURRENT);
 
       // --- INVALID INPUT EXPLAINS, AND NO DRAFT IS PRINTED AS CONFIRMED -------
       const bad = writeCorpus('real');
