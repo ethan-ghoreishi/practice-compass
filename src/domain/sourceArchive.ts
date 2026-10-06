@@ -207,6 +207,16 @@ export function sourceResourceId(archiveId: string, path: string): ID {
   return `src-${stableHash(`${archiveId}${NUL}asset${NUL}${path}`)}`;
 }
 
+/**
+ * Deterministic id for the study source "Review Setar setup" creates for one
+ * evidence group of one instrument — so the same selection, replayed, names
+ * the source it already made instead of making (or refusing) another. It is
+ * the group's key, never a title, that decides it; never cross-instrument.
+ */
+export function setupSourceId(instrumentId: ID, groupKey: string): ID {
+  return `src-${stableHash(`${instrumentId}${NUL}setup-source${NUL}${groupKey}`)}`;
+}
+
 // --- decoding --------------------------------------------------------------
 
 /** The fixed role vocabulary, byte-exact from the archive's own contract. */

@@ -310,6 +310,26 @@ describe('the Setar archive intake, on temporary corpora', () => {
       expect(moved['session-2-24-10-2023/نت-درآمد-شور-ردیف-میرزاعبدالله-2.pdf']).toEqual(['درآمد-شور-ردیف-میرزاعبدالله']);
       expect(moved['session-2-24-10-2023/نت-کرشمه-شور-ردیف-میرزاعبدالله.pdf']).toBeUndefined();
 
+      // --- A REORDERED, EXTENDED RENAME LOG: the template follows the header ---
+      // `new_path,timestamp,old_path` is a valid log. The same pairs mean the
+      // same thing, and the printed row puts each path in ITS OWN column — the
+      // old path in old_path, the current path in new_path, timestamp empty.
+      const reordered = writeCorpus('real');
+      roots.push(reordered);
+      const inOrder = scan(reordered);
+      writeFileSync(
+        join(reordered, 'RENAME-LOG.csv'),
+        `${['new_path,timestamp,old_path', ...CORPUS.renameLog.rows.map((r) => {
+          const [oldPath, newPath, at] = r.split(',');
+          return `${newPath},${at},${oldPath}`;
+        })].join('\n')}\n`,
+      );
+      expect(scan(reordered).contentHash).toBe(inOrder.contentHash);
+      const odd = report(reordered);
+      expect(odd.text).toContain('new_path,timestamp,old_path');
+      expect(odd.text).toContain('       <its current path>,,<the missing path>');
+      expect(odd.text).not.toContain('<the missing path>,<its current path>');
+
       // --- INVALID INPUT EXPLAINS, AND NO DRAFT IS PRINTED AS CONFIRMED -------
       const bad = writeCorpus('real');
       roots.push(bad);

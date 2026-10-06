@@ -979,6 +979,56 @@ describe('Review Setar setup, interrupted', () => {
         // The row the owner cleared is offered again, as a proposal, not applied.
         expect(await page.getByRole('group', { name: `Setup of ${TORK2.title}` }).getByRole('checkbox', { name: /^Place of / }).count(), where).toBe(1);
         expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(after));
+
+        // --- THE PREMISE the owner saw is the one the commit checks ------------
+        // Keeping fresh is chosen for a RESTING item; another device then moves
+        // it to Repairing. Apply must refuse the dormant premise it was shown,
+        // never rebuild it from the live row and write maintenance over it.
+        await page.getByText(/Keeping fresh — choose which items/).click();
+        await fresh(JANG.title).check();
+        const drift = structuredClone(await db(app)) as Db;
+        drift.items.find((i) => i.id === JANG.id)!.status = 'repairing';
+        publishRemote(remote, remoteStateText(drift), await hashState(drift), 100);
+        await page.getByRole('button', { name: 'Sync now' }).click();
+        await until(app, (x) => x.items.find((i) => i.id === JANG.id)!.status, (v) => v === 'repairing');
+        const drifted = await db(app);
+        await page.getByRole('button', { name: /^Apply \d+ selected$/ }).click();
+        await page.getByText(/changed since the review was shown/).waitFor({ timeout: 10_000 });
+        expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(drifted));
+        expect(await page.getByText('Saved.').count(), where).toBe(0);
+        await page.getByRole('button', { name: 'Look again' }).click();
+        // Looking again starts from what is there now: the stale choice is gone.
+        expect(await fresh(JANG.title).isChecked(), where).toBe(false);
+
+        // --- A SECOND CHOICE made while the first save is pending is not lost ---
+        // Hold IndexedDB so the first write cannot settle, choose another item,
+        // then let storage answer: "Saved." may only speak for what was written,
+        // so the newer choice is written next instead of being cleared unseen.
+        await fresh(SABA.title).check();
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) => {
+              const w = window as unknown as { __held?: boolean };
+              const open = indexedDB.open('practice-compass');
+              open.onsuccess = () => {
+                const store = open.result.transaction('kv', 'readwrite').objectStore('kv');
+                w.__held = true;
+                const ping = () => {
+                  if (w.__held) store.get('__hold').onsuccess = ping;
+                };
+                ping();
+                resolve();
+              };
+            }),
+        );
+        await page.getByRole('button', { name: /^Apply \d+ selected$/ }).click();
+        await page.getByText('Saving…').first().waitFor({ timeout: 10_000 });
+        await fresh(JANG.title).check();
+        await page.evaluate(() => ((window as unknown as { __held?: boolean }).__held = false));
+        await until(app, (x) => x.items.find((i) => i.id === JANG.id)!.status, (v) => v === 'maintenance');
+        const settled = await db(app);
+        expect([settled.items.find((i) => i.id === SABA.id)!.status, settled.items.find((i) => i.id === JANG.id)!.status], where).toEqual(['maintenance', 'maintenance']);
+        await page.getByText('Saved.').first().waitFor({ timeout: 10_000 });
         expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
       } finally {
         await app.close();
@@ -1332,6 +1382,47 @@ describe('recovery and difference controls, on a phone', () => {
           await page.keyboard.press('Tab');
           await page.keyboard.press('Tab');
           expect((await focused(page)).name, where).toMatch(/^Restore /);
+          facts = await layoutFacts(page);
+          expect([facts.pageScrolls, facts.sideways, facts.pinned], where).toEqual([false, false, []]);
+
+          // --- REVIEW SETAR SETUP: each row a group, each value its own direction
+          // A Farsi title beside English generated copy and a Farsi stage; an
+          // English title beside Farsi values. The group resolves from its bare
+          // title, the owner's values from themselves, the generated copy is LTR.
+          await page.getByText('Review Setar setup').click();
+          if (await page.getByText('Which instrument is your Setar?').count()) {
+            await page.locator('details', { hasText: 'Which instrument is your Setar?' }).last().locator('select').selectOption('inst-setar');
+          }
+          await page.getByRole('combobox', { name: 'Pathway to place items in' }).selectOption('setar-radif');
+          await page.getByRole('combobox', { name: 'Study source for ردیف-میرزاعبدالله' }).selectOption('mat-radif');
+          const MAHUR_TITLE = by(DARAMAD_MAHUR).title;
+          const facts4 = async (title: string) => {
+            const card = page.getByRole('group', { name: `Setup of ${title}` });
+            await card.waitFor({ timeout: 10_000 });
+            return card.evaluate((el) => {
+              const strong = el.querySelector('strong')!;
+              const cs = getComputedStyle(el);
+              return {
+                direction: cs.direction,
+                align: cs.textAlign,
+                titleDir: strong.getAttribute('dir'),
+                bareTitleFirst: el.firstElementChild === strong,
+                owner: [...el.querySelectorAll('span[dir="auto"]')].map((n) => [n.textContent ?? '', getComputedStyle(n).direction]),
+                generated: [...el.querySelectorAll('span[dir="ltr"]')].map((n) => getComputedStyle(n).direction),
+              };
+            });
+          };
+          for (const [title, want, hasValue] of [[MAHUR_TITLE, 'rtl', true], [LONG_EN, 'ltr', false]] as const) {
+            const f = await facts4(title);
+            expect(f.direction, `${where}: ${title} resolves from its own title`).toBe(want);
+            expect([f.align, f.titleDir, f.bareTitleFirst], `${where}: ${title}`).toEqual(['start', null, true]);
+            expect(f.generated.every((d) => d === 'ltr'), where).toBe(true);
+            // An owner's Farsi value reads RTL even inside an English-titled card, and vice versa.
+            expect(f.owner.filter(([t]) => /[؀-ۿ]/.test(t)).every(([, d]) => d === 'rtl'), `${where}: ${title}`).toBe(true);
+            if (hasValue) expect(f.owner.length, `${where}: ${title} shows an owner value`).toBeGreaterThan(0);
+          }
+          // The evidence's embedded owner words sit in bidi isolates (U+2068..U+2069) inside LTR copy.
+          expect(await page.getByRole('group', { name: `Setup of ${MAHUR_TITLE}` }).innerText(), where).toMatch(/\u2068[^\u2069]+\u2069/);
           facts = await layoutFacts(page);
           expect([facts.pageScrolls, facts.sideways, facts.pinned], where).toEqual([false, false, []]);
           expect(app.pageErrors.map((e) => e.message), where).toEqual([]);

@@ -209,7 +209,7 @@ export const MUTATIONS = [
   {
     name: 'no resume or state gate in the prime',
     file: 'src/components/practiceCue.ts',
-    find: "    if (context.state !== 'running') {\n      // INVOKED now, inside the gesture; its promise is only observed.\n      Promise.resolve(context.resume()).then(update, update);\n    }",
+    find: "    if (context.state !== 'running') {\n      // INVOKED now, inside the gesture; its promise is only observed.\n      resumed = Promise.resolve(context.resume()).then(update, update);\n    }",
     replace: '',
     test: 'practice sound reuses one gesture primed context across all start and resume doors',
   },
@@ -257,6 +257,34 @@ export const MUTATIONS = [
     find: '      removeFromPathway: (itemId, pathwayId) => {',
     replace: '      removeFromPathway: (itemId, pathwayId) => {\n        if (pathwayId) { get().deleteItem(itemId); return null; }',
     test: 'pathway removal and restoration visibly retain the existing owned item',
+  },
+  {
+    name: 'a Test sound request that plays after a later tap',
+    file: 'src/components/practiceCue.ts',
+    find: "    if (mine === gesture && c === context && c.state === 'running') playPracticeCue();",
+    replace: "    if (c === context && c.state === 'running') playPracticeCue();",
+    test: 'practice sound keeps one context primed only by taps and never queues a cue',
+  },
+  {
+    name: 'a setup choice re-premised from the live plan',
+    file: 'src/components/SetarSetupReview.tsx',
+    find: '    const sent = selectionsOf(draftRef.current);',
+    replace: '    const sent = selectionsOf(draftRef.current).map((x) => ({ ...x, before: plan.proposals.find((p) => p.id === x.id)?.before ?? x.before }));',
+    test: 'setar setup review is usable through controls and survives interruption',
+  },
+  {
+    name: 'a created study source forgotten once it exists (replay turns stale)',
+    file: 'src/domain/setarSetup.ts',
+    find: '  return db.materials.some((m) => m.id === made) ? { materialId: made } : v;',
+    replace: '  return v;',
+    test: 'setar setup commits selected rows atomically idempotently and without collateral changes',
+  },
+  {
+    name: 'a rename template that ignores the log header',
+    file: 'scripts/scan-setar-classes.mjs',
+    find: "    line(`       ${logCols.map((h) => (h === 'old_path' ? '<the missing path>' : h === 'new_path' ? '<its current path>' : '')).join(',')}`);",
+    replace: "    line('       <the missing path>,<its current path>');",
+    test: 'setar durable intake preserves registry authority and exact rename evidence without changing media',
   },
 ];
 

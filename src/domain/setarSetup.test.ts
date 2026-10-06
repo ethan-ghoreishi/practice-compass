@@ -273,6 +273,31 @@ describe('the Setar setup review', () => {
     expect(s().commitSetarSetup({ context: named, selections: again.filter((p) => p.state === 'correct').map((p) => ({ id: p.id, before: p.before, after: p.before })), now: NOW })).toBeNull();
     expect(s().db).toBe(afterCreate);
 
+    // --- TWO DISTINCT GROUPS created in ONE apply keep their own identity ------
+    // Each declared text is its own study source; replaying the very same
+    // selections (a retry after a refused write, a second tab) names the
+    // sources already made — a no-op, never stale and never a second source.
+    const two = structuredClone(OWNER) as PracticeDB;
+    const second = 'منبع-دوم-آزمون';
+    two.archiveSources[0]!.pieces = two.archiveSources[0]!.pieces.map((p) => (p.key === 'چهارمضراب-ماهور-صبا' ? { ...p, studySource: second } : p));
+    const bothCreate: SetupContext = { ...CTX, sources: { [DECLARED]: { create: true }, [`declared:${second}`]: { create: true } } };
+    const bothSel = planSetarSetup(two, bothCreate).proposals.filter((p) => p.field === 'source' && p.state === 'proposed').map((p) => sel(p));
+    const secondItem = idOf(two, 'چهارمضراب-ماهور-صبا');
+    expect(bothSel.some((x) => x.id === `source:${secondItem}`)).toBe(true);
+    const first = applySetarSetup(two, bothCreate, bothSel, NOW);
+    if (!first.ok) throw new Error(first.reason);
+    const madeTwo = first.db.materials.filter((m) => !two.materials.some((o) => o.id === m.id));
+    expect(madeTwo.map((m) => m.title).sort()).toEqual([EXPECT.context.declared, second].sort());
+    const materialOf = (db: PracticeDB, itemId: string) => db.items.find((i) => i.id === itemId)!.materialId;
+    expect(materialOf(first.db, secondItem)).toBe(madeTwo.find((m) => m.title === second)!.id);
+    expect(materialOf(first.db, idOf(two, 'درامد-ماهور-ردیف-میرزاعبدالله'))).toBe(madeTwo.find((m) => m.title === EXPECT.context.declared)!.id);
+    const replay = applySetarSetup(first.db, bothCreate, bothSel, NOW);
+    if (!replay.ok) throw new Error(replay.reason);
+    expect(replay.db).toBe(first.db);
+    // A group whose source exists but a later row arrives: it joins THAT source, once.
+    const lateTwo = applySetarSetup(first.db, bothCreate, bothSel.slice(0, 1), NOW);
+    expect(lateTwo.ok && lateTwo.db.materials.length).toBe(first.db.materials.length);
+
     // --- A REFUSED WRITE: the store says nothing it cannot keep, and Try again writes
     useStore.setState({ db: OWNER });
     const { storageSettled } = await import('../store/idb');

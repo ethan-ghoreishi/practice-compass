@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 type Log = { e: string; [k: string]: unknown }[];
 
-function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'throws' | 'rejects' | 'hangs' } = {}) {
+function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'throws' | 'rejects' | 'hangs' | 'manual' } = {}) {
   class Ctx {
     state: string = 'suspended';
     currentTime = 5;
@@ -32,6 +32,8 @@ function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'thro
       if (opts.resume === 'throws') throw new Error('refused');
       if (opts.resume === 'rejects') return Promise.reject(new Error('rejected'));
       if (opts.resume === 'hangs') return new Promise(() => undefined);
+      // Settles only when the test says so — never changes the state itself.
+      if (opts.resume === 'manual') return new Promise<void>((done) => log.push({ e: 'pending', done }));
       this.setState('running');
       return Promise.resolve();
     }
@@ -158,6 +160,34 @@ describe('the practice sound module', () => {
     cue.testPracticeSound();
     await flush();
     expect(log.filter((x) => x.e === 'start')).toHaveLength(2);
+
+    // --- PENDING REQUESTS never sound late ---------------------------------
+    // Three taps whose resume has not settled: ONE resume each (not two), and
+    // when the context is later readied by another tap and the old promises
+    // finally settle, no earlier request plays.
+    log = [];
+    cue = await load(log, { resume: 'manual' });
+    cue.testPracticeSound();
+    cue.testPracticeSound();
+    cue.testPracticeSound();
+    expect(log.filter((x) => x.e === 'resume')).toHaveLength(3);
+    const settle = () => log.filter((x) => x.e === 'pending').forEach((x) => (x.done as () => void)());
+    const ctx2 = log.find((x) => x.e === 'ctor')!.ctx as { setState(s: string): void };
+    ctx2.setState('running'); // a later gesture readied it
+    cue.primePracticeSound(); // that tap supersedes every pending Test request
+    settle();
+    await flush();
+    expect(log.filter((x) => x.e === 'start')).toEqual([]);
+    expect(log.filter((x) => x.e === 'vibrate')).toEqual([]);
+    // The LATEST tap's own request does play when its resume lands.
+    log = [];
+    cue = await load(log, { resume: 'manual' });
+    cue.testPracticeSound();
+    cue.testPracticeSound();
+    (log.find((x) => x.e === 'ctor')!.ctx as { setState(s: string): void }).setState('running');
+    settle();
+    await flush();
+    expect(log.filter((x) => x.e === 'start')).toHaveLength(2); // the latest request only
   });
 });
 

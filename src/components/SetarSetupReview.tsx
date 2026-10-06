@@ -1,9 +1,10 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { useStore } from '../store/useStore';
 import {
   ITEM_STATUS_LABELS,
   SETAR_ARCHIVE_ID,
   archiveFor,
+  setupSourceId,
   canonicalStringify,
   planSetarSetup,
   type ID,
@@ -38,24 +39,63 @@ const KIND: Record<string, string> = {
   improvisation: 'improvisation',
 };
 
-function show(db: PracticeDB, v: SetupValue | undefined): string {
-  if (!v) return '—';
-  if ('status' in v) return ITEM_STATUS_LABELS[v.status];
-  if ('itemType' in v) return `${KIND[v.itemType] ?? v.itemType}${v.gusheh ? ` · ${v.gusheh}` : ''}`;
+/** A value as text, split into generated English and the owner's own words. */
+type Part = { text: string; authored?: boolean };
+function parts(db: PracticeDB, v: SetupValue | undefined): Part[] {
+  if (!v) return [{ text: '—' }];
+  if ('status' in v) return [{ text: ITEM_STATUS_LABELS[v.status] }];
+  if ('itemType' in v) return [{ text: `${KIND[v.itemType] ?? v.itemType}${v.gusheh ? ' · ' : ''}` }, ...(v.gusheh ? [{ text: v.gusheh, authored: true }] : [])];
   if ('stageId' in v) {
-    const st = v.stageId ? db.pathwayStages.find((s) => s.id === v.stageId) : undefined;
-    return v.stageId ? (st ? `${st.code}${st.title !== st.code ? ` · ${st.title}` : ''}` : 'another stage') : 'not placed';
+    if (!v.stageId) return [{ text: 'not placed' }];
+    const st = db.pathwayStages.find((s) => s.id === v.stageId);
+    return st ? [{ text: `${st.code}${st.title !== st.code ? ` · ${st.title}` : ''}`, authored: true }] : [{ text: 'another stage' }];
   }
   if ('materialId' in v) {
-    if (!v.materialId) return 'none';
-    if (v.materialId.startsWith('new:')) return 'a new study source';
-    return db.materials.find((m) => m.id === v.materialId)?.title ?? 'another study source';
+    if (!v.materialId) return [{ text: 'none' }];
+    if (v.materialId.startsWith('new:')) return [{ text: 'a new study source' }];
+    const title = db.materials.find((m) => m.id === v.materialId)?.title;
+    return title ? [{ text: title, authored: true }] : [{ text: 'another study source' }];
   }
-  if ('catalogRefs' in v) return v.catalogRefs?.length ? `answers ${v.catalogRefs.length}` : 'answers none';
-  return v.linked ? 'linked' : 'unlinked';
+  if ('catalogRefs' in v) return [{ text: v.catalogRefs?.length ? `answers ${v.catalogRefs.length}` : 'answers none' }];
+  return [{ text: v.linked ? 'linked' : 'unlinked' }];
+}
+const show = (db: PracticeDB, v: SetupValue | undefined): string => parts(db, v).map((x) => x.text).join('');
+
+/** The same value for the screen: generated English isolated LTR, the owner's words each resolving their own direction. */
+function Value({ db, v }: { db: PracticeDB; v: SetupValue | undefined }) {
+  return (
+    <>
+      {parts(db, v).map((x, i) =>
+        x.authored ? (
+          <span key={i} dir="auto">
+            {x.text}
+          </span>
+        ) : (
+          <span key={i} dir="ltr">
+            {x.text}
+          </span>
+        ),
+      )}
+    </>
+  );
 }
 
 const same = (a: unknown, b: unknown) => canonicalStringify(a) === canonicalStringify(b);
+
+/** What the owner chose AND the value they saw when they chose it — the premise a commit is checked against. */
+type Pick = { before: SetupValue; after: SetupValue };
+interface Draft {
+  /** id → the pick (null: deliberately left as it is). */
+  choices: Record<string, Pick | null>;
+  /** The rows SHOWN when choosing began, with the premise they were shown with: only these may be selected by default — a row that arrives later is shown, never auto-joined. */
+  seen: Record<string, Pick> | null;
+}
+
+const selectionsOf = (d: Draft): SetupSelection[] =>
+  [...new Set([...Object.keys(d.seen ?? {}), ...Object.keys(d.choices)])].flatMap((id) => {
+    const pick = id in d.choices ? d.choices[id] : d.seen?.[id];
+    return pick && !same(pick.after, pick.before) ? [{ id, before: pick.before, after: pick.after }] : [];
+  });
 
 export default function SetarSetupReview() {
   const db = useStore((s) => s.db);
@@ -67,23 +107,31 @@ export default function SetarSetupReview() {
   const [instrumentId, setInstrumentId] = useState<ID>(archive?.instrumentId ?? '');
   const [pathwayId, setPathwayId] = useState<ID>('');
   const [sources, setSources] = useState<NonNullable<SetupContext['sources']>>({});
-  // id → the value chosen (null: deliberately left as it is).
-  const [choices, setChoices] = useState<Record<string, SetupValue | null>>({});
-  // The rows SHOWN when the owner started choosing: only these may be
-  // selected by default — a row that arrives later is shown, never auto-joined.
-  const [seen, setSeen] = useState<Set<string> | null>(null);
+  // The draft is written by the handlers (state for the screen, a ref for the
+  // save that settles later) — never mirrored from an effect.
+  const [draft, setDraftState] = useState<Draft>({ choices: {}, seen: null });
+  const draftRef = useRef(draft);
+  const setDraft = (next: Draft) => {
+    draftRef.current = next;
+    setDraftState(next);
+  };
 
   const context: SetupContext = useMemo(
     () => ({ instrumentId, ...(pathwayId ? { pathwayId } : {}), sources }),
     [instrumentId, pathwayId, sources],
   );
   const plan = useMemo(() => (instrumentId ? planSetarSetup(db, context) : null), [db, context, instrumentId]);
-  // Derived once per review (React's guarded set-during-render pattern).
-  if (plan && !seen) setSeen(new Set(plan.proposals.map((p) => p.id)));
+  // Derived once per review (React's guarded set-during-render pattern): each
+  // proposed row is selected with the premise it is SHOWN with.
+  if (plan && !draft.seen) {
+    setDraft({
+      ...draft,
+      seen: Object.fromEntries(plan.proposals.flatMap((p) => (p.state === 'proposed' && p.after ? [[p.id, { before: p.before, after: p.after }]] : []))),
+    });
+  }
 
   const restart = () => {
-    setChoices({});
-    setSeen(null);
+    setDraft({ choices: {}, seen: null });
     saves.reset('setup');
   };
 
@@ -105,20 +153,40 @@ export default function SetarSetupReview() {
     );
   }
 
-  const chosenFor = (p: SetupProposal): SetupValue | undefined => {
-    if (p.id in choices) return choices[p.id] ?? undefined;
-    return p.state === 'proposed' && seen?.has(p.id) ? p.after : undefined;
-  };
-  const choose = (id: string, v: SetupValue | null) => setChoices((c) => ({ ...c, [id]: v }));
+  const chosenFor = (p: SetupProposal): Pick | undefined => (p.id in draft.choices ? (draft.choices[p.id] ?? undefined) : draft.seen?.[p.id]);
+  // The pick carries what the owner SAW (`p.before` NOW is what the store checks it against).
+  const choose = (p: SetupProposal, after: SetupValue | null) =>
+    setDraft({ ...draftRef.current, choices: { ...draftRef.current.choices, [p.id]: after ? { before: p.before, after } : null } });
   const status = plan.proposals.filter((p) => p.field === 'status');
   const rows = plan.proposals.filter((p) => p.field !== 'status');
   const byItem = new Map<ID, SetupProposal[]>();
   for (const p of rows) byItem.set(p.itemId, [...(byItem.get(p.itemId) ?? []), p]);
-  const selections: SetupSelection[] = plan.proposals.flatMap((p) => {
-    const after = chosenFor(p);
-    return after && !same(after, p.before) ? [{ id: p.id, before: p.before, after }] : [];
-  });
+  const selections = selectionsOf(draft);
   const title = (id: ID) => db.items.find((i) => i.id === id)?.title ?? id;
+
+  // ONE save, for what is on screen NOW: the settle reads the live draft, so a
+  // second item chosen while this write is pending is written next, never cleared.
+  const save = () => {
+    const sent = selectionsOf(draftRef.current);
+    saves.run('setup', canonicalStringify(sent), () => commit({ context, selections: sent }), {
+      current: () => canonicalStringify(selectionsOf(draftRef.current)),
+      again: save,
+      saved: () => {
+        setDraft({ choices: {}, seen: null });
+        // A source made here is, from now on, THAT group's source — each group
+        // its own — so a rerun reads it as done rather than making another.
+        const made = useStore.getState().db.materials;
+        setSources((cur) =>
+          Object.fromEntries(
+            Object.entries(cur).map(([key, v]) => {
+              const id = setupSourceId(instrumentId, key);
+              return [key, 'create' in v && made.some((m) => m.id === id) ? { materialId: id } : v];
+            }),
+          ),
+        );
+      },
+    });
+  };
 
   return (
     <SetupShell>
@@ -193,13 +261,11 @@ export default function SetarSetupReview() {
           type="button"
           className="btn btn-sm"
           style={{ alignSelf: 'flex-start' }}
-          onClick={() =>
-            setChoices((c) => {
-              const next = { ...c };
-              for (const p of status) if (p.state !== 'correct' && !/—/.test(p.evidence)) next[p.id] = p.choices[0]!.after;
-              return next;
-            })
-          }
+          onClick={() => {
+            const choices = { ...draftRef.current.choices };
+            for (const p of status) if (p.state !== 'correct' && !/—/.test(p.evidence)) choices[p.id] = { before: p.before, after: p.choices[0]!.after };
+            setDraft({ ...draftRef.current, choices });
+          }}
         >
           Choose every item without a note
         </button>
@@ -211,10 +277,10 @@ export default function SetarSetupReview() {
                 aria-label={`Keeping fresh: ${title(p.itemId)}`}
                 disabled={p.state === 'correct'}
                 checked={p.state === 'correct' || !!chosenFor(p)}
-                onChange={(e) => choose(p.id, e.target.checked ? p.choices[0]!.after : null)}
+                onChange={(e) => choose(p, e.target.checked ? p.choices[0]!.after : null)}
               />
-              <span className="small grow" style={{ textAlign: 'start' }}>
-                <span dir="auto">{title(p.itemId)}</span>{' '}
+              <span className="small grow" dir="auto" style={{ textAlign: 'start' }}>
+                <span>{title(p.itemId)}</span>{' '}
                 <span className="tiny faint" dir="ltr">
                   {p.evidence}
                 </span>
@@ -230,17 +296,19 @@ export default function SetarSetupReview() {
           const open = ps.filter((p) => p.state !== 'correct');
           if (open.length === 0) return null;
           return (
-            <div key={itemId} className="card card-quiet stack-sm" role="group" aria-label={`Setup of ${title(itemId)}`}>
-              <strong className="small" dir="auto" style={{ textAlign: 'start' }}>
-                {title(itemId)}
-              </strong>
+            <div key={itemId} className="card card-quiet stack-sm" role="group" dir="auto" aria-label={`Setup of ${title(itemId)}`} style={{ textAlign: 'start' }}>
+              <strong className="small">{title(itemId)}</strong>
               {open.map((p) => (
                 <div key={p.id} className="stack-sm">
                   <div className="tiny" style={{ textAlign: 'start' }}>
-                    <span dir="ltr">
-                      {FIELD[p.field]}: {show(db, p.before)}
-                      {p.state === 'proposed' ? ` → ${show(db, p.after)}` : ''}
-                    </span>
+                    <span dir="ltr">{FIELD[p.field]}: </span>
+                    <Value db={db} v={p.before} />
+                    {p.state === 'proposed' ? (
+                      <>
+                        <span dir="ltr"> → </span>
+                        <Value db={db} v={p.after} />
+                      </>
+                    ) : null}
                   </div>
                   <div className="tiny faint" style={{ textAlign: 'start' }}>
                     <span dir="ltr">{p.evidence}</span>
@@ -251,7 +319,7 @@ export default function SetarSetupReview() {
                         type="checkbox"
                         aria-label={`${FIELD[p.field]} of ${title(itemId)}: ${show(db, p.after)}`}
                         checked={!!chosenFor(p)}
-                        onChange={(e) => choose(p.id, e.target.checked ? p.after! : null)}
+                        onChange={(e) => choose(p, e.target.checked ? p.after! : null)}
                       />
                       <span dir="ltr">Apply</span>
                     </label>
@@ -259,10 +327,10 @@ export default function SetarSetupReview() {
                     <select
                       className="input"
                       aria-label={`${FIELD[p.field]} of ${title(itemId)}`}
-                      value={p.choices.findIndex((c) => same(c.after, chosenFor(p)))}
+                      value={p.choices.findIndex((c) => same(c.after, chosenFor(p)?.after))}
                       onChange={(e) => {
                         const i = Number(e.target.value);
-                        choose(p.id, i < 0 ? null : p.choices[i]!.after);
+                        choose(p, i < 0 ? null : p.choices[i]!.after);
                       }}
                     >
                       <option value={-1}>Leave it as it is</option>
@@ -284,40 +352,15 @@ export default function SetarSetupReview() {
       </div>
 
       <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={selections.length === 0}
-          onClick={() => {
-            const key = canonicalStringify(selections);
-            saves.run('setup', key, () => commit({ context, selections }), {
-              current: () => key,
-              again: () => undefined,
-              saved: () => {
-                setChoices({});
-                setSeen(null);
-                // A study source made here is named from now on, so a rerun
-                // reads it as done rather than making another.
-                setSources((s) =>
-                  Object.fromEntries(
-                    Object.entries(s).map(([k, v]) => {
-                      if (!('create' in v)) return [k, v];
-                      const madeFor = selections.find((x) => x.id.startsWith('source:'));
-                      const id = madeFor ? useStore.getState().db.items.find((i) => i.id === madeFor.id.split(':')[1])?.materialId : undefined;
-                      return [k, id ? { materialId: id } : v];
-                    }),
-                  ),
-                );
-              },
-            });
-          }}
-        >
+        <button type="button" className="btn btn-primary" disabled={selections.length === 0} onClick={save}>
           Apply {selections.length} selected
         </button>
-        <SaveStatus
-          ack={saves.states.setup}
-          onRetry={() => saves.run('setup', saves.states.setup!.carried, () => commit({ context, selections }))}
-        />
+        <SaveStatus ack={saves.states.setup} onRetry={save} />
+        {saves.states.setup?.status === 'refused' ? (
+          <button type="button" className="btn btn-sm" onClick={restart}>
+            Look again
+          </button>
+        ) : null}
       </div>
     </SetupShell>
   );

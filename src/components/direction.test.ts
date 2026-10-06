@@ -188,11 +188,14 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
-  // Review Setar setup (this lane): a declared source's own text, then each
-  // item's own title in the Keeping fresh list and on its organisation card.
+  // Review Setar setup (this lane): a declared source's own text, an owner's
+  // value in a before/after line (its own isolate), then the two GROUPS —
+  // a Keeping fresh row and an organisation card — each resolving from its
+  // bare title, the group's first strong text.
   { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
   { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
-  { file: "components/SetarSetupReview.tsx", tagName: "strong", classValue: "small" },
+  { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "small grow" },
+  { file: "components/SetarSetupReview.tsx", tagName: "div", classValue: "card card-quiet stack-sm" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },
@@ -663,6 +666,8 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   // value the archive proposes are authored independently of each other.
   { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
   { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
+  // Review Setar setup: each owner-authored before/after value, in its own isolate.
+  { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="auto">' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.constraint}</span>' },
   // Instrument names used to be tracked here too, one exact snippet per site.
   // A sealed review found that shape structurally insufficient FOUR times
@@ -711,6 +716,9 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
  * call site can see whether its OWN return value is isolated.
  */
 const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
+  // Review Setar setup: generated labels and evidence (authored values inside it carry their own bidi isolate).
+  { file: 'components/SetarSetupReview.tsx', snippet: '<span dir="ltr">{p.evidence}</span>' },
+  { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="ltr">' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
   { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },

@@ -29,6 +29,9 @@ type Ctor = new () => AudioContext;
 let context: AudioContext | null = null;
 let refused = false;
 let state: PracticeSoundState = 'off';
+// Bumped by every tap that readies the sound: a Test sound request whose
+// resume lands after a LATER tap is an old request, and plays nothing.
+let gesture = 0;
 const listeners = new Set<() => void>();
 
 function audioCtor(): Ctor | undefined {
@@ -58,12 +61,15 @@ function update(): void {
  * one was closed — only then, so two never coexist), and asks a suspended one
  * to resume. A refusal, a rejection or a promise that never settles is
  * absorbed: starting practice never waits on sound, and never fails for it.
+ * Returns the one resume this tap asked for (it settles, never rejects), if any.
  */
-export function primePracticeSound(): void {
+export function primePracticeSound(): Promise<void> | undefined {
+  gesture += 1;
+  let resumed: Promise<void> | undefined;
   const Ctx = audioCtor();
   if (!Ctx) {
     update();
-    return;
+    return undefined;
   }
   try {
     if (!context || context.state === 'closed') {
@@ -76,7 +82,7 @@ export function primePracticeSound(): void {
     }
     if (context.state !== 'running') {
       // INVOKED now, inside the gesture; its promise is only observed.
-      Promise.resolve(context.resume()).then(update, update);
+      resumed = Promise.resolve(context.resume()).then(update, update);
     }
   } catch {
     // A constructor that throws, or a resume() that throws: unavailable until
@@ -84,6 +90,7 @@ export function primePracticeSound(): void {
     refused = !context;
   }
   update();
+  return resumed;
 }
 
 /** The cue's shape, in one place: two short 880 Hz pulses. */
@@ -131,25 +138,20 @@ export function playPracticeCue(): void {
  * touches no clock, marker, record or wake lock.
  */
 export function testPracticeSound(): void {
-  primePracticeSound();
+  const resumed = primePracticeSound();
+  const mine = gesture;
   const c = context;
   if (!c) return;
   if (c.state === 'running') {
     playPracticeCue();
     return;
   }
-  // The resume this very tap asked for: play when (and only if) it lands. A
-  // resume that throws, rejects or never settles simply plays nothing.
-  try {
-    Promise.resolve(c.resume()).then(
-      () => {
-        if (c === context && c.state === 'running') playPracticeCue();
-      },
-      () => undefined,
-    );
-  } catch {
-    // best-effort only
-  }
+  // The resume this very tap asked for (never a second one): play when, and
+  // only if, it lands while this is still the latest tap. A resume that throws,
+  // rejects or never settles plays nothing, and an older tap's never plays late.
+  resumed?.then(() => {
+    if (mine === gesture && c === context && c.state === 'running') playPracticeCue();
+  });
 }
 
 function subscribe(fn: () => void): () => void {

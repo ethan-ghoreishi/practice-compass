@@ -979,8 +979,10 @@ export function formatAttention(r) {
     line(g.unlogged.length ? '     files in that folder that no log row names:' : '     every file in that folder is already named by the log.');
     for (const u of g.unlogged) line(`       ${u}`);
     line('     If a missing name was renamed to one of these, append ONE exact row per file to RENAME-LOG.csv:');
-    line(`       ${(r.logHeader.length ? r.logHeader : ['old_path', 'new_path']).join(',')}`);
-    line(`       <the missing path>,<its current path>${r.logHeader.length > 2 ? ','.repeat(r.logHeader.length - 2) : ''}`);
+    // One cell per header COLUMN, by name — a reordered or extended log keeps old and new in their own columns.
+    const logCols = r.logHeader.includes('old_path') && r.logHeader.includes('new_path') ? r.logHeader : ['old_path', 'new_path'];
+    line(`       ${logCols.join(',')}`);
+    line(`       ${logCols.map((h) => (h === 'old_path' ? '<the missing path>' : h === 'new_path' ? '<its current path>' : '')).join(',')}`);
     line('     Only you know which became which: nothing here pairs them by number, size or similarity. Unpaired, the old name stays "not described".');
   }
   line();

@@ -1,6 +1,6 @@
 import type { ID, ItemStatus, ItemType, Material, Pathway, PracticeDB, PracticeItem } from './types';
 import type { SourcePiece } from './sourceArchive';
-import { archiveFor, lessonAssociations, sessionMembership } from './sourceArchive';
+import { archiveFor, lessonAssociations, sessionMembership, setupSourceId } from './sourceArchive';
 import { MIRZA_ABDOLLAH_RADIF } from './referenceCatalog';
 import { catalogForStage, stageIdFor } from './pathwaySeed';
 import { catalogReferenceId, resolveCatalogReference } from './courseSeed';
@@ -25,6 +25,15 @@ import { ITEM_STATUS_LABELS } from './labels';
 // ---------------------------------------------------------------------------
 
 /** The kinds the registry's own form vocabulary can establish. */
+/**
+ * An independently authored value inside generated English evidence, wrapped
+ * in a first-strong BIDI ISOLATE (U+2068…U+2069) — the native counterpart of
+ * `dir="auto"` — so a Farsi form, composer, stage or source title resolves its
+ * own direction instead of inheriting the sentence's. Nothing here detects a
+ * script or reorders text.
+ */
+const iso = (value: string): string => `\u2068${value}\u2069`;
+
 export type PieceKind = Extract<ItemType, 'gusheh' | 'full_piece' | 'exercise' | 'improvisation'>;
 
 export type KindFamily =
@@ -69,7 +78,7 @@ export function classifyPiece(piece: Pick<SourcePiece, 'form' | 'composer' | 'pr
   if (form === 'درامد') return { kind: 'gusheh', family: 'radif-daramad', why: 'The registry names it a درامد — the opening gusheh of its dastgāh.' };
   if (form === 'چهارپاره') {
     return composer
-      ? { kind: null, family: 'composed-chaharpareh', why: `A چهارپاره attributed to ${composer}: a radif section or a composed piece — yours to say.` }
+      ? { kind: null, family: 'composed-chaharpareh', why: `A چهارپاره attributed to ${iso(composer)}: a radif section or a composed piece — yours to say.` }
       : { kind: 'gusheh', family: 'radif-chaharpareh', why: 'A چهارپاره with no composer: a section of the radif.' };
   }
   if (form === 'رنگ' && !composer) {
@@ -81,9 +90,9 @@ export function classifyPiece(piece: Pick<SourcePiece, 'form' | 'composer' | 'pr
     return { kind: 'improvisation', family: 'improvisation', why: 'The registry names it a بداهه — your own improvisation, not a composed work.' };
   }
   if (COMPOSED_FORMS.has(form) || (form === 'رنگ' && composer)) {
-    return { kind: 'full_piece', family: 'composed', why: `The registry names it a ${form}${composer ? ` by ${composer}` : ''}.` };
+    return { kind: 'full_piece', family: 'composed', why: `The registry names it a ${iso(form)}${composer ? ` by ${iso(composer)}` : ''}.` };
   }
-  return { kind: null, family: 'unknown', why: form ? `The registry's form «${form}» does not say what kind of item this is.` : 'The registry gives no form.' };
+  return { kind: null, family: 'unknown', why: form ? `The registry's form «${iso(form)}» does not say what kind of item this is.` : 'The registry gives no form.' };
 }
 
 /** What the import USED to seed — `full_piece` for every non-گوشه — so a seeded value is told from an owner's choice. */
@@ -190,7 +199,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
   const stageIds = new Set(pathway ? db.pathwayStages.filter((s) => s.pathwayId === pathway.id).map((s) => s.id) : []);
   const stageName = (id: ID | undefined) => {
     const st = id ? db.pathwayStages.find((s) => s.id === id) : undefined;
-    return st ? `${st.code}${st.title && st.title !== st.code ? ` · ${st.title}` : ''}` : 'a stage of another pathway';
+    return st ? iso(`${st.code}${st.title && st.title !== st.code ? ` · ${st.title}` : ''}`) : 'a stage of another pathway';
   };
   const materials = db.materials.filter((m) => m.instrumentId === instrumentId);
   const pieceOf = (item: PracticeItem): SourcePiece | undefined =>
@@ -307,9 +316,9 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
           continue;
         }
         target = radifStageFor(pathway.id, r.term.id);
-        why = `A gusheh of ${r.term.name}.`;
+        why = `A gusheh of ${iso(r.term.name)}.`;
         if (!target || !stageIds.has(target)) {
-          exception(`A gusheh of ${r.term.name}, but this pathway has no stage for it.`);
+          exception(`A gusheh of ${iso(r.term.name)}, but this pathway has no stage for it.`);
           continue;
         }
       } else if (kind === 'full_piece') {
@@ -395,7 +404,9 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
     if (!key) continue;
     const choice = ctx.sources?.[key];
     const before: SetupValue = { materialId: i.materialId ?? null };
-    const target = choice && 'materialId' in choice ? choice.materialId : choice ? `new:${key}` : undefined;
+    // A source this review already made for the group is THE source, not a second.
+    const made = setupSourceId(instrumentId, key);
+    const target = choice && 'materialId' in choice ? choice.materialId : choice ? (materials.some((m) => m.id === made) ? made : `new:${key}`) : undefined;
     const label = groups.get(key)!.label;
     const id = `source:${i.id}`;
     if (!target) continue; // the group's own question comes first
@@ -405,7 +416,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
       const piece = pieceOf(i);
       return piece ? classifyPiece(piece) : undefined;
     })();
-    const why = key.startsWith('declared:') ? `The registry declares it from «${label}».` : `It answers a ${MIRZA_ABDOLLAH_RADIF.name} reference.`;
+    const why = key.startsWith('declared:') ? `The registry declares it from «${iso(label)}».` : `It answers a ${iso(MIRZA_ABDOLLAH_RADIF.name)} reference.`;
     if (i.materialId === target) {
       push({ id, itemId: i.id, field: 'source', state: 'correct', before, after, choices: [], evidence: why });
     } else if (reading?.family === 'composed-chaharpareh' || reading?.family === 'radif-reng' || reading?.family === 'provisional') {
@@ -419,7 +430,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
         state: 'exception',
         before,
         choices: [{ label: 'Use this study source instead', after }],
-        evidence: `${why} You set «${current?.title ?? 'another source'}»; that stays unless you choose.`,
+        evidence: `${why} You set «${iso(current?.title ?? 'another source')}»; that stays unless you choose.`,
       });
     } else {
       push({ id, itemId: i.id, field: 'source', state: 'proposed', before, after, choices: [], evidence: why });
@@ -467,6 +478,12 @@ export type SetupOutcome =
 
 const same = (a: unknown, b: unknown) => canonicalStringify(a) === canonicalStringify(b);
 
+function existingSource(db: PracticeDB, instrumentId: ID, v: SetupValue): SetupValue {
+  if (!('materialId' in v) || !v.materialId?.startsWith('new:')) return v;
+  const made = setupSourceId(instrumentId, v.materialId.slice('new:'.length));
+  return db.materials.some((m) => m.id === made) ? { materialId: made } : v;
+}
+
 /** What a selection's field holds NOW — so a row that vanished because it is done reads as done. */
 function currentOf(db: PracticeDB, id: string): SetupValue | undefined {
   const [field, itemId, lessonId] = id.split(':');
@@ -503,7 +520,9 @@ export function applySetarSetup(db: PracticeDB, ctx: SetupContext, selections: S
   const byId = new Map(plan.proposals.map((p) => [p.id, p]));
   const stale: string[] = [];
   const todo: { p: SetupProposal; after: SetupValue }[] = [];
-  for (const sel of selections) {
+  for (const chosen of selections) {
+    // `new:<group>` names the source to MAKE; once it exists it is that source.
+    const sel = { ...chosen, after: existingSource(db, ctx.instrumentId, chosen.after) };
     const p = byId.get(sel.id);
     const offered = p ? [...(p.after && p.state === 'proposed' ? [p.after] : []), ...p.choices.map((c) => c.after)] : [];
     // ALREADY DONE is not stale: the field holds exactly what was chosen —
@@ -526,13 +545,16 @@ export function applySetarSetup(db: PracticeDB, ctx: SetupContext, selections: S
     if (!target.startsWith('new:')) return target;
     const key = target.slice('new:'.length);
     if (!created.has(key)) {
-      const group = plan.sourceGroups.find((g) => g.key === key)!;
-      const m = createMaterial(
-        { instrumentId: ctx.instrumentId, title: group.label, sourceType: group.kind === 'reference' ? 'radif' : 'other' },
-        now,
-      );
-      materials = [...materials, m];
-      created.set(key, m.id);
+      const id = setupSourceId(ctx.instrumentId, key);
+      if (!materials.some((x) => x.id === id)) {
+        const group = plan.sourceGroups.find((g) => g.key === key)!;
+        const m = createMaterial(
+          { instrumentId: ctx.instrumentId, title: group.label, sourceType: group.kind === 'reference' ? 'radif' : 'other' },
+          now,
+        );
+        materials = [...materials, { ...m, id }];
+      }
+      created.set(key, id);
     }
     return created.get(key)!;
   };
