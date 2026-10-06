@@ -1,0 +1,78 @@
+{
+  "about": "A synthetic Setar archive (format: this lane's corpus description v1). PIECES.csv rows are raw CSV text, so quoting is exactly what is under test. Sessions 1 and 40 reproduce the two owner-reported regressions; 41, 42 and 45 are FUTURE classes with ordinary new material. Every file's bytes are its own text, so 'the media is unchanged' is checked by content.",
+  "registry": {
+    "header": "canonical_fa,form,piece,dastgah,composer,source,aliases_seen,sessions,roles_present,notes",
+    "rows": [
+      "رنگ-ماهور-درویش-خان,رنگ,رنگ,ماهور,درویش-خان,,renge-mahoor-darvish|renge-mahoor-darvish-sevom,1,\"تمرین-من,نت\",\"Confirmed from PDF. \"\"sevom\"\" in the filename is a take marker, not part of the name.\"",
+      "چهارمضراب-اول-دشتی-صبا,چهارمضراب,چهارمضراب-اول,دشتی,صبا,,chahar-mezarabe-avale-dashti,1,\"تمرین-من,نت,نمونه\",Confirmed from PDF and jpg score.",
+      "درآمد-شور-ردیف-میرزاعبدالله,گوشه,درآمد,شور,,ردیف-میرزاعبدالله,daramad-shur,2,\"نمونه,نت\",\"From the radif, first gusheh.\"",
+      "کرشمه-شور-ردیف-میرزاعبدالله,گوشه,کرشمه,شور,,ردیف-میرزاعبدالله,,2,نت,",
+      "چهارپاره-مرادخانی,چهارپاره,چهارپاره,ماهور,مرادخانی,ردیف-میرزاعبدالله,,10,تمرین-من,\"Composer-attributed, though declared from the radif source.\""
+    ]
+  },
+  "sessions": {
+    "session-1-26-09-2023": [
+      "نت-رنگ-ماهور-درویش-خان.pdf",
+      "نت-چهارمضراب-اول-دشتی-صبا.pdf",
+      "تمرین-من-رنگ-ماهور-درویش-خان.mp4",
+      "نمونه-1.mp4",
+      "نمونه-2.mp4",
+      "نمونه-3.mp4"
+    ],
+    "session-2-24-10-2023": [
+      "نت-درآمد-شور-ردیف-میرزاعبدالله.pdf",
+      "نت-کرشمه-شور-ردیف-میرزاعبدالله.pdf",
+      "نت-چهارپاره-مرادخانی.pdf",
+      "نمونه.mp4"
+    ],
+    "session-40-29-09-2026": [
+      "ضبط-کلاس.mp4",
+      "نمونه.mp4",
+      "نت-پیش-درامد-چهارگاه-فروتن.pdf",
+      "نت-چهارمضراب-چهارگاه-عبادی.pdf"
+    ]
+  },
+  "renameLog": {
+    "header": "old_path,new_path,timestamp",
+    "rows": [
+      "session-1-26-09-2023/video-2023-09-27-07-14-52-1.mp4,session-1-26-09-2023/ضبط-کلاس-1.mp4,2026-09-10T19:40:57",
+      "session-1-26-09-2023/video-2023-09-27-07-16-50-2.mp4,session-1-26-09-2023/ضبط-کلاس-2.mp4,2026-09-10T19:40:57",
+      "session-1-26-09-2023/video-2023-09-27-07-18-12-3.mp4,session-1-26-09-2023/ضبط-کلاس-3.mp4,2026-09-10T19:40:57",
+      "session-1-26-09-2023/renge-mahoor-darvish-sevom.pdf,session-1-26-09-2023/نت-رنگ-ماهور-درویش-خان.pdf,2026-09-10T19:40:57",
+      "session-2-24-10-2023/loop-a.mp4,session-2-24-10-2023/loop-b.mp4,2026-09-11T08:00:00",
+      "session-2-24-10-2023/loop-b.mp4,session-2-24-10-2023/loop-a.mp4,2026-09-11T08:00:01",
+      "session-2-24-10-2023/fork.mp4,session-2-24-10-2023/fork-x.mp4,2026-09-11T08:00:02",
+      "session-2-24-10-2023/fork.mp4,session-2-24-10-2023/fork-y.mp4,2026-09-11T08:00:03"
+    ]
+  },
+  "future": [
+    {
+      "about": "A class for a piece already registered: its named score needs no registry edit; there is no unnamed demo.",
+      "folder": "session-41-06-10-2026",
+      "files": ["ضبط-کلاس.mp4", "نت-رنگ-ماهور-درویش-خان.pdf"]
+    },
+    {
+      "about": "A wholly new piece: a score, a two-part unnamed demonstration and the owner's own take.",
+      "folder": "session-42-13-10-2026",
+      "newKey": "ضربی-اصفهان-نوری",
+      "files": ["نت-ضربی-اصفهان-نوری.pdf", "نمونه-1.mp4", "نمونه-2.mp4", "تمرین-من-ضربی-اصفهان-نوری.mp4"]
+    },
+    {
+      "about": "A non-consecutive class with only a recording and an unnamed demonstration: the registry lists no piece for it yet.",
+      "folder": "session-45-03-11-2026",
+      "files": ["ضبط-کلاس.mp4", "نمونه.mp4"]
+    }
+  ],
+  "headerVariants": {
+    "reordered-with-extra": {
+      "about": "The same registry with its columns reordered and one column this scanner does not know, holding a comma.",
+      "header": "notes,canonical_fa,sessions,teacher_comment,form,piece,dastgah,composer,aliases_seen,roles_present,source",
+      "map": ["notes", "canonical_fa", "sessions", "teacher_comment", "form", "piece", "dastgah", "composer", "aliases_seen", "roles_present", "source"]
+    },
+    "eight-columns": {
+      "about": "A registry with no source column at all: its index carries no studySource key.",
+      "header": "canonical_fa,form,piece,dastgah,composer,aliases_seen,sessions,notes",
+      "map": ["canonical_fa", "form", "piece", "dastgah", "composer", "aliases_seen", "sessions", "notes"]
+    }
+  }
+}

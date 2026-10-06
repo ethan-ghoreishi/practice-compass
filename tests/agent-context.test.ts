@@ -468,7 +468,7 @@ const RESTORED_PROHIBITIONS = [
   'only one that fails a listed pair',
   // The second sweep (a sentence whose main clause survived but a second negated qualifier did not)
   'never a closure or a ref an effect mirrors',
-  'audio unlocks on the page that starts the clock, never on the practice screen',
+  'never from render or an effect, and plays only on a granted marker claim',
   'a preserved key goes to the one with real content, never merely the lower ordinal',
   '`planMinutesByInstrument`) is store state, never in `PracticeDB`, sync or a backup',
   'never while the viewport is short or zoomed',

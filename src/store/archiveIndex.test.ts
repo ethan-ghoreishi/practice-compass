@@ -10,6 +10,7 @@ import V13_SETAR_TEXT from '../../tests/fixtures/setar-legacy-v13.json?raw';
 import { decodeSourceIndex, INSECURE_CONTEXT_REFUSAL } from '../domain/sourceArchive';
 import { validateDB } from '../domain/io';
 import { createItem } from '../domain/factories';
+import { archiveValueDecision } from '../domain/sourceReconcile';
 import type { PracticeDB } from '../domain/types';
 
 // ---------------------------------------------------------------------------
@@ -713,14 +714,19 @@ describe('committing an archive import', () => {
     const composer = boundWithComposer.persian!.composer!;
     const pieceKey = boundWithComposer.source!.pieceKey;
     const offered = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
-    expect(offered.plan.suggestions.some((x) => x.pieceKey === pieceKey && x.field === 'composer')).toBe(true);
-    // An OFFER is not a change: unanswered, this refresh genuinely writes
+    // The registry did not change this composer since the graph was accepted,
+    // so the owner's own edit is NOT challenged: no offer. The difference is
+    // still there to review on request, and answerable from there.
+    expect(offered.plan.suggestions.some((x) => x.pieceKey === pieceKey && x.field === 'composer')).toBe(false);
+    const difference = offered.plan.differences.find((x) => x.pieceKey === pieceKey && x.field === 'composer')!;
+    expect(difference).toMatchObject({ current: '', fresh: false });
+    // A difference is not a change: unanswered, this refresh genuinely writes
     // nothing, and says so. The owner's DECISION is what makes it a write.
     expect(offered.plan.summary.unchanged).toBe(true);
     const answered2 = useStore.getState().previewArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
+      decisions: [archiveValueDecision(difference)],
       now: NOW,
     });
     expect(answered2.plan.summary.unchanged).toBe(false);
@@ -732,7 +738,7 @@ describe('committing an archive import', () => {
     const appliedField = await useStore.getState().commitArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ kind: 'apply-field', pieceKey, itemId: boundWithComposer.id, field: 'composer', from: '' }],
+      decisions: [archiveValueDecision(difference)],
       decidedFromRev: useStore.getState().rev,
       now: NOW,
     });
@@ -752,12 +758,11 @@ describe('committing an archive import', () => {
     // the registry value replaced the words just typed.
     const second = useStore.getState().db.items.find((i) => i.source && i.id !== boundWithComposer.id && (i.persian?.composer ?? '') !== '')!;
     useStore.getState().updateItem(second.id, { persian: { ...second.persian, composer: '' } });
-    const secondKey = second.source!.pieceKey;
     const seen = useStore.getState().previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW });
     const choice = [
       // Bound to the RECORD as well as the piece and the premise: a rebase that
       // finds the piece on a different item must not hand it that answer.
-      { kind: 'apply-field' as const, pieceKey: secondKey, itemId: second.id, field: 'composer' as const, from: '' },
+      archiveValueDecision(seen.plan.differences.find((x) => x.itemId === second.id && x.field === 'composer')!),
     ];
     useStore.getState().updateItem(second.id, {
       persian: { ...second.persian, composer: 'Owner wrote this during refresh' },
@@ -778,7 +783,14 @@ describe('committing an archive import', () => {
     const reAnswered = await useStore.getState().commitArchiveImport({
       index: INDEX,
       instrumentId: SETAR,
-      decisions: [{ ...choice[0]!, from: 'Owner wrote this during refresh' }],
+      decisions: [
+        archiveValueDecision(
+          useStore
+            .getState()
+            .previewArchiveImport({ index: INDEX, instrumentId: SETAR, now: NOW })
+            .plan.differences.find((x) => x.itemId === second.id && x.field === 'composer')!,
+        ),
+      ],
       decidedFromRev: useStore.getState().rev,
       now: NOW,
     });
@@ -817,6 +829,7 @@ describe('committing an archive import', () => {
           itemId: movedPiece.id,
           field: 'composer' as const,
           from: movedPiece.persian?.composer ?? '',
+          to: INDEX.pieces.find((p) => p.key === movedKey)!.composer,
         },
       ],
     ]) {
@@ -1018,7 +1031,7 @@ describe('deletions, unlinking and hiding', () => {
     expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
 
     // --- lifting a suppression lets the next refresh bring it back ----------
-    store().resetArchiveSuppression('setar-classes', 'piece', 'عراق');
+    expect(store().restoreArchiveSuppression('setar-classes', { kind: 'piece', ref: 'عراق' })).toBeNull();
     const restored = await commit(store().rev);
     expect(restored).toMatchObject({ ok: true, status: 'applied' });
     expect(store().db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(true);
@@ -1030,7 +1043,7 @@ describe('deletions, unlinking and hiding', () => {
     const otherMember = itemFor('حزین-در-عراق');
     // Session 13 was suppressed above and is back only for the piece; re-run a
     // refresh so its resources are present for both members.
-    store().resetArchiveSuppression('setar-classes', 'session', '13');
+    expect(store().restoreArchiveSuppression('setar-classes', { kind: 'session', ref: '13' })).toBeNull();
     await commit(store().rev);
     expect(itemFiles(store().db, oneMember.id).some((f) => f.source === 'reference' && f.path === sharedDemo)).toBe(true);
     store().hideArchiveResource('setar-classes', sharedDemo, oneMember.id);
@@ -1096,5 +1109,184 @@ describe('deletions, unlinking and hiding', () => {
     expect(store().db.archiveSources).toEqual([]);
     expect(store().db.items).toEqual([]);
     expect(store().active).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ac-8 — a metadata choice is about ONE record, ONE typed premise and ONE
+// exact proposal. Any of them moving between preview and commit refuses the
+// whole commit, writes nothing, and the fresh preview shows what stands now.
+// ---------------------------------------------------------------------------
+
+describe('archive metadata choices at the commit', () => {
+  it('setar metadata choices refuse every changed identity and premise before a write', async () => {
+    const s = () => useStore.getState();
+    const gushehPiece = INDEX.pieces.find((p) => p.form === 'گوشه' && p.dastgah)!;
+    const composedPiece = INDEX.pieces.find((p) => p.form && p.form !== 'گوشه' && p.composer && p.dastgah)!;
+    const custom = (name: string, kind: 'dastgah' | 'form' | 'composer') => {
+      const r = s().addTerm({ kind, name, aliases: [] });
+      if (!('id' in r)) throw new Error(r.refusal);
+      return r.id;
+    };
+    /** The index a re-scan publishes: every field of both pieces changed. */
+    const changed = (over: Record<string, Partial<typeof gushehPiece>> = {}) => ({
+      ...INDEX,
+      contentHash: 'c'.repeat(64),
+      pieces: INDEX.pieces.map((p) =>
+        p.key === gushehPiece.key
+          ? { ...p, piece: `${p.piece}-نو`, dastgah: 'نوا', ...over[p.key] }
+          : p.key === composedPiece.key
+            ? { ...p, form: 'تصنیف', composer: 'لطفی', ...over[p.key] }
+            : p,
+      ),
+    });
+    const itemOf = (key: string) => s().db.items.find((i) => i.source?.pieceKey === key)!;
+    const setField = (key: string, field: string, value: unknown) =>
+      useStore.setState((st) => ({
+        db: { ...st.db, items: st.db.items.map((i) => (i.source?.pieceKey === key ? { ...i, persian: { ...i.persian, [field]: value } } : i)) },
+      }));
+    const fresh = () => {
+      loadOwnerData();
+      useStore.setState((st) => ({ db: { ...st.db, musicTerms: [] } }));
+      return commit(s().rev);
+    };
+    const preview = (index = changed()) => s().previewArchiveImport({ index, instrumentId: SETAR, now: NOW });
+    // The cases: [piece, field, premise shape]. A gusheh name is literal only.
+    const cases: [string, 'gusheh' | 'dastgahAvaz' | 'form' | 'composer', 'empty' | 'literal' | 'ref'][] = [
+      [gushehPiece.key, 'gusheh', 'empty'],
+      [gushehPiece.key, 'gusheh', 'literal'],
+      ...(['dastgahAvaz', 'form', 'composer'] as const).flatMap((f) =>
+        (['empty', 'literal', 'ref'] as const).map((shape) => [f === 'dastgahAvaz' ? gushehPiece.key : composedPiece.key, f, shape] as [string, typeof f, typeof shape]),
+      ),
+    ];
+    for (const [key, field, shape] of cases) {
+      const label = `${field}/${shape}`;
+      expect(await fresh(), label).toMatchObject({ ok: true });
+      const termKind = field === 'dastgahAvaz' ? 'dastgah' : field === 'form' ? 'form' : 'composer';
+      const premise = shape === 'empty' ? '' : shape === 'literal' ? 'نوشتهٔ من' : { termId: custom('اصطلاح من', termKind as 'form') };
+      setField(key, field, premise);
+      const index = changed();
+      const seen = preview(index);
+      const offer = seen.plan.suggestions.find((x) => x.pieceKey === key && x.field === field)!;
+      expect(offer, label).toBeDefined();
+      expect(offer.current, label).toEqual(premise);
+      const choice = archiveValueDecision(offer);
+      const snapshot = JSON.stringify(s().db.items.find((i) => i.id === offer.itemId));
+
+      // 1. THE PREMISE MOVED: the owner wrote something else first.
+      setField(key, field, 'something the owner typed after');
+      const moved = await s().commitArchiveImport({ index, instrumentId: SETAR, decisions: [choice], decidedFromRev: seen.rev, now: NOW });
+      expect(moved, label).toMatchObject({ ok: false, status: 'stale' });
+      expect(moved.staleDecisions, label).toEqual([choice]);
+      expect(itemOf(key).persian![field], label).toBe('something the owner typed after');
+
+      // 2. THE PROPOSAL DRIFTED: the registry changed again before Apply.
+      setField(key, field, premise);
+      const drifted = changed({ [key]: field === 'gusheh' ? { piece: 'باز-هم-نو' } : field === 'dastgahAvaz' ? { dastgah: 'همایون' } : field === 'form' ? { form: 'رنگ' } : { composer: 'علیزاده' } });
+      const drift = await s().commitArchiveImport({ index: drifted, instrumentId: SETAR, decisions: [choice], decidedFromRev: s().rev, now: NOW });
+      expect(drift, label).toMatchObject({ ok: false, status: 'stale' });
+      expect(JSON.stringify(s().db.items.find((i) => i.id === offer.itemId)), label).toBe(snapshot);
+
+      // 3. AN UNRELATED EDIT is rebased over, and the choice writes ONCE.
+      s().updateItem(offer.itemId, { notes: `notes for ${label}` });
+      const applied = await s().commitArchiveImport({ index, instrumentId: SETAR, decisions: [choice], decidedFromRev: seen.rev, now: NOW });
+      expect(applied, label).toMatchObject({ ok: true, status: 'applied' });
+      const after = itemOf(key);
+      expect(after.persian![field], label).toBe(offer.to);
+      expect(after.notes, label).toBe(`notes for ${label}`);
+      // Every OTHER field of the record is exactly what it was.
+      const was = JSON.parse(snapshot);
+      for (const f of ['gusheh', 'dastgahAvaz', 'form', 'composer'].filter((x) => x !== field)) {
+        expect(after.persian?.[f as 'form'], `${label} kept ${f}`).toEqual(was.persian?.[f]);
+      }
+      expect(after.title, label).toBe(was.title);
+      const rev = s().rev;
+      const repeat = await s().commitArchiveImport({ index, instrumentId: SETAR, decisions: [choice], decidedFromRev: rev, now: NOW });
+      expect(repeat, label).toMatchObject({ ok: true, status: 'unchanged' });
+      expect(s().rev, label).toBe(rev);
+    }
+
+    // --- MEANING: a premise's TERM, not its label --------------------------
+    // SAME LABEL, DIFFERENT ID: the field showed «همنام» (term A) when the
+    // choice was made; by Apply, A has been renamed and a NEW term B carries
+    // the name «همنام», and the field points at B. Same words on screen — a
+    // different premise.
+    expect(await fresh()).toMatchObject({ ok: true });
+    const a = custom('همنام', 'composer');
+    setField(composedPiece.key, 'composer', { termId: a });
+    const sameLabel = preview();
+    const refChoice = archiveValueDecision(sameLabel.plan.suggestions.find((x) => x.field === 'composer')!);
+    expect(sameLabel.plan.suggestions.find((x) => x.field === 'composer')!.from).toBe('همنام');
+    // A rename keeps the old name as a spelling; the owner then drops it.
+    expect(s().updateTerm(a, { name: 'نامِ دیگر' })).toBeNull();
+    expect(s().updateTerm(a, { aliases: [] })).toBeNull();
+    const b = custom('همنام', 'composer');
+    setField(composedPiece.key, 'composer', { termId: b });
+    expect(preview().plan.suggestions.find((x) => x.field === 'composer')!.from).toBe('همنام');
+    const twin = await s().commitArchiveImport({ index: changed(), instrumentId: SETAR, decisions: [refChoice], decidedFromRev: sameLabel.rev, now: NOW });
+    expect(twin).toMatchObject({ ok: false, status: 'stale' });
+    expect(itemOf(composedPiece.key).persian!.composer).toEqual({ termId: b });
+
+    // A LITERAL WHOSE MEANING CHANGED: the owner's text starts to resolve to a
+    // term (a new alias) between preview and commit.
+    expect(await fresh()).toMatchObject({ ok: true });
+    setField(composedPiece.key, 'composer', 'Morad');
+    const literal = preview();
+    const litChoice = archiveValueDecision(literal.plan.suggestions.find((x) => x.field === 'composer')!);
+    expect(litChoice.fromTermId).toBeUndefined();
+    custom('مرادخانی', 'composer');
+    const target = s().db.musicTerms.find((t) => t.name === 'مرادخانی')!;
+    s().updateTerm(target.id, { aliases: ['Morad'] });
+    const meaning = await s().commitArchiveImport({ index: changed(), instrumentId: SETAR, decisions: [litChoice], decidedFromRev: literal.rev, now: NOW });
+    expect(meaning).toMatchObject({ ok: false, status: 'stale' });
+    expect(itemOf(composedPiece.key).persian!.composer).toBe('Morad');
+    // A RENAME that changes nothing the choice depends on still applies.
+    const renameSeen = preview();
+    const renameChoice = archiveValueDecision(renameSeen.plan.suggestions.find((x) => x.field === 'composer')!);
+    s().updateTerm(target.id, { name: 'مرادخانیِ نو' });
+    expect(
+      await s().commitArchiveImport({ index: changed(), instrumentId: SETAR, decisions: [renameChoice], decidedFromRev: renameSeen.rev, now: NOW }),
+    ).toMatchObject({ ok: true, status: 'applied' });
+
+    // --- IDENTITY: deleted, rebound, moved ---------------------------------
+    for (const how of ['deleted', 'rebound', 'moved'] as const) {
+      expect(await fresh()).toMatchObject({ ok: true });
+      setField(composedPiece.key, 'composer', '');
+      const seen = preview();
+      const choice = archiveValueDecision(seen.plan.suggestions.find((x) => x.pieceKey === composedPiece.key && x.field === 'composer')!);
+      const id = choice.itemId;
+      if (how === 'deleted') s().deleteItem(id);
+      if (how === 'rebound') {
+        const other = createItem({ instrumentId: SETAR, title: 'another record' }, NOW);
+        useStore.setState((st) => ({
+          db: {
+            ...st.db,
+            items: [...st.db.items.map((i) => (i.id === id ? { ...i, source: undefined } : i)), { ...other, source: { archiveId: 'setar-classes', pieceKey: composedPiece.key } }],
+          },
+        }));
+      }
+      if (how === 'moved') {
+        const tar = s().addInstrument({ name: 'Tar' });
+        useStore.setState((st) => ({ db: { ...st.db, items: st.db.items.map((i) => (i.id === id ? { ...i, instrumentId: tar, source: undefined } : i)) } }));
+      }
+      const before = JSON.stringify(s().db.items);
+      const refused = await s().commitArchiveImport({ index: changed(), instrumentId: SETAR, decisions: [choice], decidedFromRev: seen.rev, now: NOW });
+      expect(refused, how).toMatchObject({ ok: false, status: 'stale' });
+      expect(JSON.stringify(s().db.items), how).toBe(before);
+    }
+
+    // --- A REFUSED WRITE is retried by a REAL write -------------------------
+    expect(await fresh()).toMatchObject({ ok: true });
+    setField(composedPiece.key, 'composer', '');
+    const seen = preview();
+    const choice = archiveValueDecision(seen.plan.suggestions.find((x) => x.pieceKey === composedPiece.key && x.field === 'composer')!);
+    fakeStorage.failNext();
+    const unsaved = await s().commitArchiveImport({ index: changed(), instrumentId: SETAR, decisions: [choice], decidedFromRev: seen.rev, now: NOW });
+    expect(unsaved).toMatchObject({ ok: false, status: 'unsaved' });
+    const onDisk = () => (JSON.parse(fakeStorage.get()!) as { state: { db: PracticeDB } }).state.db.items.find((i) => i.source?.pieceKey === composedPiece.key)!;
+    expect(onDisk().persian?.composer ?? '').toBe('');
+    const retried = await s().commitArchiveImport({ index: changed(), instrumentId: SETAR, decisions: [choice], decidedFromRev: s().rev, now: NOW });
+    expect(retried).toMatchObject({ ok: true });
+    expect(onDisk().persian!.composer).toBe('لطفی');
   });
 });

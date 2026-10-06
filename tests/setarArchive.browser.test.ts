@@ -151,7 +151,7 @@ describe('the Setar archive, rendered', () => {
           const summary = await page.locator('main').innerText();
           // Four of the owner's own legacy classes carry EXACT source-path evidence,
           // so they are adopted rather than duplicated; the other 35 are new.
-          expect(summary).toMatch(/Added 94 pieces and 35 classes · Updated 4/);
+          expect(summary).toMatch(/Will add 94 pieces and 35 classes · will update 4/);
           // It says the index CHANGED or was FETCHED — never that a scan ran.
           expect(summary).not.toMatch(/last scanned/i);
           expect(summary).toMatch(/needing attention/);
@@ -301,7 +301,7 @@ describe('the Setar archive, rendered', () => {
 
           publishSourceIndex(remote, await withSession40(INDEX_TEXT), 'source-index-commit-2');
           await refresh(app);
-          expect(await page.locator('main').innerText()).toMatch(/Added 0 pieces and 1 classes/);
+          expect(await page.locator('main').innerText()).toMatch(/Will add 0 pieces and 1 classes/);
           await page.getByRole('button', { name: 'Apply' }).click();
           await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
           const delta = await persistedUntil(
@@ -319,14 +319,16 @@ describe('the Setar archive, rendered', () => {
           const better = await withBetterComposer(INDEX_TEXT);
           publishSourceIndex(remote, better.text, 'source-index-commit-4');
           await refresh(app);
-          const offerRow = page.getByRole('button', { name: /Use the archive’s composer/ });
+          const offerRow = page.getByRole('button', { name: 'Use archive value' });
           await offerRow.first().waitFor({ timeout: 20_000 });
           const offerText = await page.locator('main').innerText();
           // The section label is rendered uppercase by the stylesheet, and
           // innerText returns what is actually rendered.
-          expect(offerText).toMatch(/the archive knows more about these/i);
+          expect(offerText).toMatch(/archive metadata differs/i);
           expect(offerText).toContain(better.key);
           expect(offerText).toContain(NEW_COMPOSER);
+          // Keeping the owner's value is the default answer, said as one.
+          expect(await page.getByRole('button', { name: 'Keep my value' }).first().getAttribute('aria-pressed')).toBe('true');
           // Applying WITHOUT answering updates the source graph and leaves the
           // owner's own piece exactly as it was.
           await page.getByRole('button', { name: 'Apply' }).click();
@@ -338,12 +340,19 @@ describe('the Setar archive, rendered', () => {
           );
           expect(unanswered.items.find((i) => i.source?.pieceKey === better.key)!.persian?.composer).toBe(better.was);
 
-          // THE SAME INDEX, a NEW answer. The graph is already current, so a
-          // refresh judged by the index hash alone called this "Already
-          // current" and threw the answer away unwritten.
+          // THE SAME INDEX, a NEW answer. The registry has not changed since
+          // that graph was accepted, so nothing is OFFERED again — the owner's
+          // value stands — but the difference is there to review on request,
+          // and an answer given there is written, not thrown away as "Already
+          // current".
           await refresh(app);
           expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
-          await page.getByRole('button', { name: /Use the archive’s composer/ }).first().click();
+          expect(await page.getByRole('button', { name: 'Use archive value' }).count()).toBe(0);
+          await page.getByRole('button', { name: /^Review differences \(\d+\)$/ }).click();
+          await page
+            .getByRole('group', { name: `composer of ${better.key}` })
+            .getByRole('button', { name: 'Use archive value' })
+            .click();
           await page.getByRole('button', { name: 'Apply' }).waitFor({ timeout: 20_000 });
           await page.getByRole('button', { name: 'Apply' }).click();
           await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
@@ -355,9 +364,9 @@ describe('the Setar archive, rendered', () => {
           // Only that field moved: the piece keeps its title and its history.
           expect(answeredDb.items.find((i) => i.source?.pieceKey === better.key)!.title).toBe(better.key);
           expect(answeredDb.blocks).toHaveLength(1);
-          // …and the offer is gone, because it has been taken.
+          // …and the difference is gone, because it has been taken.
           await refresh(app);
-          expect(await page.getByRole('button', { name: /Use the archive’s composer/ }).count()).toBe(0);
+          expect(await page.getByRole('group', { name: `composer of ${better.key}` }).count()).toBe(0);
           expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
 
           // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------

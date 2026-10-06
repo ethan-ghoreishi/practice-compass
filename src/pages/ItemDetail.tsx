@@ -27,6 +27,7 @@ import {
   type ISODate,
   type PracticeItem as PracticeItemT,
   type Review,
+  associationsForItem,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { getMaterial, instrumentName, itemBlocks, materialLabel } from '../store/lookups';
@@ -541,7 +542,9 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
   const material = item.materialId ? db.materials.find((m) => m.id === item.materialId) : undefined;
   const stage = item.stageId ? db.pathwayStages.find((s) => s.id === item.stageId) : undefined;
   const pathway = stage ? db.pathways.find((p) => p.id === stage.pathwayId) : undefined;
-  const lessons = db.lessons.filter((l) => (l.itemIds ?? []).includes(item.id)).sort((a, b) => b.date.localeCompare(a.date));
+  // The SAME relation Lessons and Connections read: linked, or covered by the
+  // class's archive session — each class once.
+  const lessons = associationsForItem(db, item.id).map((a) => a.lesson);
   const parent = item.parentItemId ? db.items.find((i) => i.id === item.parentItemId) : undefined;
   // A refusal is about ONE item: tagged, so it never shows under another.
   const [refusal, setRefusal] = useState<{ forItem: string; message: string | null } | null>(null);
@@ -821,17 +824,16 @@ function ConnectionsSection({ item }: { item: PracticeItem }) {
     );
   }, [db.pathways, db.pathwayStages, item.instrumentId]);
 
-  const linkedLessons = useMemo(
-    () => db.lessons.filter((l) => (l.itemIds ?? []).includes(item.id)).sort((a, b) => b.date.localeCompare(a.date)),
-    [db.lessons, item.id],
-  );
-  const linkableLessons = useMemo(
-    () =>
-      db.lessons
-        .filter((l) => l.instrumentId === item.instrumentId && !(l.itemIds ?? []).includes(item.id))
-        .sort((a, b) => b.date.localeCompare(a.date)),
-    [db.lessons, item.instrumentId, item.id],
-  );
+  // One relation for every reader: explicit links and the archive's session
+  // membership, each class once. Linking a class the archive already lists —
+  // one you unlinked — lifts that unlink; it never copies the membership.
+  const linkedLessons = useMemo(() => associationsForItem(db, item.id), [db, item.id]);
+  const linkableLessons = useMemo(() => {
+    const associated = new Set(linkedLessons.map((a) => a.lessonId));
+    return db.lessons
+      .filter((l) => l.instrumentId === item.instrumentId && !associated.has(l.id))
+      .sort((a, b) => b.date.localeCompare(a.date));
+  }, [db.lessons, item.instrumentId, linkedLessons]);
 
   return (
     <section className="stack-sm">
@@ -863,10 +865,11 @@ function ConnectionsSection({ item }: { item: PracticeItem }) {
         <div className="field">
           <span className="field-label">Lessons this appeared in</span>
           {linkedLessons.length === 0 && <span className="tiny faint">None linked yet.</span>}
-          {linkedLessons.map((l) => (
+          {linkedLessons.map(({ lesson: l, explicit }) => (
             <div key={l.id} className="row between small">
               <Link to="/lessons" className="link">
                 Class on {l.date}
+                {explicit ? '' : ' · in its archive'}
               </Link>
               <button
                 className="btn btn-ghost btn-sm"

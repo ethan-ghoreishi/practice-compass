@@ -35,6 +35,15 @@ export interface SourcePiece {
   aliases: string[];
   sessions: number[];
   notes: string;
+  /**
+   * PIECES.csv's optional `source` column, verbatim (index v1, additive; schema
+   * v16 at rest): the material the registry declares this piece is studied
+   * FROM. ABSENT means the registry said nothing (an older scanner or a
+   * registry without the column) and is unknown legacy evidence; `''` is an
+   * explicit "none declared". Provenance only — never a kind, a stage, a
+   * catalogue reference or an identity, and never inferred from a key.
+   */
+  studySource?: string;
   provisional?: boolean;
   mediumConfidence?: boolean;
   /** The source no longer describes this piece; its provenance is kept. */
@@ -196,6 +205,16 @@ export function sourceLessonId(archiveId: string, sessionN: number): ID {
 /** Deterministic id for a resource reference minted from the graph. */
 export function sourceResourceId(archiveId: string, path: string): ID {
   return `src-${stableHash(`${archiveId}${NUL}asset${NUL}${path}`)}`;
+}
+
+/**
+ * Deterministic id for the study source "Review Setar setup" creates for one
+ * evidence group of one instrument — so the same selection, replayed, names
+ * the source it already made instead of making (or refusing) another. It is
+ * the group's key, never a title, that decides it; never cross-instrument.
+ */
+export function setupSourceId(instrumentId: ID, groupKey: string): ID {
+  return `src-${stableHash(`${instrumentId}${NUL}setup-source${NUL}${groupKey}`)}`;
 }
 
 // --- decoding --------------------------------------------------------------
@@ -365,12 +384,20 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
     if (sessions.some((n) => typeof n !== 'number' || !Number.isInteger(n) || n < 1)) {
       throw new Error(`Registry entry "${key}" has an invalid session number.`);
     }
+    // ABSENT STAYS ABSENT. `text()` defaults absent to '' — right for the
+    // fields every scanner has always written, wrong for this one: an older
+    // index never declared a study source, and turning that silence into an
+    // explicit empty declaration would rewrite what the registry said.
+    if (!(raw.studySource === undefined || typeof raw.studySource === 'string')) {
+      throw new Error(`Registry entry "${key}" study source must be text.`);
+    }
     pieces.push({
       key,
       form: text(raw.form, `Registry entry "${key}" form`),
       piece: text(raw.piece, `Registry entry "${key}" piece`),
       dastgah: text(raw.dastgah, `Registry entry "${key}" dastgah`),
       composer: text(raw.composer, `Registry entry "${key}" composer`),
+      ...(typeof raw.studySource === 'string' ? { studySource: raw.studySource } : {}),
       aliases: strList(raw.aliases, `Registry entry "${key}" aliases`),
       sessions: sessions as number[],
       notes: text(raw.notes, `Registry entry "${key}" notes`),
@@ -725,6 +752,8 @@ function checkSourceGraph(
     for (const field of ['form', 'piece', 'dastgah', 'composer', 'notes'] as const) {
       if (!text(p[field])) return `Piece "${p.key}" has an unreadable ${field}.`;
     }
+    // Optional (v16): absent is unknown legacy evidence, text is a declaration.
+    if (!(p.studySource === undefined || text(p.studySource))) return `Piece "${p.key}" has an unreadable study source.`;
     // SEARCH data, read as `[...piece.aliases]` by the reconciler: a value
     // that is not a list of text takes the whole refresh down with a TypeError.
     if (!textList(p.aliases)) return `Piece "${p.key}" has an unreadable alias list.`;
@@ -1010,4 +1039,88 @@ export function membersForSession(source: ArchiveSource, sessionN: number): Sour
   const s = source.sessions.find((x) => x.n === sessionN);
   if (!s || suppressed(source, 'session', String(sessionN))) return [];
   return s.members.filter((m) => !suppressed(source, 'link', `${sessionN}:${m.key}`));
+}
+
+// --- lesson ↔ item associations: ONE reader for every screen -----------------
+
+/**
+ * Is this item's bound piece a member of this lesson's archive session — the
+ * fact a derived association rests on, BEFORE any owner unlink is applied?
+ * Exact bindings only: same archive, same instrument, the session the lesson
+ * is bound to and the piece the item is bound to. Never a title.
+ */
+export function sessionMembership(
+  db: PracticeDB,
+  lesson: { source?: LessonSourceRef; instrumentId: ID },
+  item: { source?: ItemSourceRef; instrumentId: ID },
+): { archiveId: ID; sessionN: number; pieceKey: string; link: string } | null {
+  const ls = lesson.source;
+  const is = item.source;
+  if (!ls || !is || ls.archiveId !== is.archiveId || lesson.instrumentId !== item.instrumentId) return null;
+  const source = archiveFor(db, ls.archiveId);
+  const session = source?.sessions.find((s) => s.n === ls.sessionN);
+  if (!session?.members.some((m) => m.key === is.pieceKey)) return null;
+  return { archiveId: ls.archiveId, sessionN: ls.sessionN, pieceKey: is.pieceKey, link: `${ls.sessionN}:${is.pieceKey}` };
+}
+
+export interface Association {
+  lessonId: ID;
+  itemId: ID;
+  /** The owner linked it themselves: `lesson.itemIds`. Authored history. */
+  explicit: boolean;
+  /**
+   * The archive's own session lists this item's piece, and the owner has not
+   * unlinked it. PROVENANCE — what the class covered — never practice, never a
+   * preparation and never copied into `itemIds`.
+   */
+  derived: boolean;
+}
+
+/**
+ * EVERY lesson ↔ item association, explicit and derived, ONCE per pair.
+ *
+ * Lessons, an item's "Connected to", its lesson summary, Connections and every
+ * linkable list read this one relation. `membersForSession` used to have no
+ * production consumer at all, so an imported class showed none of the pieces
+ * it taught while the item it taught showed no class.
+ */
+export function lessonAssociations(db: PracticeDB): Association[] {
+  const items = new Map(db.items.map((i) => [i.id, i]));
+  const bound = new Map<string, PracticeDB['items'][number]>();
+  for (const i of db.items) if (i.source) bound.set(`${i.source.archiveId}${NUL}${i.source.pieceKey}`, i);
+  const out = new Map<string, Association>();
+  const add = (lessonId: ID, itemId: ID, kind: 'explicit' | 'derived') => {
+    const key = `${lessonId}${NUL}${itemId}`;
+    const a = out.get(key) ?? { lessonId, itemId, explicit: false, derived: false };
+    a[kind] = true;
+    out.set(key, a);
+  };
+  for (const lesson of db.lessons) {
+    for (const id of lesson.itemIds ?? []) if (items.has(id)) add(lesson.id, id, 'explicit');
+    const ls = lesson.source;
+    const source = ls ? archiveFor(db, ls.archiveId) : undefined;
+    if (!ls || !source) continue;
+    for (const m of membersForSession(source, ls.sessionN)) {
+      const item = bound.get(`${ls.archiveId}${NUL}${m.key}`);
+      if (item && item.instrumentId === lesson.instrumentId) add(lesson.id, item.id, 'derived');
+    }
+  }
+  return [...out.values()];
+}
+
+/** The items associated with one lesson, each once, with how. */
+export function associationsForLesson(db: PracticeDB, lessonId: ID): (Association & { item: PracticeDB['items'][number] })[] {
+  const items = new Map(db.items.map((i) => [i.id, i]));
+  return lessonAssociations(db)
+    .filter((a) => a.lessonId === lessonId)
+    .map((a) => ({ ...a, item: items.get(a.itemId)! }));
+}
+
+/** The lessons associated with one item, each once, with how — newest first. */
+export function associationsForItem(db: PracticeDB, itemId: ID): (Association & { lesson: PracticeDB['lessons'][number] })[] {
+  const lessons = new Map(db.lessons.map((l) => [l.id, l]));
+  return lessonAssociations(db)
+    .filter((a) => a.itemId === itemId)
+    .map((a) => ({ ...a, lesson: lessons.get(a.lessonId)! }))
+    .sort((a, b) => b.lesson.date.localeCompare(a.lesson.date) || (a.lesson.id < b.lesson.id ? -1 : 1));
 }

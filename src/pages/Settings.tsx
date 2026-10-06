@@ -41,6 +41,8 @@ import {
 } from '../store/githubSync';
 import { Field } from '../components/ui';
 import ArchiveRefresh from '../components/ArchiveRefresh';
+import SetarSetupReview from '../components/SetarSetupReview';
+import { testPracticeSound, usePracticeSound } from '../components/practiceCue';
 import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
@@ -177,6 +179,8 @@ export default function Settings() {
           ))}
         </div>
       </section>
+
+      <PracticeSoundSection />
 
       <section className="stack-sm">
         <div className="section-label">Install as an app</div>
@@ -605,6 +609,8 @@ function NasRecordingsSection() {
       <MediaRootSection archiveBase={normalized ?? ''} />
 
       <ArchiveRefresh />
+
+      <SetarSetupReview />
     </section>
   );
 }
@@ -834,7 +840,7 @@ function SchedulingSection() {
           })}
         </div>
 
-        <div className="row between" style={{ gap: 8 }}>
+        <div className="row between" style={{ gap: 8, flexWrap: 'wrap' }}>
           <div className="tiny faint">
             {customised ? 'Using your adjusted values.' : 'Using the recommended defaults.'}
           </div>
@@ -859,5 +865,43 @@ function StorageRole({ title, body }: { title: string; body: string }) {
       <div style={{ fontWeight: 600 }}>{title}</div>
       <div className="dim">{body}</div>
     </div>
+  );
+}
+
+/**
+ * The practice sound, tested where nothing is being timed: the SAME page-wide
+ * context and the SAME cue a boundary plays. It changes no record, minute,
+ * marker or wake lock — and "ready" means the engine runs, never that a
+ * speaker was heard: volume, the mute switch and the output are the device's.
+ */
+function PracticeSoundSection() {
+  const sound = usePracticeSound();
+  return (
+    <section className="stack-sm">
+      <div className="section-label">Practice sound</div>
+      <div className="card stack-sm small">
+        <div className="row between" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <span dir="ltr">
+            {sound === 'ready'
+              ? 'Ready on this page.'
+              : sound === 'paused'
+                ? 'Paused on this device — a tap can resume it.'
+                : sound === 'unavailable'
+                  ? 'This browser has no practice sound.'
+                  : 'Off until you start, resume or test.'}
+          </span>
+          <button type="button" className="btn btn-sm" onClick={testPracticeSound} disabled={sound === 'unavailable'}>
+            Test practice sound
+          </button>
+        </div>
+        <div className="tiny faint">
+          <span dir="ltr">
+            Two short tones mark a block’s target and each routine segment, while the practice screen is open. The ring
+            always shows it too. Check your volume and mute switch; a locked or backgrounded phone cannot be relied on
+            to sound — your phone’s own timer is the option for that.
+          </span>
+        </div>
+      </div>
+    </section>
   );
 }

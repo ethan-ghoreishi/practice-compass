@@ -373,9 +373,14 @@ describe('browsing, and coming back to it', () => {
       const instruments = page.getByRole('group', { name: 'Instrument' });
       expect(await instruments.getByRole('button', { name: 'Setar', exact: true }).getAttribute('aria-pressed')).toBe('true');
 
-      // Query + facet, held in the URL.
+      // Query + facet, held in the URL — set on a SLOW device, where the
+      // second control fires before the first change has rendered; neither
+      // may erase the other.
+      const cpu = await page.context().newCDPSession(page);
+      await cpu.send('Emulation.setCPUThrottlingRate', { rate: 20 });
       await search().fill('shur');
       await composer().selectOption('term:composer:darvish-khan');
+      await cpu.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       await expect.poll(() => page.url()).toMatch(/q=shur/);
       await expect.poll(() => page.url()).toMatch(/composer=term%3Acomposer%3Adarvish-khan/);
       await expect.poll(async () => (await worksShown()).sort()).toEqual(['Pish-daramad in Shur', 'پیش‌درآمد شور'].sort());
@@ -444,7 +449,9 @@ describe('browsing, and coming back to it', () => {
       await pathsOnTar();
       // Study sources opened while browsing Tar starts a new source ON Tar.
       await page.getByRole('link', { name: 'Study sources' }).click();
-      await page.getByRole('button', { name: /New/ }).click();
+      // Exactly Study sources' "New": until the lazy page has rendered, the
+      // Pathways view's "New pathway" is still on screen.
+      await page.getByRole('button', { name: 'New', exact: true }).click();
       expect(await page.locator('main').getByRole('combobox', { name: 'Instrument' }).inputValue()).toBe('inst-tar');
       await page.getByRole('link', { name: /Back/ }).click();
       await pathsOnTar();

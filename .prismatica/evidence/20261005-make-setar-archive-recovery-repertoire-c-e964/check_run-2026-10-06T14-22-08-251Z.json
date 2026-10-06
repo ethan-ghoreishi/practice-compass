@@ -1,0 +1,137 @@
+{
+  "contractId": "20261005-make-setar-archive-recovery-repertoire-c-e964",
+  "event": "check_run",
+  "at": "2026-10-06T14:22:08.251Z",
+  "pass": true,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "detail": "npx vitest run --reporter=json"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "no separate journey command is configured — browser tests may be included in another configured runner, which is not inferred here"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "51 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "17 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "all required docs were updated"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "instruction-budget",
+      "status": "pass",
+      "detail": "prismatica-instructions/2: claude 32526 of 32768 bytes (CLAUDE.md 865 B, AGENTS.md 31661 B); codex 31661 of 32768 bytes (AGENTS.md 31661 B)"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "flow report covers what this change touches"
+    },
+    {
+      "name": "implementation",
+      "status": "pass",
+      "detail": "attribution, not proof: prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified"
+    }
+  ],
+  "changedFiles": [
+    "AGENTS.md",
+    "DECISIONS.md",
+    "docs/nas-topology.md",
+    "docs/repertoire-experience.md",
+    "docs/setar-archive.md",
+    "docs/setar-practice-reliability.md",
+    "scripts/check-setar-practice-families.mjs",
+    "scripts/scan-setar-classes.mjs",
+    "src/components/ArchiveRefresh.tsx",
+    "src/components/ItemMaterial.tsx",
+    "src/components/MusicalTermField.tsx",
+    "src/components/SetarSetupReview.tsx",
+    "src/components/direction.test.ts",
+    "src/components/practiceCue.test.ts",
+    "src/components/practiceCue.ts",
+    "src/components/useScreenAwake.ts",
+    "src/domain/index.ts",
+    "src/domain/io.test.ts",
+    "src/domain/migrations.ts",
+    "src/domain/setarSetup.test.ts",
+    "src/domain/setarSetup.ts",
+    "src/domain/sourceArchive.ts",
+    "src/domain/sourceReconcile.test.ts",
+    "src/domain/sourceReconcile.ts",
+    "src/domain/types.ts",
+    "src/pages/ActiveBlock.tsx",
+    "src/pages/ItemDetail.tsx",
+    "src/pages/Lessons.tsx",
+    "src/pages/PathwayDetail.tsx",
+    "src/pages/RoutineRunner.tsx",
+    "src/pages/Settings.tsx",
+    "src/pages/StageDetail.tsx",
+    "src/pages/Today.tsx",
+    "src/store/archiveIndex.test.ts",
+    "src/store/useStore.ts",
+    "src/styles/global.css",
+    "tests/agent-context.test.ts",
+    "tests/fixtures/setar-practice-owner-v15.json",
+    "tests/fixtures/setar-practice-owner-v16.json",
+    "tests/fixtures/setar-practice-setup-expectations.json",
+    "tests/fixtures/setar-practice-source-expectations.json",
+    "tests/fixtures/setar-practice-source-v1.json",
+    "tests/musical-term-suggestions.browser.test.ts",
+    "tests/practice-cues.browser.test.ts",
+    "tests/practice-information.browser.test.ts",
+    "tests/setar-practice-inbound.browser.test.ts",
+    "tests/setar-practice-proof.test.ts",
+    "tests/setar-practice-relations.test.ts",
+    "tests/setar-practice-source.test.ts",
+    "tests/setar-practice.browser.test.ts",
+    "tests/setarArchive.browser.test.ts"
+  ],
+  "prismaticaVersion": "0.10.0"
+}

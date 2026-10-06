@@ -154,6 +154,13 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/ArchiveRefresh.tsx", tagName: "li", classValue: "row" },
+  // The restore outcome names what was restored, in its own isolate; then each
+  // hidden or removed archive entry's source value (piece key, class pair,
+  // path) and the title of the item it is hidden on, each in its own isolate
+  // between generated LTR copy (this lane).
+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/Attachments.tsx", tagName: "button", classValue: "grow" },
   { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
   { file: "components/ClassQuestions.tsx", tagName: "li", classValue: "row" },
@@ -168,6 +175,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "small" },
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
   { file: "components/LessonAgenda.tsx", tagName: "div", classValue: "grow" },
+  // Each visible suggestion is a term's own (possibly Farsi) name (this lane).
+  { file: "components/MusicalTermField.tsx", tagName: "button", classValue: "btn btn-sm term-option" },
   // A term field's resolution line: the term's own (possibly Farsi) name.
   { file: "components/MusicalTermField.tsx", tagName: "span", classValue: "" },
   // Link existing / which item is it / which source: each candidate's own title.
@@ -179,6 +188,14 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   { file: "components/ReferenceEditor.tsx", tagName: "li", classValue: "row between" },
+  // Review Setar setup (this lane): a declared source's own text, an owner's
+  // value in a before/after line (its own isolate), then the two GROUPS —
+  // a Keeping fresh row and an organisation card — each resolving from its
+  // bare title, the group's first strong text.
+  { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
+  { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
+  { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "small grow" },
+  { file: "components/SetarSetupReview.tsx", tagName: "div", classValue: "card card-quiet stack-sm" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },
@@ -241,6 +258,9 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/Repertoire.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/Repertoire.tsx", tagName: "span", classValue: "" },
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "row between" },
+  // The explicit Start screen a bare routine link now shows: the routine's own
+  // name leads its group, its generated summary an LTR isolate inside (this lane).
+  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "" },
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "tiny faint" },
   { file: "pages/RoutineRunner.tsx", tagName: "span", classValue: "" },
@@ -646,6 +666,8 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   // value the archive proposes are authored independently of each other.
   { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
   { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
+  // Review Setar setup: each owner-authored before/after value, in its own isolate.
+  { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="auto">' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.constraint}</span>' },
   // Instrument names used to be tracked here too, one exact snippet per site.
   // A sealed review found that shape structurally insufficient FOUR times
@@ -694,6 +716,9 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
  * call site can see whether its OWN return value is isolated.
  */
 const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
+  // Review Setar setup: generated labels and evidence (authored values inside it carry their own bidi isolate).
+  { file: 'components/SetarSetupReview.tsx', snippet: '<span dir="ltr">{p.evidence}</span>' },
+  { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="ltr">' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
   { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
@@ -740,7 +765,8 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{meta}</span>' },
   { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Set your NAS base URL in' },
   { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">\n                    Your NAS base URL isn’t a valid web address' },
-  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
+  // An archive-derived association says so in the same generated isolate (this lane).
+  { file: 'pages/Lessons.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}{fromArchive.has(item.id) ? \' · in this class’s archive\' : \'\'}</span>' },
   { file: 'pages/RoutineRunner.tsx', snippet: '<span className="tiny faint" dir="ltr">{minutes} min</span>' },
   { file: 'pages/StartBlock.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
   { file: 'pages/Insights.tsx', snippet: '<span dir="ltr">{insight.body}</span>' },

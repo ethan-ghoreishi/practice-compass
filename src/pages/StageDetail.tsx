@@ -17,6 +17,7 @@ import {
   courseStage,
   itemsPreparedForLesson,
   pathwaysReturnPath,
+  segmentsForRun,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import QuickAdd from '../components/QuickAdd';
@@ -40,6 +41,7 @@ export default function StageDetail() {
   const chooseCourseSource = useStore((s) => s.chooseCourseSource);
   const startItemSession = useStore((s) => s.startItemSession);
   const activeRoutine = useStore((s) => s.activeRoutine);
+  const startRoutineRun = useStore((s) => s.startRoutineRun);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -69,6 +71,9 @@ export default function StageDetail() {
   const [editIntro, setEditIntro] = useState('');
   // What the last tap did, said plainly — never an Undo that deletes.
   const [notice, setNotice] = useState<string | null>(null);
+  // The item the last Add put here: its SAFE inverse is offered right where
+  // the owner is looking — leaving the pathway, never deleting the item.
+  const [added, setAdded] = useState<{ itemId: string; title: string } | null>(null);
   // What a tap was refused, and why — never silent.
   const [refusal, setRefusal] = useState<string | null>(null);
   // An explicit choice in progress: which item a suggestion is, or which
@@ -147,6 +152,7 @@ export default function StageDetail() {
     }
     setChoosing(null);
     setNotice(result.created ? `Added “${unit.title}” to your items — not practised yet.` : `“${unit.title}” is already one of your items.`);
+    setAdded({ itemId: result.id, title: unit.title });
     // The tap asked about this suggestion's course source: show the question
     // again even if it was put off earlier in this visit.
     if (result.sourceCandidates) setSourceDeferred(false);
@@ -278,7 +284,11 @@ export default function StageDetail() {
           <RoutineCard
             key={r.id}
             routine={r}
-            onStart={(short) => navigate(`/routine/${r.id}${short ? '?short=1' : ''}`)}
+            onStart={(short) => {
+              // Begun inside the tap, then shown — see PathwayDetail.
+              startRoutineRun(r.id, short, segmentsForRun(r.segments, short));
+              navigate(`/routine/${r.id}${short ? '?short=1' : ''}`);
+            }}
             onEdit={() => navigate(`/routine/${r.id}/edit`)}
           />
         ))}
@@ -318,9 +328,25 @@ export default function StageDetail() {
       <section className="stack-sm">
         <div className="section-label">In this stage</div>
         {notice && (
-          <p className="tiny dim" role="status" style={{ margin: 0 }}>
-            {notice}
-          </p>
+          <div className="row tiny dim" role="status" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <span>{notice}</span>
+            {added && pathway && units.some((u) => u.item?.id === added.itemId) && (
+              <button
+                type="button"
+                className="btn btn-sm"
+                aria-label={`Remove ${added.title} from this pathway — the item is kept`}
+                onClick={() => {
+                  const refused = removeFromPathway(added.itemId, pathway.id);
+                  setRefusal(refused);
+                  if (refused) return;
+                  setNotice(`“${added.title}” left this pathway. It is still in My repertoire with everything it had — Restore brings it back here.`);
+                  setAdded(null);
+                }}
+              >
+                Remove from pathway
+              </button>
+            )}
+          </div>
         )}
         {refusal && !editing && (
           <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
@@ -432,7 +458,18 @@ export default function StageDetail() {
                 onLinkToSuggestion={u.unlinked && pathway ? () => setLinkingItem(u.item!) : undefined}
                 onHide={pathway && u.ref ? () => setReferenceHidden(pathway.id, u.ref!, true) : undefined}
                 onUnlink={u.item && u.ref ? () => unlinkReference(u.item!.id, u.ref!) : undefined}
-                onRemoveFromPathway={u.item && pathway ? () => setRefusal(removeFromPathway(u.item!.id, pathway.id)) : undefined}
+                onRemoveFromPathway={
+                  u.item && pathway
+                    ? () => {
+                        const refused = removeFromPathway(u.item!.id, pathway.id);
+                        setRefusal(refused);
+                        if (!refused) {
+                          setNotice(`“${u.item!.title}” left this pathway. It is still in My repertoire with everything it had.`);
+                          setAdded(null);
+                        }
+                      }
+                    : undefined
+                }
               />
             ),
           )}
@@ -453,7 +490,12 @@ export default function StageDetail() {
                   <button
                     className="btn btn-sm"
                     aria-label={`Restore ${u.title}`}
-                    onClick={() => setReferenceHidden(pathway.id, u.ref!, false)}
+                    onClick={() => {
+                      setReferenceHidden(pathway.id, u.ref!, false);
+                      // The SAME item answers it again — nothing is created.
+                      setNotice(u.item ? `Restored “${u.item.title}” — the same item, nothing new was made.` : `Restored “${u.title}”.`);
+                      setAdded(null);
+                    }}
                   >
                     Restore
                   </button>
@@ -518,12 +560,14 @@ function UnitRow({
   ].filter(Boolean);
 
   // Every secondary action keeps the owner's work: none of them deletes.
+  // The everyday inverse of Add comes FIRST on an owned row: leaving the
+  // pathway. Unlink (identity) and the item's own Delete stay distinct.
   const menu: { label: string; run: () => void }[] = [
+    ...(item && onRemoveFromPathway ? [{ label: 'Remove from pathway (keeps the item)', run: onRemoveFromPathway }] : []),
     ...(!item && !ambiguous ? [{ label: 'Link an existing item…', run: onChoose }] : []),
     ...(!item && onHide ? [{ label: 'Hide this suggestion', run: onHide }] : []),
     ...(item && onLinkToSuggestion ? [{ label: 'Link to a suggestion…', run: onLinkToSuggestion }] : []),
     ...(item && onUnlink ? [{ label: 'Unlink reference (keeps the item)', run: onUnlink }] : []),
-    ...(item && onRemoveFromPathway ? [{ label: 'Remove from pathway (keeps the item)', run: onRemoveFromPathway }] : []),
   ];
 
   return (

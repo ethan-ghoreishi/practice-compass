@@ -390,8 +390,11 @@ describe('a notebook belongs to ITS item, never to whatever is on screen', () =>
       expect(routineId).toBeTruthy();
 
       // --- Editing A's notes while time crosses into B --------------------
+      // A bare routine link starts nothing on its own: the run begins on the
+      // owner's Start tap (where its practice sound is readied too).
       await goTo(app, `/routine/${routineId}`);
-      expect(await page.locator('main').innerText()).toContain('Segment A');
+      await page.getByRole('button', { name: 'Start', exact: true }).click();
+      await expect.poll(() => page.locator('main').innerText()).toContain('Segment A');
       await page.getByRole('button', { name: /^Show Working notes$/ }).click();
       await page.getByRole('button', { name: 'Edit Working notes' }).click();
       await notesBox(page).fill('typed against segment A');

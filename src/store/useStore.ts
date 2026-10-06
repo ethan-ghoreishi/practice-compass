@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
 import { withRevision } from './revision';
+import { primePracticeSound } from '../components/practiceCue';
 import {
   acknowledgeThrough,
   applyBlockStats,
@@ -69,12 +70,18 @@ import {
   nowISO,
   withSuppression,
   withoutSuppression,
+  archiveFor,
+  sessionMembership,
   planArchiveImport,
   applyArchiveImport,
   type ImportPlan,
   type ImportSummary,
   type ReconcileDecision,
   type SourceIndex,
+  type SourceSuppression,
+  applySetarSetup,
+  type SetupContext,
+  type SetupSelection,
   SCHEMA_VERSION,
   planDefaultPathways,
   planDefaultStages,
@@ -224,6 +231,12 @@ export interface ActiveRoutine {
   runningSince?: string;
   /** Count of boundaries already announced (practiceSignal.ts). Absent reads as zero — see nextSignal. */
   signalledThrough?: number;
+  /**
+   * When THIS run started — its identity, so a boundary claim made against a
+   * run that has since finished and been restarted is refused. Absent on a run
+   * persisted before it existed, which then claims as `undefined`.
+   */
+  startedAt?: string;
 }
 
 /** Advance the pointer to the next still-pending segment (or one past the end). */
@@ -429,8 +442,19 @@ interface StoreState {
   }) => Promise<ArchiveCommitResult>;
   /** Hide ONE archive resource — on one item, or everywhere. */
   hideArchiveResource: (archiveId: ID, path: string, itemId?: ID) => void;
-  /** Lift a suppression, so the next refresh may bring that entity back. */
-  resetArchiveSuppression: (archiveId: ID, kind: 'piece' | 'session' | 'resource' | 'link', ref: string) => void;
+  /**
+   * Lift ONE owner suppression — the exact kind, target and item scope — so
+   * the next Refresh may bring that source entity back. Returns a refusal or
+   * null; the caller waits for storage before saying it is saved.
+   */
+  restoreArchiveSuppression: (archiveId: ID, target: Pick<SourceSuppression, 'kind' | 'ref' | 'itemId'>) => string | null;
+  /**
+   * "Review Setar setup": write EXACTLY the selected rows in one validated
+   * mutation, each re-checked against the value the owner saw. Returns the
+   * refusal, or null; the caller waits for storage before saying Saved, and a
+   * retry writes again even when the rows are already in place.
+   */
+  commitSetarSetup: (input: { context: SetupContext; selections: SetupSelection[]; now?: Date }) => string | null;
   /** Attach a direct NAS reference to an item — no artificial lesson needed. */
   addItemReference: (itemId: ID, ref: { title: string; path: string; kind?: LessonFileKind; notes?: string }) => void;
   /** Remove a direct item reference. Never touches the file it points at. */
@@ -499,8 +523,16 @@ interface StoreState {
   pauseSession: () => void;
   resumeSession: () => void;
   setSessionNote: (note: string) => void;
-  /** Persist how many target boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
-  setSessionSignal: (marker: number) => void;
+  /**
+   * The boundary marker (practiceSignal.ts) lives in store state, not component
+   * state, so navigating away and back never re-announces. CLAIM a boundary
+   * announcement for the block that STARTED at `startedAt`:
+   * true — and the marker advanced — only when that block is still the one
+   * running, is running, and has not already announced through `marker`. A
+   * refused claim changes nothing, so a replayed effect, a remount or a stale
+   * observation can never announce twice; only a true claim may sound.
+   */
+  claimSessionSignal: (startedAt: string, marker: number) => boolean;
   cancelSession: () => void;
   closeSession: (input: CloseSessionInput) => void;
 
@@ -578,8 +610,8 @@ interface StoreState {
   skipRoutineRun: () => void;
   /** Turn the active run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time — then clear it. */
   finishRoutine: () => void;
-  /** Persist how many segment boundaries have been announced (practiceSignal.ts) — store state, not component state, so navigating away and back never re-announces. */
-  setRoutineSignal: (marker: number) => void;
+  /** The routine twin of `claimSessionSignal`, for the run that started at `startedAt` (segment boundaries). */
+  claimRoutineSignal: (startedAt: string | undefined, marker: number) => boolean;
 
   // Data management
   exportDB: () => PracticeDB;
@@ -771,6 +803,29 @@ export const useStore = create<StoreState>()(
 
       linkItemToLesson: (lessonId, itemId) => {
         const now = new Date();
+        const { db } = get();
+        const lesson = db.lessons.find((l) => l.id === lessonId);
+        const item = db.items.find((i) => i.id === itemId);
+        // RELINKING WHAT THE ARCHIVE SAYS lifts the owner's own unlink — the
+        // one suppression that hid it — and copies nothing: the session's
+        // membership stays a source fact, never authored history in itemIds.
+        const member = lesson && item ? sessionMembership(db, lesson, item) : null;
+        const unlinked = member
+          ? archiveFor(db, member.archiveId)?.suppressions.some((x) => x.kind === 'link' && x.ref === member.link && x.itemId === undefined)
+          : false;
+        if (member && unlinked) {
+          set((s) => ({
+            db: {
+              ...s.db,
+              archiveSources: withoutSuppression(
+                s.db.archiveSources,
+                member.archiveId,
+                (x) => x.kind === 'link' && x.ref === member.link && x.itemId === undefined,
+              ),
+            },
+          }));
+          return;
+        }
         set((s) => ({
           db: {
             ...s.db,
@@ -828,21 +883,23 @@ export const useStore = create<StoreState>()(
         // An archive association is DERIVED from the session's membership, not
         // stored on the lesson — so removing it means recording the owner's
         // decision, in the same mutation, or the graph simply asserts it again.
-        const lessonSource = db.lessons.find((l) => l.id === lessonId)?.source;
-        const itemSource = db.items.find((i) => i.id === itemId)?.source;
-        const both = lessonSource && itemSource && lessonSource.archiveId === itemSource.archiveId ? lessonSource : null;
+        // Only where the session really lists this piece: a suppression for a
+        // link the archive never made would be a decision about nothing.
+        const lesson = db.lessons.find((l) => l.id === lessonId);
+        const item = db.items.find((i) => i.id === itemId);
+        const member = lesson && item ? sessionMembership(db, lesson, item) : null;
         set((s) => ({
           db: {
             ...s.db,
             lessons: s.db.lessons.map((l) =>
-              l.id === lessonId
+              l.id === lessonId && (l.itemIds ?? []).includes(itemId)
                 ? touch({ ...l, itemIds: (l.itemIds ?? []).filter((x) => x !== itemId) }, now)
                 : l,
             ),
-            archiveSources: both
-              ? withSuppression(s.db.archiveSources, both.archiveId, {
+            archiveSources: member
+              ? withSuppression(s.db.archiveSources, member.archiveId, {
                   kind: 'link',
-                  ref: `${both.sessionN}:${itemSource!.pieceKey}`,
+                  ref: member.link,
                   at: nowISO(now),
                 })
               : s.db.archiveSources,
@@ -1247,17 +1304,45 @@ export const useStore = create<StoreState>()(
         }));
       },
 
-      resetArchiveSuppression: (archiveId, kind, ref) => {
+      restoreArchiveSuppression: (archiveId, target) => {
+        if (!get().db.archiveSources.some((a) => a.id === archiveId)) return 'That archive is no longer on this device.';
+        // EXACTLY the chosen decision: kind, target AND scope. Matching kind
+        // and target alone also lifted every sibling hide of the same file on
+        // OTHER items — a restore of one decision undoing several.
+        //
+        // Always a write, even when the decision is already gone from memory:
+        // a retry after a refused write must persist again, never report the
+        // in-memory state as saved.
         set((s) => ({
           db: {
             ...s.db,
             archiveSources: withoutSuppression(
               s.db.archiveSources,
               archiveId,
-              (x) => x.kind === kind && x.ref === ref,
+              (x) => x.kind === target.kind && x.ref === target.ref && x.itemId === target.itemId,
             ),
           },
         }));
+        return null;
+      },
+
+      commitSetarSetup: ({ context, selections, now }) => {
+        // Re-planned against the database as it is NOW, inside the action: a
+        // row that moved, vanished or changed meaning since it was shown
+        // refuses the whole commit (`applySetarSetup`), and a row that
+        // arrived since was never selected, so it cannot join.
+        const outcome = applySetarSetup(get().db, context, selections, now ?? new Date());
+        if (!outcome.ok) return outcome.reason;
+        try {
+          validateDB(outcome.db);
+        } catch (e) {
+          return e instanceof Error ? e.message : 'That change could not be applied.';
+        }
+        // ONE mutation, of `db` alone — the running clock, routine and plan are
+        // not part of it. Always a write: a retry after a refused write must
+        // persist again, even when every row is already in place.
+        set({ db: outcome.db });
+        return null;
       },
 
       addItemReference: (itemId, ref) => {
@@ -1474,6 +1559,11 @@ export const useStore = create<StoreState>()(
       },
 
       startSession: (input) => {
+        // Every block start — direct, from a stage, the next item, a Session
+        // Plan Begin — is a tap that reaches this call synchronously, so the
+        // practice sound is readied HERE, inside that gesture, before anything
+        // navigates. A refused start (another clock) readies it all the same.
+        primePracticeSound();
         const { active, activeRoutine } = get();
         // Never silently overwrite an existing session's elapsed time, and
         // never let an ordinary block run alongside a routine — every start
@@ -1509,6 +1599,7 @@ export const useStore = create<StoreState>()(
       },
 
       resumeSession: () => {
+        primePracticeSound(); // Resume is a tap too — on the practice screen and on Close
         const { active, activeRoutine } = get();
         if (!active || active.running) return;
         // A routine clock is also live (only reachable from persisted state
@@ -1524,10 +1615,13 @@ export const useStore = create<StoreState>()(
         set({ active: { ...active, note } });
       },
 
-      setSessionSignal: (marker) => {
+      claimSessionSignal: (startedAt, marker) => {
         const { active } = get();
-        if (!active) return;
+        // Read and written in ONE synchronous call: nothing can interleave.
+        if (!active || active.startedAt !== startedAt || !active.running) return false;
+        if ((active.signalledThrough ?? 0) >= marker) return false;
         set({ active: { ...active, signalledThrough: marker } });
+        return true;
       },
 
       cancelSession: () => set({ active: null }),
@@ -2016,6 +2110,9 @@ export const useStore = create<StoreState>()(
       },
 
       startRoutineRun: (routineId, shortOnTime, authoredSegments) => {
+        // Only ever called from a Start tap (a card, a duration, the runner's
+        // own Start) — never from an effect — so this is inside the gesture.
+        primePracticeSound();
         const { activeRoutine, active } = get();
         // Same guard as startSession, in the other direction: an ordinary
         // block already running must be resolved before a routine can start.
@@ -2032,6 +2129,7 @@ export const useStore = create<StoreState>()(
         // running and resolves it — the same deterministic way out every other
         // page gives them.
         if (activeRoutine) return;
+        const at = nowISO();
         set({
           activeRoutine: {
             routineId,
@@ -2040,7 +2138,8 @@ export const useStore = create<StoreState>()(
             segs: toRunSegments(authoredSegments),
             accumulatedSeconds: 0,
             running: true,
-            runningSince: nowISO(),
+            runningSince: at,
+            startedAt: at,
           },
         });
       },
@@ -2059,6 +2158,7 @@ export const useStore = create<StoreState>()(
       },
 
       resumeRoutineRun: () => {
+        primePracticeSound();
         const { activeRoutine, active } = get();
         if (!activeRoutine || activeRoutine.running) return;
         // Same guard as resumeSession, in the other direction.
@@ -2087,10 +2187,12 @@ export const useStore = create<StoreState>()(
         set({ activeRoutine: { ...activeRoutine, segs, signalledThrough } });
       },
 
-      setRoutineSignal: (marker) => {
+      claimRoutineSignal: (startedAt, marker) => {
         const { activeRoutine } = get();
-        if (!activeRoutine) return;
+        if (!activeRoutine || activeRoutine.startedAt !== startedAt || !activeRoutine.running) return false;
+        if ((activeRoutine.signalledThrough ?? 0) >= marker) return false;
         set({ activeRoutine: { ...activeRoutine, signalledThrough: marker } });
+        return true;
       },
 
       finishRoutine: () => {
