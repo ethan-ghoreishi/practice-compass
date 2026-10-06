@@ -5,7 +5,7 @@ title: Make Setar archive recovery, repertoire corrections and iPhone practice
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/45
 intent: 20261005-make-setar-archive-recovery-repertoire-c-e964
 tier: heavy
-stage: accept
+stage: ship
 baseline:
   commit: 93dadcb10cbda2650a53829b76538bcd6b25e133
   branch: main
