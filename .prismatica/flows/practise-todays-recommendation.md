@@ -8,7 +8,7 @@ presentation:
   order: 1
 truth:
   goal: Practise the one thing the app suggests next and leave an honest record of
-    how it went.
+    how it went
   startsWhen: The musician opens Today, picks the instrument they are practising,
     and sees a single 'Practise now' card.
   needs: []
@@ -38,12 +38,12 @@ truth:
       shows: "The active block screen: item title, mode and focus chips, a running
         ring timer."
       changes: A practice block is opened in memory with mode, focus and a 10-minute
-        target derived from the item.
+        target derived from the item. The same tap readies this page’s practice
+        sound (one sound context for the page, readied only by a tap).
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-01T20:18:39.166Z
-        commit: 33900caf81bdbd9656be7577231813ac86402513
+        method: inferred
+        at: 2026-10-05T23:19:51.493Z
     - actor: The musician
       action: Practises, optionally opening 'About this piece' or jotting a passing
         note; pauses and resumes as needed.
@@ -52,13 +52,14 @@ truth:
         asks the device to keep the display awake (best-effort;
         feature-detected; never affects elapsed time) so the clock stays
         readable without touching anything; pausing, finishing, discarding or
-        navigating away releases it, and the phone sleeps normally again.
+        navigating away releases it, and the phone sleeps normally again. Resume
+        is a tap too and readies the sound again; if sound is paused or off on
+        this page, a note says so and offers 'Turn on sound'.
       changes: Elapsed seconds accumulate only while the timer runs.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-01T20:18:39.166Z
-        commit: 33900caf81bdbd9656be7577231813ac86402513
+        method: inferred
+        at: 2026-10-05T23:19:51.493Z
     - actor: The musician
       action: Taps 'Finish'.
       shows: The close screen, with the minutes already filled in.
@@ -113,9 +114,15 @@ truth:
         figure (elapsed minus target) — announced once, never once per render.
         The block does NOT auto-finish — practising past the target stays
         ordinary, and only Finish or Discard ends it. Whether the
-        screen-wake-lock or the accompanying sound/vibration cue succeeds, fails
-        or is unsupported never changes the elapsed time or the minutes
-        eventually saved.
+        screen-wake-lock or the accompanying two-pulse sound and vibration —
+        readied by a Start or Resume tap, played once per granted boundary claim
+        and never queued to sound late — succeeds, fails or is unsupported never
+        changes the elapsed time or the minutes eventually saved.
+      status: works
+    - name: Test practice sound
+      differs: "Settings → Practice sound: 'Test practice sound' plays the same
+        two-pulse cue on demand and says whether sound is ready, paused or off
+        on this page."
       status: works
   rules:
     - Starting a block must stay under 30 seconds and closing one under 60
@@ -181,10 +188,10 @@ mechanics:
       steps:
         - 4
 approval:
-  hash: bc5c4e206274e53121421504716b0da028206611df3238e4d7dcae3d16e04ef0
-  at: 2026-08-31T22:05:26.192Z
+  hash: d3e532e945017f1152753db1f09264e46f1594ba2369bd8141b0c51c593084f0
+  at: 2026-10-06T21:38:16.212Z
   by: owner
-  signature: FUgPWld95Pz6eW7U4h2AbQ59zIMzKX8FjUIS9hZsa8PV/7tvWm/4qYRSvjzueu0n4X/i4S2Wlj1s9TSRybZxAw==
+  signature: DN8DYlhdSdkwY/j9RlTZ60QOZ68ptkbF6bIohua/yAgks6gnVnI8aHCgRbSzzvOrz1YLJ2ot7RAAS6zvX2yZDA==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -193,11 +200,11 @@ approval:
 
 # Practise what the app suggests
 
-_Works now · approved 2026-08-31T22:05:26.192Z by owner (signed)_
+_Works now · approved 2026-10-06T21:38:16.212Z by owner (signed)_
 
 ## Goal
 
-Practise the one thing the app suggests next and leave an honest record of how it went.
+Practise the one thing the app suggests next and leave an honest record of how it went
 
 ## Starts when
 
@@ -218,10 +225,10 @@ _nothing extra required_
 
 3. **The musician** Taps 'Start · 10 min'.
    - Shows: The active block screen: item title, mode and focus chips, a running ring timer.
-   - Changes: A practice block is opened in memory with mode, focus and a 10-minute target derived from the item.
+   - Changes: A practice block is opened in memory with mode, focus and a 10-minute target derived from the item. The same tap readies this page’s practice sound (one sound context for the page, readied only by a tap).
 
 4. **The musician** Practises, optionally opening 'About this piece' or jotting a passing note; pauses and resumes as needed.
-   - Shows: The elapsed clock, and the item's notes and current problem on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time) so the clock stays readable without touching anything; pausing, finishing, discarding or navigating away releases it, and the phone sleeps normally again.
+   - Shows: The elapsed clock, and the item's notes and current problem on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time) so the clock stays readable without touching anything; pausing, finishing, discarding or navigating away releases it, and the phone sleeps normally again. Resume is a tap too and readies the sound again; if sound is paused or off on this page, a note says so and offers 'Turn on sound'.
    - Changes: Elapsed seconds accumulate only while the timer runs.
 
 5. **The musician** Taps 'Finish'.
@@ -244,7 +251,8 @@ The session is recorded honestly: one block, one result, one next action — and
 - **Choose something else** — From 'Choose something else to practise…' the Start screen takes instrument → item → mode/focus/duration, with a title-only quick create for something that does not exist yet. _(Works now)_
 - **Start from an item or a stage** — 'Start a block' on an item, or ▶ on a pathway stage row, opens the same block with defaults taken from the item's status and focus. _(Works now)_
 - **Discard** — 'Discard block' (during) or 'Discard without saving' (at close) throws the block away — nothing is logged and no schedule moves. _(Works now)_
-- **Target reached** — When elapsed reaches the block's target, the ring's silent saturation is replaced by a durable 'Target reached' state plus a growing overtime figure (elapsed minus target) — announced once, never once per render. The block does NOT auto-finish — practising past the target stays ordinary, and only Finish or Discard ends it. Whether the screen-wake-lock or the accompanying sound/vibration cue succeeds, fails or is unsupported never changes the elapsed time or the minutes eventually saved. _(Works now)_
+- **Target reached** — When elapsed reaches the block's target, the ring's silent saturation is replaced by a durable 'Target reached' state plus a growing overtime figure (elapsed minus target) — announced once, never once per render. The block does NOT auto-finish — practising past the target stays ordinary, and only Finish or Discard ends it. Whether the screen-wake-lock or the accompanying two-pulse sound and vibration — readied by a Start or Resume tap, played once per granted boundary claim and never queued to sound late — succeeds, fails or is unsupported never changes the elapsed time or the minutes eventually saved. _(Works now)_
+- **Test practice sound** — Settings → Practice sound: 'Test practice sound' plays the same two-pulse cue on demand and says whether sound is ready, paused or off on this page. _(Works now)_
 
 ## Rules
 
@@ -258,3 +266,4 @@ The session is recorded honestly: one block, one result, one next action — and
 - The musician
 - The recommendation engine
 - The spaced-repetition scheduler
+

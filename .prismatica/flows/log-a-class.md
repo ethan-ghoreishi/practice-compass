@@ -8,7 +8,7 @@ presentation:
   order: 7
 truth:
   goal: Record a lesson, write up what was said after rewatching it, and turn it
-    into concrete work before the next one.
+    into concrete work before the next one
   startsWhen: The musician taps 'Add a class' on the Lessons screen for one instrument.
   needs:
     - At least one instrument exists
@@ -62,15 +62,18 @@ truth:
     - actor: The musician
       action: Links or quick-adds the practice items that came out of the class, and
         flags the ones to be ready for next time.
-      shows: Each linked item with its status and a 'For next class' toggle.
+      shows: Each linked item with its status and a 'For next class' toggle. A piece
+        the class's Setar archive lists appears too, labelled '· in this class’s
+        archive'; the item's own page names the same classes.
       changes: The lesson keeps a link to the item (never ownership — unlinking keeps
-        the item); a flagged item gains a priority boost that climbs as that
-        instrument's next class approaches.
+        the item); unlinking an archive-listed piece records only that one
+        decision and linking it again lifts it — nothing is copied into the
+        lesson’s own links; a flagged item gains a priority boost that climbs as
+        that instrument's next class approaches.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-01T20:18:28.197Z
-        commit: 782c0fde5ba646c100c702624ad5177b3cf556d4
+        method: inferred
+        at: 2026-10-05T23:19:51.493Z
     - actor: The musician
       action: Optionally attaches small hand-outs (a PDF, a photo, a short audio).
       shows: Files over 10 MB and any video are warned about; over 40 MB is refused
@@ -149,10 +152,10 @@ mechanics:
         - 1
         - 3
 approval:
-  hash: 5c72d856396414a95ce41b59cea9b33c3feeba7ea4e005b5dc75dce5ee0e9322
-  at: 2026-08-28T13:30:17.922Z
-  by: Ethan
-  signature: 85rNsnyuqrGVG1+i3HgYxJvRb1eNWlKNc4YHbFf4RBS0Mq43dNawaZO6pq+N78Eh9lp23oXdM1pQ8opavOSxCA==
+  hash: ffcf00fa4940c4336c39d75bfd6cd22b1914165ddf19068e470bf833154b0c6c
+  at: 2026-10-06T21:38:16.196Z
+  by: owner
+  signature: R7WNk6KgJk1PwourQMhH5JmCl1Cqu1exXL75I8VNKB1cYi+BDPwhaTITTseckrV8rdx7XXHHDTKAOXOZ9VdkDA==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -161,11 +164,11 @@ approval:
 
 # Log a class and its follow-up work
 
-_Works now · approved 2026-08-28T13:30:17.922Z by Ethan (signed)_
+_Works now · approved 2026-10-06T21:38:16.196Z by owner (signed)_
 
 ## Goal
 
-Record a lesson, write up what was said after rewatching it, and turn it into concrete work before the next one.
+Record a lesson, write up what was said after rewatching it, and turn it into concrete work before the next one
 
 ## Starts when
 
@@ -195,8 +198,8 @@ The musician taps 'Add a class' on the Lessons screen for one instrument.
    - Only if: A NAS base URL is set in Settings and the NAS is reachable from this device
 
 5. **The musician** Links or quick-adds the practice items that came out of the class, and flags the ones to be ready for next time.
-   - Shows: Each linked item with its status and a 'For next class' toggle.
-   - Changes: The lesson keeps a link to the item (never ownership — unlinking keeps the item); a flagged item gains a priority boost that climbs as that instrument's next class approaches.
+   - Shows: Each linked item with its status and a 'For next class' toggle. A piece the class's Setar archive lists appears too, labelled '· in this class’s archive'; the item's own page names the same classes.
+   - Changes: The lesson keeps a link to the item (never ownership — unlinking keeps the item); unlinking an archive-listed piece records only that one decision and linking it again lifts it — nothing is copied into the lesson’s own links; a flagged item gains a priority boost that climbs as that instrument's next class approaches.
 
 6. **The musician** Optionally attaches small hand-outs (a PDF, a photo, a short audio).
    - Shows: Files over 10 MB and any video are warned about; over 40 MB is refused with a clear message.
@@ -224,3 +227,4 @@ The class is on record, its material is real practice items, and the work due be
 - The musician
 - The teacher (indirectly)
 - The NAS
+

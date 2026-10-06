@@ -8,7 +8,7 @@ presentation:
   order: 5
 truth:
   goal: Follow a route you trust — see where you are, take the next suggestion
-    into your own items once, and practise it.
+    into your own items once, and practise it
   startsWhen: From Repertoire → Pathways (or the 'Now in:' card on Today) the
     musician opens a pathway and then a stage.
   needs: []
@@ -28,28 +28,29 @@ truth:
         commit: 05934c432b10546be78183f747f269786bc2ff26
     - actor: The musician
       action: Taps + on a suggestion.
-      shows: "'Added … — not practised yet.' The row now plays that item."
+      shows: "'Added … — not practised yet.' The row now plays that item, and the same
+        notice offers 'Remove from pathway' — the item is kept."
       changes: A practice item is created bound to the suggestion's reference; tapping
         again, after a move or a reload, hands back the same item — adding is
         organisation, not progress.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-01T20:19:01.169Z
-        commit: 05934c432b10546be78183f747f269786bc2ff26
+        method: inferred
+        at: 2026-10-05T23:19:51.493Z
     - actor: The musician
-      action: "Optionally uses a row's ⋯ menu: Link an existing item, Unlink
-        reference, Remove from pathway, or Hide this suggestion (restored from
-        'Hidden suggestions')."
+      action: "Optionally uses a row's ⋯ menu: Remove from pathway (first, set apart
+        from Unlink), Link an existing item, Unlink reference, or Hide this
+        suggestion (restored from 'Hidden suggestions')."
       changes: "Only organisation: Link sets one item's binding (same instrument
         only); Unlink drops one binding; Remove from pathway clears placement
         and hides the suggestion in this pathway; Hide is visibility only.
-        Nothing is deleted — Delete practice item stays on the item's own page."
+        Nothing is deleted — Delete practice item stays on the item's own page.
+        Restoring a removed suggestion answers with the same item again, and
+        says so — nothing new is made."
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-01T20:19:01.169Z
-        commit: 05934c432b10546be78183f747f269786bc2ff26
+        method: inferred
+        at: 2026-10-05T23:19:51.493Z
     - actor: The musician
       action: Taps ▶ on a row to practise it.
       shows: The ordinary active block.
@@ -79,13 +80,14 @@ truth:
         teacher-led work does not go in order.
       status: works
     - name: Guided routine
-      differs: A stage routine runs as a segmented warm-up countdown. A segment bound
-        to a real item creates an honest PracticeBlock when the run finishes
-        (result stays 'not_logged', so no review completes and no
-        spaced-repetition state advances — the practice itself IS recorded); a
-        segment with no bound item is pure warm-up and logs nothing at all.
-        While the run is genuinely active and its screen is visible, the app
-        keeps the display awake, and arriving at a new segment is visibly
+      differs: A stage routine runs as a segmented warm-up countdown, started by the
+        card's own tap (a bare routine link asks for Start rather than starting
+        itself). A segment bound to a real item creates an honest PracticeBlock
+        when the run finishes (result stays 'not_logged', so no review completes
+        and no spaced-repetition state advances — the practice itself IS
+        recorded); a segment with no bound item is pure warm-up and logs nothing
+        at all. While the run is genuinely active and its screen is visible, the
+        app keeps the display awake, and arriving at a new segment is visibly
         announced — once, and staying perceptible for a few seconds, never a
         single-render flash.
       status: works
@@ -161,10 +163,10 @@ mechanics:
       steps:
         - 4
 approval:
-  hash: b26e276ebfb07186ab1e3b338d2222a02dc2e980532efe4301348044d2494799
-  at: 2026-09-30T18:18:49.421Z
+  hash: 84b15e294bd734716277e0b702c8e58fbc766cac7eda55173a8602afe776a596
+  at: 2026-10-06T21:38:16.228Z
   by: owner
-  signature: okIW/Pc1B9PwcZPAUvyfhhkmt8chV+qr6vMn8STW6YZ6q0wwwkyb4EKZCB3PJZDZTKRJ0+02b8C/UkaOZnl3DA==
+  signature: YYTcyQGQT9es8CDiBvobw7o4RcqrWZNPBvXs2EtVr/1rbZXxVSmx8IeurwCLg1x8tZJ4rmZW5lcsZvo9DeiPBA==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -173,11 +175,11 @@ approval:
 
 # Work through a pathway stage
 
-_Works now · approved 2026-09-30T18:18:49.421Z by owner (signed)_
+_Works now · approved 2026-10-06T21:38:16.228Z by owner (signed)_
 
 ## Goal
 
-Follow a route you trust — see where you are, take the next suggestion into your own items once, and practise it.
+Follow a route you trust — see where you are, take the next suggestion into your own items once, and practise it
 
 ## Starts when
 
@@ -193,11 +195,11 @@ _nothing extra required_
    - Shows: 'n/m solid' over the visible rows; suggestions hidden in this pathway are omitted; two legacy copies answering one suggestion show as a choice.
 
 2. **The musician** Taps + on a suggestion.
-   - Shows: 'Added … — not practised yet.' The row now plays that item.
+   - Shows: 'Added … — not practised yet.' The row now plays that item, and the same notice offers 'Remove from pathway' — the item is kept.
    - Changes: A practice item is created bound to the suggestion's reference; tapping again, after a move or a reload, hands back the same item — adding is organisation, not progress.
 
-3. **The musician** Optionally uses a row's ⋯ menu: Link an existing item, Unlink reference, Remove from pathway, or Hide this suggestion (restored from 'Hidden suggestions').
-   - Changes: Only organisation: Link sets one item's binding (same instrument only); Unlink drops one binding; Remove from pathway clears placement and hides the suggestion in this pathway; Hide is visibility only. Nothing is deleted — Delete practice item stays on the item's own page.
+3. **The musician** Optionally uses a row's ⋯ menu: Remove from pathway (first, set apart from Unlink), Link an existing item, Unlink reference, or Hide this suggestion (restored from 'Hidden suggestions').
+   - Changes: Only organisation: Link sets one item's binding (same instrument only); Unlink drops one binding; Remove from pathway clears placement and hides the suggestion in this pathway; Hide is visibility only. Nothing is deleted — Delete practice item stays on the item's own page. Restoring a removed suggestion answers with the same item again, and says so — nothing new is made.
 
 4. **The musician** Taps ▶ on a row to practise it.
    - Shows: The ordinary active block.
@@ -214,7 +216,7 @@ The next piece of the route is a real practice item — taken once — with real
 ## Variations
 
 - **Teacher jumps around** — A pinned current stage always beats 'first incomplete stage', because teacher-led work does not go in order. _(Works now)_
-- **Guided routine** — A stage routine runs as a segmented warm-up countdown. A segment bound to a real item creates an honest PracticeBlock when the run finishes (result stays 'not_logged', so no review completes and no spaced-repetition state advances — the practice itself IS recorded); a segment with no bound item is pure warm-up and logs nothing at all. While the run is genuinely active and its screen is visible, the app keeps the display awake, and arriving at a new segment is visibly announced — once, and staying perceptible for a few seconds, never a single-render flash. _(Works now)_
+- **Guided routine** — A stage routine runs as a segmented warm-up countdown, started by the card's own tap (a bare routine link asks for Start rather than starting itself). A segment bound to a real item creates an honest PracticeBlock when the run finishes (result stays 'not_logged', so no review completes and no spaced-repetition state advances — the practice itself IS recorded); a segment with no bound item is pure warm-up and logs nothing at all. While the run is genuinely active and its screen is visible, the app keeps the display awake, and arriving at a new segment is visibly announced — once, and staying perceptible for a few seconds, never a single-render flash. _(Works now)_
 - **Off-catalogue items** — Anything quick-added inside the stage appears in the same list and in recommendations. _(Works now)_
 - **A default pathway this install lacks** — Before step 1, Repertoire → Pathways offers each shipped default pathway this install does not have — one newly shipped since the database was made, such as the Khonyagar Tar course, or one the owner deleted — as its own 'Add default pathway: <name>' button beside 'New pathway', only when this device has that pathway's instrument and only within the current instrument filter. Tapping one adds exactly that pathway with its seeded stages and any seeded routine whose id is not already held; nothing that exists is changed, nothing is added without that tap, and the button then disappears. _(Works now)_
 
@@ -229,3 +231,4 @@ The next piece of the route is a real practice item — taken once — with real
 
 - The musician
 - The pathway catalogue
+

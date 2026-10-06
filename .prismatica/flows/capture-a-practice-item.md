@@ -8,7 +8,7 @@ presentation:
   order: 4
 truth:
   goal: Get a new piece, gusheh, étude, passage or technique into the app without
-    breaking your concentration.
+    breaking your concentration
   startsWhen: The musician wants to record something to work on — from Today, a
     stage, a lesson, the practice list, or the Start screen.
   needs: []
@@ -38,14 +38,16 @@ truth:
     - actor: The musician
       action: Fills in identity, and optionally connects a study source (creatable
         inline), a pathway stage, a lesson and a parent work — all at creation.
-      shows: Persian instruments are asked for dastgāh, gusheh, form and composer,
-        with dastgāh and form offered as datalist suggestions; free text always
-        wins.
+      shows: Persian instruments are asked for dastgāh, gusheh, form and composer.
+        While typing in dastgāh, form or composer, up to eight matching terms
+        appear below the box as buttons — found from Farsi, Latin, an alias or a
+        transliteration — beside an ‘All’ list and a clear control; a tap, click
+        or Enter stores the shared term and returns focus to the box. A partial
+        match is never accepted on its own, and free text always wins.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-01T20:18:08.225Z
-        commit: 2ac8fac00828b43057efc14798531c74a6cdf843
+        method: inferred
+        at: 2026-10-05T23:19:51.493Z
     - actor: The musician
       action: Saves.
       shows: The item's own page, with a 'Connected to' summary near the top.
@@ -106,10 +108,10 @@ mechanics:
         - 2
         - 3
 approval:
-  hash: 54132080907d546ed32720a72d5030b83e16ed5df3b3827b5448c3df3fd035c2
-  at: 2026-08-28T13:30:17.831Z
-  by: Ethan
-  signature: 3r7JivKjGCJCXJI0CnJgup/vmajsz0IE5NlH7q2i7oO4C0vSjI+oLWFxpMBOFAz1oRfcDjt7tb2WMsvbAzYABg==
+  hash: 64e9b2c017f17127e2dae4d4104855d8b8061e93832b45396d1d574f8421ab8b
+  at: 2026-10-06T21:38:16.173Z
+  by: owner
+  signature: M4cBc9k20fn4BV9oi4qWkvzrj0fRbFwh88vqFwbr8VoKEkkinOSRJhTcodGrD5+/JW/o/kxHaFAuRt/kEOzwAQ==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -118,11 +120,11 @@ approval:
 
 # Add a practice item
 
-_Works now · approved 2026-08-28T13:30:17.831Z by Ethan (signed)_
+_Works now · approved 2026-10-06T21:38:16.173Z by owner (signed)_
 
 ## Goal
 
-Get a new piece, gusheh, étude, passage or technique into the app without breaking your concentration.
+Get a new piece, gusheh, étude, passage or technique into the app without breaking your concentration
 
 ## Starts when
 
@@ -142,7 +144,7 @@ _nothing extra required_
    - Shows: A kind-first form: what you are adding (gusheh / composed piece / piece / étude / passage / technique), then only that kind's identity fields, then 'Connect it (optional)', then the first practice setup.
 
 3. **The musician** Fills in identity, and optionally connects a study source (creatable inline), a pathway stage, a lesson and a parent work — all at creation.
-   - Shows: Persian instruments are asked for dastgāh, gusheh, form and composer, with dastgāh and form offered as datalist suggestions; free text always wins.
+   - Shows: Persian instruments are asked for dastgāh, gusheh, form and composer. While typing in dastgāh, form or composer, up to eight matching terms appear below the box as buttons — found from Farsi, Latin, an alias or a transliteration — beside an ‘All’ list and a clear control; a tap, click or Enter stores the shared term and returns focus to the box. A partial match is never accepted on its own, and free text always wins.
 
 4. **The musician** Saves.
    - Shows: The item's own page, with a 'Connected to' summary near the top.
@@ -166,3 +168,4 @@ The thing to practise exists and can be started immediately; details can be fill
 ## Involves
 
 - The musician
+
