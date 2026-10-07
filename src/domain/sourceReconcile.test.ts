@@ -1583,6 +1583,29 @@ describe('archive metadata against the accepted baseline', () => {
   const fields = (p: ReturnType<typeof planArchiveImport>, list: 'suggestions' | 'differences') =>
     p[list].map((s) => `${s.pieceKey}:${s.field}`).sort();
 
+  it('a gusheh name is offered only to an item that is a gusheh', () => {
+    const key = 'بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله';
+    const first = run(baseDB(), idx('a'));
+    const kinded = (db: PracticeDB, itemType: PracticeDB['items'][number]['itemType']): PracticeDB => ({
+      ...db,
+      items: db.items.map((i) => (i.source?.pieceKey === key ? { ...i, itemType } : i)),
+    });
+    const emptied = edit(first.next, key, { gusheh: '' });
+    // A gusheh with no name: the registry's is a difference, as for any field.
+    expect(fields(run(emptied, idx('b')).p, 'differences')).toEqual([`${key}:gusheh`]);
+    // The same item as a composed piece — the legacy import's old kind — is
+    // not offered a name its form can neither show nor clear, standing or
+    // fresh; its kind is Review Setar setup's to settle, name included.
+    const piece = kinded(emptied, 'full_piece');
+    expect(run(piece, idx('b')).p.differences).toEqual([]);
+    const renamed = run(piece, idx('c', withPiece(key, { piece: 'بسته-نگار-دوم' })));
+    expect(renamed.p.differences).toEqual([]);
+    expect(renamed.p.summary.metadata).toBe(0);
+    // Its other fields are still offered.
+    const composer = run(piece, idx('d', withPiece(key, { composer: 'صبا' })));
+    expect(fields(composer.p, 'suggestions')).toEqual([`${key}:composer`]);
+  });
+
   it('setar metadata refresh offers only new meaningful source proposals', () => {
     // Two custom composers claim one spelling: «Ambig» is AMBIGUOUS, so it
     // stays the owner's literal text and compares as text.

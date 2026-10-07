@@ -332,10 +332,13 @@ describe('archive metadata choices, seen', () => {
         // Click swaps it, and the two looks swap with it.
         await choice(F1!, 'Use archive value').click();
         expect(await pressedLook(F1!, 'Use archive value'), where).toEqual(first);
+        // The choice is SEEN to count before Apply: the summary names it.
+        expect(await page.locator('main').innerText(), where).toMatch(/classes · will set 1 field to the archive’s value · /);
         // The keyboard does the same: Keep (Enter), then Use again (Space).
         await choice(F1!, 'Keep my value').focus();
         await page.keyboard.press('Enter');
         expect(await pressedLook(F1!, 'Keep my value'), where).toEqual(first);
+        expect(await page.locator('main').innerText(), where).not.toMatch(/to the archive’s value/);
         await choice(F1!, 'Use archive value').focus();
         await page.keyboard.press('Space');
         expect(await pressedLook(F1!, 'Use archive value'), where).toEqual(first);
@@ -360,6 +363,7 @@ describe('archive metadata choices, seen', () => {
         expect(await pressedLook(F1!, 'Use archive value'), where).toEqual(first);
         await page.getByRole('button', { name: 'Apply' }).click();
         await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+        expect(await page.locator('main').innerText(), where).toMatch(/classes · set 1 field to the archive’s value · /);
         const after = await until(app, (x) => x, (x) => x.items.find((i) => i.id === f1)!.persian?.composer === 'ابوالحسن صبا');
         expect(after.items.find((i) => i.id === f2)!.persian?.composer, where).toBe(beforeApply.items.find((i) => i.id === f2)!.persian?.composer);
         expect(after.items.find((i) => i.id === f2)!.persian?.composer, where).toBe('Morad-Khani');

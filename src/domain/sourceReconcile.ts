@@ -722,6 +722,11 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       // EMPTY.
       const baseline = accepted.get(piece.key);
       for (const field of ['dastgahAvaz', 'gusheh', 'form', 'composer'] as MetadataField[]) {
+        // A gusheh NAME belongs to a gusheh: the registry's comes from its kind
+        // reading, and on an item of another kind it would be a name the item
+        // form neither shows nor can clear. The kind is Review Setar setup's
+        // question, which writes kind and name together.
+        if (field === 'gusheh' && bound.itemType !== 'gusheh') continue;
         const proposed = persianFromPiece(piece)[field] ?? '';
         const current = bound.persian?.[field] ?? null;
         if (!offers(current, proposed, field, vocab)) continue;

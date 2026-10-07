@@ -36,6 +36,26 @@ Five reports, one heavy lane (contract 20261007-…-039e, issue #47).
   semantics (what is stale) were not this lane's to change. So "a cleared
   answer writes nothing" holds only for a question still open; clearing one
   that would no longer be asked gets the unasked default, said on its row.
+- **A difference row was read, not misapplied** (owner testing). The writes were
+  right; "gusheh — yours: — · archive: X" used one dash as separator and empty
+  value, and a choice changed no count ("will update 0" either way). Chosen: the
+  setup review's grammar ("Field: none → X", item-form field names), intros
+  saying Apply writes only rows set to Use archive value, the summary saying
+  "will set N fields to the archive's value" before Apply and "set" after
+  (component-side, by `decisionMatchesSuggestion`; a zero "update" count gives
+  way beside it), and the rows start-aligned like the rest of the section
+  (`.list-row` had centred them). Rejected: relabelling the buttons (the
+  contract names Keep my value).
+- **A gusheh name is offered only to a gusheh.** Every one of the owner's
+  standing differences was a legacy درامد/چهارپاره item, imported as a composed
+  piece, offered the registry's gusheh name. Taken, it left a composed piece
+  with a name the item form hides ("Gusheh (radif only)") and cannot clear. The
+  registry derives that name from its kind reading, and the kind is Review Setar
+  setup's question, which writes kind and name together (each of those items
+  has that row). So the plan offers `gusheh` only where the item IS a gusheh,
+  standing or fresh; other fields are offered as before, and nothing already
+  written is touched. Rejected: Use archive value also changing the kind (a
+  second door to setup's decision) or showing the field on composed pieces.
 - **Repertoire search was a real, rare defect.** The box showed the URL's query;
   the router renders a URL change in a transition, and while one is pending React
   restores a controlled input to its last rendered value — "pishdaramad" became

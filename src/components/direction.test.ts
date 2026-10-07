@@ -667,7 +667,7 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.nextAction}</span>' },
   // A registry improvement offered on Refresh: the value the owner has and the
   // value the archive proposes are authored independently of each other.
-  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
+  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from}</span>" },
   { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
   // Review Setar setup: each owner-authored before/after value, in its own isolate.
   { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="auto">' },
@@ -726,7 +726,7 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'components/SetarSetupReview.tsx', snippet: '<span dir="ltr">\n                      {FIELD[p.field]}: <Value db={db} v={p.before} />' },
   // Refresh Setar archive: a difference line and an attention line, each ONE
   // isolate with its values nested.
-  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"ltr\">\n            {FIELD_LABELS[sg.field]} — yours: <span dir=\"auto\">{sg.from || '—'}</span> · archive: <span dir=\"auto\">{sg.to}</span>" },
+  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"ltr\">\n            {FIELD_NAMES[sg.field]}: {sg.from ? <span dir=\"auto\">{sg.from}</span> : 'none'} → <span dir=\"auto\">{sg.to}</span>" },
   { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="ltr">\n                      <span dir="auto">{d.path}</span> — {d.reason}' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },

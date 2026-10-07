@@ -15,6 +15,7 @@
     "materials": { "mat-radif-borumand": "Radif روایت برومند" },
     "stages": { "setar-radif-forms": { "code": "Forms", "title": "Composed & improvised" } },
     "persian": {
+      "src-cecabb9927a83707": { "composer": "" },
       "src-d9411fce694a919c": { "composer": "Morad-Khani" },
       "src-f51b1fd3f6b11be9": { "composer": "Ali-Akbar S. (استاد من)" },
       "src-1e53fb5dcf056207": { "form": "Gusheh گوشه" }
@@ -119,27 +120,33 @@
         "piece": "اتود-وزیری",
         "dir": "rtl",
         "field": "composer",
-        "tokens": ["composer — yours:", "وزیری", "· archive:", "ابوالحسن صبا"]
+        "tokens": ["Composer / maestro:", "وزیری", "→", "ابوالحسن صبا"]
       },
       {
         "piece": "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله",
         "dir": "rtl",
         "field": "composer",
-        "tokens": ["composer — yours:", "Morad-Khani", "· archive:", "مرادخانی (Moradkhani)"]
+        "tokens": ["Composer / maestro:", "Morad-Khani", "→", "مرادخانی (Moradkhani)"]
       }
     ],
     "standing": [
       {
+        "piece": "تمرین-دشتی-1-علیزاده",
+        "dir": "rtl",
+        "field": "composer",
+        "tokens": ["Composer / maestro:", "none", "→", "علیزاده"]
+      },
+      {
         "piece": "Jang-e Shahnazi",
         "dir": "ltr",
         "field": "composer",
-        "tokens": ["composer — yours:", "Ali-Akbar S. (استاد من)", "· archive:", "شهنازی"]
+        "tokens": ["Composer / maestro:", "Ali-Akbar S. (استاد من)", "→", "شهنازی"]
       },
       {
         "piece": "آواز-دشتی-شور",
         "dir": "rtl",
         "field": "form",
-        "tokens": ["form — yours:", "Gusheh گوشه", "· archive:", "گوشه"]
+        "tokens": ["Form:", "Gusheh گوشه", "→", "گوشه"]
       }
     ]
   },

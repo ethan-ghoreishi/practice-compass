@@ -43,7 +43,7 @@ type Phase =
   | { kind: 'idle' }
   | { kind: 'working' }
   | { kind: 'error'; message: string }
-  | { kind: 'done'; message: string; plan?: ImportPlan; commitSha?: string }
+  | { kind: 'done'; message: string; plan?: ImportPlan; commitSha?: string; fromArchive: number }
   | { kind: 'preview'; fetched: FetchedIndex; rev: number; plan: ImportPlan; notice?: string };
 
 export default function ArchiveRefresh() {
@@ -151,7 +151,7 @@ export default function ArchiveRefresh() {
       setPhase({ kind: 'error', message: result.message });
       return;
     }
-    setPhase({ kind: 'done', message: result.message, plan: phase.plan, commitSha: fetched.commitSha });
+    setPhase({ kind: 'done', message: result.message, plan: phase.plan, commitSha: fetched.commitSha, fromArchive });
   }
 
   // A restore changes what a preview on screen was decided against: look again.
@@ -161,6 +161,9 @@ export default function ArchiveRefresh() {
 
   const plan = phase.kind === 'preview' ? phase.plan : undefined;
   const standing = plan ? plan.differences.filter((d) => !d.fresh) : [];
+  // What Apply will write from the difference rows: the plan's own matching
+  // rule, so a choice is seen to count the moment it is made.
+  const fromArchive = plan ? decisions.filter((d) => plan.differences.some((x) => decisionMatchesSuggestion(d, x))).length : 0;
   // Open and answered questions together, in the index's own order, so
   // answering one never moves it: it stays where it was, its answer shown.
   const asked: (ReconcileQuestion | AnsweredQuestion)[] = [];
@@ -229,7 +232,7 @@ export default function ArchiveRefresh() {
       {phase.kind === 'done' && (
         <div className="tiny" aria-live="polite" style={{ textAlign: 'start' }}>
           <span dir="ltr">{phase.message}</span>
-          {phase.plan && <Summary plan={phase.plan} done commitSha={phase.commitSha} />}
+          {phase.plan && <Summary plan={phase.plan} done commitSha={phase.commitSha} fromArchive={phase.fromArchive} />}
         </div>
       )}
 
@@ -240,13 +243,13 @@ export default function ArchiveRefresh() {
       )}
       {phase.kind === 'preview' && plan && (
         <div className="stack-sm">
-          <Summary plan={plan} commitSha={phase.fetched.commitSha} />
+          <Summary plan={plan} commitSha={phase.fetched.commitSha} fromArchive={fromArchive} />
 
           {asked.length > 0 && (
             <div className="stack-sm">
               <div className="section-label">Needs a decision</div>
               {asked.map((q) => (
-                <div key={`${q.kind}-${q.pieceKey ?? q.sessionN}`} className="list-row stack-sm">
+                <div key={`${q.kind}-${q.pieceKey ?? q.sessionN}`} className="list-row stack-sm" style={ROW}>
                   {/* The GROUP is the name and the sentence that belongs to it;
                       the fixed English buttons below sit OUTSIDE it, so a Farsi
                       piece name cannot claim their bidi base. */}
@@ -298,8 +301,8 @@ export default function ArchiveRefresh() {
               <div className="section-label">Archive metadata differs</div>
               <p className="tiny faint" style={{ textAlign: 'start', margin: 0 }}>
                 <span dir="ltr">
-                  The registry changed these since this device last accepted the archive. Your value stays unless you
-                  choose the archive’s.
+                  The registry changed these since this device last accepted the archive. Each line reads your value →
+                  the archive’s. Apply changes only the ones set to Use archive value.
                 </span>
               </p>
               {plan.suggestions.map((sg) => (
@@ -323,8 +326,8 @@ export default function ArchiveRefresh() {
                 <>
                   <p className="tiny faint" style={{ textAlign: 'start', margin: 0 }}>
                     <span dir="ltr">
-                      Values you already have that differ from the registry, which has not changed them. Nothing here
-                      changes unless you choose it.
+                      Fields of your pieces that differ from the registry, which has not changed them. Each line reads
+                      your value → the archive’s. Apply changes only the ones set to Use archive value.
                     </span>
                   </p>
                   {standing.map((sg) => (
@@ -374,14 +377,16 @@ function DifferenceRow({
   // has since edited is no longer this difference's answer.
   const used = decisions.some((d) => decisionMatchesSuggestion(d, sg));
   return (
-    <div className="list-row stack-sm">
+    <div className="list-row stack-sm" style={ROW}>
       <div dir="auto" style={{ textAlign: 'start' }}>
         <strong>{sg.pieceKey}</strong>
         {/* ONE line, ONE isolate, each value nested in its own: as sibling
-            isolates beside a Farsi key the line ran right to left. */}
+            isolates beside a Farsi key the line ran right to left. The same
+            grammar as Review Setar setup — field: yours → archive's — with an
+            empty value said as "none", never a dash beside the separators. */}
         <div className="tiny faint">
           <span dir="ltr">
-            {FIELD_LABELS[sg.field]} — yours: <span dir="auto">{sg.from || '—'}</span> · archive: <span dir="auto">{sg.to}</span>
+            {FIELD_NAMES[sg.field]}: {sg.from ? <span dir="auto">{sg.from}</span> : 'none'} → <span dir="auto">{sg.to}</span>
             {sg.provisional ? ' · the registry marks this identity provisional' : null}
           </span>
         </div>
@@ -398,9 +403,13 @@ function DifferenceRow({
   );
 }
 
-function Summary({ plan, done = false, commitSha }: { plan: ImportPlan; done?: boolean; commitSha?: string }) {
+function Summary({ plan, done = false, commitSha, fromArchive }: { plan: ImportPlan; done?: boolean; commitSha?: string; fromArchive: number }) {
   const s = plan.summary;
   const [open, setOpen] = useState(false);
+  // The fields chosen from the archive are said as what Apply sets; "update 0"
+  // beside them read as a contradiction, so a zero update count gives way.
+  const updated = s.updatedLessons || !fromArchive ? ` · ${done ? 'Updated' : 'will update'} ${s.updatedLessons}` : '';
+  const used = fromArchive ? ` · ${done ? 'set' : 'will set'} ${fromArchive} field${fromArchive === 1 ? '' : 's'} to the archive’s value` : '';
   const counts = [
     `${s.questions} to decide`,
     s.metadata ? `${s.metadata} archive change${s.metadata === 1 ? '' : 's'} to look at` : null,
@@ -413,7 +422,7 @@ function Summary({ plan, done = false, commitSha }: { plan: ImportPlan; done?: b
         <span dir="ltr">
           {s.unchanged
             ? `Already current. ${counts.slice(1).join(' · ')}`
-            : `${done ? 'Added' : 'Will add'} ${s.addedItems} pieces and ${s.addedLessons} classes · ${done ? 'Updated' : 'will update'} ${s.updatedLessons} · ${counts.join(' · ')}`}
+            : `${done ? 'Added' : 'Will add'} ${s.addedItems} pieces and ${s.addedLessons} classes${updated}${used} · ${counts.join(' · ')}`}
         </span>
       </div>
       <div className="tiny faint" style={{ textAlign: 'start' }}>
@@ -598,10 +607,21 @@ function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
 
 const LINK_BTN = { background: 'none', border: 'none', padding: 0 } as const;
 
-/** Plain names for the registry fields an improvement can touch. */
+/** Plain names for the registry fields an improvement can touch (the choice group's accessible name). */
 const FIELD_LABELS: Record<MetadataField, string> = {
   dastgahAvaz: 'dastgāh',
   gusheh: 'gusheh',
   form: 'form',
   composer: 'composer',
+};
+
+/** A stacked row starts where the section does: `.list-row` centres its children, which floated each one mid-page. */
+const ROW = { alignItems: 'flex-start' } as const;
+
+/** The same fields as the item form names them, for the difference line the owner reads. */
+const FIELD_NAMES: Record<MetadataField, string> = {
+  dastgahAvaz: 'Dastgāh / Āvāz',
+  gusheh: 'Gusheh',
+  form: 'Form',
+  composer: 'Composer / maestro',
 };
