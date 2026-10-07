@@ -1583,6 +1583,29 @@ describe('archive metadata against the accepted baseline', () => {
   const fields = (p: ReturnType<typeof planArchiveImport>, list: 'suggestions' | 'differences') =>
     p[list].map((s) => `${s.pieceKey}:${s.field}`).sort();
 
+  it('a gusheh name is offered only to an item that is a gusheh', () => {
+    const key = 'بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله';
+    const first = run(baseDB(), idx('a'));
+    const kinded = (db: PracticeDB, itemType: PracticeDB['items'][number]['itemType']): PracticeDB => ({
+      ...db,
+      items: db.items.map((i) => (i.source?.pieceKey === key ? { ...i, itemType } : i)),
+    });
+    const emptied = edit(first.next, key, { gusheh: '' });
+    // A gusheh with no name: the registry's is a difference, as for any field.
+    expect(fields(run(emptied, idx('b')).p, 'differences')).toEqual([`${key}:gusheh`]);
+    // The same item as a composed piece — the legacy import's old kind — is
+    // not offered a name its form can neither show nor clear, standing or
+    // fresh; its kind is Review Setar setup's to settle, name included.
+    const piece = kinded(emptied, 'full_piece');
+    expect(run(piece, idx('b')).p.differences).toEqual([]);
+    const renamed = run(piece, idx('c', withPiece(key, { piece: 'بسته-نگار-دوم' })));
+    expect(renamed.p.differences).toEqual([]);
+    expect(renamed.p.summary.metadata).toBe(0);
+    // Its other fields are still offered.
+    const composer = run(piece, idx('d', withPiece(key, { composer: 'صبا' })));
+    expect(fields(composer.p, 'suggestions')).toEqual([`${key}:composer`]);
+  });
+
   it('setar metadata refresh offers only new meaningful source proposals', () => {
     // Two custom composers claim one spelling: «Ambig» is AMBIGUOUS, so it
     // stays the owner's literal text and compares as text.
@@ -1848,5 +1871,203 @@ describe('renames reach every consumer exactly', () => {
     expect(s1Rows(restored.next)[`${S1}/نمونه-1.mp4`]!.unavailable).toBe(false);
     expect(recs(restored.next)).toEqual(recs(logged.next));
     expect(sourceOf(restored.next).suppressions).toEqual(sourceOf(logged.next).suppressions);
+  });
+});
+
+describe('answered questions, until Apply', () => {
+  it('an answered question is reported with its answer and is not counted as open', () => {
+    // One ambiguous piece (two exact-name candidates) and one ambiguous class
+    // (two indistinguishable candidates): the two questions a refresh asks.
+    const sameTitle = item({ id: 'mine-araq', title: 'عراق' });
+    const aliasTitle = item({ id: 'mine-alias', title: 'araq' });
+    const evidence = lesson({
+      id: 'legacy-13',
+      date: '2024-09-03',
+      number: 13,
+      recordings: [
+        {
+          id: 'r1',
+          title: 'Class 13',
+          path: 'setar-classes/session-13-03-09-2024/video-20240903-152547-meeting-recording.mp4',
+          kind: 'video',
+          createdAt: '2024-09-04T00:00:00.000Z',
+        },
+      ],
+    });
+    const twin = { ...evidence, id: 'legacy-13-twin' };
+    const db = baseDB({ items: [sameTitle, aliasTitle], lessons: [evidence, twin] });
+    const run = (decisions: Parameters<typeof planArchiveImport>[0]['decisions']) =>
+      planArchiveImport({ db, index: INDEX, instrumentId: SETAR, decisions, now: NOW });
+
+    const open = run([]);
+    const askedPiece = open.questions.find((q) => q.pieceKey === 'عراق')!;
+    const askedClass = open.questions.find((q) => q.sessionN === 13)!;
+    expect(askedPiece.candidates.map((c) => c.id).sort()).toEqual(['mine-alias', 'mine-araq']);
+    expect(askedClass.candidates.map((c) => c.id).sort()).toEqual(['legacy-13', 'legacy-13-twin']);
+    expect([open.answered, open.summary.questions]).toEqual([[], open.questions.length]);
+
+    // Every answer kind, on each side: the question leaves the OPEN list, is
+    // reported with exactly that answer and the same choices, and the count
+    // of what is left to decide drops by one each.
+    const answers = [
+      { kind: 'link-item', pieceKey: 'عراق', itemId: 'mine-alias' },
+      { kind: 'create-item', pieceKey: 'عراق' },
+      { kind: 'skip-item', pieceKey: 'عراق' },
+      { kind: 'link-lesson', sessionN: 13, lessonId: 'legacy-13-twin' },
+      { kind: 'create-lesson', sessionN: 13 },
+      { kind: 'skip-lesson', sessionN: 13 },
+    ] as const;
+    for (const d of answers) {
+      const p = run([d]);
+      const asked = 'pieceKey' in d ? askedPiece : askedClass;
+      const isIt = (q: { pieceKey?: string; sessionN?: number }) => q.pieceKey === asked.pieceKey && q.sessionN === asked.sessionN;
+      expect(p.questions.some(isIt), d.kind).toBe(false);
+      expect(p.answered, d.kind).toEqual([{ ...asked, answer: d, ambiguous: true }]);
+      expect(p.summary.questions, d.kind).toBe(open.questions.length - 1);
+      expect(p.staleDecisions, d.kind).toEqual([]);
+    }
+    // CLEARED with the candidates unchanged: the plan is exactly the
+    // unanswered one — the question open, counted, nothing written for it.
+    const clears = [
+      { kind: 'clear-item', pieceKey: 'عراق' },
+      { kind: 'clear-lesson', sessionN: 13 },
+    ] as const;
+    for (const d of clears) expect(run([d]), d.kind).toEqual(open);
+
+    // Both answered at once: nothing left to decide, both reported in order.
+    const both = run([answers[3], answers[0]]);
+    expect(both.answered.map((q) => q.answer)).toEqual([answers[3], answers[0]]);
+    expect(both.questions.filter((q) => q.pieceKey === 'عراق' || q.sessionN === 13)).toEqual([]);
+
+    // A LINK WHOSE TARGET NO LONGER QUALIFIES is stale, never answered: the
+    // question is open again, and nothing is adopted. Bound elsewhere, moved
+    // to another instrument, or deleted — each one.
+    const moved: PracticeDB[] = [
+      { ...db, items: db.items.map((i) => (i.id === 'mine-alias' ? { ...i, source: { archiveId: 'other', pieceKey: 'x' } } : i)) },
+      { ...db, items: db.items.map((i) => (i.id === 'mine-alias' ? { ...i, instrumentId: 'inst-tar' } : i)) },
+      { ...db, items: db.items.filter((i) => i.id !== 'mine-alias') },
+    ];
+    for (const m of moved) {
+      const p = planArchiveImport({ db: m, index: INDEX, instrumentId: SETAR, decisions: [answers[0]], now: NOW });
+      expect(p.answered).toEqual([]);
+      expect(p.staleDecisions).toEqual([answers[0]]);
+      expect(p.adoptedItems).toEqual([]);
+      const reasked = p.questions.find((q) => q.pieceKey === 'عراق')!;
+      expect(reasked.candidates.map((c) => c.id)).not.toContain('mine-alias');
+      expect(reasked.candidates.length).toBeGreaterThan(0);
+    }
+    // The class side, with a THIRD indistinguishable candidate so two remain
+    // after the linked one moves: the question is asked again, without it.
+    const triplets = { ...db, lessons: [...db.lessons, { ...evidence, id: 'legacy-13-third' }] };
+    const lessonGone = { ...triplets, lessons: triplets.lessons.map((l) => (l.id === 'legacy-13-twin' ? { ...l, instrumentId: 'inst-tar' } : l)) };
+    const staleClass = planArchiveImport({ db: lessonGone, index: INDEX, instrumentId: SETAR, decisions: [answers[3]], now: NOW });
+    expect([staleClass.answered, staleClass.staleDecisions]).toEqual([[], [answers[3]]]);
+    expect(staleClass.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+    expect(staleClass.questions.find((q) => q.sessionN === 13)!.candidates.map((c) => c.id).sort()).toEqual(['legacy-13', 'legacy-13-third']);
+
+    // EVERY DECISION APPLY EXECUTES IS ON SCREEN, even when its candidates
+    // moved after it was chosen: reported with its answer, not open, and
+    // `ambiguous: false` so the row never claims a match that is gone. The
+    // effects are written out by hand, not read back from the plan.
+    const sourced = (key: string) => ({ archiveId: 'setar-classes', pieceKey: key });
+    // Items: ONE exact-title candidate, answered, then renamed (a sync pull).
+    const single = baseDB({ items: [sameTitle] });
+    const renamed = { ...single, items: [{ ...sameTitle, title: 'عراقِ من' }] };
+    const pieceAnswers = [answers[0], answers[1], answers[2]].map((d) => (d.kind === 'link-item' ? { ...d, itemId: 'mine-araq' } : d));
+    for (const d of pieceAnswers) {
+      const before = planArchiveImport({ db: single, index: INDEX, instrumentId: SETAR, decisions: [d], now: NOW });
+      expect(before.answered.map((q) => [q.answer, q.ambiguous]), d.kind).toEqual([[d, true]]);
+      const p = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [d], now: NOW });
+      expect(p.questions.some((q) => q.pieceKey === 'عراق'), d.kind).toBe(false);
+      expect(p.staleDecisions, d.kind).toEqual([]);
+      expect(p.answered, d.kind).toEqual([
+        {
+          kind: 'item',
+          pieceKey: 'عراق',
+          label: 'عراق',
+          candidates: d.kind === 'link-item' ? [{ id: 'mine-araq', title: 'عراقِ من', why: 'Your chosen link; it no longer matches.' }] : [],
+          answer: d,
+          ambiguous: false,
+        },
+      ]);
+      expect(p.adoptedItems.map((i) => [i.id, i.title, i.source]), d.kind).toEqual(
+        d.kind === 'link-item' ? [['mine-araq', 'عراقِ من', sourced('عراق')]] : [],
+      );
+      expect(p.newItems.filter((i) => i.source?.pieceKey === 'عراق').length, d.kind).toBe(d.kind === 'create-item' ? 1 : 0);
+      expect(p.source.suppressions.some((x) => x.kind === 'piece' && x.ref === 'عراق'), d.kind).toBe(d.kind === 'skip-item');
+    }
+    // CLEARED there: the question is OPEN again with its live candidates
+    // (none), counted, and Apply writes NOTHING for it — not the unasked
+    // default, which with no decision at all adds the piece.
+    const unaskedPiece = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
+    expect(unaskedPiece.newItems.filter((i) => i.source?.pieceKey === 'عراق').length).toBe(1);
+    const clearedPiece = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [clears[0]], now: NOW });
+    expect(clearedPiece.questions.filter((q) => q.pieceKey === 'عراق')).toEqual([{ kind: 'item', pieceKey: 'عراق', label: 'عراق', candidates: [] }]);
+    expect(clearedPiece.summary.questions).toBe(unaskedPiece.summary.questions + 1);
+    expect(clearedPiece.answered.some((q) => q.pieceKey === 'عراق')).toBe(false);
+    expect(clearedPiece.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect([clearedPiece.adoptedItems, clearedPiece.staleDecisions]).toEqual([[], []]);
+    expect(clearedPiece.source.suppressions.some((x) => x.ref === 'عراق')).toBe(false);
+    // And Apply writes nothing about it, item or suppression.
+    const clearedDb = applyArchiveImport(renamed, clearedPiece, [clears[0]]);
+    expect(clearedDb.items.filter((i) => i.source?.pieceKey === 'عراق' || i.id === 'mine-araq')).toEqual(renamed.items);
+    expect(clearedDb.archiveSources?.[0]?.suppressions.some((x) => x.ref === 'عراق')).toBe(false);
+    // Classes: TWO indistinguishable candidates, answered, then one or both
+    // stop matching (a number corrected elsewhere).
+    const renumber = (ids: string[]) => ({ ...db, lessons: db.lessons.map((l) => (ids.includes(l.id) ? { ...l, number: 99 } : l)) });
+    const linkFirst = { kind: 'link-lesson', sessionN: 13, lessonId: 'legacy-13' } as const;
+    for (const moved of [['legacy-13-twin'], ['legacy-13', 'legacy-13-twin']]) {
+      const left = ['legacy-13', 'legacy-13-twin'].filter((id) => !moved.includes(id));
+      for (const d of [linkFirst, answers[4], answers[5]]) {
+        const label = `${d.kind} with ${left.length} left`;
+        const p = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [d], now: NOW });
+        expect(p.questions.some((q) => q.sessionN === 13), label).toBe(false);
+        expect(p.staleDecisions, label).toEqual([]);
+        const shown = p.answered.find((q) => q.sessionN === 13)!;
+        expect([shown.answer, shown.ambiguous, shown.label], label).toEqual([d, false, askedClass.label]);
+        const offered = d.kind === 'link-lesson' && !left.includes('legacy-13') ? [...left, 'legacy-13'] : left;
+        expect(shown.candidates.map((c) => c.id), label).toEqual(offered);
+        const adopted = p.adoptedLessons.filter((l) => l.source?.sessionN === 13).map((l) => l.id);
+        expect(adopted, label).toEqual(d.kind === 'link-lesson' ? ['legacy-13'] : []);
+        expect(p.newLessons.filter((l) => l.source?.sessionN === 13).length, label).toBe(d.kind === 'create-lesson' ? 1 : 0);
+        expect(p.source.suppressions.some((x) => x.kind === 'session' && x.ref === '13'), label).toBe(d.kind === 'skip-lesson');
+      }
+      // CLEARED there: OPEN again with the live candidates, and NOTHING
+      // written — not the unasked default, which with no decision at all
+      // adopts the one class still matching, or with none adds a class.
+      const unasked = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
+      expect(unasked.adoptedLessons.filter((l) => l.source?.sessionN === 13).map((l) => l.id)).toEqual(left);
+      expect(unasked.newLessons.filter((l) => l.source?.sessionN === 13).length).toBe(left.length ? 0 : 1);
+      const cleared = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [clears[1]], now: NOW });
+      const reopened = cleared.questions.filter((q) => q.sessionN === 13);
+      expect(reopened.map((q) => [q.label, q.candidates.map((c) => c.id)])).toEqual([[askedClass.label, left]]);
+      expect(cleared.summary.questions).toBe(unasked.summary.questions + 1);
+      expect(cleared.answered.some((q) => q.sessionN === 13)).toBe(false);
+      expect(cleared.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+      expect(cleared.newLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+      expect(cleared.staleDecisions).toEqual([]);
+      expect(cleared.source.suppressions.some((x) => x.ref === '13')).toBe(false);
+      const written = applyArchiveImport(renumber(moved), cleared, [clears[1]]);
+      expect(written.lessons.filter((l) => l.source?.sessionN === 13)).toEqual([]);
+      expect(written.lessons.filter((l) => !l.source)).toEqual(renumber(moved).lessons);
+    }
+
+    // A decision about something never asked is reported too — Apply would
+    // execute it — never as ambiguous: skipping a piece nobody else claims
+    // still suppresses it, exactly as before.
+    const unasked = run([{ kind: 'skip-item', pieceKey: 'آشوراوند' }]);
+    expect(unasked.answered.map((q) => [q.pieceKey, q.candidates, q.ambiguous])).toEqual([['آشوراوند', [], false]]);
+    expect(unasked.source.suppressions.map((s) => s.ref)).toContain('آشوراوند');
+    // Cleared, it is asked with no candidates and writes nothing — neither the
+    // suppression nor the piece the unasked refresh would add.
+    const clearedUnasked = run([{ kind: 'clear-item', pieceKey: 'آشوراوند' }]);
+    expect(clearedUnasked.questions.filter((q) => q.pieceKey === 'آشوراوند').map((q) => q.candidates)).toEqual([[]]);
+    expect(clearedUnasked.newItems.some((i) => i.source?.pieceKey === 'آشوراوند')).toBe(false);
+    expect(clearedUnasked.source.suppressions.some((s) => s.ref === 'آشوراوند')).toBe(false);
+    // A clear about a question already settled (bound, suppressed) is never
+    // stale: it asks nothing to be written.
+    const skipped = applyArchiveImport(db, unasked, [{ kind: 'skip-item', pieceKey: 'آشوراوند' }]);
+    const afterSkip = planArchiveImport({ db: skipped, index: INDEX, instrumentId: SETAR, decisions: [{ kind: 'clear-item', pieceKey: 'آشوراوند' }], now: NOW });
+    expect([afterSkip.staleDecisions, afterSkip.questions.some((q) => q.pieceKey === 'آشوراوند')]).toEqual([[], false]);
   });
 });

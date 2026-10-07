@@ -1,0 +1,102 @@
+{
+  "contractId": "20261007-fix-setar-review-and-archive-direction-a-039e",
+  "event": "check_run",
+  "at": "2026-10-07T01:17:46.524Z",
+  "pass": true,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "detail": "npx vitest run --reporter=json"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "no separate journey command is configured — browser tests may be included in another configured runner, which is not inferred here"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "16 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "9 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "all required docs were updated"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "instruction-budget",
+      "status": "pass",
+      "detail": "prismatica-instructions/2: claude 32760 of 32768 bytes (CLAUDE.md 865 B, AGENTS.md 31895 B); codex 31895 of 32768 bytes (AGENTS.md 31895 B)"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "flow report covers what this change touches"
+    },
+    {
+      "name": "implementation",
+      "status": "pass",
+      "detail": "attribution, not proof: prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified"
+    }
+  ],
+  "changedFiles": [
+    "AGENTS.md",
+    "DECISIONS.md",
+    "docs/repertoire-experience.md",
+    "docs/setar-archive.md",
+    "src/components/ArchiveRefresh.tsx",
+    "src/components/ReferenceChoices.tsx",
+    "src/components/SetarSetupReview.tsx",
+    "src/components/direction.test.ts",
+    "src/components/pressedState.test.ts",
+    "src/domain/sourceReconcile.test.ts",
+    "src/domain/sourceReconcile.ts",
+    "src/pages/Repertoire.tsx",
+    "tests/fixtures/setar-review-ui.json",
+    "tests/practiceBrowser.ts",
+    "tests/repertoire-experience.browser.test.ts",
+    "tests/setar-review-ui.browser.test.ts"
+  ],
+  "prismaticaVersion": "0.10.0"
+}

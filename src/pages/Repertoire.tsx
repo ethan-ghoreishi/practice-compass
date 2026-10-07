@@ -85,6 +85,9 @@ const VIEWS: { key: RepertoireView; label: string }[] = [
  */
 type BrowseUpdate = (change: (current: BrowseState) => BrowseState, opts?: { replace?: boolean }) => void;
 
+/** The query as the URL holds it NOW. The app runs under a HashRouter: the live query is the hash's. */
+const liveParams = () => new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+
 function useBrowseState(): [BrowseState, BrowseUpdate, string] {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
@@ -98,9 +101,8 @@ function useBrowseState(): [BrowseState, BrowseUpdate, string] {
       quick: QUICK.map((q) => q.key),
     });
   const state = read(params);
-  // The app runs under a HashRouter: the live query is the hash's.
   const update: BrowseUpdate = (change, opts) =>
-    setParams(browseParams(change(read(new URLSearchParams(window.location.hash.split('?')[1] ?? '')))), {
+    setParams(browseParams(change(read(liveParams()))), {
       replace: opts?.replace ?? false,
     });
   return [state, update, `${location.pathname}?${browseParams(state).toString()}`];
@@ -195,6 +197,17 @@ function SearchBox({
   state: BrowseState;
   update: BrowseUpdate;
 }) {
+  // The box shows what was TYPED, never the query as last rendered: the
+  // router renders a URL change in a transition, and while one is pending
+  // React puts a controlled input back to the value it last rendered, so a
+  // keystroke arriving before the previous one committed was undone. Typing
+  // writes the URL synchronously, so the live URL always equals what was
+  // typed; when the RENDERED query has caught up with a live URL that says
+  // something else, someone else moved it (back/forward, Clear filters) and
+  // the box follows (React's guarded set-during-render, never an effect).
+  const [typed, setTyped] = useState(state.q);
+  const live = liveParams().get('q') ?? '';
+  if (state.q === live && typed !== live) setTyped(live);
   return (
     <input
       className="input"
@@ -202,9 +215,10 @@ function SearchBox({
       dir="auto"
       aria-label={label}
       placeholder={placeholder}
-      value={state.q}
+      value={typed}
       onChange={(e) => {
         const q = e.target.value;
+        setTyped(q);
         update((s) => ({ ...s, q }), { replace: true });
       }}
     />

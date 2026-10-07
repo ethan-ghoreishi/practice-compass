@@ -310,6 +310,28 @@ applies the lot in one store mutation.
   source-path evidence**. Date alone, number alone or title alone cannot merge.
 - An exact title or literal alias match produces **Link / Create separately /
   Skip** — never an automatic merge, and never "pick the first candidate".
+  An answered question **stays listed with its answer selected** until Apply,
+  and can be switched or cleared there (`plan.answered`); Apply writes exactly
+  the answers selected then, an unanswered or cleared one writes nothing, and
+  "N to decide" counts only the open ones. **Every decision Apply would execute
+  is listed**, even when its candidates moved after it was chosen (a sync
+  renamed the only match, two matching classes became one): it stays selected,
+  switchable and clearable, says the matches changed (`ambiguous: false`), and
+  is never silently executed off screen. Clearing sends its own decision
+  (`clear-item` / `clear-lesson`), so a cleared question is asked again with
+  its live candidates, whatever they now are, is counted, and writes nothing —
+  never the default a refresh with no answer takes (add the piece, adopt the
+  one class left), which nobody chose. A later refresh, with no clear in hand,
+  decides it as usual.
+- **Every choice shows itself.** Keep my value / Use archive value and each
+  answer mark the chosen one with the selected treatment (weight as well as
+  colour), not only `aria-pressed`. Keep my value is the default.
+- **Lines read in order beside a Farsi name.** A difference ("Composer /
+  maestro: yours → archive's", an empty value said as "none"), a Review Setar
+  setup change ("Kind: before → after") and an
+  attention line ("path — reason") are each one left-to-right line with every
+  value in its own direction inside it, so the arrow always points from what you
+  have to what is proposed.
 - New pieces arrive **resting**, by explicit import policy, so ninety-four items
   do not flood Today. They stay searchable and directly startable.
 - **Nothing about practice is ever seeded**: no minutes, no result, no review
@@ -420,7 +442,11 @@ piece's `dastgah`, `form`, `composer` and gusheh name. Under **Archive metadata
 differs**, a registry value is offered only when the registry CHANGED that field
 since the graph this device last accepted — never because it merely differs from
 yours. Each offer is "Keep my value" (the default) or "Use archive value"; Apply
-accepts the archive's facts and keeps every value you did not choose. Accepting
+accepts the archive's facts and keeps every value you did not choose. Choosing
+writes nothing by itself: the summary counts the fields Apply will take from the
+archive ("will set N fields to the archive's value") and, once applied, says so.
+A gusheh name is offered only to an item that is a gusheh: on any other kind it
+is a kind question, which **Review Setar setup** settles with the name. Accepting
 the graph settles the offer, through a reload, a sync and a reinstall alike, with
 no separate ledger of answers. Differences you already live with stay out of the
 way until you open **Review differences**, where the same two choices apply.

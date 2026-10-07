@@ -47,6 +47,14 @@ export type ReconcileDecision =
   | { kind: 'create-lesson'; sessionN: number }
   | { kind: 'skip-lesson'; sessionN: number }
   /**
+   * A CLEARED ANSWER: the owner withdrew it. The question stays asked, with
+   * its live candidates, whatever they now are, and Apply writes nothing for
+   * it — never the default an unasked refresh would take (add the piece, adopt
+   * a class that alone matches), which nobody chose.
+   */
+  | { kind: 'clear-item'; pieceKey: string }
+  | { kind: 'clear-lesson'; sessionN: number }
+  /**
    * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — bound to the RECORD it was shown
    * against (`itemId`), the owner's value it was chosen over, TYPED (`from`: a
    * term reference stays a reference, text stays text, `null` is empty), what
@@ -88,6 +96,15 @@ export interface ReconcileQuestion {
   label: string;
   candidates: ReconcileCandidate[];
 }
+
+/**
+ * A question the owner has answered on this preview: still shown, with its
+ * answer, until Apply. EVERY decision Apply will execute is reported, even
+ * when the candidates moved since it was chosen (a sync renamed one, two
+ * classes became one): `ambiguous` says whether the question would still be
+ * asked, so the screen never claims a match that is no longer there.
+ */
+export type AnsweredQuestion = ReconcileQuestion & { answer: ReconcileDecision; ambiguous: boolean };
 
 /**
  * A registry value that differs, in MEANING, from the owner's own field on an
@@ -229,7 +246,15 @@ export interface ImportPlan {
   repairedLessons: Lesson[];
   /** Existing items adopted by an explicit owner decision. */
   adoptedItems: PracticeItem[];
+  /** The OPEN questions — what "N to decide" counts — a cleared answer's among them, whatever its candidates now are. */
   questions: ReconcileQuestion[];
+  /**
+   * The questions this preview's decisions answer, each with its answer, so
+   * the owner sees what they chose and can change or clear it before Apply.
+   * A link whose target no longer qualifies is stale, never answered: its
+   * question is open again.
+   */
+  answered: AnsweredQuestion[];
   /** The FRESH differences: offered without being asked for. */
   suggestions: MetadataSuggestion[];
   /** EVERY meaningful difference, fresh or standing — "Review differences", on request. */
@@ -594,15 +619,51 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
   const newLessons: Lesson[] = [];
   const adoptedLessons: Lesson[] = [];
   const questions: ReconcileQuestion[] = [];
+  const answered: AnsweredQuestion[] = [];
+  // The question an answer belongs to, reported with it whenever the answer
+  // is ACTED ON — never only where it would still be asked, or a decision
+  // whose candidates moved would vanish from the screen while Apply still
+  // executed it. Its candidates are always the live ones, plus a still-valid
+  // link target, so the answer is one of the choices on screen.
+  const answer = (q: ReconcileQuestion, ambiguous: boolean, d: ReconcileDecision, target?: ReconcileCandidate) => {
+    // A link target that no longer matches says so, never the match it lost.
+    const candidates =
+      target && !q.candidates.some((c) => c.id === target.id) ? [...q.candidates, { ...target, why: 'Your chosen link; it no longer matches.' }] : q.candidates;
+    answered.push({ ...q, candidates, answer: d, ambiguous });
+  };
 
   for (const session of index.sessions) {
     if (boundLessons.has(session.n)) continue;
     if (isSuppressed('session', String(session.n))) continue;
 
+    // AUTO-ADOPT only a UNIQUE candidate with all three: same instrument, same
+    // date, same number, and a reference that actually points into this
+    // session's own folder.
+    const candidates = db.lessons.filter(
+      (l) =>
+        !l.source &&
+        l.instrumentId === instrumentId &&
+        l.date === session.date &&
+        l.number === session.n &&
+        hasSourcePathEvidence(l, session.folder, renames, verifiedBase),
+    );
+    const lessonCandidate = (l: Lesson): ReconcileCandidate => ({
+      id: l.id,
+      title: `${l.date}${l.number ? ` · class ${l.number}` : ''}`,
+      why: 'Same date and number, and it already links to this folder.',
+    });
+    const ask: ReconcileQuestion = { kind: 'lesson', sessionN: session.n, label: `Class ${session.n} · ${session.date}`, candidates: candidates.map(lessonCandidate) };
+    const ambiguous = candidates.length > 1;
+
+    if (acted(decisionFor('clear-lesson', (d) => 'sessionN' in d && d.sessionN === session.n))) {
+      questions.push(ask);
+      continue;
+    }
     const skip = decisionFor('skip-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
     if (skip) {
       acted(skip);
       suppress('session', String(session.n));
+      answer(ask, ambiguous, skip);
       continue;
     }
 
@@ -614,6 +675,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     if (createSeparately) {
       acted(createSeparately);
       newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
+      answer(ask, ambiguous, createSeparately);
       continue;
     }
 
@@ -629,37 +691,18 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       const target = db.lessons.find((l) => l.id === linked.lessonId);
       if (target && !target.source && target.instrumentId === instrumentId) {
         adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n }, origin: 'archive' });
+        answer(ask, ambiguous, linked, lessonCandidate(target));
         continue;
       }
       staleDecisions.push(linked);
     }
 
-    // AUTO-ADOPT only a UNIQUE candidate with all three: same instrument, same
-    // date, same number, and a reference that actually points into this
-    // session's own folder.
-    const candidates = db.lessons.filter(
-      (l) =>
-        !l.source &&
-        l.instrumentId === instrumentId &&
-        l.date === session.date &&
-        l.number === session.n &&
-        hasSourcePathEvidence(l, session.folder, renames, verifiedBase),
-    );
     if (candidates.length === 1) {
       adoptedLessons.push({ ...candidates[0]!, source: { archiveId, sessionN: session.n }, origin: 'archive' });
       continue;
     }
-    if (candidates.length > 1) {
-      questions.push({
-        kind: 'lesson',
-        sessionN: session.n,
-        label: `Class ${session.n} · ${session.date}`,
-        candidates: candidates.map((l) => ({
-          id: l.id,
-          title: `${l.date}${l.number ? ` · class ${l.number}` : ''}`,
-          why: 'Same date and number, and it already links to this folder.',
-        })),
-      });
+    if (ambiguous) {
+      questions.push(ask);
       continue;
     }
     newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
@@ -691,6 +734,11 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       // EMPTY.
       const baseline = accepted.get(piece.key);
       for (const field of ['dastgahAvaz', 'gusheh', 'form', 'composer'] as MetadataField[]) {
+        // A gusheh NAME belongs to a gusheh: the registry's comes from its kind
+        // reading, and on an item of another kind it would be a name the item
+        // form neither shows nor can clear. The kind is Review Setar setup's
+        // question, which writes kind and name together.
+        if (field === 'gusheh' && bound.itemType !== 'gusheh') continue;
         const proposed = persianFromPiece(piece)[field] ?? '';
         const current = bound.persian?.[field] ?? null;
         if (!offers(current, proposed, field, vocab)) continue;
@@ -714,10 +762,31 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     }
     if (isSuppressed('piece', piece.key)) continue;
 
+    // CANDIDATES are EXACT equality only: the canonical key itself, or one of
+    // the registry's own literal aliases. Nothing is normalised, folded or
+    // transliterated here — that is search, and search is not identity. A
+    // built-in `catalogKey` is never compared at all: "iraq" is a catalogue
+    // slug, عراق is a canonical Farsi key, and equating them would merge two
+    // different things on a coincidence of meaning.
+    const literals = new Set<string>([piece.key, ...piece.aliases]);
+    const itemCandidate = (i: PracticeItem): ReconcileCandidate => ({
+      id: i.id,
+      title: i.title,
+      why: i.title.trim() === piece.key ? 'Same title as the archive name.' : 'Matches a name this piece used to have.',
+    });
+    const candidates = db.items.filter((i) => !i.source && i.instrumentId === instrumentId && literals.has(i.title.trim()));
+    const ask: ReconcileQuestion = { kind: 'item', pieceKey: piece.key, label: piece.key, candidates: candidates.map(itemCandidate) };
+    const ambiguous = candidates.length > 0;
+
+    if (acted(decisionFor('clear-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key))) {
+      questions.push(ask);
+      continue;
+    }
     const skipItem = decisionFor('skip-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
     if (skipItem) {
       acted(skipItem);
       suppress('piece', piece.key);
+      answer(ask, ambiguous, skipItem);
       continue;
     }
     const linked = decisionFor('link-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key) as
@@ -728,36 +797,15 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       const target = db.items.find((i) => i.id === linked.itemId);
       if (target && !target.source && target.instrumentId === instrumentId) {
         adoptedItems.push({ ...target, source: { archiveId, pieceKey: piece.key } });
+        answer(ask, ambiguous, linked, itemCandidate(target));
         continue;
       }
       staleDecisions.push(linked); // see the lesson branch above
     }
     const createNow = acted(decisionFor('create-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key));
-
-    // CANDIDATES are EXACT equality only: the canonical key itself, or one of
-    // the registry's own literal aliases. Nothing is normalised, folded or
-    // transliterated here — that is search, and search is not identity. A
-    // built-in `catalogKey` is never compared at all: "iraq" is a catalogue
-    // slug, عراق is a canonical Farsi key, and equating them would merge two
-    // different things on a coincidence of meaning.
-    const literals = new Set<string>([piece.key, ...piece.aliases]);
-    const candidates = createNow
-      ? []
-      : db.items.filter(
-          (i) => !i.source && i.instrumentId === instrumentId && literals.has(i.title.trim()),
-        );
-
-    if (candidates.length > 0) {
-      questions.push({
-        kind: 'item',
-        pieceKey: piece.key,
-        label: piece.key,
-        candidates: candidates.map((i) => ({
-          id: i.id,
-          title: i.title,
-          why: i.title.trim() === piece.key ? 'Same title as the archive name.' : 'Matches a name this piece used to have.',
-        })),
-      });
+    if (createNow) answer(ask, ambiguous, createNow);
+    else if (ambiguous) {
+      questions.push(ask);
       continue;
     }
     newItems.push(itemForPiece(archiveId, instrumentId, piece, now));
@@ -854,6 +902,11 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
   // it the same decision would go stale for ever.
   const realised = (d: ReconcileDecision): boolean => {
     switch (d.kind) {
+      // A clear writes nothing, so there is nothing for it to go stale on: a
+      // question that has since been bound or suppressed simply is not asked.
+      case 'clear-item':
+      case 'clear-lesson':
+        return true;
       case 'skip-item':
         return isSuppressed('piece', d.pieceKey);
       case 'skip-lesson':
@@ -904,6 +957,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     repairedLessons,
     adoptedItems,
     questions,
+    answered,
     suggestions: differences.filter((d) => d.fresh),
     differences,
     attention,

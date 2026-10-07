@@ -1,0 +1,11 @@
+{
+  "id": "20261007-fix-setar-review-and-archive-direction-a-039e",
+  "contractId": "20261007-fix-setar-review-and-archive-direction-a-039e",
+  "patchId": "69eddff2a0b5714d020ba864a7f91a55f0b8627e",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-10-07T20:28:44.012Z",
+  "algorithm": "ed25519",
+  "signature": "ZhMSZGTx3ojBbevdvKeVg0FIVy9vDC/cCtxmI1kkXnVWJEUnLA6drcsBZyQ5j5frLublntfE05Nc32cNBvVCBA==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}

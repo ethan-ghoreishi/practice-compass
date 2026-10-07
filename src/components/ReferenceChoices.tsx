@@ -153,13 +153,15 @@ export function SourceChoice({
       {materials.map((m) => (
         <button
           key={m.id}
-          className="btn btn-block"
+          className={`btn btn-block${ack?.carried === m.id ? ' btn-primary' : ''}`}
           style={{ textAlign: 'start' }}
           aria-pressed={ack?.carried === m.id}
           disabled={ack?.status === 'saving'}
           onClick={() => onChoose(m.id)}
         >
           <span dir="auto">{m.title}</span>
+          {/* The chosen one is marked by more than its fill. */}
+          {ack?.carried === m.id && <span aria-hidden="true"> ✓</span>}
         </button>
       ))}
       <SaveStatus ack={ack} onRetry={() => ack && onChoose(ack.carried)} />

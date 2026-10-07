@@ -1,0 +1,168 @@
+{
+  "about": "Review Setar setup and Refresh Setar archive, rendered with mixed languages. Seed: tests/fixtures/setar-practice-owner-v16.json (synthetic, owner-shaped, read only) with the edits below; the published index is that seed's graph with the index changes below. Every expected line was written by hand from these inputs and the screen's own wording, never read back from the app: tokens in LOGICAL order, which must also be their order on screen from the line's inline start.",
+  "edits": {
+    "titles": {
+      "src-cecabb9927a83707": "Dashti study no. 1",
+      "src-b31f039e3704d8a4": "Chaharmezrab of Mahur (Saba)",
+      "src-1796d49e7a447548": "Daramad 1 of Bayat-e Tork",
+      "src-2a60eb8957048b83": "Daramad 2 of Bayat-e Tork"
+    },
+    "placement": {
+      "src-1796d49e7a447548": { "materialId": "mat-radif-borumand" },
+      "src-2a60eb8957048b83": { "stageId": "my-stage" }
+    },
+    "pieceKeys": { "جنگ-شهنازی": "Jang-e Shahnazi" },
+    "materials": { "mat-radif-borumand": "Radif روایت برومند" },
+    "stages": { "setar-radif-forms": { "code": "Forms", "title": "Composed & improvised" } },
+    "persian": {
+      "src-cecabb9927a83707": { "composer": "" },
+      "src-d9411fce694a919c": { "composer": "Morad-Khani" },
+      "src-f51b1fd3f6b11be9": { "composer": "Ali-Akbar S. (استاد من)" },
+      "src-1e53fb5dcf056207": { "form": "Gusheh گوشه" }
+    }
+  },
+  "index": {
+    "composer": {
+      "اتود-وزیری": "ابوالحسن صبا",
+      "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله": "مرادخانی (Moradkhani)"
+    },
+    "diagnostics": [
+      { "path": "session-3-04-01-2025/یادداشت کلاس.pdf", "reason": "not declared in PIECES.csv" },
+      { "path": "loose/practice-take.m4a", "reason": "an own practice take, never a resource" }
+    ]
+  },
+  "setup": {
+    "pathway": "setar-radif",
+    "source": { "group": "ردیف-میرزاعبدالله", "material": "mat-radif" },
+    "groups": [
+      {
+        "title": "درامد-ماهور-ردیف-میرزاعبدالله",
+        "dir": "rtl",
+        "lines": [
+          ["Kind:", "composed piece", "→", "gusheh (radif) ·", "درامد"],
+          ["Place:", "not placed", "→", "ماهور · دستگاه ماهور"],
+          ["Study source:", "none", "→", "ردیف میرزا عبدالله"]
+        ]
+      },
+      {
+        "title": "Dashti study no. 1",
+        "dir": "ltr",
+        "lines": [
+          ["Kind:", "composed piece", "→", "exercise / étude"],
+          ["Place:", "not placed"]
+        ]
+      },
+      {
+        "title": "اتود-وزیری",
+        "dir": "rtl",
+        "lines": [
+          ["Kind:", "technique"],
+          ["Place:", "not placed"]
+        ]
+      },
+      {
+        "title": "درامد-افشاری-ردیف-میرزاعبدالله",
+        "dir": "rtl",
+        "lines": [
+          ["Kind:", "composed piece", "→", "gusheh (radif) ·", "درامد"],
+          ["Place:", "not placed", "→", "افشاری · آواز افشاری"],
+          ["Study source:", "Radif روایت برومند"]
+        ]
+      },
+      {
+        "title": "جنگ-شهنازی",
+        "dir": "rtl",
+        "lines": [["Place:", "not placed", "→", "Forms · Composed & improvised"]]
+      },
+      {
+        "title": "Chaharmezrab of Mahur (Saba)",
+        "dir": "ltr",
+        "lines": [
+          ["Place:", "not placed", "→", "Forms · Composed & improvised"],
+          ["Class:", "unlinked"]
+        ]
+      },
+      {
+        "title": "کرشمه-ماهور-ردیف-میرزاعبدالله",
+        "dir": "rtl",
+        "lines": [["Suggestion:", "answers none"]]
+      },
+      {
+        "title": "Daramad 1 of Bayat-e Tork",
+        "dir": "ltr",
+        "lines": [
+          ["Kind:", "composed piece", "→", "gusheh (radif) ·", "درامد"],
+          ["Place:", "not placed", "→", "بیات ترک · آواز بیات ترک"],
+          ["Study source:", "Radif روایت برومند"]
+        ]
+      },
+      {
+        "title": "Daramad 2 of Bayat-e Tork",
+        "dir": "ltr",
+        "lines": [
+          ["Place:", "استاد · ردیف استاد"],
+          ["Study source:", "none", "→", "ردیف میرزا عبدالله"]
+        ]
+      },
+      {
+        "title": "درامد-ابوعطا-ردیف-میرزاعبدالله",
+        "dir": "rtl",
+        "lines": [
+          ["Place:", "استاد · ردیف استاد"],
+          ["Study source:", "none", "→", "ردیف میرزا عبدالله"]
+        ]
+      }
+    ]
+  },
+  "differences": {
+    "fresh": [
+      {
+        "piece": "اتود-وزیری",
+        "dir": "rtl",
+        "field": "composer",
+        "tokens": ["Composer / maestro:", "وزیری", "→", "ابوالحسن صبا"]
+      },
+      {
+        "piece": "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله",
+        "dir": "rtl",
+        "field": "composer",
+        "tokens": ["Composer / maestro:", "Morad-Khani", "→", "مرادخانی (Moradkhani)"]
+      }
+    ],
+    "standing": [
+      {
+        "piece": "تمرین-دشتی-1-علیزاده",
+        "dir": "rtl",
+        "field": "composer",
+        "tokens": ["Composer / maestro:", "none", "→", "علیزاده"]
+      },
+      {
+        "piece": "Jang-e Shahnazi",
+        "dir": "ltr",
+        "field": "composer",
+        "tokens": ["Composer / maestro:", "Ali-Akbar S. (استاد من)", "→", "شهنازی"]
+      },
+      {
+        "piece": "آواز-دشتی-شور",
+        "dir": "rtl",
+        "field": "form",
+        "tokens": ["Form:", "Gusheh گوشه", "→", "گوشه"]
+      }
+    ]
+  },
+  "attention": [
+    ["session-3-04-01-2025/یادداشت کلاس.pdf", "—", "not declared in PIECES.csv"],
+    ["loose/practice-take.m4a", "—", "an own practice take, never a resource"]
+  ],
+  "questions": {
+    "pieces": [
+      { "key": "پیش‌درآمد-تست", "aliases": ["Pishdaramad test"] },
+      { "key": "تصنیف-تست", "aliases": [] }
+    ],
+    "items": [
+      { "id": "it-q1-key", "title": "پیش‌درآمد-تست" },
+      { "id": "it-q1-alias", "title": "Pishdaramad test" },
+      { "id": "it-q2", "title": "تصنیف-تست" }
+    ]
+  }
+}
