@@ -1,11 +1,11 @@
 {
   "id": "20261007-fix-setar-review-and-archive-direction-a-039e",
   "contractId": "20261007-fix-setar-review-and-archive-direction-a-039e",
-  "patchId": "a28ec9dca529b1c6740e6612be757a40f3618220",
+  "patchId": "69eddff2a0b5714d020ba864a7f91a55f0b8627e",
   "decision": "approved",
   "by": "owner",
-  "at": "2026-10-07T16:03:48.217Z",
+  "at": "2026-10-07T20:28:44.012Z",
   "algorithm": "ed25519",
-  "signature": "GqQbI4bKUCAL4T4blFWeDY21UeQ4kM20lhIIpGesYN+ZkglGBhFlfEdv2c9nZiKoVIRf0aHNbvJBE2wqyRGoCg==",
+  "signature": "ZhMSZGTx3ojBbevdvKeVg0FIVy9vDC/cCtxmI1kkXnVWJEUnLA6drcsBZyQ5j5frLublntfE05Nc32cNBvVCBA==",
   "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
 }
