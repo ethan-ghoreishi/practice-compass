@@ -1899,7 +1899,7 @@ describe('answered questions, until Apply', () => {
       const asked = 'pieceKey' in d ? askedPiece : askedClass;
       const isIt = (q: { pieceKey?: string; sessionN?: number }) => q.pieceKey === asked.pieceKey && q.sessionN === asked.sessionN;
       expect(p.questions.some(isIt), d.kind).toBe(false);
-      expect(p.answered, d.kind).toEqual([{ ...asked, answer: d }]);
+      expect(p.answered, d.kind).toEqual([{ ...asked, answer: d, ambiguous: true }]);
       expect(p.summary.questions, d.kind).toBe(open.questions.length - 1);
       expect(p.staleDecisions, d.kind).toEqual([]);
     }
@@ -1934,11 +1934,64 @@ describe('answered questions, until Apply', () => {
     expect(staleClass.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
     expect(staleClass.questions.find((q) => q.sessionN === 13)!.candidates.map((c) => c.id).sort()).toEqual(['legacy-13', 'legacy-13-third']);
 
-    // A decision about something never asked is NOT reported as an answered
-    // question (there was no question to answer): skipping a piece nobody else
-    // claims still suppresses it, exactly as before.
+    // EVERY DECISION APPLY EXECUTES IS ON SCREEN, even when its candidates
+    // moved after it was chosen: reported with its answer, not open, and
+    // `ambiguous: false` so the row never claims a match that is gone. The
+    // effects are written out by hand, not read back from the plan.
+    const sourced = (key: string) => ({ archiveId: 'setar-classes', pieceKey: key });
+    // Items: ONE exact-title candidate, answered, then renamed (a sync pull).
+    const single = baseDB({ items: [sameTitle] });
+    const renamed = { ...single, items: [{ ...sameTitle, title: 'عراقِ من' }] };
+    const pieceAnswers = [answers[0], answers[1], answers[2]].map((d) => (d.kind === 'link-item' ? { ...d, itemId: 'mine-araq' } : d));
+    for (const d of pieceAnswers) {
+      const before = planArchiveImport({ db: single, index: INDEX, instrumentId: SETAR, decisions: [d], now: NOW });
+      expect(before.answered.map((q) => [q.answer, q.ambiguous]), d.kind).toEqual([[d, true]]);
+      const p = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [d], now: NOW });
+      expect(p.questions.some((q) => q.pieceKey === 'عراق'), d.kind).toBe(false);
+      expect(p.staleDecisions, d.kind).toEqual([]);
+      expect(p.answered, d.kind).toEqual([
+        {
+          kind: 'item',
+          pieceKey: 'عراق',
+          label: 'عراق',
+          candidates: d.kind === 'link-item' ? [{ id: 'mine-araq', title: 'عراقِ من', why: 'Your chosen link; it no longer matches.' }] : [],
+          answer: d,
+          ambiguous: false,
+        },
+      ]);
+      expect(p.adoptedItems.map((i) => [i.id, i.title, i.source]), d.kind).toEqual(
+        d.kind === 'link-item' ? [['mine-araq', 'عراقِ من', sourced('عراق')]] : [],
+      );
+      expect(p.newItems.filter((i) => i.source?.pieceKey === 'عراق').length, d.kind).toBe(d.kind === 'create-item' ? 1 : 0);
+      expect(p.source.suppressions.some((x) => x.kind === 'piece' && x.ref === 'عراق'), d.kind).toBe(d.kind === 'skip-item');
+    }
+    // Classes: TWO indistinguishable candidates, answered, then one or both
+    // stop matching (a number corrected elsewhere).
+    const renumber = (ids: string[]) => ({ ...db, lessons: db.lessons.map((l) => (ids.includes(l.id) ? { ...l, number: 99 } : l)) });
+    const linkFirst = { kind: 'link-lesson', sessionN: 13, lessonId: 'legacy-13' } as const;
+    for (const moved of [['legacy-13-twin'], ['legacy-13', 'legacy-13-twin']]) {
+      const left = ['legacy-13', 'legacy-13-twin'].filter((id) => !moved.includes(id));
+      for (const d of [linkFirst, answers[4], answers[5]]) {
+        const label = `${d.kind} with ${left.length} left`;
+        const p = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [d], now: NOW });
+        expect(p.questions.some((q) => q.sessionN === 13), label).toBe(false);
+        expect(p.staleDecisions, label).toEqual([]);
+        const shown = p.answered.find((q) => q.sessionN === 13)!;
+        expect([shown.answer, shown.ambiguous, shown.label], label).toEqual([d, false, askedClass.label]);
+        const offered = d.kind === 'link-lesson' && !left.includes('legacy-13') ? [...left, 'legacy-13'] : left;
+        expect(shown.candidates.map((c) => c.id), label).toEqual(offered);
+        const adopted = p.adoptedLessons.filter((l) => l.source?.sessionN === 13).map((l) => l.id);
+        expect(adopted, label).toEqual(d.kind === 'link-lesson' ? ['legacy-13'] : []);
+        expect(p.newLessons.filter((l) => l.source?.sessionN === 13).length, label).toBe(d.kind === 'create-lesson' ? 1 : 0);
+        expect(p.source.suppressions.some((x) => x.kind === 'session' && x.ref === '13'), label).toBe(d.kind === 'skip-lesson');
+      }
+    }
+
+    // A decision about something never asked is reported too — Apply would
+    // execute it — never as ambiguous: skipping a piece nobody else claims
+    // still suppresses it, exactly as before.
     const unasked = run([{ kind: 'skip-item', pieceKey: 'آشوراوند' }]);
-    expect(unasked.answered).toEqual([]);
+    expect(unasked.answered.map((q) => [q.pieceKey, q.candidates, q.ambiguous])).toEqual([['آشوراوند', [], false]]);
     expect(unasked.source.suppressions.map((s) => s.ref)).toContain('آشوراوند');
   });
 });

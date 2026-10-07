@@ -31,18 +31,35 @@ import {
 // The family proof for direction (ac-1) lives here and in one committed
 // fixture, tests/fixtures/setar-review-ui.json, whose expected lines were
 // written by hand. Classes crossed: title Farsi / English (the group resolves
-// RTL / LTR, asserted) × values Farsi / English / mixed; setup kind, place,
-// study source, suggestion and class rows in proposed and exception states;
-// archive differences in "Archive metadata differs" and "Review differences";
-// the attention list; phone and desktop; Chromium and WebKit. Limits: class
-// and suggestion rows are only ever exceptions (planSetarSetup proposes
-// neither), and a difference row's title is always the registry's (Farsi) key.
+// RTL / LTR, asserted) × values Farsi / English / mixed, every cell on setup
+// rows and every cell but English × English on difference rows; setup kind, place, study source, suggestion and
+// class rows in proposed and exception states; archive differences in
+// "Archive metadata differs" and "Review differences" (one registry key
+// renamed to English for the English-title cells); the attention list; phone
+// and desktop; Chromium and WebKit. Limits: class and suggestion rows are only
+// ever exceptions (planSetarSetup proposes neither) and their values are
+// always generated English, so they have no Farsi- or mixed-value cell; the
+// "Archive metadata differs" rows keep Farsi keys, the English-key cells are
+// in "Review differences", the same DifferenceRow.
 // ---------------------------------------------------------------------------
 
 const CLOCK = new Date('2026-10-05T09:00:00.000Z');
 const T = CLOCK.toISOString();
 const OWNER_V16: { data: PracticeDB } = JSON.parse(OWNER_V16_TEXT);
 type Db = PracticeDB;
+
+/**
+ * A registry key renamed wherever the archive names it — the graph and the
+ * item's binding — and nowhere else: an item's title is the owner's.
+ */
+const renameKeys = <V,>(v: V, keys: Record<string, string>): V =>
+  typeof v === 'string'
+    ? ((keys[v] ?? v) as V)
+    : Array.isArray(v)
+      ? (v.map((x) => renameKeys(x, keys)) as V)
+      : v && typeof v === 'object'
+        ? (Object.fromEntries(Object.entries(v).map(([k, x]) => [k, renameKeys(x, keys)])) as V)
+        : v;
 
 /** The owner-shaped seed with this fixture's edits. */
 function fixtureDb(): Db {
@@ -51,10 +68,18 @@ function fixtureDb(): Db {
   return {
     ...base,
     attachments: [],
+    archiveSources: renameKeys(base.archiveSources, e.pieceKeys),
     items: base.items.map((i) => {
       const title = (e.titles as Record<string, string>)[i.id];
       const persian = (e.persian as Record<string, Record<string, string>>)[i.id];
-      return { ...i, ...(title ? { title } : {}), ...(persian ? { persian: { ...i.persian, ...persian } } : {}) };
+      const placement = (e.placement as Record<string, { materialId?: string; stageId?: string }>)[i.id];
+      return {
+        ...i,
+        ...(title ? { title } : {}),
+        ...(persian ? { persian: { ...i.persian, ...persian } } : {}),
+        ...placement,
+        ...(i.source ? { source: renameKeys(i.source, e.pieceKeys) } : {}),
+      };
     }),
     materials: base.materials.map((m) => {
       const title = (e.materials as Record<string, string>)[m.id];
@@ -234,14 +259,14 @@ describe('generated lines beside a Farsi title', () => {
             const at = `${where} Archive metadata differs «${d.piece}» ${d.field}`;
             const group = row(d).locator('div[dir="auto"]').first();
             const box = await readsInOrder(group.locator('div.tiny'), d.tokens, at);
-            await startsWithTitle(group, group.locator('strong'), box, 'rtl', at);
+            await startsWithTitle(group, group.locator('strong'), box, d.dir, at);
           }
           await page.getByRole('button', { name: /^Review differences/ }).click();
           for (const d of CASES.differences.standing) {
             const at = `${where} Review differences «${d.piece}» ${d.field}`;
             const group = row(d).locator('div[dir="auto"]').first();
             const box = await readsInOrder(group.locator('div.tiny'), d.tokens, at);
-            await startsWithTitle(group, group.locator('strong'), box, 'rtl', at);
+            await startsWithTitle(group, group.locator('strong'), box, d.dir, at);
           }
           await page.getByRole('button', { name: /^Show \d+ needing attention$/ }).click();
           for (const tokens of CASES.attention) {
@@ -372,7 +397,7 @@ describe('answered archive questions', () => {
           .evaluateAll((bs) => bs.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => [b.textContent, b.classList.contains('selected')]));
       const toDecide = async () => /(\d+) to decide/.exec(await page.getByText(/\d+ to decide/).first().innerText())?.[1];
       try {
-        await connected(app, indexText);
+        const remote = await connected(app, indexText);
         await refreshArchive(app);
         expect(await toDecide(), where).toBe('2');
         expect([await pressed(Q1!), await pressed(Q2!)], where).toEqual([[], []]);
@@ -412,6 +437,34 @@ describe('answered archive questions', () => {
         expect(await toDecide(), where).toBe('1');
         expect(await answers(Q2!).count(), where).toBe(1);
         expect(await answers(Q1!).count(), where).toBe(0);
+
+        // THE MATCH MOVES AFTER THE ANSWER: Q2 skipped, then its only
+        // exact-name candidate is renamed on another device and pulled. The
+        // next preview (Skip pressed again) no longer has a question to ask,
+        // yet Apply would still write the skip — so the row stays, Skip still
+        // selected, saying the matches changed, and can still be switched.
+        await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
+        expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
+        const pulled = structuredClone(await db(app)) as Db;
+        pulled.items = pulled.items.map((i) => (i.id === 'it-q2' ? { ...i, title: 'تصنیف-تست (renamed)' } : i));
+        publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 99);
+        await page.getByRole('button', { name: 'Sync now' }).click();
+        await until(app, (x) => x.items.find((i) => i.id === 'it-q2')!.title, (t) => t === 'تصنیف-تست (renamed)');
+        await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
+        await page.getByText('The matches changed since you answered').waitFor({ timeout: 15_000 });
+        expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
+        expect(await toDecide(), where).toBe('0');
+        await answers(Q2!).getByRole('button', { name: 'Create separately' }).click();
+        expect(await pressed(Q2!), where).toEqual([['Create separately', true]]);
+        await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
+        expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
+        // Apply writes the skip on screen: a suppression, and the renamed item untouched.
+        const renamedBefore = (await db(app)).items.find((i) => i.id === 'it-q2');
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
+        const skipped = await until(app, (x) => x, (x) => x.archiveSources[0]!.suppressions.some((s) => s.ref === Q2!.key));
+        expect(skipped.items.find((i) => i.id === 'it-q2'), where).toEqual(renamedBefore);
+        expect(skipped.items.filter((i) => i.source?.pieceKey === Q2!.key), where).toEqual([]);
         expect(app.pageErrors.map((e) => e.message), where).toEqual([]);
       } finally {
         await app.close();

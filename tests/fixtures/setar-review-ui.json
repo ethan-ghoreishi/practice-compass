@@ -3,13 +3,20 @@
   "edits": {
     "titles": {
       "src-cecabb9927a83707": "Dashti study no. 1",
-      "src-b31f039e3704d8a4": "Chaharmezrab of Mahur (Saba)"
+      "src-b31f039e3704d8a4": "Chaharmezrab of Mahur (Saba)",
+      "src-1796d49e7a447548": "Daramad 1 of Bayat-e Tork",
+      "src-2a60eb8957048b83": "Daramad 2 of Bayat-e Tork"
     },
+    "placement": {
+      "src-1796d49e7a447548": { "materialId": "mat-radif-borumand" },
+      "src-2a60eb8957048b83": { "stageId": "my-stage" }
+    },
+    "pieceKeys": { "جنگ-شهنازی": "Jang-e Shahnazi" },
     "materials": { "mat-radif-borumand": "Radif روایت برومند" },
     "stages": { "setar-radif-forms": { "code": "Forms", "title": "Composed & improvised" } },
     "persian": {
       "src-d9411fce694a919c": { "composer": "Morad-Khani" },
-      "src-f51b1fd3f6b11be9": { "composer": "Ali-Akbar S. (my teacher)" },
+      "src-f51b1fd3f6b11be9": { "composer": "Ali-Akbar S. (استاد من)" },
       "src-1e53fb5dcf056207": { "form": "Gusheh گوشه" }
     }
   },
@@ -80,6 +87,23 @@
         "lines": [["Suggestion:", "answers none"]]
       },
       {
+        "title": "Daramad 1 of Bayat-e Tork",
+        "dir": "ltr",
+        "lines": [
+          ["Kind:", "composed piece", "→", "gusheh (radif) ·", "درامد"],
+          ["Place:", "not placed", "→", "بیات ترک · آواز بیات ترک"],
+          ["Study source:", "Radif روایت برومند"]
+        ]
+      },
+      {
+        "title": "Daramad 2 of Bayat-e Tork",
+        "dir": "ltr",
+        "lines": [
+          ["Place:", "استاد · ردیف استاد"],
+          ["Study source:", "none", "→", "ردیف میرزا عبدالله"]
+        ]
+      },
+      {
         "title": "درامد-ابوعطا-ردیف-میرزاعبدالله",
         "dir": "rtl",
         "lines": [
@@ -93,23 +117,27 @@
     "fresh": [
       {
         "piece": "اتود-وزیری",
+        "dir": "rtl",
         "field": "composer",
         "tokens": ["composer — yours:", "وزیری", "· archive:", "ابوالحسن صبا"]
       },
       {
         "piece": "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله",
+        "dir": "rtl",
         "field": "composer",
         "tokens": ["composer — yours:", "Morad-Khani", "· archive:", "مرادخانی (Moradkhani)"]
       }
     ],
     "standing": [
       {
-        "piece": "جنگ-شهنازی",
+        "piece": "Jang-e Shahnazi",
+        "dir": "ltr",
         "field": "composer",
-        "tokens": ["composer — yours:", "Ali-Akbar S. (my teacher)", "· archive:", "شهنازی"]
+        "tokens": ["composer — yours:", "Ali-Akbar S. (استاد من)", "· archive:", "شهنازی"]
       },
       {
         "piece": "آواز-دشتی-شور",
+        "dir": "rtl",
         "field": "form",
         "tokens": ["form — yours:", "Gusheh گوشه", "· archive:", "گوشه"]
       }

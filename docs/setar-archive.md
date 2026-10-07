@@ -313,7 +313,11 @@ applies the lot in one store mutation.
   An answered question **stays listed with its answer selected** until Apply,
   and can be switched or cleared there (`plan.answered`); Apply writes exactly
   the answers selected then, an unanswered or cleared one writes nothing, and
-  "N to decide" counts only the open ones.
+  "N to decide" counts only the open ones. **Every decision Apply would execute
+  is listed**, even when its candidates moved after it was chosen (a sync
+  renamed the only match, two matching classes became one): it stays selected,
+  switchable and clearable, says the matches changed (`ambiguous: false`), and
+  is never silently executed off screen.
 - **Every choice shows itself.** Keep my value / Use archive value and each
   answer mark the chosen one with the selected treatment (weight as well as
   colour), not only `aria-pressed`. Keep my value is the default.

@@ -254,9 +254,11 @@ export default function ArchiveRefresh() {
                     <strong>{q.label}</strong>
                     <div className="tiny faint">
                       <span dir="ltr">
-                        {q.kind === 'item'
-                          ? 'An existing piece has this exact name.'
-                          : 'More than one class matches this session.'}
+                        {'answer' in q && !q.ambiguous
+                          ? 'The matches changed since you answered; your answer still applies until you clear it.'
+                          : q.kind === 'item'
+                            ? 'An existing piece has this exact name.'
+                            : 'More than one class matches this session.'}
                       </span>
                     </div>
                   </div>

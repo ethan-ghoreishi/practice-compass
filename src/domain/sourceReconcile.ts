@@ -89,8 +89,14 @@ export interface ReconcileQuestion {
   candidates: ReconcileCandidate[];
 }
 
-/** A question the owner has answered on this preview: still shown, with its answer, until Apply. */
-export type AnsweredQuestion = ReconcileQuestion & { answer: ReconcileDecision };
+/**
+ * A question the owner has answered on this preview: still shown, with its
+ * answer, until Apply. EVERY decision Apply will execute is reported, even
+ * when the candidates moved since it was chosen (a sync renamed one, two
+ * classes became one): `ambiguous` says whether the question would still be
+ * asked, so the screen never claims a match that is no longer there.
+ */
+export type AnsweredQuestion = ReconcileQuestion & { answer: ReconcileDecision; ambiguous: boolean };
 
 /**
  * A registry value that differs, in MEANING, from the owner's own field on an
@@ -606,13 +612,16 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
   const adoptedLessons: Lesson[] = [];
   const questions: ReconcileQuestion[] = [];
   const answered: AnsweredQuestion[] = [];
-  // The question an answer belongs to, reported with it — only where it
-  // would have been asked. Its candidates are always the live ones, plus a
-  // still-valid link target, so the answer is one of the choices on screen.
-  const answer = (q: ReconcileQuestion | undefined, d: ReconcileDecision, target?: ReconcileCandidate) => {
-    if (!q) return;
-    const candidates = target && !q.candidates.some((c) => c.id === target.id) ? [...q.candidates, target] : q.candidates;
-    answered.push({ ...q, candidates, answer: d });
+  // The question an answer belongs to, reported with it whenever the answer
+  // is ACTED ON — never only where it would still be asked, or a decision
+  // whose candidates moved would vanish from the screen while Apply still
+  // executed it. Its candidates are always the live ones, plus a still-valid
+  // link target, so the answer is one of the choices on screen.
+  const answer = (q: ReconcileQuestion, ambiguous: boolean, d: ReconcileDecision, target?: ReconcileCandidate) => {
+    // A link target that no longer matches says so, never the match it lost.
+    const candidates =
+      target && !q.candidates.some((c) => c.id === target.id) ? [...q.candidates, { ...target, why: 'Your chosen link; it no longer matches.' }] : q.candidates;
+    answered.push({ ...q, candidates, answer: d, ambiguous });
   };
 
   for (const session of index.sessions) {
@@ -635,16 +644,14 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       title: `${l.date}${l.number ? ` · class ${l.number}` : ''}`,
       why: 'Same date and number, and it already links to this folder.',
     });
-    const question: ReconcileQuestion | undefined =
-      candidates.length > 1
-        ? { kind: 'lesson', sessionN: session.n, label: `Class ${session.n} · ${session.date}`, candidates: candidates.map(lessonCandidate) }
-        : undefined;
+    const ask: ReconcileQuestion = { kind: 'lesson', sessionN: session.n, label: `Class ${session.n} · ${session.date}`, candidates: candidates.map(lessonCandidate) };
+    const ambiguous = candidates.length > 1;
 
     const skip = decisionFor('skip-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
     if (skip) {
       acted(skip);
       suppress('session', String(session.n));
-      answer(question, skip);
+      answer(ask, ambiguous, skip);
       continue;
     }
 
@@ -656,7 +663,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     if (createSeparately) {
       acted(createSeparately);
       newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
-      answer(question, createSeparately);
+      answer(ask, ambiguous, createSeparately);
       continue;
     }
 
@@ -672,7 +679,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       const target = db.lessons.find((l) => l.id === linked.lessonId);
       if (target && !target.source && target.instrumentId === instrumentId) {
         adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n }, origin: 'archive' });
-        answer(question, linked, lessonCandidate(target));
+        answer(ask, ambiguous, linked, lessonCandidate(target));
         continue;
       }
       staleDecisions.push(linked);
@@ -682,8 +689,8 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       adoptedLessons.push({ ...candidates[0]!, source: { archiveId, sessionN: session.n }, origin: 'archive' });
       continue;
     }
-    if (question) {
-      questions.push(question);
+    if (ambiguous) {
+      questions.push(ask);
       continue;
     }
     newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
@@ -751,15 +758,14 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       why: i.title.trim() === piece.key ? 'Same title as the archive name.' : 'Matches a name this piece used to have.',
     });
     const candidates = db.items.filter((i) => !i.source && i.instrumentId === instrumentId && literals.has(i.title.trim()));
-    const question: ReconcileQuestion | undefined = candidates.length
-      ? { kind: 'item', pieceKey: piece.key, label: piece.key, candidates: candidates.map(itemCandidate) }
-      : undefined;
+    const ask: ReconcileQuestion = { kind: 'item', pieceKey: piece.key, label: piece.key, candidates: candidates.map(itemCandidate) };
+    const ambiguous = candidates.length > 0;
 
     const skipItem = decisionFor('skip-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
     if (skipItem) {
       acted(skipItem);
       suppress('piece', piece.key);
-      answer(question, skipItem);
+      answer(ask, ambiguous, skipItem);
       continue;
     }
     const linked = decisionFor('link-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key) as
@@ -770,15 +776,15 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       const target = db.items.find((i) => i.id === linked.itemId);
       if (target && !target.source && target.instrumentId === instrumentId) {
         adoptedItems.push({ ...target, source: { archiveId, pieceKey: piece.key } });
-        answer(question, linked, itemCandidate(target));
+        answer(ask, ambiguous, linked, itemCandidate(target));
         continue;
       }
       staleDecisions.push(linked); // see the lesson branch above
     }
     const createNow = acted(decisionFor('create-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key));
-    if (createNow) answer(question, createNow);
-    else if (question) {
-      questions.push(question);
+    if (createNow) answer(ask, ambiguous, createNow);
+    else if (ambiguous) {
+      questions.push(ask);
       continue;
     }
     newItems.push(itemForPiece(archiveId, instrumentId, piece, now));

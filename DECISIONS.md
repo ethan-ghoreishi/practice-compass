@@ -28,7 +28,12 @@ Five reports, one heavy lane (contract 20261007-…-039e, issue #47).
   plan reports `answered` beside the open `questions`, so preview, re-preview and
   commit read one source; "N to decide" still counts only open ones; a link whose
   target no longer qualifies is stale and the question opens again. `questions`
-  kept its meaning because the store's rebase check reads it.
+  kept its meaning because the store's rebase check reads it. Review found an
+  answer vanishing when its candidates moved (a rename via sync) while Apply
+  still executed it; every ACTED-ON decision is now reported, flagged
+  `ambiguous: false` when it would no longer be asked. Rejected: calling such
+  a decision stale — its target still qualifies, and the archive decision
+  semantics (what is stale) were not this lane's to change.
 - **Repertoire search was a real, rare defect.** The box showed the URL's query;
   the router renders a URL change in a transition, and while one is pending React
   restores a controlled input to its last rendered value — "pishdaramad" became
