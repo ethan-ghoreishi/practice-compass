@@ -447,21 +447,53 @@ describe('answered archive questions', () => {
         // next preview (Skip pressed again) no longer has a question to ask,
         // yet Apply would still write the skip — so the row stays, Skip still
         // selected, saying the matches changed, and can still be switched.
-        await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
-        expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
-        const pulled = structuredClone(await db(app)) as Db;
-        pulled.items = pulled.items.map((i) => (i.id === 'it-q2' ? { ...i, title: 'تصنیف-تست (renamed)' } : i));
-        publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 99);
-        await page.getByRole('button', { name: 'Sync now' }).click();
-        await until(app, (x) => x.items.find((i) => i.id === 'it-q2')!.title, (t) => t === 'تصنیف-تست (renamed)');
-        await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
-        await page.getByText('The matches changed since you answered').waitFor({ timeout: 15_000 });
-        expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
-        expect(await toDecide(), where).toBe('0');
-        await answers(Q2!).getByRole('button', { name: 'Create separately' }).click();
-        expect(await pressed(Q2!), where).toEqual([['Create separately', true]]);
-        await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
-        expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
+        // Q2's one exact-name candidate retitled on the other device and pulled.
+        let pulls = 99;
+        const retitle = async (title: string) => {
+          const pulled = structuredClone(await db(app)) as Db;
+          pulled.items = pulled.items.map((i) => (i.id === 'it-q2' ? { ...i, title } : i));
+          publishRemote(remote, remoteStateText(pulled), await hashState(pulled), pulls++);
+          await page.getByRole('button', { name: 'Sync now' }).click();
+          await until(app, (x) => x.items.find((i) => i.id === 'it-q2')!.title, (t) => t === title);
+        };
+        const answeredThenMoved = async () => {
+          await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
+          expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
+          await retitle('تصنیف-تست (renamed)');
+          await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
+          await page.getByText('The matches changed since you answered').waitFor({ timeout: 15_000 });
+          expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
+          expect(await toDecide(), where).toBe('0');
+          await answers(Q2!).getByRole('button', { name: 'Create separately' }).click();
+          expect(await pressed(Q2!), where).toEqual([['Create separately', true]]);
+          await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
+          expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
+        };
+        await answeredThenMoved();
+
+        // CLEARED after the match moved: open again with no candidate, counted,
+        // nothing selected — and Apply writes NOTHING for it, not the unasked
+        // default (adding the piece) that a refresh with no answer would take.
+        await answers(Q2!).getByRole('button', { name: 'Clear answer' }).click();
+        await page.getByText(/No existing piece has this name now\. You cleared your answer, so Apply writes nothing for it/).waitFor({ timeout: 15_000 });
+        expect(await pressed(Q2!), where).toEqual([]);
+        expect(await answers(Q2!).getByRole('button').allInnerTexts(), where).toEqual(['Create separately', 'Skip']);
+        expect(await toDecide(), where).toBe('1');
+        const clearedBefore = await db(app);
+        await page.getByRole('button', { name: 'Apply' }).click();
+        await page.getByText('Already current.', { exact: true }).waitFor({ timeout: 30_000 });
+        const clearedAfter = await db(app);
+        expect(clearedAfter.items, where).toEqual(clearedBefore.items);
+        expect(clearedAfter.archiveSources, where).toEqual(clearedBefore.archiveSources);
+        expect(clearedAfter.items.filter((i) => i.source?.pieceKey === Q2!.key), where).toEqual([]);
+        expect(clearedAfter.archiveSources[0]!.suppressions.some((s) => s.ref === Q2!.key), where).toBe(false);
+
+        // The match comes back, so Q2 is asked again; answered, moved, KEPT.
+        await retitle('تصنیف-تست');
+        await reload(app);
+        await refreshArchive(app);
+        expect(await answers(Q2!).count(), where).toBe(1);
+        await answeredThenMoved();
         // Apply writes the skip on screen: a suppression, and the renamed item untouched.
         const renamedBefore = (await db(app)).items.find((i) => i.id === 'it-q2');
         await page.getByRole('button', { name: 'Apply' }).click();

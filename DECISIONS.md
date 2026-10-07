@@ -33,9 +33,13 @@ Five reports, one heavy lane (contract 20261007-…-039e, issue #47).
   still executed it; every ACTED-ON decision is now reported, flagged
   `ambiguous: false` when it would no longer be asked. Rejected: calling such
   a decision stale — its target still qualifies, and the archive decision
-  semantics (what is stale) were not this lane's to change. So "a cleared
-  answer writes nothing" holds only for a question still open; clearing one
-  that would no longer be asked gets the unasked default, said on its row.
+  semantics (what is stale) were not this lane's to change. Clearing such a
+  row first dropped the decision, so the refresh took its unasked default
+  (added the piece, adopted the one class left) — a write after "a cleared one
+  writes nothing" (ac-4; review). Chosen: Clear sends `clear-item` /
+  `clear-lesson`, which keeps the question open with its live candidates and
+  writes nothing; it can never be stale. Rejected: narrowing the guarantee in
+  copy (the contract was not amended).
 - **A difference row was read, not misapplied** (owner testing). The writes were
   right; "gusheh — yours: — · archive: X" used one dash as separator and empty
   value, and a choice changed no count ("will update 0" either way). Chosen: the

@@ -104,13 +104,14 @@ export default function ArchiveRefresh() {
     showPlan(phase.fetched, merged);
   }
 
-  /** Clear a question's answer: it is open again, and Apply writes nothing for it. */
+  /**
+   * Clear a question's answer: it is open again, and Apply writes nothing for
+   * it. The clear is itself sent, never just the answer dropped: with no
+   * decision at all, a question whose candidates moved would take the unasked
+   * default (add the piece, adopt the one class left) that nobody chose.
+   */
   function undecide(q: ReconcileQuestion) {
-    if (phase.kind !== 'preview') return;
-    const probe: ReconcileDecision = q.kind === 'item' ? { kind: 'skip-item', pieceKey: q.pieceKey! } : { kind: 'skip-lesson', sessionN: q.sessionN! };
-    const kept = decisions.filter((d) => !sameTarget(d, probe));
-    setDecisions(kept);
-    showPlan(phase.fetched, kept);
+    decide(q.kind === 'item' ? { kind: 'clear-item', pieceKey: q.pieceKey! } : { kind: 'clear-lesson', sessionN: q.sessionN! });
   }
 
   /** "Keep my value": withdraw the choice; Apply then keeps the owner's field. */
@@ -258,12 +259,8 @@ export default function ArchiveRefresh() {
                     <div className="tiny faint">
                       <span dir="ltr">
                         {'answer' in q && !q.ambiguous
-                          ? `The matches changed since you answered; your answer still applies. Cleared, this refresh does what it does unasked: ${
-                              q.kind === 'item' ? 'the piece is added as new' : 'a class that alone still matches is adopted, otherwise a new class is added'
-                            }.`
-                          : q.kind === 'item'
-                            ? 'An existing piece has this exact name.'
-                            : 'More than one class matches this session.'}
+                          ? 'The matches changed since you answered; your answer still applies until you clear it.'
+                          : askedSentence(q)}
                       </span>
                     </div>
                   </div>
@@ -569,6 +566,16 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
       </ul>
     </details>
   );
+}
+
+/**
+ * Why an open question is asked. Only a CLEARED answer leaves one open that
+ * would not be asked unprompted (no exact-name piece, or at most one class).
+ */
+function askedSentence(q: ReconcileQuestion): string {
+  const cleared = 'You cleared your answer, so Apply writes nothing for it; answer it, or a later refresh decides it unasked.';
+  if (q.kind === 'item') return q.candidates.length ? 'An existing piece has this exact name.' : `No existing piece has this name now. ${cleared}`;
+  return q.candidates.length > 1 ? 'More than one class matches this session.' : `${q.candidates.length ? 'One class' : 'No class'} matches this session now. ${cleared}`;
 }
 
 /** The answers a question offers, each with the one decision it sends. */

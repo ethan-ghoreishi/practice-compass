@@ -1926,6 +1926,14 @@ describe('answered questions, until Apply', () => {
       expect(p.summary.questions, d.kind).toBe(open.questions.length - 1);
       expect(p.staleDecisions, d.kind).toEqual([]);
     }
+    // CLEARED with the candidates unchanged: the plan is exactly the
+    // unanswered one — the question open, counted, nothing written for it.
+    const clears = [
+      { kind: 'clear-item', pieceKey: 'عراق' },
+      { kind: 'clear-lesson', sessionN: 13 },
+    ] as const;
+    for (const d of clears) expect(run([d]), d.kind).toEqual(open);
+
     // Both answered at once: nothing left to decide, both reported in order.
     const both = run([answers[3], answers[0]]);
     expect(both.answered.map((q) => q.answer)).toEqual([answers[3], answers[0]]);
@@ -1988,12 +1996,22 @@ describe('answered questions, until Apply', () => {
       expect(p.newItems.filter((i) => i.source?.pieceKey === 'عراق').length, d.kind).toBe(d.kind === 'create-item' ? 1 : 0);
       expect(p.source.suppressions.some((x) => x.kind === 'piece' && x.ref === 'عراق'), d.kind).toBe(d.kind === 'skip-item');
     }
-    // CLEARED there (no decision): nothing to ask, nothing reported, and the
-    // unasked default — the piece is added as new.
-    const clearedPiece = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
-    expect([clearedPiece.questions, clearedPiece.answered].map((qs) => qs.some((q) => q.pieceKey === 'عراق'))).toEqual([false, false]);
-    expect(clearedPiece.newItems.filter((i) => i.source?.pieceKey === 'عراق').length).toBe(1);
-    expect(clearedPiece.adoptedItems).toEqual([]);
+    // CLEARED there: the question is OPEN again with its live candidates
+    // (none), counted, and Apply writes NOTHING for it — not the unasked
+    // default, which with no decision at all adds the piece.
+    const unaskedPiece = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
+    expect(unaskedPiece.newItems.filter((i) => i.source?.pieceKey === 'عراق').length).toBe(1);
+    const clearedPiece = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [clears[0]], now: NOW });
+    expect(clearedPiece.questions.filter((q) => q.pieceKey === 'عراق')).toEqual([{ kind: 'item', pieceKey: 'عراق', label: 'عراق', candidates: [] }]);
+    expect(clearedPiece.summary.questions).toBe(unaskedPiece.summary.questions + 1);
+    expect(clearedPiece.answered.some((q) => q.pieceKey === 'عراق')).toBe(false);
+    expect(clearedPiece.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
+    expect([clearedPiece.adoptedItems, clearedPiece.staleDecisions]).toEqual([[], []]);
+    expect(clearedPiece.source.suppressions.some((x) => x.ref === 'عراق')).toBe(false);
+    // And Apply writes nothing about it, item or suppression.
+    const clearedDb = applyArchiveImport(renamed, clearedPiece, [clears[0]]);
+    expect(clearedDb.items.filter((i) => i.source?.pieceKey === 'عراق' || i.id === 'mine-araq')).toEqual(renamed.items);
+    expect(clearedDb.archiveSources?.[0]?.suppressions.some((x) => x.ref === 'عراق')).toBe(false);
     // Classes: TWO indistinguishable candidates, answered, then one or both
     // stop matching (a number corrected elsewhere).
     const renumber = (ids: string[]) => ({ ...db, lessons: db.lessons.map((l) => (ids.includes(l.id) ? { ...l, number: 99 } : l)) });
@@ -2014,12 +2032,24 @@ describe('answered questions, until Apply', () => {
         expect(p.newLessons.filter((l) => l.source?.sessionN === 13).length, label).toBe(d.kind === 'create-lesson' ? 1 : 0);
         expect(p.source.suppressions.some((x) => x.kind === 'session' && x.ref === '13'), label).toBe(d.kind === 'skip-lesson');
       }
-      // CLEARED there: the unasked default — the one class still matching is
-      // adopted, or with none a new class is added.
-      const cleared = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
-      expect([cleared.questions, cleared.answered].map((qs) => qs.some((q) => q.sessionN === 13))).toEqual([false, false]);
-      expect(cleared.adoptedLessons.filter((l) => l.source?.sessionN === 13).map((l) => l.id)).toEqual(left);
-      expect(cleared.newLessons.filter((l) => l.source?.sessionN === 13).length).toBe(left.length ? 0 : 1);
+      // CLEARED there: OPEN again with the live candidates, and NOTHING
+      // written — not the unasked default, which with no decision at all
+      // adopts the one class still matching, or with none adds a class.
+      const unasked = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
+      expect(unasked.adoptedLessons.filter((l) => l.source?.sessionN === 13).map((l) => l.id)).toEqual(left);
+      expect(unasked.newLessons.filter((l) => l.source?.sessionN === 13).length).toBe(left.length ? 0 : 1);
+      const cleared = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [clears[1]], now: NOW });
+      const reopened = cleared.questions.filter((q) => q.sessionN === 13);
+      expect(reopened.map((q) => [q.label, q.candidates.map((c) => c.id)])).toEqual([[askedClass.label, left]]);
+      expect(cleared.summary.questions).toBe(unasked.summary.questions + 1);
+      expect(cleared.answered.some((q) => q.sessionN === 13)).toBe(false);
+      expect(cleared.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+      expect(cleared.newLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+      expect(cleared.staleDecisions).toEqual([]);
+      expect(cleared.source.suppressions.some((x) => x.ref === '13')).toBe(false);
+      const written = applyArchiveImport(renumber(moved), cleared, [clears[1]]);
+      expect(written.lessons.filter((l) => l.source?.sessionN === 13)).toEqual([]);
+      expect(written.lessons.filter((l) => !l.source)).toEqual(renumber(moved).lessons);
     }
 
     // A decision about something never asked is reported too — Apply would
@@ -2028,5 +2058,16 @@ describe('answered questions, until Apply', () => {
     const unasked = run([{ kind: 'skip-item', pieceKey: 'آشوراوند' }]);
     expect(unasked.answered.map((q) => [q.pieceKey, q.candidates, q.ambiguous])).toEqual([['آشوراوند', [], false]]);
     expect(unasked.source.suppressions.map((s) => s.ref)).toContain('آشوراوند');
+    // Cleared, it is asked with no candidates and writes nothing — neither the
+    // suppression nor the piece the unasked refresh would add.
+    const clearedUnasked = run([{ kind: 'clear-item', pieceKey: 'آشوراوند' }]);
+    expect(clearedUnasked.questions.filter((q) => q.pieceKey === 'آشوراوند').map((q) => q.candidates)).toEqual([[]]);
+    expect(clearedUnasked.newItems.some((i) => i.source?.pieceKey === 'آشوراوند')).toBe(false);
+    expect(clearedUnasked.source.suppressions.some((s) => s.ref === 'آشوراوند')).toBe(false);
+    // A clear about a question already settled (bound, suppressed) is never
+    // stale: it asks nothing to be written.
+    const skipped = applyArchiveImport(db, unasked, [{ kind: 'skip-item', pieceKey: 'آشوراوند' }]);
+    const afterSkip = planArchiveImport({ db: skipped, index: INDEX, instrumentId: SETAR, decisions: [{ kind: 'clear-item', pieceKey: 'آشوراوند' }], now: NOW });
+    expect([afterSkip.staleDecisions, afterSkip.questions.some((q) => q.pieceKey === 'آشوراوند')]).toEqual([[], false]);
   });
 });

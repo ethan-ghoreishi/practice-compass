@@ -47,6 +47,14 @@ export type ReconcileDecision =
   | { kind: 'create-lesson'; sessionN: number }
   | { kind: 'skip-lesson'; sessionN: number }
   /**
+   * A CLEARED ANSWER: the owner withdrew it. The question stays asked, with
+   * its live candidates, whatever they now are, and Apply writes nothing for
+   * it — never the default an unasked refresh would take (add the piece, adopt
+   * a class that alone matches), which nobody chose.
+   */
+  | { kind: 'clear-item'; pieceKey: string }
+  | { kind: 'clear-lesson'; sessionN: number }
+  /**
    * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — bound to the RECORD it was shown
    * against (`itemId`), the owner's value it was chosen over, TYPED (`from`: a
    * term reference stays a reference, text stays text, `null` is empty), what
@@ -238,7 +246,7 @@ export interface ImportPlan {
   repairedLessons: Lesson[];
   /** Existing items adopted by an explicit owner decision. */
   adoptedItems: PracticeItem[];
-  /** The OPEN questions — what "N to decide" counts. */
+  /** The OPEN questions — what "N to decide" counts — a cleared answer's among them, whatever its candidates now are. */
   questions: ReconcileQuestion[];
   /**
    * The questions this preview's decisions answer, each with its answer, so
@@ -647,6 +655,10 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     const ask: ReconcileQuestion = { kind: 'lesson', sessionN: session.n, label: `Class ${session.n} · ${session.date}`, candidates: candidates.map(lessonCandidate) };
     const ambiguous = candidates.length > 1;
 
+    if (acted(decisionFor('clear-lesson', (d) => 'sessionN' in d && d.sessionN === session.n))) {
+      questions.push(ask);
+      continue;
+    }
     const skip = decisionFor('skip-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
     if (skip) {
       acted(skip);
@@ -766,6 +778,10 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     const ask: ReconcileQuestion = { kind: 'item', pieceKey: piece.key, label: piece.key, candidates: candidates.map(itemCandidate) };
     const ambiguous = candidates.length > 0;
 
+    if (acted(decisionFor('clear-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key))) {
+      questions.push(ask);
+      continue;
+    }
     const skipItem = decisionFor('skip-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
     if (skipItem) {
       acted(skipItem);
@@ -886,6 +902,11 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
   // it the same decision would go stale for ever.
   const realised = (d: ReconcileDecision): boolean => {
     switch (d.kind) {
+      // A clear writes nothing, so there is nothing for it to go stale on: a
+      // question that has since been bound or suppressed simply is not asked.
+      case 'clear-item':
+      case 'clear-lesson':
+        return true;
       case 'skip-item':
         return isSuppressed('piece', d.pieceKey);
       case 'skip-lesson':

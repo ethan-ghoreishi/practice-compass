@@ -317,10 +317,12 @@ applies the lot in one store mutation.
   is listed**, even when its candidates moved after it was chosen (a sync
   renamed the only match, two matching classes became one): it stays selected,
   switchable and clearable, says the matches changed (`ambiguous: false`), and
-  is never silently executed off screen. "A cleared one writes nothing" holds
-  only while the question is still open: cleared there, the refresh does what
-  it does unasked (the piece is added; a class that alone still matches is
-  adopted, otherwise added), and the row says so before it is cleared.
+  is never silently executed off screen. Clearing sends its own decision
+  (`clear-item` / `clear-lesson`), so a cleared question is asked again with
+  its live candidates, whatever they now are, is counted, and writes nothing —
+  never the default a refresh with no answer takes (add the piece, adopt the
+  one class left), which nobody chose. A later refresh, with no clear in hand,
+  decides it as usual.
 - **Every choice shows itself.** Keep my value / Use archive value and each
   answer mark the chosen one with the selected treatment (weight as well as
   colour), not only `aria-pressed`. Keep my value is the default.
