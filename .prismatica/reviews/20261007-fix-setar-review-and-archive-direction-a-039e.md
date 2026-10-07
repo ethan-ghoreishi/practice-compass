@@ -1,36 +1,12 @@
 ---
 id: 20261007-fix-setar-review-and-archive-direction-a-039e
 contractId: 20261007-fix-setar-review-and-archive-direction-a-039e
-patchId: 0f71be02e9d02bd9564c8cd997f8525f4a2059b9
+patchId: a28ec9dca529b1c6740e6612be757a40f3618220
 reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: archive-cleared-answer-write-semantics
-    summary: "P2: ac-4 requires a cleared Link/Create separately/Skip answer to
-      write nothing. Clearing after candidates cease to be ambiguous instead
-      enables automatic creation or adoption. The docs and named domain test
-      narrow the guarantee, but the approved contract has no amendment."
-    counterexample: "In memory using tests/fixtures/setar-archive.json: answer Skip
-      for piece عراق, rename its sole unbound candidate, re-preview, then clear.
-      ArchiveRefresh.undecide (src/components/ArchiveRefresh.tsx:108) removes
-      the decision; planArchiveImport creates one archive-bound item
-      (src/domain/sourceReconcile.ts:795). For class 13 initially having two
-      exact candidates, clearing after correction leaves one candidate and
-      adopts it (line 688), or zero candidates and creates one class (line 696).
-      applyArchiveImport and store preview/commit execute those outputs. Family
-      sweep covers all six item/class answer kinds and three fallback instances,
-      the shared Clear answer handler, planner, writer, store rebase,
-      docs/setar-archive.md:320 and sourceReconcile.test.ts:1991/2017. Checked
-      clean: six answers with stable candidates, clears while ambiguity remains,
-      invalid link refusals with remaining candidates, metadata Keep my value
-      and deselected Setar setup rows. The exact ac-4 browser test clears only
-      with stable candidates; the exact ac-5 domain test explicitly expects
-      these three fallback writes. Either meet ac-4 or obtain an explicit owner
-      contract amendment and matching named proof; explanatory copy alone does
-      not close this."
-createdAt: 2026-10-07T15:21:47.354Z
-sealedAt: 2026-10-07T15:35:38.824Z
+verdict: approve
+createdAt: 2026-10-07T15:54:40.428Z
+sealedAt: 2026-10-07T16:03:29.967Z
 ---
 
 # Review: Fix Setar review and archive direction and choice state, and Repertoire search typing
@@ -44,7 +20,7 @@ sealedAt: 2026-10-07T15:35:38.824Z
 - **Contract:** 20261007-fix-setar-review-and-archive-direction-a-039e
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/47
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `0f71be02e9d02bd9564c8cd997f8525f4a2059b9`
+- **Diff patch-id:** `a28ec9dca529b1c6740e6612be757a40f3618220`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
 ## The Delta this change was framed from
@@ -93,365 +69,342 @@ still breaks it is not closed.
 
 **Findings from the previous review:**
 
-_none recorded_
+- **archive-cleared-answer-write-semantics** — P2: ac-4 requires a cleared Link/Create separately/Skip answer to write nothing. Clearing after candidates cease to be ambiguous instead enables automatic creation or adoption. The docs and named domain test narrow the guarantee, but the approved contract has no amendment.
+  _counterexample:_ In memory using tests/fixtures/setar-archive.json: answer Skip for piece عراق, rename its sole unbound candidate, re-preview, then clear. ArchiveRefresh.undecide (src/components/ArchiveRefresh.tsx:108) removes the decision; planArchiveImport creates one archive-bound item (src/domain/sourceReconcile.ts:795). For class 13 initially having two exact candidates, clearing after correction leaves one candidate and adopts it (line 688), or zero candidates and creates one class (line 696). applyArchiveImport and store preview/commit execute those outputs. Family sweep covers all six item/class answer kinds and three fallback instances, the shared Clear answer handler, planner, writer, store rebase, docs/setar-archive.md:320 and sourceReconcile.test.ts:1991/2017. Checked clean: six answers with stable candidates, clears while ambiguity remains, invalid link refusals with remaining candidates, metadata Keep my value and deselected Setar setup rows. The exact ac-4 browser test clears only with stable candidates; the exact ac-5 domain test explicitly expects these three fallback writes. Either meet ac-4 or obtain an explicit owner contract amendment and matching named proof; explanatory copy alone does not close this.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/DECISIONS.md b/DECISIONS.md
-index b26cdd4cad0f1bb672851f5f4fb7a8546d304824..dab6873b241a21c7ec500990c497ed0558fcad29 100644
+index dab6873b241a21c7ec500990c497ed0558fcad29..003873f4e928afe2b9a6f2f7eb500c366b91d421 100644
 --- a/DECISIONS.md
 +++ b/DECISIONS.md
-@@ -36,6 +36,26 @@ Five reports, one heavy lane (contract 20261007-…-039e, issue #47).
-   semantics (what is stale) were not this lane's to change. So "a cleared
-   answer writes nothing" holds only for a question still open; clearing one
-   that would no longer be asked gets the unasked default, said on its row.
-+- **A difference row was read, not misapplied** (owner testing). The writes were
-+  right; "gusheh — yours: — · archive: X" used one dash as separator and empty
-+  value, and a choice changed no count ("will update 0" either way). Chosen: the
-+  setup review's grammar ("Field: none → X", item-form field names), intros
-+  saying Apply writes only rows set to Use archive value, the summary saying
-+  "will set N fields to the archive's value" before Apply and "set" after
-+  (component-side, by `decisionMatchesSuggestion`; a zero "update" count gives
-+  way beside it), and the rows start-aligned like the rest of the section
-+  (`.list-row` had centred them). Rejected: relabelling the buttons (the
-+  contract names Keep my value).
-+- **A gusheh name is offered only to a gusheh.** Every one of the owner's
-+  standing differences was a legacy درامد/چهارپاره item, imported as a composed
-+  piece, offered the registry's gusheh name. Taken, it left a composed piece
-+  with a name the item form hides ("Gusheh (radif only)") and cannot clear. The
-+  registry derives that name from its kind reading, and the kind is Review Setar
-+  setup's question, which writes kind and name together (each of those items
-+  has that row). So the plan offers `gusheh` only where the item IS a gusheh,
-+  standing or fresh; other fields are offered as before, and nothing already
-+  written is touched. Rejected: Use archive value also changing the kind (a
-+  second door to setup's decision) or showing the field on composed pieces.
- - **Repertoire search was a real, rare defect.** The box showed the URL's query;
-   the router renders a URL change in a transition, and while one is pending React
-   restores a controlled input to its last rendered value — "pishdaramad" became
+@@ -33,9 +33,13 @@ Five reports, one heavy lane (contract 20261007-…-039e, issue #47).
+   still executed it; every ACTED-ON decision is now reported, flagged
+   `ambiguous: false` when it would no longer be asked. Rejected: calling such
+   a decision stale — its target still qualifies, and the archive decision
+-  semantics (what is stale) were not this lane's to change. So "a cleared
+-  answer writes nothing" holds only for a question still open; clearing one
+-  that would no longer be asked gets the unasked default, said on its row.
++  semantics (what is stale) were not this lane's to change. Clearing such a
++  row first dropped the decision, so the refresh took its unasked default
++  (added the piece, adopted the one class left) — a write after "a cleared one
++  writes nothing" (ac-4; review). Chosen: Clear sends `clear-item` /
++  `clear-lesson`, which keeps the question open with its live candidates and
++  writes nothing; it can never be stale. Rejected: narrowing the guarantee in
++  copy (the contract was not amended).
+ - **A difference row was read, not misapplied** (owner testing). The writes were
+   right; "gusheh — yours: — · archive: X" used one dash as separator and empty
+   value, and a choice changed no count ("will update 0" either way). Chosen: the
 diff --git a/docs/setar-archive.md b/docs/setar-archive.md
-index ae7a970acf4ebbbf82777794cf6e8b8fb7c15276..40f331593f7a09b62ecd93ce72a6dc7fa6ed61f5 100644
+index 40f331593f7a09b62ecd93ce72a6dc7fa6ed61f5..554a2fc3d829e90e80ed1ba0d3de993ef6ace95d 100644
 --- a/docs/setar-archive.md
 +++ b/docs/setar-archive.md
-@@ -324,8 +324,9 @@ applies the lot in one store mutation.
+@@ -317,10 +317,12 @@ applies the lot in one store mutation.
+   is listed**, even when its candidates moved after it was chosen (a sync
+   renamed the only match, two matching classes became one): it stays selected,
+   switchable and clearable, says the matches changed (`ambiguous: false`), and
+-  is never silently executed off screen. "A cleared one writes nothing" holds
+-  only while the question is still open: cleared there, the refresh does what
+-  it does unasked (the piece is added; a class that alone still matches is
+-  adopted, otherwise added), and the row says so before it is cleared.
++  is never silently executed off screen. Clearing sends its own decision
++  (`clear-item` / `clear-lesson`), so a cleared question is asked again with
++  its live candidates, whatever they now are, is counted, and writes nothing —
++  never the default a refresh with no answer takes (add the piece, adopt the
++  one class left), which nobody chose. A later refresh, with no clear in hand,
++  decides it as usual.
  - **Every choice shows itself.** Keep my value / Use archive value and each
    answer mark the chosen one with the selected treatment (weight as well as
    colour), not only `aria-pressed`. Keep my value is the default.
--- **Lines read in order beside a Farsi name.** A difference ("composer — yours:
--  X · archive: Y"), a Review Setar setup change ("Kind: before → after") and an
-+- **Lines read in order beside a Farsi name.** A difference ("Composer /
-+  maestro: yours → archive's", an empty value said as "none"), a Review Setar
-+  setup change ("Kind: before → after") and an
-   attention line ("path — reason") are each one left-to-right line with every
-   value in its own direction inside it, so the arrow always points from what you
-   have to what is proposed.
-@@ -439,7 +440,11 @@ piece's `dastgah`, `form`, `composer` and gusheh name. Under **Archive metadata
- differs**, a registry value is offered only when the registry CHANGED that field
- since the graph this device last accepted — never because it merely differs from
- yours. Each offer is "Keep my value" (the default) or "Use archive value"; Apply
--accepts the archive's facts and keeps every value you did not choose. Accepting
-+accepts the archive's facts and keeps every value you did not choose. Choosing
-+writes nothing by itself: the summary counts the fields Apply will take from the
-+archive ("will set N fields to the archive's value") and, once applied, says so.
-+A gusheh name is offered only to an item that is a gusheh: on any other kind it
-+is a kind question, which **Review Setar setup** settles with the name. Accepting
- the graph settles the offer, through a reload, a sync and a reinstall alike, with
- no separate ledger of answers. Differences you already live with stay out of the
- way until you open **Review differences**, where the same two choices apply.
 diff --git a/src/components/ArchiveRefresh.tsx b/src/components/ArchiveRefresh.tsx
-index 63a5bacc2d8696bf2fd938907576b824880e9a2a..ebe415b91b5b7eaeb6dc788ea557279791b90440 100644
+index ebe415b91b5b7eaeb6dc788ea557279791b90440..fbe7fc90b2d668e396bafd614648f11cb27b0a07 100644
 --- a/src/components/ArchiveRefresh.tsx
 +++ b/src/components/ArchiveRefresh.tsx
-@@ -43,7 +43,7 @@ type Phase =
-   | { kind: 'idle' }
-   | { kind: 'working' }
-   | { kind: 'error'; message: string }
--  | { kind: 'done'; message: string; plan?: ImportPlan; commitSha?: string }
-+  | { kind: 'done'; message: string; plan?: ImportPlan; commitSha?: string; fromArchive: number }
-   | { kind: 'preview'; fetched: FetchedIndex; rev: number; plan: ImportPlan; notice?: string };
- 
- export default function ArchiveRefresh() {
-@@ -151,7 +151,7 @@ export default function ArchiveRefresh() {
-       setPhase({ kind: 'error', message: result.message });
-       return;
-     }
--    setPhase({ kind: 'done', message: result.message, plan: phase.plan, commitSha: fetched.commitSha });
-+    setPhase({ kind: 'done', message: result.message, plan: phase.plan, commitSha: fetched.commitSha, fromArchive });
+@@ -104,13 +104,14 @@ export default function ArchiveRefresh() {
+     showPlan(phase.fetched, merged);
    }
  
-   // A restore changes what a preview on screen was decided against: look again.
-@@ -161,6 +161,9 @@ export default function ArchiveRefresh() {
+-  /** Clear a question's answer: it is open again, and Apply writes nothing for it. */
++  /**
++   * Clear a question's answer: it is open again, and Apply writes nothing for
++   * it. The clear is itself sent, never just the answer dropped: with no
++   * decision at all, a question whose candidates moved would take the unasked
++   * default (add the piece, adopt the one class left) that nobody chose.
++   */
+   function undecide(q: ReconcileQuestion) {
+-    if (phase.kind !== 'preview') return;
+-    const probe: ReconcileDecision = q.kind === 'item' ? { kind: 'skip-item', pieceKey: q.pieceKey! } : { kind: 'skip-lesson', sessionN: q.sessionN! };
+-    const kept = decisions.filter((d) => !sameTarget(d, probe));
+-    setDecisions(kept);
+-    showPlan(phase.fetched, kept);
++    decide(q.kind === 'item' ? { kind: 'clear-item', pieceKey: q.pieceKey! } : { kind: 'clear-lesson', sessionN: q.sessionN! });
+   }
  
-   const plan = phase.kind === 'preview' ? phase.plan : undefined;
-   const standing = plan ? plan.differences.filter((d) => !d.fresh) : [];
-+  // What Apply will write from the difference rows: the plan's own matching
-+  // rule, so a choice is seen to count the moment it is made.
-+  const fromArchive = plan ? decisions.filter((d) => plan.differences.some((x) => decisionMatchesSuggestion(d, x))).length : 0;
-   // Open and answered questions together, in the index's own order, so
-   // answering one never moves it: it stays where it was, its answer shown.
-   const asked: (ReconcileQuestion | AnsweredQuestion)[] = [];
-@@ -229,7 +232,7 @@ export default function ArchiveRefresh() {
-       {phase.kind === 'done' && (
-         <div className="tiny" aria-live="polite" style={{ textAlign: 'start' }}>
-           <span dir="ltr">{phase.message}</span>
--          {phase.plan && <Summary plan={phase.plan} done commitSha={phase.commitSha} />}
-+          {phase.plan && <Summary plan={phase.plan} done commitSha={phase.commitSha} fromArchive={phase.fromArchive} />}
-         </div>
-       )}
- 
-@@ -240,13 +243,13 @@ export default function ArchiveRefresh() {
-       )}
-       {phase.kind === 'preview' && plan && (
-         <div className="stack-sm">
--          <Summary plan={plan} commitSha={phase.fetched.commitSha} />
-+          <Summary plan={plan} commitSha={phase.fetched.commitSha} fromArchive={fromArchive} />
- 
-           {asked.length > 0 && (
-             <div className="stack-sm">
-               <div className="section-label">Needs a decision</div>
-               {asked.map((q) => (
--                <div key={`${q.kind}-${q.pieceKey ?? q.sessionN}`} className="list-row stack-sm">
-+                <div key={`${q.kind}-${q.pieceKey ?? q.sessionN}`} className="list-row stack-sm" style={ROW}>
-                   {/* The GROUP is the name and the sentence that belongs to it;
-                       the fixed English buttons below sit OUTSIDE it, so a Farsi
-                       piece name cannot claim their bidi base. */}
-@@ -298,8 +301,8 @@ export default function ArchiveRefresh() {
-               <div className="section-label">Archive metadata differs</div>
-               <p className="tiny faint" style={{ textAlign: 'start', margin: 0 }}>
-                 <span dir="ltr">
--                  The registry changed these since this device last accepted the archive. Your value stays unless you
--                  choose the archive’s.
-+                  The registry changed these since this device last accepted the archive. Each line reads your value →
-+                  the archive’s. Apply changes only the ones set to Use archive value.
-                 </span>
-               </p>
-               {plan.suggestions.map((sg) => (
-@@ -323,8 +326,8 @@ export default function ArchiveRefresh() {
-                 <>
-                   <p className="tiny faint" style={{ textAlign: 'start', margin: 0 }}>
-                     <span dir="ltr">
--                      Values you already have that differ from the registry, which has not changed them. Nothing here
--                      changes unless you choose it.
-+                      Fields of your pieces that differ from the registry, which has not changed them. Each line reads
-+                      your value → the archive’s. Apply changes only the ones set to Use archive value.
-                     </span>
-                   </p>
-                   {standing.map((sg) => (
-@@ -374,14 +377,16 @@ function DifferenceRow({
-   // has since edited is no longer this difference's answer.
-   const used = decisions.some((d) => decisionMatchesSuggestion(d, sg));
-   return (
--    <div className="list-row stack-sm">
-+    <div className="list-row stack-sm" style={ROW}>
-       <div dir="auto" style={{ textAlign: 'start' }}>
-         <strong>{sg.pieceKey}</strong>
-         {/* ONE line, ONE isolate, each value nested in its own: as sibling
--            isolates beside a Farsi key the line ran right to left. */}
-+            isolates beside a Farsi key the line ran right to left. The same
-+            grammar as Review Setar setup — field: yours → archive's — with an
-+            empty value said as "none", never a dash beside the separators. */}
-         <div className="tiny faint">
-           <span dir="ltr">
--            {FIELD_LABELS[sg.field]} — yours: <span dir="auto">{sg.from || '—'}</span> · archive: <span dir="auto">{sg.to}</span>
-+            {FIELD_NAMES[sg.field]}: {sg.from ? <span dir="auto">{sg.from}</span> : 'none'} → <span dir="auto">{sg.to}</span>
-             {sg.provisional ? ' · the registry marks this identity provisional' : null}
-           </span>
-         </div>
-@@ -398,9 +403,13 @@ function DifferenceRow({
+   /** "Keep my value": withdraw the choice; Apply then keeps the owner's field. */
+@@ -258,12 +259,8 @@ export default function ArchiveRefresh() {
+                     <div className="tiny faint">
+                       <span dir="ltr">
+                         {'answer' in q && !q.ambiguous
+-                          ? `The matches changed since you answered; your answer still applies. Cleared, this refresh does what it does unasked: ${
+-                              q.kind === 'item' ? 'the piece is added as new' : 'a class that alone still matches is adopted, otherwise a new class is added'
+-                            }.`
+-                          : q.kind === 'item'
+-                            ? 'An existing piece has this exact name.'
+-                            : 'More than one class matches this session.'}
++                          ? 'The matches changed since you answered; your answer still applies until you clear it.'
++                          : askedSentence(q)}
+                       </span>
+                     </div>
+                   </div>
+@@ -571,6 +568,16 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
    );
  }
  
--function Summary({ plan, done = false, commitSha }: { plan: ImportPlan; done?: boolean; commitSha?: string }) {
-+function Summary({ plan, done = false, commitSha, fromArchive }: { plan: ImportPlan; done?: boolean; commitSha?: string; fromArchive: number }) {
-   const s = plan.summary;
-   const [open, setOpen] = useState(false);
-+  // The fields chosen from the archive are said as what Apply sets; "update 0"
-+  // beside them read as a contradiction, so a zero update count gives way.
-+  const updated = s.updatedLessons || !fromArchive ? ` · ${done ? 'Updated' : 'will update'} ${s.updatedLessons}` : '';
-+  const used = fromArchive ? ` · ${done ? 'set' : 'will set'} ${fromArchive} field${fromArchive === 1 ? '' : 's'} to the archive’s value` : '';
-   const counts = [
-     `${s.questions} to decide`,
-     s.metadata ? `${s.metadata} archive change${s.metadata === 1 ? '' : 's'} to look at` : null,
-@@ -413,7 +422,7 @@ function Summary({ plan, done = false, commitSha }: { plan: ImportPlan; done?: b
-         <span dir="ltr">
-           {s.unchanged
-             ? `Already current. ${counts.slice(1).join(' · ')}`
--            : `${done ? 'Added' : 'Will add'} ${s.addedItems} pieces and ${s.addedLessons} classes · ${done ? 'Updated' : 'will update'} ${s.updatedLessons} · ${counts.join(' · ')}`}
-+            : `${done ? 'Added' : 'Will add'} ${s.addedItems} pieces and ${s.addedLessons} classes${updated}${used} · ${counts.join(' · ')}`}
-         </span>
-       </div>
-       <div className="tiny faint" style={{ textAlign: 'start' }}>
-@@ -598,10 +607,21 @@ function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
- 
- const LINK_BTN = { background: 'none', border: 'none', padding: 0 } as const;
- 
--/** Plain names for the registry fields an improvement can touch. */
-+/** Plain names for the registry fields an improvement can touch (the choice group's accessible name). */
- const FIELD_LABELS: Record<MetadataField, string> = {
-   dastgahAvaz: 'dastgāh',
-   gusheh: 'gusheh',
-   form: 'form',
-   composer: 'composer',
- };
++/**
++ * Why an open question is asked. Only a CLEARED answer leaves one open that
++ * would not be asked unprompted (no exact-name piece, or at most one class).
++ */
++function askedSentence(q: ReconcileQuestion): string {
++  const cleared = 'You cleared your answer, so Apply writes nothing for it; answer it, or a later refresh decides it unasked.';
++  if (q.kind === 'item') return q.candidates.length ? 'An existing piece has this exact name.' : `No existing piece has this name now. ${cleared}`;
++  return q.candidates.length > 1 ? 'More than one class matches this session.' : `${q.candidates.length ? 'One class' : 'No class'} matches this session now. ${cleared}`;
++}
 +
-+/** A stacked row starts where the section does: `.list-row` centres its children, which floated each one mid-page. */
-+const ROW = { alignItems: 'flex-start' } as const;
-+
-+/** The same fields as the item form names them, for the difference line the owner reads. */
-+const FIELD_NAMES: Record<MetadataField, string> = {
-+  dastgahAvaz: 'Dastgāh / Āvāz',
-+  gusheh: 'Gusheh',
-+  form: 'Form',
-+  composer: 'Composer / maestro',
-+};
-diff --git a/src/components/direction.test.ts b/src/components/direction.test.ts
-index 40458312657305e643fdbf0522704839d67b945e..a8b60fca063234ba9ef3f207bee26c82c7cfcf63 100644
---- a/src/components/direction.test.ts
-+++ b/src/components/direction.test.ts
-@@ -667,7 +667,7 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
-   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="auto">{b.nextAction}</span>' },
-   // A registry improvement offered on Refresh: the value the owner has and the
-   // value the archive proposes are authored independently of each other.
--  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from || '—'}</span>" },
-+  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"auto\">{sg.from}</span>" },
-   { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="auto">{sg.to}</span>' },
-   // Review Setar setup: each owner-authored before/after value, in its own isolate.
-   { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="auto">' },
-@@ -726,7 +726,7 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
-   { file: 'components/SetarSetupReview.tsx', snippet: '<span dir="ltr">\n                      {FIELD[p.field]}: <Value db={db} v={p.before} />' },
-   // Refresh Setar archive: a difference line and an attention line, each ONE
-   // isolate with its values nested.
--  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"ltr\">\n            {FIELD_LABELS[sg.field]} — yours: <span dir=\"auto\">{sg.from || '—'}</span> · archive: <span dir=\"auto\">{sg.to}</span>" },
-+  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"ltr\">\n            {FIELD_NAMES[sg.field]}: {sg.from ? <span dir=\"auto\">{sg.from}</span> : 'none'} → <span dir=\"auto\">{sg.to}</span>" },
-   { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="ltr">\n                      <span dir="auto">{d.path}</span> — {d.reason}' },
-   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
-   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
+ /** The answers a question offers, each with the one decision it sends. */
+ function answersFor(q: ReconcileQuestion): { label: string; decision: ReconcileDecision }[] {
+   if (q.kind === 'item') {
 diff --git a/src/domain/sourceReconcile.test.ts b/src/domain/sourceReconcile.test.ts
-index 4f89bbfe9a4d2bc2f132a40c82a113ef7665768f..502efb74a260036a62a18c1936c7a9c8fc67ca0e 100644
+index 502efb74a260036a62a18c1936c7a9c8fc67ca0e..4ec343e25366317ce100568d7a19c8a0c7adf742 100644
 --- a/src/domain/sourceReconcile.test.ts
 +++ b/src/domain/sourceReconcile.test.ts
-@@ -1583,6 +1583,29 @@ describe('archive metadata against the accepted baseline', () => {
-   const fields = (p: ReturnType<typeof planArchiveImport>, list: 'suggestions' | 'differences') =>
-     p[list].map((s) => `${s.pieceKey}:${s.field}`).sort();
- 
-+  it('a gusheh name is offered only to an item that is a gusheh', () => {
-+    const key = 'بسته-نگار-بیات-ترک-ردیف-میرزاعبدالله';
-+    const first = run(baseDB(), idx('a'));
-+    const kinded = (db: PracticeDB, itemType: PracticeDB['items'][number]['itemType']): PracticeDB => ({
-+      ...db,
-+      items: db.items.map((i) => (i.source?.pieceKey === key ? { ...i, itemType } : i)),
-+    });
-+    const emptied = edit(first.next, key, { gusheh: '' });
-+    // A gusheh with no name: the registry's is a difference, as for any field.
-+    expect(fields(run(emptied, idx('b')).p, 'differences')).toEqual([`${key}:gusheh`]);
-+    // The same item as a composed piece — the legacy import's old kind — is
-+    // not offered a name its form can neither show nor clear, standing or
-+    // fresh; its kind is Review Setar setup's to settle, name included.
-+    const piece = kinded(emptied, 'full_piece');
-+    expect(run(piece, idx('b')).p.differences).toEqual([]);
-+    const renamed = run(piece, idx('c', withPiece(key, { piece: 'بسته-نگار-دوم' })));
-+    expect(renamed.p.differences).toEqual([]);
-+    expect(renamed.p.summary.metadata).toBe(0);
-+    // Its other fields are still offered.
-+    const composer = run(piece, idx('d', withPiece(key, { composer: 'صبا' })));
-+    expect(fields(composer.p, 'suggestions')).toEqual([`${key}:composer`]);
-+  });
+@@ -1926,6 +1926,14 @@ describe('answered questions, until Apply', () => {
+       expect(p.summary.questions, d.kind).toBe(open.questions.length - 1);
+       expect(p.staleDecisions, d.kind).toEqual([]);
+     }
++    // CLEARED with the candidates unchanged: the plan is exactly the
++    // unanswered one — the question open, counted, nothing written for it.
++    const clears = [
++      { kind: 'clear-item', pieceKey: 'عراق' },
++      { kind: 'clear-lesson', sessionN: 13 },
++    ] as const;
++    for (const d of clears) expect(run([d]), d.kind).toEqual(open);
 +
-   it('setar metadata refresh offers only new meaningful source proposals', () => {
-     // Two custom composers claim one spelling: «Ambig» is AMBIGUOUS, so it
-     // stays the owner's literal text and compares as text.
+     // Both answered at once: nothing left to decide, both reported in order.
+     const both = run([answers[3], answers[0]]);
+     expect(both.answered.map((q) => q.answer)).toEqual([answers[3], answers[0]]);
+@@ -1988,12 +1996,22 @@ describe('answered questions, until Apply', () => {
+       expect(p.newItems.filter((i) => i.source?.pieceKey === 'عراق').length, d.kind).toBe(d.kind === 'create-item' ? 1 : 0);
+       expect(p.source.suppressions.some((x) => x.kind === 'piece' && x.ref === 'عراق'), d.kind).toBe(d.kind === 'skip-item');
+     }
+-    // CLEARED there (no decision): nothing to ask, nothing reported, and the
+-    // unasked default — the piece is added as new.
+-    const clearedPiece = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
+-    expect([clearedPiece.questions, clearedPiece.answered].map((qs) => qs.some((q) => q.pieceKey === 'عراق'))).toEqual([false, false]);
+-    expect(clearedPiece.newItems.filter((i) => i.source?.pieceKey === 'عراق').length).toBe(1);
+-    expect(clearedPiece.adoptedItems).toEqual([]);
++    // CLEARED there: the question is OPEN again with its live candidates
++    // (none), counted, and Apply writes NOTHING for it — not the unasked
++    // default, which with no decision at all adds the piece.
++    const unaskedPiece = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
++    expect(unaskedPiece.newItems.filter((i) => i.source?.pieceKey === 'عراق').length).toBe(1);
++    const clearedPiece = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [clears[0]], now: NOW });
++    expect(clearedPiece.questions.filter((q) => q.pieceKey === 'عراق')).toEqual([{ kind: 'item', pieceKey: 'عراق', label: 'عراق', candidates: [] }]);
++    expect(clearedPiece.summary.questions).toBe(unaskedPiece.summary.questions + 1);
++    expect(clearedPiece.answered.some((q) => q.pieceKey === 'عراق')).toBe(false);
++    expect(clearedPiece.newItems.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);
++    expect([clearedPiece.adoptedItems, clearedPiece.staleDecisions]).toEqual([[], []]);
++    expect(clearedPiece.source.suppressions.some((x) => x.ref === 'عراق')).toBe(false);
++    // And Apply writes nothing about it, item or suppression.
++    const clearedDb = applyArchiveImport(renamed, clearedPiece, [clears[0]]);
++    expect(clearedDb.items.filter((i) => i.source?.pieceKey === 'عراق' || i.id === 'mine-araq')).toEqual(renamed.items);
++    expect(clearedDb.archiveSources?.[0]?.suppressions.some((x) => x.ref === 'عراق')).toBe(false);
+     // Classes: TWO indistinguishable candidates, answered, then one or both
+     // stop matching (a number corrected elsewhere).
+     const renumber = (ids: string[]) => ({ ...db, lessons: db.lessons.map((l) => (ids.includes(l.id) ? { ...l, number: 99 } : l)) });
+@@ -2014,12 +2032,24 @@ describe('answered questions, until Apply', () => {
+         expect(p.newLessons.filter((l) => l.source?.sessionN === 13).length, label).toBe(d.kind === 'create-lesson' ? 1 : 0);
+         expect(p.source.suppressions.some((x) => x.kind === 'session' && x.ref === '13'), label).toBe(d.kind === 'skip-lesson');
+       }
+-      // CLEARED there: the unasked default — the one class still matching is
+-      // adopted, or with none a new class is added.
+-      const cleared = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
+-      expect([cleared.questions, cleared.answered].map((qs) => qs.some((q) => q.sessionN === 13))).toEqual([false, false]);
+-      expect(cleared.adoptedLessons.filter((l) => l.source?.sessionN === 13).map((l) => l.id)).toEqual(left);
+-      expect(cleared.newLessons.filter((l) => l.source?.sessionN === 13).length).toBe(left.length ? 0 : 1);
++      // CLEARED there: OPEN again with the live candidates, and NOTHING
++      // written — not the unasked default, which with no decision at all
++      // adopts the one class still matching, or with none adds a class.
++      const unasked = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
++      expect(unasked.adoptedLessons.filter((l) => l.source?.sessionN === 13).map((l) => l.id)).toEqual(left);
++      expect(unasked.newLessons.filter((l) => l.source?.sessionN === 13).length).toBe(left.length ? 0 : 1);
++      const cleared = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [clears[1]], now: NOW });
++      const reopened = cleared.questions.filter((q) => q.sessionN === 13);
++      expect(reopened.map((q) => [q.label, q.candidates.map((c) => c.id)])).toEqual([[askedClass.label, left]]);
++      expect(cleared.summary.questions).toBe(unasked.summary.questions + 1);
++      expect(cleared.answered.some((q) => q.sessionN === 13)).toBe(false);
++      expect(cleared.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
++      expect(cleared.newLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
++      expect(cleared.staleDecisions).toEqual([]);
++      expect(cleared.source.suppressions.some((x) => x.ref === '13')).toBe(false);
++      const written = applyArchiveImport(renumber(moved), cleared, [clears[1]]);
++      expect(written.lessons.filter((l) => l.source?.sessionN === 13)).toEqual([]);
++      expect(written.lessons.filter((l) => !l.source)).toEqual(renumber(moved).lessons);
+     }
+ 
+     // A decision about something never asked is reported too — Apply would
+@@ -2028,5 +2058,16 @@ describe('answered questions, until Apply', () => {
+     const unasked = run([{ kind: 'skip-item', pieceKey: 'آشوراوند' }]);
+     expect(unasked.answered.map((q) => [q.pieceKey, q.candidates, q.ambiguous])).toEqual([['آشوراوند', [], false]]);
+     expect(unasked.source.suppressions.map((s) => s.ref)).toContain('آشوراوند');
++    // Cleared, it is asked with no candidates and writes nothing — neither the
++    // suppression nor the piece the unasked refresh would add.
++    const clearedUnasked = run([{ kind: 'clear-item', pieceKey: 'آشوراوند' }]);
++    expect(clearedUnasked.questions.filter((q) => q.pieceKey === 'آشوراوند').map((q) => q.candidates)).toEqual([[]]);
++    expect(clearedUnasked.newItems.some((i) => i.source?.pieceKey === 'آشوراوند')).toBe(false);
++    expect(clearedUnasked.source.suppressions.some((s) => s.ref === 'آشوراوند')).toBe(false);
++    // A clear about a question already settled (bound, suppressed) is never
++    // stale: it asks nothing to be written.
++    const skipped = applyArchiveImport(db, unasked, [{ kind: 'skip-item', pieceKey: 'آشوراوند' }]);
++    const afterSkip = planArchiveImport({ db: skipped, index: INDEX, instrumentId: SETAR, decisions: [{ kind: 'clear-item', pieceKey: 'آشوراوند' }], now: NOW });
++    expect([afterSkip.staleDecisions, afterSkip.questions.some((q) => q.pieceKey === 'آشوراوند')]).toEqual([[], false]);
+   });
+ });
 diff --git a/src/domain/sourceReconcile.ts b/src/domain/sourceReconcile.ts
-index 62247163d9ccea9a0e1575f508e4ac40b1d829a1..b72278c1f5f2737e0009da2310177327e008bee0 100644
+index b72278c1f5f2737e0009da2310177327e008bee0..aad792b4a7e0d4dd798911a8526d527f0b22fc8a 100644
 --- a/src/domain/sourceReconcile.ts
 +++ b/src/domain/sourceReconcile.ts
-@@ -722,6 +722,11 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
-       // EMPTY.
-       const baseline = accepted.get(piece.key);
-       for (const field of ['dastgahAvaz', 'gusheh', 'form', 'composer'] as MetadataField[]) {
-+        // A gusheh NAME belongs to a gusheh: the registry's comes from its kind
-+        // reading, and on an item of another kind it would be a name the item
-+        // form neither shows nor can clear. The kind is Review Setar setup's
-+        // question, which writes kind and name together.
-+        if (field === 'gusheh' && bound.itemType !== 'gusheh') continue;
-         const proposed = persianFromPiece(piece)[field] ?? '';
-         const current = bound.persian?.[field] ?? null;
-         if (!offers(current, proposed, field, vocab)) continue;
-diff --git a/tests/fixtures/setar-review-ui.json b/tests/fixtures/setar-review-ui.json
-index 11df70b5bd6dd820aba015113e318615f4aaa3b5..b43050e419d2862259a920314a6fd8613cd2baf5 100644
---- a/tests/fixtures/setar-review-ui.json
-+++ b/tests/fixtures/setar-review-ui.json
-@@ -15,6 +15,7 @@
-     "materials": { "mat-radif-borumand": "Radif روایت برومند" },
-     "stages": { "setar-radif-forms": { "code": "Forms", "title": "Composed & improvised" } },
-     "persian": {
-+      "src-cecabb9927a83707": { "composer": "" },
-       "src-d9411fce694a919c": { "composer": "Morad-Khani" },
-       "src-f51b1fd3f6b11be9": { "composer": "Ali-Akbar S. (استاد من)" },
-       "src-1e53fb5dcf056207": { "form": "Gusheh گوشه" }
-@@ -119,27 +120,33 @@
-         "piece": "اتود-وزیری",
-         "dir": "rtl",
-         "field": "composer",
--        "tokens": ["composer — yours:", "وزیری", "· archive:", "ابوالحسن صبا"]
-+        "tokens": ["Composer / maestro:", "وزیری", "→", "ابوالحسن صبا"]
-       },
-       {
-         "piece": "چهارپاره-مرادخانی-ماهور-ردیف-میرزاعبدالله",
-         "dir": "rtl",
-         "field": "composer",
--        "tokens": ["composer — yours:", "Morad-Khani", "· archive:", "مرادخانی (Moradkhani)"]
-+        "tokens": ["Composer / maestro:", "Morad-Khani", "→", "مرادخانی (Moradkhani)"]
-       }
-     ],
-     "standing": [
-+      {
-+        "piece": "تمرین-دشتی-1-علیزاده",
-+        "dir": "rtl",
-+        "field": "composer",
-+        "tokens": ["Composer / maestro:", "none", "→", "علیزاده"]
-+      },
-       {
-         "piece": "Jang-e Shahnazi",
-         "dir": "ltr",
-         "field": "composer",
--        "tokens": ["composer — yours:", "Ali-Akbar S. (استاد من)", "· archive:", "شهنازی"]
-+        "tokens": ["Composer / maestro:", "Ali-Akbar S. (استاد من)", "→", "شهنازی"]
-       },
-       {
-         "piece": "آواز-دشتی-شور",
-         "dir": "rtl",
-         "field": "form",
--        "tokens": ["form — yours:", "Gusheh گوشه", "· archive:", "گوشه"]
-+        "tokens": ["Form:", "Gusheh گوشه", "→", "گوشه"]
-       }
-     ]
-   },
+@@ -46,6 +46,14 @@ export type ReconcileDecision =
+   | { kind: 'link-lesson'; sessionN: number; lessonId: ID }
+   | { kind: 'create-lesson'; sessionN: number }
+   | { kind: 'skip-lesson'; sessionN: number }
++  /**
++   * A CLEARED ANSWER: the owner withdrew it. The question stays asked, with
++   * its live candidates, whatever they now are, and Apply writes nothing for
++   * it — never the default an unasked refresh would take (add the piece, adopt
++   * a class that alone matches), which nobody chose.
++   */
++  | { kind: 'clear-item'; pieceKey: string }
++  | { kind: 'clear-lesson'; sessionN: number }
+   /**
+    * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — bound to the RECORD it was shown
+    * against (`itemId`), the owner's value it was chosen over, TYPED (`from`: a
+@@ -238,7 +246,7 @@ export interface ImportPlan {
+   repairedLessons: Lesson[];
+   /** Existing items adopted by an explicit owner decision. */
+   adoptedItems: PracticeItem[];
+-  /** The OPEN questions — what "N to decide" counts. */
++  /** The OPEN questions — what "N to decide" counts — a cleared answer's among them, whatever its candidates now are. */
+   questions: ReconcileQuestion[];
+   /**
+    * The questions this preview's decisions answer, each with its answer, so
+@@ -647,6 +655,10 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
+     const ask: ReconcileQuestion = { kind: 'lesson', sessionN: session.n, label: `Class ${session.n} · ${session.date}`, candidates: candidates.map(lessonCandidate) };
+     const ambiguous = candidates.length > 1;
+ 
++    if (acted(decisionFor('clear-lesson', (d) => 'sessionN' in d && d.sessionN === session.n))) {
++      questions.push(ask);
++      continue;
++    }
+     const skip = decisionFor('skip-lesson', (d) => 'sessionN' in d && d.sessionN === session.n);
+     if (skip) {
+       acted(skip);
+@@ -766,6 +778,10 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
+     const ask: ReconcileQuestion = { kind: 'item', pieceKey: piece.key, label: piece.key, candidates: candidates.map(itemCandidate) };
+     const ambiguous = candidates.length > 0;
+ 
++    if (acted(decisionFor('clear-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key))) {
++      questions.push(ask);
++      continue;
++    }
+     const skipItem = decisionFor('skip-item', (d) => 'pieceKey' in d && d.pieceKey === piece.key);
+     if (skipItem) {
+       acted(skipItem);
+@@ -886,6 +902,11 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
+   // it the same decision would go stale for ever.
+   const realised = (d: ReconcileDecision): boolean => {
+     switch (d.kind) {
++      // A clear writes nothing, so there is nothing for it to go stale on: a
++      // question that has since been bound or suppressed simply is not asked.
++      case 'clear-item':
++      case 'clear-lesson':
++        return true;
+       case 'skip-item':
+         return isSuppressed('piece', d.pieceKey);
+       case 'skip-lesson':
 diff --git a/tests/setar-review-ui.browser.test.ts b/tests/setar-review-ui.browser.test.ts
-index 0a60d3eea34bb6bc6699a15c1d1780909c87acf1..3904a1b6cf59fe4faac232118570ab2d3e34a3ba 100644
+index 3904a1b6cf59fe4faac232118570ab2d3e34a3ba..223a58521281b3459ffc74af6c12f3ceb8d2fb80 100644
 --- a/tests/setar-review-ui.browser.test.ts
 +++ b/tests/setar-review-ui.browser.test.ts
-@@ -332,10 +332,13 @@ describe('archive metadata choices, seen', () => {
-         // Click swaps it, and the two looks swap with it.
-         await choice(F1!, 'Use archive value').click();
-         expect(await pressedLook(F1!, 'Use archive value'), where).toEqual(first);
-+        // The choice is SEEN to count before Apply: the summary names it.
-+        expect(await page.locator('main').innerText(), where).toMatch(/classes · will set 1 field to the archive’s value · /);
-         // The keyboard does the same: Keep (Enter), then Use again (Space).
-         await choice(F1!, 'Keep my value').focus();
-         await page.keyboard.press('Enter');
-         expect(await pressedLook(F1!, 'Keep my value'), where).toEqual(first);
-+        expect(await page.locator('main').innerText(), where).not.toMatch(/to the archive’s value/);
-         await choice(F1!, 'Use archive value').focus();
-         await page.keyboard.press('Space');
-         expect(await pressedLook(F1!, 'Use archive value'), where).toEqual(first);
-@@ -360,6 +363,7 @@ describe('archive metadata choices, seen', () => {
-         expect(await pressedLook(F1!, 'Use archive value'), where).toEqual(first);
+@@ -447,21 +447,53 @@ describe('answered archive questions', () => {
+         // next preview (Skip pressed again) no longer has a question to ask,
+         // yet Apply would still write the skip — so the row stays, Skip still
+         // selected, saying the matches changed, and can still be switched.
+-        await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
+-        expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
+-        const pulled = structuredClone(await db(app)) as Db;
+-        pulled.items = pulled.items.map((i) => (i.id === 'it-q2' ? { ...i, title: 'تصنیف-تست (renamed)' } : i));
+-        publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 99);
+-        await page.getByRole('button', { name: 'Sync now' }).click();
+-        await until(app, (x) => x.items.find((i) => i.id === 'it-q2')!.title, (t) => t === 'تصنیف-تست (renamed)');
+-        await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
+-        await page.getByText('The matches changed since you answered').waitFor({ timeout: 15_000 });
+-        expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
+-        expect(await toDecide(), where).toBe('0');
+-        await answers(Q2!).getByRole('button', { name: 'Create separately' }).click();
+-        expect(await pressed(Q2!), where).toEqual([['Create separately', true]]);
+-        await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
+-        expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
++        // Q2's one exact-name candidate retitled on the other device and pulled.
++        let pulls = 99;
++        const retitle = async (title: string) => {
++          const pulled = structuredClone(await db(app)) as Db;
++          pulled.items = pulled.items.map((i) => (i.id === 'it-q2' ? { ...i, title } : i));
++          publishRemote(remote, remoteStateText(pulled), await hashState(pulled), pulls++);
++          await page.getByRole('button', { name: 'Sync now' }).click();
++          await until(app, (x) => x.items.find((i) => i.id === 'it-q2')!.title, (t) => t === title);
++        };
++        const answeredThenMoved = async () => {
++          await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
++          expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
++          await retitle('تصنیف-تست (renamed)');
++          await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
++          await page.getByText('The matches changed since you answered').waitFor({ timeout: 15_000 });
++          expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
++          expect(await toDecide(), where).toBe('0');
++          await answers(Q2!).getByRole('button', { name: 'Create separately' }).click();
++          expect(await pressed(Q2!), where).toEqual([['Create separately', true]]);
++          await answers(Q2!).getByRole('button', { name: 'Skip' }).click();
++          expect(await pressed(Q2!), where).toEqual([['Skip', true]]);
++        };
++        await answeredThenMoved();
++
++        // CLEARED after the match moved: open again with no candidate, counted,
++        // nothing selected — and Apply writes NOTHING for it, not the unasked
++        // default (adding the piece) that a refresh with no answer would take.
++        await answers(Q2!).getByRole('button', { name: 'Clear answer' }).click();
++        await page.getByText(/No existing piece has this name now\. You cleared your answer, so Apply writes nothing for it/).waitFor({ timeout: 15_000 });
++        expect(await pressed(Q2!), where).toEqual([]);
++        expect(await answers(Q2!).getByRole('button').allInnerTexts(), where).toEqual(['Create separately', 'Skip']);
++        expect(await toDecide(), where).toBe('1');
++        const clearedBefore = await db(app);
++        await page.getByRole('button', { name: 'Apply' }).click();
++        await page.getByText('Already current.', { exact: true }).waitFor({ timeout: 30_000 });
++        const clearedAfter = await db(app);
++        expect(clearedAfter.items, where).toEqual(clearedBefore.items);
++        expect(clearedAfter.archiveSources, where).toEqual(clearedBefore.archiveSources);
++        expect(clearedAfter.items.filter((i) => i.source?.pieceKey === Q2!.key), where).toEqual([]);
++        expect(clearedAfter.archiveSources[0]!.suppressions.some((s) => s.ref === Q2!.key), where).toBe(false);
++
++        // The match comes back, so Q2 is asked again; answered, moved, KEPT.
++        await retitle('تصنیف-تست');
++        await reload(app);
++        await refreshArchive(app);
++        expect(await answers(Q2!).count(), where).toBe(1);
++        await answeredThenMoved();
+         // Apply writes the skip on screen: a suppression, and the renamed item untouched.
+         const renamedBefore = (await db(app)).items.find((i) => i.id === 'it-q2');
          await page.getByRole('button', { name: 'Apply' }).click();
-         await page.getByText('Archive updated.').waitFor({ timeout: 30_000 });
-+        expect(await page.locator('main').innerText(), where).toMatch(/classes · set 1 field to the archive’s value · /);
-         const after = await until(app, (x) => x, (x) => x.items.find((i) => i.id === f1)!.persian?.composer === 'ابوالحسن صبا');
-         expect(after.items.find((i) => i.id === f2)!.persian?.composer, where).toBe(beforeApply.items.find((i) => i.id === f2)!.persian?.composer);
-         expect(after.items.find((i) => i.id === f2)!.persian?.composer, where).toBe('Morad-Khani');
 ```
 
 **Paths the rework touched:**
@@ -459,54 +412,49 @@ index 0a60d3eea34bb6bc6699a15c1d1780909c87acf1..3904a1b6cf59fe4faac232118570ab2d
 - `DECISIONS.md`
 - `docs/setar-archive.md`
 - `src/components/ArchiveRefresh.tsx`
-- `src/components/direction.test.ts`
 - `src/domain/sourceReconcile.test.ts`
 - `src/domain/sourceReconcile.ts`
-- `tests/fixtures/setar-review-ui.json`
 - `tests/setar-review-ui.browser.test.ts`
 
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
 
 ```
-b6790fb Rework: make archive difference rows say what Apply will change
+b381e95 Rework: a cleared archive answer writes nothing, whatever its candidates did
 
-Owner testing: a Review differences row ("gusheh — yours: — · archive: X")
-did not say which value was whose, what the dash meant, or whether a choice
-did anything before Apply. The writes were already correct.
+Family: archive cleared-answer write semantics (ac-4, unamended).
+Invariant: once the owner clears a Link / Create separately / Skip answer,
+Apply writes nothing for that question — no item, class, adoption or
+suppression — even when its candidates moved during re-preview.
 
-Invariant 1. Every difference row reads "Field: your value → archive's
-value" with item-form field names, and an empty value is said as "none".
-The summary counts the rows set to Use archive value before Apply
-("will set N fields to the archive's value") and after it ("set …"). It uses
-the plan's own decisionMatchesSuggestion, and a zero "update" count gives
-way beside it.
-- Fixed: DifferenceRow, used by Archive metadata differs and Review
-  differences.
-- Fixed: both section intros.
-- Fixed: the preview Summary and the done Summary.
-- Fixed: question rows and difference rows, now start-aligned. `.list-row`
-  had centred them inside a start-aligned section.
-- Fixed: both direction ledgers.
-- Fixed: the hand-written line fixture. A deliberately emptied composer
-  keeps "none" proven on screen.
-- Checked clean: Review Setar setup, which already uses this grammar.
+Root cause: Clear dropped the decision, so a question whose candidates had
+moved (no exact-name piece left; one or no class left) fell through to the
+planner's unasked default and wrote it. Fixed at the choke point both
+preview and commit share: Clear now sends its own decision (clear-item /
+clear-lesson), which planArchiveImport checks before every answer branch,
+keeping the question OPEN with its live candidates (counted in "N to
+decide") and writing nothing. A clear asks for no write, so it is never
+stale (realised sweep).
 
-Invariant 2. The plan offers a gusheh NAME only to an item whose type is
-gusheh. Taken on a legacy composed piece, the name could be neither seen nor
-cleared in the item form ("Gusheh (radif only)"). The registry derives the
-name from its kind reading, and the kind belongs to Review Setar setup,
-which writes kind and name together. Each of the 7 affected owner items has
-that row.
-- Fixed at the one choke point, planArchiveImport's differences loop. It
-  feeds suggestions, differences, summary.metadata, the stale-decision check
-  and applyArchiveImport's write.
-- Checked clean: link adoption copies no Persian fields.
-- Checked clean: new items are seeded with kind and name from the same
-  classifyPiece.
-- Other fields are offered as before. Nothing already written is changed.
+Consumers enumerated:
+- All six answer kinds (link/create/skip x item/lesson): fixed — one clear
+  decision replaces whichever answer (sameTarget keys piece/session), and
+  the planner checks it first in both loops.
+- The three fallback writes (item add; sole-class adopt; class add): fixed,
+  each asserted absent in the ac-5 domain test next to the no-decision
+  default for contrast.
+- ArchiveRefresh undecide (shared Clear handler): fixed; the stale-retry
+  path keeps clears (never stale); startRefresh resets them.
+- Store preview/commit and the rebase check: checked clean — they pass
+  decisions through, and a cleared question is an open one like any other.
+- applyArchiveImport: checked clean — reads only plan outputs and
+  apply-field decisions.
+- Row copy: the moved-answer row no longer promises the default; a cleared
+  question with no ambiguity says Apply writes nothing for it.
+- docs/setar-archive.md and DECISIONS.md: the narrowed guarantee removed.
+- Checked clean: stale link refusal (not a clear), metadata Keep my value,
+  Setar setup deselected rows.
 
-Proof:
-- sourceReconcile.test "a gusheh name is offer
+Proof: sourceReconcile.test "
 … (truncated)
 ```
 
