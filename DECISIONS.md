@@ -67,6 +67,15 @@ Five reports, one heavy lane (contract 20261007-…-039e, issue #47).
   (changes Suspense for every lazy route). Chosen: the box holds what was typed;
   it follows the URL only when the rendered query has caught up with a live URL
   that says something else (back/forward, Clear filters), never from an effect.
+- **The facet select lags the URL, by design** (post-seal, PR #48 Gate). The
+  search proof read the Composer select straight after a URL-only wait; on a
+  slow runner the render was still pending, so React held the select at its
+  last rendered value (`''`) while the URL and the box were right. Nothing is
+  lost — every write reads the live URL (c4506c6) — so the test now polls the
+  select, as every other rendered read does. Rejected: a typed-value mirror for
+  selects like the box's (no lost input to fix; a stale choice is replaced on
+  commit). The same Gate's practice-sound failure is a separate, out-of-scope
+  race (a persisted read before the effect-driven marker lands), for its own lane.
 - **The line-441 failure was a test race, not a product bug:** after a pathway
   card click the stage locator could resolve to the OUTGOING card's caption until
   the lazy page committed. Journeys now `arrive` at the destination's own heading;

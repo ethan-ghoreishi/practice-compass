@@ -517,7 +517,11 @@ describe('typing a search on a slow device', () => {
       await expect.poll(() => query().get('q')).toBe('pishdaramad');
       expect(await search().inputValue()).toBe('pishdaramad');
       expect(query().get('composer')).toBe('term:composer:darvish-khan');
-      expect(await composer().inputValue()).toBe('term:composer:darvish-khan');
+      // The box is the typed value, so it is right at once; the select shows
+      // the URL as last RENDERED, and while that render is still pending React
+      // holds it at its previous value. It must reach the URL's composer once
+      // the page commits — polled, as every other rendered read here is.
+      await expect.poll(() => composer().inputValue(), { timeout: 10_000 }).toBe('term:composer:darvish-khan');
 
       // …and the same, typed whole, the way the owner described it.
       await search().fill('');
