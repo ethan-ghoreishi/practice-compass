@@ -5,7 +5,7 @@ title: Fix Setar review and archive direction and choice state, and Repertoire
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/47
 intent: 20261007-fix-setar-review-and-archive-direction-a-039e
 tier: heavy
-stage: accept
+stage: ship
 baseline:
   commit: 847dd0882fbcb3fd16d274ca92a81e7dd8f8d8ef
   branch: main
