@@ -1,12 +1,12 @@
 ---
 id: 20261007-fix-setar-review-and-archive-direction-a-039e
 contractId: 20261007-fix-setar-review-and-archive-direction-a-039e
-patchId: a28ec9dca529b1c6740e6612be757a40f3618220
-reviewer: codex
+patchId: 69eddff2a0b5714d020ba864a7f91a55f0b8627e
+reviewer: fresh-claude-subagent
 state: sealed
 verdict: approve
-createdAt: 2026-10-07T15:54:40.428Z
-sealedAt: 2026-10-07T16:03:29.967Z
+createdAt: 2026-10-07T19:13:39.782Z
+sealedAt: 2026-10-07T20:27:57.941Z
 ---
 
 # Review: Fix Setar review and archive direction and choice state, and Repertoire search typing
@@ -20,7 +20,7 @@ sealedAt: 2026-10-07T16:03:29.967Z
 - **Contract:** 20261007-fix-setar-review-and-archive-direction-a-039e
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/47
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `a28ec9dca529b1c6740e6612be757a40f3618220`
+- **Diff patch-id:** `69eddff2a0b5714d020ba864a7f91a55f0b8627e`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
 ## The Delta this change was framed from
@@ -76,7 +76,7 @@ still breaks it is not closed.
 
 ```diff
 diff --git a/DECISIONS.md b/DECISIONS.md
-index dab6873b241a21c7ec500990c497ed0558fcad29..003873f4e928afe2b9a6f2f7eb500c366b91d421 100644
+index dab6873b241a21c7ec500990c497ed0558fcad29..03e0ddc3f260ad29c7884d4190ddedb809f3cd73 100644
 --- a/DECISIONS.md
 +++ b/DECISIONS.md
 @@ -33,9 +33,13 @@ Five reports, one heavy lane (contract 20261007-…-039e, issue #47).
@@ -96,6 +96,22 @@ index dab6873b241a21c7ec500990c497ed0558fcad29..003873f4e928afe2b9a6f2f7eb500c36
  - **A difference row was read, not misapplied** (owner testing). The writes were
    right; "gusheh — yours: — · archive: X" used one dash as separator and empty
    value, and a choice changed no count ("will update 0" either way). Chosen: the
+@@ -63,6 +67,15 @@ Five reports, one heavy lane (contract 20261007-…-039e, issue #47).
+   (changes Suspense for every lazy route). Chosen: the box holds what was typed;
+   it follows the URL only when the rendered query has caught up with a live URL
+   that says something else (back/forward, Clear filters), never from an effect.
++- **The facet select lags the URL, by design** (post-seal, PR #48 Gate). The
++  search proof read the Composer select straight after a URL-only wait; on a
++  slow runner the render was still pending, so React held the select at its
++  last rendered value (`''`) while the URL and the box were right. Nothing is
++  lost — every write reads the live URL (c4506c6) — so the test now polls the
++  select, as every other rendered read does. Rejected: a typed-value mirror for
++  selects like the box's (no lost input to fix; a stale choice is replaced on
++  commit). The same Gate's practice-sound failure is a separate, out-of-scope
++  race (a persisted read before the effect-driven marker lands), for its own lane.
+ - **The line-441 failure was a test race, not a product bug:** after a pathway
+   card click the stage locator could resolve to the OUTGOING card's caption until
+   the lazy page committed. Journeys now `arrive` at the destination's own heading;
 diff --git a/docs/setar-archive.md b/docs/setar-archive.md
 index 40f331593f7a09b62ecd93ce72a6dc7fa6ed61f5..554a2fc3d829e90e80ed1ba0d3de993ef6ace95d 100644
 --- a/docs/setar-archive.md
@@ -332,6 +348,23 @@ index b72278c1f5f2737e0009da2310177327e008bee0..aad792b4a7e0d4dd798911a8526d527f
        case 'skip-item':
          return isSuppressed('piece', d.pieceKey);
        case 'skip-lesson':
+diff --git a/tests/repertoire-experience.browser.test.ts b/tests/repertoire-experience.browser.test.ts
+index 96ada8ffb4744124999d3f1b5589297d9b7788f6..6aa652e8ffefe7e7514e0ccf96c86e5f8b5753ac 100644
+--- a/tests/repertoire-experience.browser.test.ts
++++ b/tests/repertoire-experience.browser.test.ts
+@@ -517,7 +517,11 @@ describe('typing a search on a slow device', () => {
+       await expect.poll(() => query().get('q')).toBe('pishdaramad');
+       expect(await search().inputValue()).toBe('pishdaramad');
+       expect(query().get('composer')).toBe('term:composer:darvish-khan');
+-      expect(await composer().inputValue()).toBe('term:composer:darvish-khan');
++      // The box is the typed value, so it is right at once; the select shows
++      // the URL as last RENDERED, and while that render is still pending React
++      // holds it at its previous value. It must reach the URL's composer once
++      // the page commits — polled, as every other rendered read here is.
++      await expect.poll(() => composer().inputValue(), { timeout: 10_000 }).toBe('term:composer:darvish-khan');
+ 
+       // …and the same, typed whole, the way the owner described it.
+       await search().fill('');
 diff --git a/tests/setar-review-ui.browser.test.ts b/tests/setar-review-ui.browser.test.ts
 index 3904a1b6cf59fe4faac232118570ab2d3e34a3ba..223a58521281b3459ffc74af6c12f3ceb8d2fb80 100644
 --- a/tests/setar-review-ui.browser.test.ts
@@ -414,6 +447,7 @@ index 3904a1b6cf59fe4faac232118570ab2d3e34a3ba..223a58521281b3459ffc74af6c12f3ce
 - `src/components/ArchiveRefresh.tsx`
 - `src/domain/sourceReconcile.test.ts`
 - `src/domain/sourceReconcile.ts`
+- `tests/repertoire-experience.browser.test.ts`
 - `tests/setar-review-ui.browser.test.ts`
 
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
@@ -456,6 +490,51 @@ Consumers enumerated:
 
 Proof: sourceReconcile.test "
 … (truncated)
+
+974ed46 Fix Setar review and archive direction and choice state, and Repertoire search typing
+
+505da5e Fix Setar review and archive direction and choice state, and Repertoire search typing
+
+c773994 ship: record 20261007-fix-setar-review-and-archive-direction-a-039e
+
+1b9f641 Post-seal corrective: ac-7 waits for the rendered Composer select
+
+PR #48's Prismatica Gate failed ac-7 with "expected '' to be
+'term:composer:darvish-khan'". The search proof read the Composer select
+straight after a URL-only wait. React Router renders a URL change in a
+transition, and while it is pending React holds a controlled <select> at
+its last rendered value, so on a slow runner the select still read ''
+while the URL and the search box were already right. Reproduced locally
+at 40-100x CPU throttle: URL q and composer correct, box correct, select
+'' until the render commits (74 ms - 1.5 s later).
+
+Not a product defect: nothing is lost, every browse write reads the live
+URL (c4506c6), and the select reaches the URL's composer on commit. The
+search box's synchronous assertion (the real ac-7 guarantee) is
+unchanged; only the rendered select is polled, as every other rendered
+read in this journey already is.
+
+Family sweep (a rendered control read synchronously after a URL-only
+wait) across this lane's browser tests: the ac-8 journey waits for the
+results before reading its select; reads after a route arrival wait for
+the mounted page; search box reads are of the typed value. No other
+instance.
+
+Out of scope and left for its own lane: the same Gate's earlier
+practice-sound failure (practice-cues reads persisted signalledThrough
+before the effect-driven claim reaches IndexedDB; reproduced
+deterministically). Recorded in DECISIONS.md.
+
+Proof: the ac-7 test 8/8 plain and 15/15 at 20/60/100x typing with 1-10x
+afterwards; full Gate command (vitest --reporter=json) under Node 24:
+509/509 in two plain, three shuffled-seed, one CPU-loaded and one
+single-threaded run.
+
+Made after the lane's sealed review and owner decision, through the
+supported re-check, re-review, re-seal and re-accept path; no Prismatica
+record was edited.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ## Check against the contract
@@ -580,22 +659,10 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
+If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
 
-**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-fix-setar-review-and-archive-direction-a-039e/findings.json`
 
-```bash
-cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-fix-setar-review-and-archive-direction-a-039e/findings.json'
-```
-
-**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
-
-**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
-
-```bash
-prismatica seal '20261007-fix-setar-review-and-archive-direction-a-039e' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-fix-setar-review-and-archive-direction-a-039e/findings.json'
-```
-
-You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-fix-setar-review-and-archive-direction-a-039e/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
+with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory. A finding names an invariant: sweep the repository for every instance of it and list each one found plus the consumers checked clean, in one round — not one counterexample at a time.
