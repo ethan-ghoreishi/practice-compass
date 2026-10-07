@@ -33,7 +33,9 @@ Five reports, one heavy lane (contract 20261007-…-039e, issue #47).
   still executed it; every ACTED-ON decision is now reported, flagged
   `ambiguous: false` when it would no longer be asked. Rejected: calling such
   a decision stale — its target still qualifies, and the archive decision
-  semantics (what is stale) were not this lane's to change.
+  semantics (what is stale) were not this lane's to change. So "a cleared
+  answer writes nothing" holds only for a question still open; clearing one
+  that would no longer be asked gets the unasked default, said on its row.
 - **Repertoire search was a real, rare defect.** The box showed the URL's query;
   the router renders a URL change in a transition, and while one is pending React
   restores a controlled input to its last rendered value — "pishdaramad" became

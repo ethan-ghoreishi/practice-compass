@@ -255,7 +255,9 @@ export default function ArchiveRefresh() {
                     <div className="tiny faint">
                       <span dir="ltr">
                         {'answer' in q && !q.ambiguous
-                          ? 'The matches changed since you answered; your answer still applies until you clear it.'
+                          ? `The matches changed since you answered; your answer still applies. Cleared, this refresh does what it does unasked: ${
+                              q.kind === 'item' ? 'the piece is added as new' : 'a class that alone still matches is adopted, otherwise a new class is added'
+                            }.`
                           : q.kind === 'item'
                             ? 'An existing piece has this exact name.'
                             : 'More than one class matches this session.'}

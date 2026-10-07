@@ -1965,6 +1965,12 @@ describe('answered questions, until Apply', () => {
       expect(p.newItems.filter((i) => i.source?.pieceKey === 'عراق').length, d.kind).toBe(d.kind === 'create-item' ? 1 : 0);
       expect(p.source.suppressions.some((x) => x.kind === 'piece' && x.ref === 'عراق'), d.kind).toBe(d.kind === 'skip-item');
     }
+    // CLEARED there (no decision): nothing to ask, nothing reported, and the
+    // unasked default — the piece is added as new.
+    const clearedPiece = planArchiveImport({ db: renamed, index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
+    expect([clearedPiece.questions, clearedPiece.answered].map((qs) => qs.some((q) => q.pieceKey === 'عراق'))).toEqual([false, false]);
+    expect(clearedPiece.newItems.filter((i) => i.source?.pieceKey === 'عراق').length).toBe(1);
+    expect(clearedPiece.adoptedItems).toEqual([]);
     // Classes: TWO indistinguishable candidates, answered, then one or both
     // stop matching (a number corrected elsewhere).
     const renumber = (ids: string[]) => ({ ...db, lessons: db.lessons.map((l) => (ids.includes(l.id) ? { ...l, number: 99 } : l)) });
@@ -1985,6 +1991,12 @@ describe('answered questions, until Apply', () => {
         expect(p.newLessons.filter((l) => l.source?.sessionN === 13).length, label).toBe(d.kind === 'create-lesson' ? 1 : 0);
         expect(p.source.suppressions.some((x) => x.kind === 'session' && x.ref === '13'), label).toBe(d.kind === 'skip-lesson');
       }
+      // CLEARED there: the unasked default — the one class still matching is
+      // adopted, or with none a new class is added.
+      const cleared = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [], now: NOW });
+      expect([cleared.questions, cleared.answered].map((qs) => qs.some((q) => q.sessionN === 13))).toEqual([false, false]);
+      expect(cleared.adoptedLessons.filter((l) => l.source?.sessionN === 13).map((l) => l.id)).toEqual(left);
+      expect(cleared.newLessons.filter((l) => l.source?.sessionN === 13).length).toBe(left.length ? 0 : 1);
     }
 
     // A decision about something never asked is reported too — Apply would
