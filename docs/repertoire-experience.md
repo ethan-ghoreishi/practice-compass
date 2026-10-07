@@ -54,6 +54,21 @@ Reference ids: `stage:<stageId>:<key>` · `course:<courseId>:work:<identity>` ·
 | Lesson ↔ item association | the owner: `linkItemToLesson`/`unlinkItemFromLesson` (`lesson.itemIds`); the archive: session membership, read through `membersForSession` — an unlink of a listed piece writes ONE link suppression, a relink lifts exactly that one and copies nothing into `itemIds` | `lessonAssociations` → `associationsForLesson` (Lessons "Worked on in this class" and its linkable list) and `associationsForItem` (ItemDetail Connected to, its lesson summary, Connections and its linkable list); `setarSetup` class rows |
 | Item kind of a NEW archive item | `classifyPiece` (one policy, `setarSetup.ts`) inside `planArchiveImport` | the item's own `itemType` from then on; Review Setar setup proposals only |
 
+## Search typing and arriving (2026-10-07)
+
+- **The search box shows what was typed.** It is not controlled by the URL's
+  query as last rendered: the router renders a URL change in a transition, and a
+  pending one made React put the box back, dropping keystrokes on a slow device.
+  Each keystroke writes the live URL synchronously (and every other control still
+  builds on the live URL, c4506c6); the box adopts the URL only when the rendered
+  query has caught up with a live URL that differs from what it shows — back and
+  forward, Clear filters. An instrument switch keeps the query; the Practice
+  list's box opens on it.
+- **Journeys arrive before they act.** The URL moves before a lazy page loads and
+  the page being left stays on screen until then, so a browser journey waits for
+  the destination's own level-1 heading (`arrive` in `tests/practiceBrowser.ts`);
+  `delayPagesMs` holds each page module's first load to make that window visible.
+
 ## Setar reliability lane (2026-10-05)
 
 - **Term fields on every device.** `MusicalTermField` no longer relies on a native

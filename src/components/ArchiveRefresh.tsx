@@ -9,11 +9,14 @@ import {
   archiveRootUrl,
   decisionMatchesSuggestion,
   archiveValueDecision,
+  canonicalStringify,
+  type AnsweredQuestion,
   type ArchiveSource,
   type ImportPlan,
   type MetadataField,
   type MetadataSuggestion,
   type ReconcileDecision,
+  type ReconcileQuestion,
   type SourceSuppression,
 } from '../domain';
 import { SaveStatus, useAcknowledgedSaves } from './ui';
@@ -101,6 +104,15 @@ export default function ArchiveRefresh() {
     showPlan(phase.fetched, merged);
   }
 
+  /** Clear a question's answer: it is open again, and Apply writes nothing for it. */
+  function undecide(q: ReconcileQuestion) {
+    if (phase.kind !== 'preview') return;
+    const probe: ReconcileDecision = q.kind === 'item' ? { kind: 'skip-item', pieceKey: q.pieceKey! } : { kind: 'skip-lesson', sessionN: q.sessionN! };
+    const kept = decisions.filter((d) => !sameTarget(d, probe));
+    setDecisions(kept);
+    showPlan(phase.fetched, kept);
+  }
+
   /** "Keep my value": withdraw the choice; Apply then keeps the owner's field. */
   function keepMine(sg: MetadataSuggestion) {
     if (phase.kind !== 'preview') return;
@@ -149,6 +161,15 @@ export default function ArchiveRefresh() {
 
   const plan = phase.kind === 'preview' ? phase.plan : undefined;
   const standing = plan ? plan.differences.filter((d) => !d.fresh) : [];
+  // Open and answered questions together, in the index's own order, so
+  // answering one never moves it: it stays where it was, its answer shown.
+  const asked: (ReconcileQuestion | AnsweredQuestion)[] = [];
+  if (phase.kind === 'preview' && plan) {
+    const { sessions, pieces } = phase.fetched.index;
+    const at = (q: ReconcileQuestion) =>
+      q.kind === 'lesson' ? sessions.findIndex((x) => x.n === q.sessionN) : sessions.length + pieces.findIndex((x) => x.key === q.pieceKey);
+    asked.push(...[...plan.questions, ...plan.answered].sort((a, b) => at(a) - at(b)));
+  }
 
   return (
     <section className="card stack-sm">
@@ -221,10 +242,10 @@ export default function ArchiveRefresh() {
         <div className="stack-sm">
           <Summary plan={plan} commitSha={phase.fetched.commitSha} />
 
-          {plan.questions.length > 0 && (
+          {asked.length > 0 && (
             <div className="stack-sm">
               <div className="section-label">Needs a decision</div>
-              {plan.questions.map((q) => (
+              {asked.map((q) => (
                 <div key={`${q.kind}-${q.pieceKey ?? q.sessionN}`} className="list-row stack-sm">
                   {/* The GROUP is the name and the sentence that belongs to it;
                       the fixed English buttons below sit OUTSIDE it, so a Farsi
@@ -239,49 +260,29 @@ export default function ArchiveRefresh() {
                       </span>
                     </div>
                   </div>
-                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }}>
-                    {q.candidates.map((c) => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        className="btn btn-sm"
-                        onClick={() =>
-                          decide(
-                            q.kind === 'item'
-                              ? { kind: 'link-item', pieceKey: q.pieceKey!, itemId: c.id }
-                              : { kind: 'link-lesson', sessionN: q.sessionN!, lessonId: c.id },
-                          )
-                        }
-                      >
-                        Link to “{c.title}”
+                  {/* An ANSWERED question stays here with its answer selected
+                      until Apply, so it can be switched or cleared; Apply writes
+                      exactly the answers selected then. */}
+                  <div className="row" style={{ gap: 6, flexWrap: 'wrap' }} role="group" aria-label={`Answer for ${q.label}`}>
+                    {answersFor(q).map(({ label, decision }) => {
+                      const chosen = 'answer' in q && canonicalStringify(q.answer) === canonicalStringify(decision);
+                      return (
+                        <button
+                          key={canonicalStringify(decision)}
+                          type="button"
+                          className={`option btn-touch${chosen ? ' selected' : ''}`}
+                          aria-pressed={chosen}
+                          onClick={() => decide(decision)}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    {'answer' in q && (
+                      <button type="button" className="btn btn-ghost btn-sm btn-touch" onClick={() => undecide(q)}>
+                        Clear answer
                       </button>
-                    ))}
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() =>
-                        decide(
-                          q.kind === 'item'
-                            ? { kind: 'create-item', pieceKey: q.pieceKey! }
-                            : { kind: 'create-lesson', sessionN: q.sessionN! },
-                        )
-                      }
-                    >
-                      Create separately
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-sm"
-                      onClick={() =>
-                        decide(
-                          q.kind === 'item'
-                            ? { kind: 'skip-item', pieceKey: q.pieceKey! }
-                            : { kind: 'skip-lesson', sessionN: q.sessionN! },
-                        )
-                      }
-                    >
-                      Skip
-                    </button>
+                    )}
                   </div>
                 </div>
               ))}
@@ -372,19 +373,20 @@ function DifferenceRow({
     <div className="list-row stack-sm">
       <div dir="auto" style={{ textAlign: 'start' }}>
         <strong>{sg.pieceKey}</strong>
+        {/* ONE line, ONE isolate, each value nested in its own: as sibling
+            isolates beside a Farsi key the line ran right to left. */}
         <div className="tiny faint">
-          <span dir="ltr">{FIELD_LABELS[sg.field]} — yours: </span>
-          <span dir="auto">{sg.from || '—'}</span>
-          <span dir="ltr"> · archive: </span>
-          <span dir="auto">{sg.to}</span>
-          {sg.provisional && <span dir="ltr"> · the registry marks this identity provisional</span>}
+          <span dir="ltr">
+            {FIELD_LABELS[sg.field]} — yours: <span dir="auto">{sg.from || '—'}</span> · archive: <span dir="auto">{sg.to}</span>
+            {sg.provisional ? ' · the registry marks this identity provisional' : null}
+          </span>
         </div>
       </div>
       <div className="row" style={{ gap: 6, flexWrap: 'wrap' }} role="group" aria-label={`${FIELD_LABELS[sg.field]} of ${sg.pieceKey}`}>
-        <button type="button" className="btn btn-sm btn-touch" aria-pressed={!used} onClick={onKeep}>
+        <button type="button" className={`option btn-touch${!used ? ' selected' : ''}`} aria-pressed={!used} onClick={onKeep}>
           Keep my value
         </button>
-        <button type="button" className="btn btn-sm btn-touch" aria-pressed={used} onClick={onUse}>
+        <button type="button" className={`option btn-touch${used ? ' selected' : ''}`} aria-pressed={used} onClick={onUse}>
           Use archive value
         </button>
       </div>
@@ -424,10 +426,15 @@ function Summary({ plan, done = false, commitSha }: { plan: ImportPlan; done?: b
           {open && (
             <>
               <ul className="tiny faint stack-sm" style={{ marginTop: 6, listStyle: 'none', padding: 0 }}>
+                {/* The archive's sentence about a path: one LTR line, the path
+                    resolving its own direction inside it. As a flex row
+                    resolving from a Farsi path, the separator sat at the far
+                    end. */}
                 {plan.attention.map((d, i) => (
-                  <li key={`${d.path}-${i}`} className="row" dir="auto" style={{ gap: 6, textAlign: 'start' }}>
-                    <span>{d.path}</span>
-                    <span dir="ltr">— {d.reason}</span>
+                  <li key={`${d.path}-${i}`} style={{ textAlign: 'start' }}>
+                    <span dir="ltr">
+                      <span dir="auto">{d.path}</span> — {d.reason}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -549,6 +556,24 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
       </ul>
     </details>
   );
+}
+
+/** The answers a question offers, each with the one decision it sends. */
+function answersFor(q: ReconcileQuestion): { label: string; decision: ReconcileDecision }[] {
+  if (q.kind === 'item') {
+    const pieceKey = q.pieceKey!;
+    return [
+      ...q.candidates.map((c) => ({ label: `Link to “${c.title}”`, decision: { kind: 'link-item', pieceKey, itemId: c.id } as const })),
+      { label: 'Create separately', decision: { kind: 'create-item', pieceKey } },
+      { label: 'Skip', decision: { kind: 'skip-item', pieceKey } },
+    ];
+  }
+  const sessionN = q.sessionN!;
+  return [
+    ...q.candidates.map((c) => ({ label: `Link to “${c.title}”`, decision: { kind: 'link-lesson', sessionN, lessonId: c.id } as const })),
+    { label: 'Create separately', decision: { kind: 'create-lesson', sessionN } },
+    { label: 'Skip', decision: { kind: 'skip-lesson', sessionN } },
+  ];
 }
 
 function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {

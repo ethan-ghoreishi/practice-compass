@@ -153,7 +153,10 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/ArchiveRefresh.tsx", tagName: "div", classValue: "" },
   { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
-  { file: "components/ArchiveRefresh.tsx", tagName: "li", classValue: "row" },
+  // An attention line's path, resolving its own direction INSIDE the line's
+  // one LTR isolate (it was a flex-row <li> group whose separator a Farsi
+  // path stranded at the far end).
+  { file: "components/ArchiveRefresh.tsx", tagName: "span", classValue: "" },
   // The restore outcome names what was restored, in its own isolate; then each
   // hidden or removed archive entry's source value (piece key, class pair,
   // path) and the title of the item it is hidden on, each in its own isolate
@@ -716,9 +719,15 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
  * call site can see whether its OWN return value is isolated.
  */
 const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
-  // Review Setar setup: generated labels and evidence (authored values inside it carry their own bidi isolate).
+  // Review Setar setup: generated evidence, and each change line as ONE
+  // isolate — label, current value, arrow, new value — the owner's words
+  // nested inside it, each in its own dir="auto" (never sibling isolates).
   { file: 'components/SetarSetupReview.tsx', snippet: '<span dir="ltr">{p.evidence}</span>' },
-  { file: 'components/SetarSetupReview.tsx', snippet: '<span key={i} dir="ltr">' },
+  { file: 'components/SetarSetupReview.tsx', snippet: '<span dir="ltr">\n                      {FIELD[p.field]}: <Value db={db} v={p.before} />' },
+  // Refresh Setar archive: a difference line and an attention line, each ONE
+  // isolate with its values nested.
+  { file: 'components/ArchiveRefresh.tsx', snippet: "<span dir=\"ltr\">\n            {FIELD_LABELS[sg.field]} — yours: <span dir=\"auto\">{sg.from || '—'}</span> · archive: <span dir=\"auto\">{sg.to}</span>" },
+  { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="ltr">\n                      <span dir="auto">{d.path}</span> — {d.reason}' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
   { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
@@ -1716,5 +1725,108 @@ describe('direction lives on the group', () => {
     // AFTER the first, never the first itself.
     expect(src.slice(at, end)).toMatch(/return own \? \(\s*<li key=\{key\} dir="auto"/);
     expect(src.slice(end)).toMatch(/bullet\(line, i, i > 0\)/);
+  });
+
+  // A LINE IS ONE ISOLATE. Inside a dir="auto" group a generated line that
+  // embeds values — "Kind: before → after", "composer — yours: X · archive:
+  // Y" — was a run of SIBLING isolates: label, value, arrow, value. Each one
+  // resolved its own direction correctly, which is all the ledgers above
+  // could see; but a Farsi title turns the group RTL, and an RTL paragraph
+  // lays sibling isolates out right to left — the label at the far edge, the
+  // arrow pointing at the OLD value. The order on screen is the browser's
+  // (tests/setar-review-ui.browser.test.ts measures it); the SHAPE that
+  // produces it is banned here, and a generated line is ONE inline dir="ltr"
+  // isolate with each value nested inside it in its own dir="auto".
+  //
+  // What makes siblings a LINE rather than a list: generated copy cut into a
+  // fragment that only reads joined to its neighbour — a dir="ltr"/"rtl"
+  // isolate whose own text starts or ends with a space or a joiner (":", "→",
+  // "—", "·"). A list of whole metadata pieces with its separators OUTSIDE
+  // the isolates ("سه‌تار · composed piece · Technique") is not one: in an RTL
+  // group its pieces run right to left, which is that group's reading order.
+  // Only a group that CAN resolve RTL is judged — one with a bare data
+  // expression (its title) to resolve from; a group whose every text carries
+  // its own dir has nothing to find and is always LTR. Fragments and {…}
+  // expressions are transparent (`{cond && <span dir="ltr">…</span>}` is as
+  // much a sibling as any other); an isolate's own children are not judged,
+  // because nesting values in one isolate is the required shape.
+  it('a generated line inside a group is one ltr isolate with its values nested', () => {
+    type Kid = { tag: string; at: number; dir: string | null };
+    /** Direct child elements of a body [start, end): fragments and expressions are transparent. */
+    const childrenOf = (src: string, start: number, end: number): Kid[] => {
+      const out: Kid[] = [];
+      let i = start;
+      while (i < end) {
+        if (src[i] === '<' && /[A-Za-z]/.test(src[i + 1] ?? '')) {
+          const tag = enclosingTag(src, i);
+          out.push({ tag, at: i, dir: /\sdir="(auto|ltr|rtl)"/.exec(tag)?.[1] ?? null });
+          i = elementBody(src, tag, i).end;
+          continue;
+        }
+        i += 1;
+      }
+      return out;
+    };
+    /** A bare data expression the group can resolve its direction from, outside every isolate. */
+    const resolvesFromData = (src: string, start: number, end: number): boolean => {
+      let i = start;
+      while (i < end) {
+        if (src[i] === '<' && /[A-Za-z]/.test(src[i + 1] ?? '')) {
+          const tag = enclosingTag(src, i);
+          i = /\sdir="/.test(tag) ? elementBody(src, tag, i).end : i + tag.length;
+          continue;
+        }
+        if (src[i] === '{') {
+          let depth = 1;
+          let j = i + 1;
+          while (j < end && depth > 0) {
+            depth += src[j] === '{' ? 1 : src[j] === '}' ? -1 : 0;
+            j += 1;
+          }
+          const expr = src.slice(i + 1, j - 1);
+          if (expr.trim() && !/<[A-Za-z>]/.test(expr) && !/^\s*(['"`])[^'"`]*\1\s*$/.test(expr)) return true; // a stripped {/* comment */} is empty
+          i += 1; // JSX inside: scan it in this same pass
+          continue;
+        }
+        i += 1;
+      }
+      return false;
+    };
+    /** Generated copy cut to join a neighbour: JSX text (newline-bearing edges trimmed) starting or ending with a space or a joiner. */
+    const isFragment = (src: string, kid: Kid) => {
+      const body = elementBody(src, kid.tag, kid.at);
+      const text = src
+        .slice(body.start, body.end)
+        .replace(/<\/[^>]*>$/, '')
+        .replace(/\{[^{}]*\}/g, 'X')
+        .replace(/^\s*\n\s*|\s*\n\s*$/g, '');
+      return /^[\s:→←—–·]|[\s:→←—–·]$/.test(text);
+    };
+    const violations: string[] = [];
+    let judged = 0;
+    for (const file of sourceFiles()) {
+      const src = stripComments(SOURCES[file]);
+      const visit = (tag: string, openAt: number) => {
+        const body = elementBody(src, tag, openAt);
+        const kids = childrenOf(src, body.start, body.end);
+        const directed = kids.filter((k) => k.dir !== null);
+        if (directed.length >= 2 && directed.some((k) => k.dir !== 'auto' && isFragment(src, k))) {
+          const line = src.slice(0, openAt).split('\n').length;
+          violations.push(`${file}:${line} — one line made of ${directed.length} sibling isolates (${directed.map((k) => k.dir).join(', ')})`);
+        }
+        // A nested dir="auto" is a group of its own, judged from the outer
+        // loop; an ltr/rtl isolate holds its values on purpose.
+        for (const k of kids) if (k.dir === null) visit(k.tag, k.at);
+      };
+      for (const site of directionSites(file).filter(isGroup)) {
+        const openAt = src.lastIndexOf('<', site.at);
+        const body = elementBody(src, site.text, openAt);
+        if (!resolvesFromData(src, body.start, body.end)) continue;
+        judged += 1;
+        visit(site.text, openAt);
+      }
+    }
+    expect(violations).toEqual([]);
+    expect(judged).toBeGreaterThan(0);
   });
 });

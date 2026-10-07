@@ -281,6 +281,14 @@ export async function openPracticeApp(options: {
    * rather than against a description of it. Defaults to this checkout.
    */
   root?: string;
+  /**
+   * Hold the FIRST request for each page module (`src/pages/*.tsx`) this many
+   * milliseconds — a slow device or network opening a lazy route for the first
+   * time. The router keeps the outgoing page on screen until the new one has
+   * loaded, so a journey that acts before the page it went to is there acts
+   * on the page it left; this makes that window wide enough to see.
+   */
+  delayPagesMs?: number;
 }): Promise<PracticeApp> {
   const engine = options.engine ?? 'chromium';
   // EVERY SERVER GETS ITS OWN DEPENDENCY CACHE. Vite's default cache directory
@@ -336,6 +344,21 @@ export async function openPracticeApp(options: {
     });
     if (options.initScript) await context.addInitScript(options.initScript);
     page = await context.newPage();
+    if (options.delayPagesMs) {
+      const delay = options.delayPagesMs;
+      const loaded = new Set<string>();
+      await page.route(
+        (url) => /^\/src\/pages\/[^/]+\.tsx$/.test(url.pathname),
+        async (route) => {
+          const path = new URL(route.request().url()).pathname;
+          if (!loaded.has(path)) {
+            loaded.add(path);
+            await new Promise((r) => setTimeout(r, delay));
+          }
+          await route.continue();
+        },
+      );
+    }
     // ONE handler for the whole journey. The app's destructive actions ask
     // first with confirm(); an unanswered dialog blocks every later command,
     // and registering a second handler makes the first one's accept() throw.
@@ -475,6 +498,17 @@ export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
     return;
   }
   await app.page.getByRole('navigation', { name: 'Primary' }).waitFor();
+}
+
+/**
+ * Wait until the page a navigation went to is ON SCREEN — its own level-1
+ * heading — before acting on it. The URL changes first; the router keeps the
+ * outgoing page rendered until the lazy destination has loaded, and a locator
+ * that also matches something on the outgoing page (a stage name in a
+ * pathway card's caption, "New pathway" for "New") acts there instead.
+ */
+export async function arrive(page: Page, heading: string | RegExp): Promise<void> {
+  await page.getByRole('heading', { level: 1, name: heading, ...(typeof heading === 'string' ? { exact: true } : {}) }).waitFor({ timeout: 20_000 });
 }
 
 /** Reload, proving a claim survived in IndexedDB rather than in React state. */

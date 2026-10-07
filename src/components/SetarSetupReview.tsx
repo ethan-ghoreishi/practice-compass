@@ -61,7 +61,11 @@ function parts(db: PracticeDB, v: SetupValue | undefined): Part[] {
 }
 const show = (db: PracticeDB, v: SetupValue | undefined): string => parts(db, v).map((x) => x.text).join('');
 
-/** The same value for the screen: generated English isolated LTR, the owner's words each resolving their own direction. */
+/**
+ * The same value for the screen, INSIDE its line's one dir="ltr" isolate: the
+ * generated English is the line's own text, and the owner's words each
+ * resolve their own direction.
+ */
 function Value({ db, v }: { db: PracticeDB; v: SetupValue | undefined }) {
   return (
     <>
@@ -71,9 +75,7 @@ function Value({ db, v }: { db: PracticeDB; v: SetupValue | undefined }) {
             {x.text}
           </span>
         ) : (
-          <span key={i} dir="ltr">
-            {x.text}
-          </span>
+          <span key={i}>{x.text}</span>
         ),
       )}
     </>
@@ -300,15 +302,20 @@ export default function SetarSetupReview() {
               <strong className="small">{title(itemId)}</strong>
               {open.map((p) => (
                 <div key={p.id} className="stack-sm">
+                  {/* ONE line, ONE isolate: label, current value, arrow, new value.
+                      As sibling isolates a Farsi title's RTL group laid them out
+                      right to left — the label at the far end, the arrow
+                      pointing at the old value. */}
                   <div className="tiny" style={{ textAlign: 'start' }}>
-                    <span dir="ltr">{FIELD[p.field]}: </span>
-                    <Value db={db} v={p.before} />
-                    {p.state === 'proposed' ? (
-                      <>
-                        <span dir="ltr"> → </span>
-                        <Value db={db} v={p.after} />
-                      </>
-                    ) : null}
+                    <span dir="ltr">
+                      {FIELD[p.field]}: <Value db={db} v={p.before} />
+                      {p.state === 'proposed' ? (
+                        <>
+                          {' → '}
+                          <Value db={db} v={p.after} />
+                        </>
+                      ) : null}
+                    </span>
                   </div>
                   <div className="tiny faint" style={{ textAlign: 'start' }}>
                     <span dir="ltr">{p.evidence}</span>

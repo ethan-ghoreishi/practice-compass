@@ -1850,3 +1850,95 @@ describe('renames reach every consumer exactly', () => {
     expect(sourceOf(restored.next).suppressions).toEqual(sourceOf(logged.next).suppressions);
   });
 });
+
+describe('answered questions, until Apply', () => {
+  it('an answered question is reported with its answer and is not counted as open', () => {
+    // One ambiguous piece (two exact-name candidates) and one ambiguous class
+    // (two indistinguishable candidates): the two questions a refresh asks.
+    const sameTitle = item({ id: 'mine-araq', title: 'عراق' });
+    const aliasTitle = item({ id: 'mine-alias', title: 'araq' });
+    const evidence = lesson({
+      id: 'legacy-13',
+      date: '2024-09-03',
+      number: 13,
+      recordings: [
+        {
+          id: 'r1',
+          title: 'Class 13',
+          path: 'setar-classes/session-13-03-09-2024/video-20240903-152547-meeting-recording.mp4',
+          kind: 'video',
+          createdAt: '2024-09-04T00:00:00.000Z',
+        },
+      ],
+    });
+    const twin = { ...evidence, id: 'legacy-13-twin' };
+    const db = baseDB({ items: [sameTitle, aliasTitle], lessons: [evidence, twin] });
+    const run = (decisions: Parameters<typeof planArchiveImport>[0]['decisions']) =>
+      planArchiveImport({ db, index: INDEX, instrumentId: SETAR, decisions, now: NOW });
+
+    const open = run([]);
+    const askedPiece = open.questions.find((q) => q.pieceKey === 'عراق')!;
+    const askedClass = open.questions.find((q) => q.sessionN === 13)!;
+    expect(askedPiece.candidates.map((c) => c.id).sort()).toEqual(['mine-alias', 'mine-araq']);
+    expect(askedClass.candidates.map((c) => c.id).sort()).toEqual(['legacy-13', 'legacy-13-twin']);
+    expect([open.answered, open.summary.questions]).toEqual([[], open.questions.length]);
+
+    // Every answer kind, on each side: the question leaves the OPEN list, is
+    // reported with exactly that answer and the same choices, and the count
+    // of what is left to decide drops by one each.
+    const answers = [
+      { kind: 'link-item', pieceKey: 'عراق', itemId: 'mine-alias' },
+      { kind: 'create-item', pieceKey: 'عراق' },
+      { kind: 'skip-item', pieceKey: 'عراق' },
+      { kind: 'link-lesson', sessionN: 13, lessonId: 'legacy-13-twin' },
+      { kind: 'create-lesson', sessionN: 13 },
+      { kind: 'skip-lesson', sessionN: 13 },
+    ] as const;
+    for (const d of answers) {
+      const p = run([d]);
+      const asked = 'pieceKey' in d ? askedPiece : askedClass;
+      const isIt = (q: { pieceKey?: string; sessionN?: number }) => q.pieceKey === asked.pieceKey && q.sessionN === asked.sessionN;
+      expect(p.questions.some(isIt), d.kind).toBe(false);
+      expect(p.answered, d.kind).toEqual([{ ...asked, answer: d }]);
+      expect(p.summary.questions, d.kind).toBe(open.questions.length - 1);
+      expect(p.staleDecisions, d.kind).toEqual([]);
+    }
+    // Both answered at once: nothing left to decide, both reported in order.
+    const both = run([answers[3], answers[0]]);
+    expect(both.answered.map((q) => q.answer)).toEqual([answers[3], answers[0]]);
+    expect(both.questions.filter((q) => q.pieceKey === 'عراق' || q.sessionN === 13)).toEqual([]);
+
+    // A LINK WHOSE TARGET NO LONGER QUALIFIES is stale, never answered: the
+    // question is open again, and nothing is adopted. Bound elsewhere, moved
+    // to another instrument, or deleted — each one.
+    const moved: PracticeDB[] = [
+      { ...db, items: db.items.map((i) => (i.id === 'mine-alias' ? { ...i, source: { archiveId: 'other', pieceKey: 'x' } } : i)) },
+      { ...db, items: db.items.map((i) => (i.id === 'mine-alias' ? { ...i, instrumentId: 'inst-tar' } : i)) },
+      { ...db, items: db.items.filter((i) => i.id !== 'mine-alias') },
+    ];
+    for (const m of moved) {
+      const p = planArchiveImport({ db: m, index: INDEX, instrumentId: SETAR, decisions: [answers[0]], now: NOW });
+      expect(p.answered).toEqual([]);
+      expect(p.staleDecisions).toEqual([answers[0]]);
+      expect(p.adoptedItems).toEqual([]);
+      const reasked = p.questions.find((q) => q.pieceKey === 'عراق')!;
+      expect(reasked.candidates.map((c) => c.id)).not.toContain('mine-alias');
+      expect(reasked.candidates.length).toBeGreaterThan(0);
+    }
+    // The class side, with a THIRD indistinguishable candidate so two remain
+    // after the linked one moves: the question is asked again, without it.
+    const triplets = { ...db, lessons: [...db.lessons, { ...evidence, id: 'legacy-13-third' }] };
+    const lessonGone = { ...triplets, lessons: triplets.lessons.map((l) => (l.id === 'legacy-13-twin' ? { ...l, instrumentId: 'inst-tar' } : l)) };
+    const staleClass = planArchiveImport({ db: lessonGone, index: INDEX, instrumentId: SETAR, decisions: [answers[3]], now: NOW });
+    expect([staleClass.answered, staleClass.staleDecisions]).toEqual([[], [answers[3]]]);
+    expect(staleClass.adoptedLessons.some((l) => l.source?.sessionN === 13)).toBe(false);
+    expect(staleClass.questions.find((q) => q.sessionN === 13)!.candidates.map((c) => c.id).sort()).toEqual(['legacy-13', 'legacy-13-third']);
+
+    // A decision about something never asked is NOT reported as an answered
+    // question (there was no question to answer): skipping a piece nobody else
+    // claims still suppresses it, exactly as before.
+    const unasked = run([{ kind: 'skip-item', pieceKey: 'آشوراوند' }]);
+    expect(unasked.answered).toEqual([]);
+    expect(unasked.source.suppressions.map((s) => s.ref)).toContain('آشوراوند');
+  });
+});

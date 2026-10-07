@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Page } from 'playwright';
 import {
+  arrive,
   goTo,
   importBackup,
   importOutcome,
@@ -251,7 +252,8 @@ describe('musical terms, managed', () => {
       // Each keeps what is on screen until IndexedDB acknowledged THAT, and a
       // Try again after a failure writes once, never a second copy.
       await goTo(app, '/materials');
-      await page.getByRole('button', { name: /New/ }).click();
+      await arrive(page, 'Study sources');
+      await page.getByRole('button', { name: 'New', exact: true }).click();
       const srcName = page.getByRole('textbox', { name: 'Source name' });
       await srcName.fill('کتاب اول');
       await breakStorage(page);
@@ -286,8 +288,9 @@ describe('musical terms, managed', () => {
       // Two sources both proven to be the Khonyagar course: the owner chooses,
       // and the choice stays on screen until it is saved.
       await goTo(app, '/materials?instrument=inst-tar');
+      await arrive(page, 'Study sources');
       for (let n = 0; n < 2; n++) {
-        await page.getByRole('button', { name: /New/ }).click();
+        await page.getByRole('button', { name: 'New', exact: true }).click();
         await page.getByRole('combobox', { name: 'Kind' }).selectOption('course');
         await page.getByRole('textbox', { name: 'Source name' }).fill('خنیاگر');
         await page.getByRole('button', { name: 'Create source' }).click();
@@ -433,27 +436,39 @@ describe('browsing, and coming back to it', () => {
         expect(await page.getByRole('button', { name: 'Pathways', exact: true }).getAttribute('aria-pressed')).toBe('true');
         expect(await instruments.getByRole('button', { name: 'Tar', exact: true }).getAttribute('aria-pressed')).toBe('true');
       };
+      // Each hop acts only once the page it went to is on screen: until a
+      // lazy page has loaded, the one being left is still there — and a
+      // pathway card's caption names its current stage.
       await page.getByRole('button', { name: 'Pathways', exact: true }).click();
       await page.getByRole('button', { name: /روش هنرستان/ }).click();
+      await arrive(page, /روش هنرستان/);
       await page.locator('main').getByRole('link', { name: 'Repertoire', exact: true }).click();
+      await arrive(page, 'Repertoire');
       await pathsOnTar();
       await page.getByRole('button', { name: /روش هنرستان/ }).click();
+      await arrive(page, /روش هنرستان/);
       await page.getByRole('button', { name: /مبانی دست راست/ }).first().click();
+      await arrive(page, /مبانی دست راست/);
       await page.locator('main').getByRole('link', { name: 'Pathway', exact: true }).click();
+      await arrive(page, /روش هنرستان/);
       await page.locator('main').getByRole('link', { name: 'Repertoire', exact: true }).click();
+      await arrive(page, 'Repertoire');
       await pathsOnTar();
       // Opened with no browse context at all (a bookmark), a pathway returns
       // to ITS OWN instrument's pathways.
       await goTo(app, '/pathway/tar-honarestan');
+      await arrive(page, /روش هنرستان/);
       await page.locator('main').getByRole('link', { name: 'Repertoire', exact: true }).click();
+      await arrive(page, 'Repertoire');
       await pathsOnTar();
       // Study sources opened while browsing Tar starts a new source ON Tar.
       await page.getByRole('link', { name: 'Study sources' }).click();
-      // Exactly Study sources' "New": until the lazy page has rendered, the
-      // Pathways view's "New pathway" is still on screen.
+      await arrive(page, 'Study sources');
+      // Exactly Study sources' "New", never the Pathways view's "New pathway".
       await page.getByRole('button', { name: 'New', exact: true }).click();
       expect(await page.locator('main').getByRole('combobox', { name: 'Instrument' }).inputValue()).toBe('inst-tar');
       await page.getByRole('link', { name: /Back/ }).click();
+      await arrive(page, 'Repertoire');
       await pathsOnTar();
       expect(await session()).toBe('inst-setar');
 
@@ -466,6 +481,137 @@ describe('browsing, and coming back to it', () => {
       await page.getByRole('button', { name: 'Clear filters' }).click();
       await expect.poll(() => page.url()).not.toMatch(/composer=/);
       expect(await session()).toBe('inst-setar');
+      expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  }, 300_000);
+});
+
+describe('typing a search on a slow device', () => {
+  // The box used to SHOW the URL's query. The router renders a URL change in
+  // a transition, and while one is pending React restores a controlled input
+  // to the value it last rendered — so a keystroke landing before the
+  // previous one committed was undone: "pishdaramad" became "iharamad" at 20x
+  // CPU slowdown and ~100 ms a key. Chromium only: the slowdown is CDP's.
+  it('repertoire search keeps every typed character under heavy cpu slowdown', async () => {
+    const app = await openPracticeApp({ now: CLOCK });
+    const { page } = app;
+    const search = () => page.getByRole('searchbox', { name: 'Search my repertoire' });
+    const composer = () => page.getByRole('combobox', { name: 'Composer / maestro' });
+    const query = () => new URLSearchParams(page.url().split('?')[1] ?? '');
+    try {
+      await importBackup(app, 'repertoire-legacy-v14.json', stateOnly(LEGACY_TEXT));
+      expect(await importOutcome(app)).toContain('Imported');
+      await goTo(app, '/repertoire?inst=inst-setar');
+      await search().waitFor();
+
+      // One key at a time, with a facet chosen while the URL is still catching
+      // up: the box and the URL each end with every character AND the facet.
+      const cpu = await page.context().newCDPSession(page);
+      await cpu.send('Emulation.setCPUThrottlingRate', { rate: 20 });
+      await search().pressSequentially('pish', { delay: 100 });
+      await composer().selectOption('term:composer:darvish-khan');
+      await search().pressSequentially('daramad', { delay: 100 });
+      await cpu.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      await expect.poll(() => query().get('q')).toBe('pishdaramad');
+      expect(await search().inputValue()).toBe('pishdaramad');
+      expect(query().get('composer')).toBe('term:composer:darvish-khan');
+      expect(await composer().inputValue()).toBe('term:composer:darvish-khan');
+
+      // …and the same, typed whole, the way the owner described it.
+      await search().fill('');
+      await expect.poll(() => query().get('q')).toBe(null);
+      await cpu.send('Emulation.setCPUThrottlingRate', { rate: 20 });
+      await search().pressSequentially('pishdaramad', { delay: 100 });
+      await cpu.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+      await expect.poll(() => query().get('q')).toBe('pishdaramad');
+      expect(await search().inputValue()).toBe('pishdaramad');
+      expect(query().get('composer')).toBe('term:composer:darvish-khan');
+
+      // THE URL STILL LEADS whenever something other than typing moves it.
+      // Practice list: its own box shows the URL's query.
+      await page.getByRole('button', { name: 'Practice list' }).click();
+      await expect.poll(() => page.getByRole('searchbox', { name: 'Search practice items' }).inputValue()).toBe('pishdaramad');
+      // Back: My repertoire again, the box from the URL.
+      await page.goBack();
+      await expect.poll(() => search().inputValue()).toBe('pishdaramad');
+      // An instrument switch keeps the query.
+      const instruments = page.getByRole('group', { name: 'Instrument' });
+      await instruments.getByRole('button', { name: 'Tar', exact: true }).click();
+      await expect.poll(() => query().get('inst')).toBe('inst-tar');
+      expect(await search().inputValue()).toBe('pishdaramad');
+      // Clear filters empties the box with the URL…
+      await page.getByRole('button', { name: 'Clear filters' }).click();
+      await expect.poll(() => query().get('q')).toBe(null);
+      await expect.poll(() => search().inputValue()).toBe('');
+      // …Back brings both back, Forward empties them again, and Back once more.
+      await page.goBack();
+      await expect.poll(() => query().get('q')).toBe('pishdaramad');
+      await expect.poll(() => search().inputValue()).toBe('pishdaramad');
+      await page.goForward();
+      await expect.poll(() => query().get('q')).toBe(null);
+      await expect.poll(() => search().inputValue()).toBe('');
+      await page.goBack();
+      await expect.poll(() => query().get('q')).toBe('pishdaramad');
+      await expect.poll(() => search().inputValue()).toBe('pishdaramad');
+      // Typing after an outside change builds on what is shown, not on a stale draft.
+      // (The caret goes to the end the way a tap there would; End does not move it on macOS.)
+      await search().evaluate((el: HTMLInputElement) => (el.focus(), el.setSelectionRange(el.value.length, el.value.length)));
+      await page.keyboard.type('x');
+      await expect.poll(() => query().get('q')).toBe('pishdaramadx');
+      expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+    } finally {
+      await app.close();
+    }
+  }, 300_000);
+});
+
+describe('acting on the page a navigation went to', () => {
+  // The URL moves before a lazy page has loaded, and until it has, the page
+  // being left is still on screen. A pathway card on Repertoire carries its
+  // current stage in its caption ("now: مبانی دست راست"), so the stage
+  // locator after a card click could resolve to the OUTGOING card. Every
+  // page module here is held on its first load, which widens that window
+  // from a rare CI race to every run; each hop then acts only once its
+  // destination's own heading is on screen.
+  it('repertoire journeys act only on the page they navigated to', async () => {
+    const app = await openPracticeApp({ now: CLOCK, delayPagesMs: 1500 });
+    const { page } = app;
+    const main = page.locator('main');
+    try {
+      await importBackup(app, 'repertoire-legacy-v14.json', stateOnly(LEGACY_TEXT));
+      expect(await importOutcome(app)).toContain('Imported');
+      await goTo(app, '/repertoire?view=paths&inst=inst-tar');
+      await arrive(page, 'Repertoire');
+
+      // Card → its pathway → a stage: the stage is the PATHWAY's, never the card's caption.
+      await page.getByRole('button', { name: /روش هنرستان/ }).click();
+      await arrive(page, /روش هنرستان/);
+      await page.getByRole('button', { name: /مبانی دست راست/ }).first().click();
+      await arrive(page, /مبانی دست راست/);
+      await main.getByRole('link', { name: 'Pathway', exact: true }).click();
+      await arrive(page, /روش هنرستان/);
+      await main.getByRole('link', { name: 'Repertoire', exact: true }).click();
+      await arrive(page, 'Repertoire');
+      await expect.poll(() => page.url()).toMatch(/view=paths&inst=inst-tar/);
+
+      // Study sources, first visit: its own New, on the browsed instrument.
+      await page.getByRole('link', { name: 'Study sources' }).click();
+      await arrive(page, 'Study sources');
+      await page.getByRole('button', { name: 'New', exact: true }).click();
+      expect(await main.getByRole('combobox', { name: 'Instrument' }).inputValue()).toBe('inst-tar');
+      await page.getByRole('link', { name: /Back/ }).click();
+      await arrive(page, 'Repertoire');
+      await expect.poll(() => page.url()).toMatch(/view=paths&inst=inst-tar/);
+
+      // A work, first visit, and back.
+      await page.getByRole('button', { name: 'My repertoire' }).click();
+      await page.getByRole('group', { name: 'Instrument' }).getByRole('button', { name: 'Setar', exact: true }).click();
+      await page.getByRole('link', { name: /Pish-daramad in Shur/ }).click();
+      await arrive(page, /Pish-daramad in Shur/);
+      await main.getByRole('link', { name: 'Repertoire', exact: true }).click();
+      await arrive(page, 'Repertoire');
       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
     } finally {
       await app.close();
@@ -568,7 +714,8 @@ describe('the whole repertoire experience, in both engines', () => {
 
           // A STUDY SOURCE: five clear kinds, on the instrument being browsed.
           await goTo(app, '/materials?instrument=inst-tar');
-          await page.getByRole('button', { name: 'New' }).click();
+          await arrive(page, 'Study sources');
+          await page.getByRole('button', { name: 'New', exact: true }).click();
           const kinds = await page.getByRole('combobox', { name: 'Kind' }).locator('option').allInnerTexts();
           expect(kinds, where).toEqual(['Radif', 'Method book', 'Collection', 'Course', 'Other']);
           await page.getByRole('group', { name: 'Name' }).locator('input').fill('دفتر تصنیف');

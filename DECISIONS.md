@@ -2,6 +2,48 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Setar review and archive lines, visible choices, and Repertoire search typing (2026-10-07)
+
+Five reports, one heavy lane (contract 20261007-…-039e, issue #47).
+
+- **A line embedding values is ONE isolate.** Review Setar setup and Refresh
+  Setar archive built "Kind: before → after" and "composer — yours: X · archive:
+  Y" as sibling isolates. Each resolved its own direction correctly — all the
+  ledgers checked — but beside a Farsi title the group is RTL, and an RTL
+  paragraph lays sibling isolates out right to left: label at the far end, arrow
+  pointing at the old value. Chosen: one inline `dir="ltr"` isolate per line,
+  each value nested in its own `dir="auto"`, start-aligned in its group. The
+  attention list was a flex-row `<li dir="auto">`; flex order follows the row's
+  direction, so it is one LTR line too. Proof is geometric (the order on screen,
+  both engines), never computed direction; the static shape is banned in
+  `direction.test.ts`. A list of whole metadata pieces with separators OUTSIDE
+  the isolates is not a line and keeps its group's reading order.
+- **`aria-pressed` alone was invisible.** No rule styles a pressed `.btn`, so
+  Keep my value / Use archive value flipped the attribute and nothing on screen.
+  Rejected: a global `.btn[aria-pressed='true']` rule (at 0,2,0 it overrides
+  `.btn-primary` on existing pressed buttons). Chosen: opt in by class — the
+  existing `.option.selected` (weight as well as colour), `btn-primary` for
+  SourceChoice — and a source guard pairing every `aria-pressed` with a class.
+- **An answered archive question stays on screen** (agreed while planning). The
+  plan reports `answered` beside the open `questions`, so preview, re-preview and
+  commit read one source; "N to decide" still counts only open ones; a link whose
+  target no longer qualifies is stale and the question opens again. `questions`
+  kept its meaning because the store's rebase check reads it.
+- **Repertoire search was a real, rare defect.** The box showed the URL's query;
+  the router renders a URL change in a transition, and while one is pending React
+  restores a controlled input to its last rendered value — "pishdaramad" became
+  "phdrmad" at 20x CPU slowdown. Rejected: router-wide `useTransitions={false}`
+  (changes Suspense for every lazy route). Chosen: the box holds what was typed;
+  it follows the URL only when the rendered query has caught up with a live URL
+  that says something else (back/forward, Clear filters), never from an effect.
+- **The line-441 failure was a test race, not a product bug:** after a pathway
+  card click the stage locator could resolve to the OUTGOING card's caption until
+  the lazy page committed. Journeys now `arrive` at the destination's own heading;
+  `delayPagesMs` holds each page module's first load to make the window visible.
+- **No CI change.** Node 20 actions already run forced on Node 24 and pass;
+  `prismatica-gate.yml` is generated; Playwright 1.63 supports Ubuntu 26.04.
+  Revisit only if a run on the new image fails.
+
 ## Setar archive recovery, owner metadata authority, portable terms and a gesture-primed cue (2026-10-05)
 
 Seven owner reports, one lane (contract 20261005-…-e964; proof map in

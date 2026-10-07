@@ -310,6 +310,18 @@ applies the lot in one store mutation.
   source-path evidence**. Date alone, number alone or title alone cannot merge.
 - An exact title or literal alias match produces **Link / Create separately /
   Skip** — never an automatic merge, and never "pick the first candidate".
+  An answered question **stays listed with its answer selected** until Apply,
+  and can be switched or cleared there (`plan.answered`); Apply writes exactly
+  the answers selected then, an unanswered or cleared one writes nothing, and
+  "N to decide" counts only the open ones.
+- **Every choice shows itself.** Keep my value / Use archive value and each
+  answer mark the chosen one with the selected treatment (weight as well as
+  colour), not only `aria-pressed`. Keep my value is the default.
+- **Lines read in order beside a Farsi name.** A difference ("composer — yours:
+  X · archive: Y"), a Review Setar setup change ("Kind: before → after") and an
+  attention line ("path — reason") are each one left-to-right line with every
+  value in its own direction inside it, so the arrow always points from what you
+  have to what is proposed.
 - New pieces arrive **resting**, by explicit import policy, so ninety-four items
   do not flood Today. They stay searchable and directly startable.
 - **Nothing about practice is ever seeded**: no minutes, no result, no review
