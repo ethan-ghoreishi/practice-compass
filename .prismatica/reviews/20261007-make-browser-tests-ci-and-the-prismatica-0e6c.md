@@ -1,27 +1,35 @@
 ---
 id: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 contractId: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
-patchId: dbfac76f619631282d9bb22642b9225b9c78e1f9
+patchId: f0de497bc9886c8f3a8405ce6e46c958858c13d5
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: journey-wait-guard-complete-enforcement
-    summary: "[P2] ac-7 still fails open for escaped static timer names and
-      unreadable waitForSelector options. Every recognisable prohibited wait
-      must receive a judgement or ledger entry."
-    counterexample: On HEAD 32c3721, scan() accepts await
-      page['waitFor\u0054imeout'](300); although its runtime key is
-      waitForTimeout. All tested Unicode/hex/code-point escape variants and
-      called/reference/destructuring timer forms bypass recognition. Separately,
-      async function f(options) { await page.waitForSelector('x', options); }
-      produces no finding although unknown options may request disappearance
-      without a proved prior presence. No current journey uses either bypass.
-      Repair both shared recognition paths and add discriminating rows to the
-      exact named ac-7 test. Preserve the documented genuinely-dynamic-member
-      boundary and fix the abstraction rather than these examples only.
-createdAt: 2026-10-08T20:21:37.509Z
-sealedAt: 2026-10-08T20:27:27.940Z
+    summary: "[P2] Define a finite recognition contract for the journey-wait guard
+      and align its documentation, tests and enforcement claims with that
+      boundary."
+    counterexample: "The current scanner combines broad claims such as enforcement
+      across every spelling with explicit exclusions, but does not define a
+      stable supported syntax boundary. This makes family closure depend on
+      discovering further JavaScript spellings rather than satisfying a finite
+      contract. Closure requires: explicitly define the supported syntax classes
+      and semantic judgements; fail closed or require a ledger entry when
+      meaning is unknown within that boundary; identify excluded syntax as
+      unchecked rather than proved safe; align scanner documentation, lane
+      claims and the exact named ac-7 test with that definition; prove the
+      supported classes and relevant interactions through a fixed policy-derived
+      matrix, retaining the current repository sweep and exact ledger
+      accounting. The stopping rule must state that a future counterexample
+      blocks this family only when it violates the supported recognition
+      contract or exposes an actual unreliable repository consumer; an
+      explicitly excluded spelling alone is a possible extension. The previously
+      identified syntax-specific bypasses are withdrawn as standalone blockers.
+      Further analyser expansion is not required if boundary clarification and
+      aligned proof close this issue."
+createdAt: 2026-10-08T20:47:24.728Z
+sealedAt: 2026-10-08T21:06:32.874Z
 ---
 
 # Review: Make browser tests, CI and the Prismatica Gate fast, deterministic and trustworthy
@@ -35,7 +43,7 @@ sealedAt: 2026-10-08T20:27:27.940Z
 - **Contract:** 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/49
 - **Risk tier:** normal — a feature or bug — full checks plus a sealed fresh-eyes review
-- **Diff patch-id:** `dbfac76f619631282d9bb22642b9225b9c78e1f9`
+- **Diff patch-id:** `f0de497bc9886c8f3a8405ce6e46c958858c13d5`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
 
@@ -56,301 +64,347 @@ still breaks it is not closed.
 
 **Findings from the previous review:**
 
-- **journey-wait-guard-complete-enforcement** — [P2] ac-7 fails open for statically known computed destructuring keys. Every recognisable rendered-state read must reach a judgement or ledger entry.
-  _counterexample:_ On HEAD 3cfbb69, scan() accepts const { ["isVisible"]: read } = box; expect(await Reflect.apply(read, box, [])).toBe(true). The same gap exists across the guarded read methods, string/no-substitution-template computed keys, and declaration/assignment/parameter destructuring. No real journey currently uses these forms. Close the family at shared property-name extraction rather than patching individual examples. Support all statically knowable property-name forms consistently; genuinely dynamic keys may remain outside the supported boundary but must be documented/tested as such. Earlier helper-return, export, read-reference, regex and navigation findings are resolved.
+- **journey-wait-guard-complete-enforcement** — [P2] ac-7 still fails open for escaped static timer names and unreadable waitForSelector options. Every recognisable prohibited wait must receive a judgement or ledger entry.
+  _counterexample:_ On HEAD 32c3721, scan() accepts await page['waitFor\u0054imeout'](300); although its runtime key is waitForTimeout. All tested Unicode/hex/code-point escape variants and called/reference/destructuring timer forms bypass recognition. Separately, async function f(options) { await page.waitForSelector('x', options); } produces no finding although unknown options may request disappearance without a proved prior presence. No current journey uses either bypass. Repair both shared recognition paths and add discriminating rows to the exact named ac-7 test. Preserve the documented genuinely-dynamic-member boundary and fix the abstraction rather than these examples only.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/DECISIONS.md b/DECISIONS.md
-index ef5a022687326f8aa66fa63d28a14d5df42ef8d9..29f359caab49e5773ac0e6619e34362c1316199e 100644
+index 29f359caab49e5773ac0e6619e34362c1316199e..760d0deb981ad49935abc34982e7973eb9439c63 100644
 --- a/DECISIONS.md
 +++ b/DECISIONS.md
-@@ -63,6 +63,10 @@ wrong, measured instead.
+@@ -63,10 +63,16 @@ wrong, measured instead.
    is a second path), an uncalled or destructured read method is a read, a helper
    exported by name is judged where it stands, and only plain-text `toMatch`
    alternatives prove presence (a regex's sense is as invisible as a boolean's).
-+  Every name it decides by (a read, a matcher, a timer, `state`) goes through one
-+  reader, `keyOf`, which folds a static computed key (`['is' + 'Visible']`) and
-+  calls one it cannot fold unsafe, as is a `state` on any `waitFor…` it cannot
-+  read; each consumer read names its own way, so each spelling opened a sibling.
+-  Every name it decides by (a read, a matcher, a timer, `state`) goes through one
+-  reader, `keyOf`, which folds a static computed key (`['is' + 'Visible']`) and
+-  calls one it cannot fold unsafe, as is a `state` on any `waitFor…` it cannot
+-  read; each consumer read names its own way, so each spelling opened a sibling.
++  Every name it decides by (a read, a matcher, `state`) goes through one reader,
++  `keyOf`, which folds a static computed key (`['is' + 'Visible']`) and calls one
++  it cannot fold unsafe; each consumer read names its own way, so each spelling
++  opened a sibling. Timer names and goto URLs are judged by a string's runtime
++  text (escapes cooked, pieces folded, a page script's escapes cooked again): raw
++  source text let `'waitFor\u0054imeout'` and an escaped `#` through. Every wait
++  that can ask for absence is read where Playwright's types let it ask (options,
++  `waitForElementState`'s state, `waitForURL`'s matcher, `waitForFunction`'s page
++  function) in any calling form, and unread is negative; a `state:`-key hunt
++  missed options passed as a variable.
    Its ledger says why each exception
    stands and how many sites it covers. 44 positive reads
    became `expect.poll` with the same matcher. Two polled negatives that followed a
 diff --git a/tests/journey-waits.test.ts b/tests/journey-waits.test.ts
-index f942f07974a8651aacee9eb1e5ea36e68dd4fa04..f39b0fcf71b0525c3911fa4d7518c0dff61e558f 100644
+index f39b0fcf71b0525c3911fa4d7518c0dff61e558f..d272de109ab57076c545011ffd4b36ec58eec52a 100644
 --- a/tests/journey-waits.test.ts
 +++ b/tests/journey-waits.test.ts
-@@ -15,7 +15,8 @@ import { describe, expect, it } from 'vitest';
- // is not a bracket. A timer named inside a string or template (a page script)
+@@ -16,7 +16,8 @@ import { describe, expect, it } from 'vitest';
  // still counts. Six rules, each deny-by-default:
  //   sleep     no reference to `waitForTimeout`, `setTimeout` or `setInterval`
--//             — a call, a `.bind`, an import, a page script — and no wait
-+//             — a call, a `.bind`, an import, a page script, a folded key —
-+//             and no wait
+ //             — a call, a `.bind`, an import, a page script, a folded key —
+-//             and no wait
++//             by its RUNTIME text (escapes cooked, `+` and `${}` folded, a page
++//             script's own escapes cooked again), and no wait
  //             (`waitFor…`, an assertion) whose failure a `.catch` swallows:
  //             when the thing never comes, that is a timer;
  //   poller    no `while`, `do` or `for(;;)`-style loop that awaits —
-@@ -34,7 +35,8 @@ import { describe, expect, it } from 'vitest';
- //             value (`[await a.count(), url]`);
- //   read      the same read OUTSIDE an assertion — a branch, a variable, a
- //             read method or helper named without a call (passed, aliased,
--//             bound, destructured in a declaration or an `=`) — is refused unless ledgered with what it
-+//             bound, destructured in a declaration, parameter, catch, `=` or
-+//             `for…of`) — is refused unless ledgered with what it
- //             was read after. A HELPER is a local function with a read in what
- //             it returns; it means what its ONE return evaluates to, and only
- //             when that return is the body's last statement: a second return,
-@@ -59,20 +61,27 @@ import { describe, expect, it } from 'vitest';
+@@ -61,10 +62,18 @@ import { describe, expect, it } from 'vitest';
  //             `toBeGreaterThan(n >= 0)`, `toBeGreaterThanOrEqual(n > 0)`,
  //             `toHaveLength(n > 0)`. Everything else is negative: `.not`, no
  //             matcher, a variable, an unknown matcher, a boolean (its sense —
--//             `!t.includes(x)` — is invisible). So is `waitFor` with
--//             `state: 'detached' | 'hidden'`, a state it cannot read, or
--//             options it cannot read;
-+//             `!t.includes(x)` — is invisible). So is any `waitFor…` with
-+//             `state: 'detached' | 'hidden'`, a state it cannot read (a
-+//             variable, an expression, a getter), or options it cannot read;
- //   goto      no raw `page.goto` to a hash route outside the harness: `goTo`
+-//             `!t.includes(x)` — is invisible). So is any `waitFor…` with
+-//             `state: 'detached' | 'hidden'`, a state it cannot read (a
+-//             variable, an expression, a getter), or options it cannot read;
+-//   goto      no raw `page.goto` to a hash route outside the harness: `goTo`
++//             `!t.includes(x)` — is invisible). So is every wait that may pass
++//             on what never came, read where Playwright's types let it ask:
++//             `state: 'detached' | 'hidden'` anywhere; `waitFor`/
++//             `waitForSelector` options it cannot read (a variable, a call, a
++//             spread, an unfoldable key, a state that is not a literal);
++//             `waitForElementState('hidden')` or an unread state; `waitForURL`
++//             unless a plain regex or glob-free URL; `waitForFunction` (a page
++//             function's sense is invisible); a `waitFor…` not in the table; and
++//             any of these by `.apply`, `.bind`, destructuring or passing. Event
++//             waits (`waitForEvent`, `…Request`, `…Response`, `…LoadState`,
++//             `…Navigation`) need something to happen, so cannot;
++//   goto      no raw `page.goto` to a hash route (by runtime text) outside the harness: `goTo`
  //             is the navigation that waits for the destination.
  // `expect`, `expect.soft`, `.poll` and every matcher are matched by name in
--// any spelling (`expect['poll']`, `['not']`). Geometry (`boundingBox`) and
-+// any spelling (`expect['poll']`, `['not']`). Every NAME — a read, a matcher,
-+// a destructured key, `state`, an expected object's key — is read by one
-+// function, `keyOf`: its static value however spelled (`'a'`, `` `a` ``, `1`,
-+// `['is' + 'A']`, `` [`is${'A'}`] ``); a key it cannot fold may be any name,
-+// so it is unsafe wherever a name decides (refused in an assertion, a read
-+// when destructured, a negative in waitFor options, unjudged in an expected
-+// object). Geometry (`boundingBox`) and
- // list (`all`, `allInnerTexts`) reads are VALUE reads, like `inputValue`:
- // taken after the element was awaited. Deliberately out of reach: `for…of`/
- // `for…in` loops (walks over a fixed list, as the engine loops are; a timed
- // poller in one still trips `sleep`), a computed call OUTSIDE an assertion
+ // any spelling (`expect['poll']`, `['not']`). Every NAME — a read, a matcher,
+@@ -81,7 +90,11 @@ import { describe, expect, it } from 'vitest';
  // (`x[k]()` may be anything; inside one it is refused), a computed member
--// named without a call (`x[k]` is indexing, indistinguishable from a read
--// method), an aliased `expect`,
-+// named without a call (`x[k]` is indexing, everywhere and indistinguishable
-+// from a read method, where destructuring a locator is not), a name passed as
-+// an argument (`Reflect.get(x, 'count')`), an aliased `expect`,
+ // named without a call (`x[k]` is indexing, everywhere and indistinguishable
+ // from a read method, where destructuring a locator is not), a name passed as
+-// an argument (`Reflect.get(x, 'count')`), an aliased `expect`,
++// an argument (`Reflect.get(x, 'count')`), an aliased `expect`, a name or
++// URL with a piece held in any binding (`const` included) or computed by a
++// call (`page['waitFor' + t]`, `'a'.concat(b)`) (runtime text is what an
++// expression built from literals alone evaluates to; a binding holding the
++// WHOLE name is still caught, as its literal is scanned),
  // a helper exported to another file in any spelling (`export function`,
  // `export { rows }`, `export default rows`: its read is judged where it
  // stands, as there is no caller here to judge), and Playwright's own
-@@ -375,6 +384,7 @@ const PLAIN_TEXT = String.raw`(?:[^\\^$.|?*+()[\]{}/]|\\[^A-Za-z0-9])+`;
- /** A regex literal of plain-text alternatives, at most the `i` flag: it matches only where one of them IS — `toContain` by another name. */
- const PLAIN_REGEX = new RegExp(String.raw`^/${PLAIN_TEXT}(?:\|${PLAIN_TEXT})*/i?$`);
- const SLEEP = /\b(?:waitForTimeout|setTimeout|setInterval)\b/g;
-+const TIMER = /^(?:waitForTimeout|setTimeout|setInterval)$/;
- /** What the scan cannot judge: a computed name, an ambiguous helper, a shape it does not reduce. */
- const UNKNOWN = Symbol('unknown');
- /** A value with no read in it — a URL, a field's text, stored data: it may be ANYTHING, an empty one included. */
-@@ -403,8 +413,9 @@ function literal(node: ts.Expression | undefined): unknown {
-   if (ts.isObjectLiteralExpression(e)) {
-     const o: Record<string, unknown> = {};
-     for (const p of e.properties) {
--      if (!ts.isPropertyAssignment(p) || !(ts.isIdentifier(p.name) || ts.isStringLiteralLike(p.name))) return UNKNOWN;
--      o[p.name.text] = literal(p.initializer);
-+      const key = ts.isPropertyAssignment(p) ? keyOf(p.name) : UNKNOWN;
-+      if (key === UNKNOWN) return UNKNOWN;
-+      o[key] = literal((p as ts.PropertyAssignment).initializer);
-     }
-     return o;
-   }
-@@ -416,14 +427,38 @@ const hasOpaque = (v: unknown): boolean => v === OPAQUE || (Array.isArray(v) &&
- const full = (v: unknown): boolean =>
-   typeof v === 'number' ? v > 0 : typeof v === 'string' ? v !== '' : typeof v === 'object' && v !== null && Object.values(v).length > 0 && Object.values(v).every(full);
- 
--/** The member an access names — `x.a`, `x?.a`, `x['a']`, `` x[`a`] `` — UNKNOWN for a computed key. */
-+/** A computed key's static value — a string, template or number, `+` and `${}` folded as JS does — or UNKNOWN. */
-+function constant(node: ts.Expression): string | number | typeof UNKNOWN {
+@@ -126,6 +139,12 @@ const LEDGER: { file: string; rule: Rule; snippet: string; sites?: number; why:
+     snippet: 'waitForTimeout(ms)',
+     why: 'quietWindow: the one bounded window for a NEGATIVE claim, called only after a positive signal',
+   },
++  {
++    file: 'practiceBrowser.ts',
++    rule: 'negative',
++    snippet: 'page.waitForFunction( ([old, text]) =>',
++    why: "goTo's arrival: true only once a rendered <main> exists whose heading element or text differs from the outgoing one captured before navigating, and a Primary-nav presence wait follows; the N1 self-test fails the pre-fix goTo in both engines",
++  },
+   {
+     file: 'practice-cues.browser.test.ts',
+     rule: 'sleep',
+@@ -448,6 +467,88 @@ function constant(node: ts.Expression): string | number | typeof UNKNOWN {
+   return UNKNOWN;
+ }
+ const text = (v: string | number | typeof UNKNOWN) => (v === UNKNOWN ? v : String(v));
++
++/**
++ * A string expression's RUNTIME text — escapes cooked, `+` and `${}` folded, a
++ * tagged template's raw text — with NUL where a part is not static.
++ */
++function fold(node: ts.Expression): string {
 +  const e = bare(node);
++  const raw = (t: ts.TemplateLiteralLikeNode) => t.rawText ?? t.text;
++  if (ts.isTaggedTemplateExpression(e)) {
++    const t = e.template;
++    return ts.isNoSubstitutionTemplateLiteral(t) ? raw(t) : raw(t.head) + t.templateSpans.map((s) => fold(s.expression) + raw(s.literal)).join('');
++  }
 +  if (ts.isStringLiteralLike(e)) return e.text;
-+  if (ts.isNumericLiteral(e)) return Number(e.text);
-+  if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-+    const [a, b] = [constant(e.left), constant(e.right)];
-+    return a === UNKNOWN || b === UNKNOWN ? UNKNOWN : (a as string) + (b as string);
-+  }
-+  if (ts.isTemplateExpression(e)) {
-+    let s = e.head.text;
-+    for (const span of e.templateSpans) {
-+      const v = constant(span.expression);
-+      if (v === UNKNOWN) return UNKNOWN;
-+      s += String(v) + span.literal.text;
-+    }
-+    return s;
-+  }
-+  return UNKNOWN;
++  if (ts.isTemplateExpression(e)) return e.head.text + e.templateSpans.map((s) => fold(s.expression) + s.literal.text).join('');
++  if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken) return fold(e.left) + fold(e.right);
++  return '\0';
 +}
-+const text = (v: string | number | typeof UNKNOWN) => (v === UNKNOWN ? v : String(v));
-+/** THE one reading of a property name — `a`, `'a'`, `1`, `['a']`, `` [`a`] ``, `['is' + 'A']` — UNKNOWN for a key it cannot fold. */
-+function keyOf(name: ts.PropertyName): string | typeof UNKNOWN {
-+  if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
-+  return text(constant(ts.isComputedPropertyName(name) ? name.expression : name));
++/** Is this a whole string expression — not a piece of a larger `+`, template or tagged template? */
++function textRoot(node: ts.Node): node is ts.Expression {
++  const kind =
++    ts.isStringLiteralLike(node) || ts.isTemplateExpression(node) || ts.isTaggedTemplateExpression(node) || (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken);
++  let p = node.parent;
++  while (p && (ts.isParenthesizedExpression(p) || ts.isAsExpression(p) || ts.isSatisfiesExpression(p) || ts.isNonNullExpression(p))) p = p.parent;
++  return kind && !(ts.isTemplateSpan(p) || ts.isTaggedTemplateExpression(p) || (ts.isBinaryExpression(p) && p.operatorToken.kind === ts.SyntaxKind.PlusToken));
++}
++const ESCAPE = /\\+(?:u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([0-7]{1,3}))|\\+\r?\n/g;
++/** Text a page script cooks again: every escape layer decoded (`\\u0054`, `\\x54`, `\\124` → `T`), so a name under any of them is the name. */
++function decode(s: string): string {
++  for (let prev = ''; prev !== s; ) {
++    prev = s;
++    s = s.replace(ESCAPE, (all, cp, u, x, o) => {
++      if (cp === undefined && u === undefined && x === undefined && o === undefined) return '';
++      const n = o !== undefined ? parseInt(o, 8) : parseInt(cp ?? u ?? x, 16);
++      return n <= 0x10ffff ? String.fromCodePoint(n) : all;
++    });
++  }
++  return s;
 +}
 +
-+/** The member an access names — `x.a`, `x?.a`, `x['a']`, `` x[`a`] `` — UNKNOWN for a key `keyOf` cannot fold. */
- function member(node: ts.Expression): { of: ts.Expression; name: string | typeof UNKNOWN } | undefined {
-   const e = bare(node);
-   if (ts.isPropertyAccessExpression(e)) return { of: e.expression, name: e.name.text };
--  if (ts.isElementAccessExpression(e)) {
--    const key = bare(e.argumentExpression);
--    return { of: e.expression, name: ts.isStringLiteralLike(key) ? key.text : UNKNOWN };
--  }
-+  if (ts.isElementAccessExpression(e)) return { of: e.expression, name: text(constant(e.argumentExpression)) };
-   return undefined;
- }
- const named = (e: ts.Expression, name: string) => member(e)?.name === name;
-@@ -594,10 +629,12 @@ export function scan(file: string, raw: string): Site[] {
-   const isRead = (name: string | typeof UNKNOWN | undefined) => typeof name === 'string' && Object.hasOwn(READS, name);
-   /** Read methods named without a call (`Reflect.apply(x.count, …)`, `const { count } = x`). */
-   const refs: ts.Node[] = [];
--  /** Is this object literal (or one nested in it) the target of a destructuring `=`? */
-+  /** Is this object literal (or one nested in it) the target of a destructuring `=` or `for (… of/in …)`? */
-   const assignedTo = (literal: ts.Node): boolean => {
--    for (let n = literal; ts.isObjectLiteralExpression(n) || ts.isArrayLiteralExpression(n) || ts.isPropertyAssignment(n) || ts.isParenthesizedExpression(n); n = n.parent)
-+    for (let n = literal; ts.isObjectLiteralExpression(n) || ts.isArrayLiteralExpression(n) || ts.isPropertyAssignment(n) || ts.isParenthesizedExpression(n); n = n.parent) {
-       if (ts.isBinaryExpression(n.parent) && n.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && n.parent.left === n) return true;
-+      if ((ts.isForOfStatement(n.parent) || ts.isForInStatement(n.parent)) && n.parent.initializer === n) return true;
++/** A wait that may pass on what never came, read where Playwright lets it ask (playwright-core's types). */
++const ABSENT_STATES = new Set(['detached', 'hidden']);
++/** Waits for an EVENT — something must happen, so none can pass on nothing; `waitForTimeout` is a sleep, judged as one. */
++const EVENT_WAITS = new Set(['waitForEvent', 'waitForRequest', 'waitForResponse', 'waitForLoadState', 'waitForNavigation', 'waitForTimeout']);
++const absenceWait = (name: string | typeof UNKNOWN | undefined): name is string => typeof name === 'string' && name.startsWith('waitFor') && !EVENT_WAITS.has(name);
++/** Options that may ask for absence: not an object literal, a spread, a key `keyOf` cannot fold, or a `state` that is not a literal presence. */
++function optionsMayAskAbsence(a: ts.Expression): boolean {
++  const e = bare(a);
++  if (!ts.isObjectLiteralExpression(e)) return true;
++  return e.properties.some((p) => {
++    if (ts.isSpreadAssignment(p) || !p.name) return true;
++    const key = keyOf(p.name);
++    if (key !== 'state') return key === UNKNOWN;
++    const state = ts.isPropertyAssignment(p) ? literal(p.initializer) : UNKNOWN;
++    return typeof state !== 'string' || ABSENT_STATES.has(state);
++  });
++}
++/** A URL matcher that names a URL to be AT: plain regex alternatives (as `toMatch`), or a string with no glob in it. */
++function urlPresence(a: ts.Expression): boolean {
++  const e = bare(a);
++  if (ts.isRegularExpressionLiteral(e)) return PLAIN_REGEX.test(e.text);
++  const url = constant(e);
++  return typeof url === 'string' && url !== '' && !/[*?[\]{}]/.test(url);
++}
++/** May this `waitFor…` call pass on what never came? Unknown waits, and anything the scan cannot read, may. */
++function waitMayPassOnAbsence(name: string, args: readonly ts.Expression[]): boolean {
++  if (EVENT_WAITS.has(name)) return false;
++  if (args.some(ts.isSpreadElement)) return true;
++  switch (name) {
++    case 'waitFor':
++      return args.length > 0 && optionsMayAskAbsence(args[0]);
++    case 'waitForSelector':
++      return args.length > 1 && optionsMayAskAbsence(args[1]);
++    case 'waitForElementState': {
++      const state = args[0] ? text(constant(args[0])) : UNKNOWN;
++      return state === UNKNOWN || ABSENT_STATES.has(state);
 +    }
-     return false;
-   };
-   /** Is this access the callee of a call — directly, or through `.call`/`.apply`, which `readOf` judges as the read? */
-@@ -612,7 +649,7 @@ export function scan(file: string, raw: string): Site[] {
- 
-   const visit = (node: ts.Node): void => {
-     // sleep: any REFERENCE to a timer (a call, `.bind`, an import) …
--    if (ts.isIdentifier(node) && /^(?:waitForTimeout|setTimeout|setInterval)$/.test(node.text)) {
-+    if (ts.isIdentifier(node) && TIMER.test(node.text)) {
++    case 'waitForURL':
++      return !(args[0] && urlPresence(args[0]));
++    default: // `waitForFunction`: a page function's sense is as invisible as a boolean's; and any wait not in the table
++      return true;
++  }
++}
+ /** THE one reading of a property name — `a`, `'a'`, `1`, `['a']`, `` [`a`] ``, `['is' + 'A']` — UNKNOWN for a key it cannot fold. */
+ function keyOf(name: ts.PropertyName): string | typeof UNKNOWN {
+   if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
+@@ -620,8 +721,13 @@ function callEnd(text: string, from: number): number {
+ export function scan(file: string, raw: string): Site[] {
+   const sf = ts.createSourceFile(file, raw, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+   const sites: Site[] = [];
+-  const at = (node: ts.Node, rule: Rule, text = node.getText(sf), pos = node.getStart(sf)) =>
++  /** One negative per wait: its literal `state` and the wait table both read it. (Two reads in one assertion stay two sites.) */
++  const negatives = new Set<number>();
++  const at = (node: ts.Node, rule: Rule, text = node.getText(sf), pos = node.getStart(sf)) => {
++    if (rule === 'negative' && negatives.has(pos)) return;
++    if (rule === 'negative') negatives.add(pos);
+     sites.push({ file, rule, line: sf.getLineAndCharacterOfPosition(pos).line + 1, text: text.replace(/\s+/g, ' ').trim() });
++  };
+   const calls: ts.CallExpression[] = [];
+   const identifiers: ts.Identifier[] = [];
+   /** Local (unexported) functions by the name they are called by. */
+@@ -653,26 +759,21 @@ export function scan(file: string, raw: string): Site[] {
        const ref = ts.isPropertyAccessExpression(node.parent) && node.parent.name === node ? node.parent : node;
        at(ts.isCallExpression(ref.parent) && ref.parent.expression === ref ? ref.parent : ref.parent, 'sleep');
      }
-@@ -623,22 +660,29 @@ export function scan(file: string, raw: string): Site[] {
+-    // … or a timer named inside a string or template: a page script, `page['waitForTimeout']`.
+-    if (ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node)) {
+-      const text = node.getText(sf);
++    // … or a timer named by a string's RUNTIME text: a page script, `page['waitFor\u0054imeout']`, `['wait' + 'ForTimeout']`.
++    if (textRoot(node)) {
++      const text = decode(fold(node));
+       for (const m of text.matchAll(SLEEP)) at(node, 'sleep', text.slice(m.index, callEnd(text, m.index + m[0].length)), node.getStart(sf) + m.index);
      }
      // poller: a loop that awaits — `persistedUntil` is the one.
      if ((ts.isWhileStatement(node) || ts.isDoStatement(node) || ts.isForStatement(node)) && hasAwait(node)) at(node, 'poller');
-+    // … or a computed key folded from pieces no one string holds (`page['wait' + 'ForTimeout']`).
-+    const folded = ts.isElementAccessExpression(node) ? node.argumentExpression : ts.isComputedPropertyName(node) ? node.expression : undefined;
-+    const timer = folded && !ts.isStringLiteralLike(bare(folded)) ? text(constant(folded)) : UNKNOWN;
-+    if (typeof timer === 'string' && TIMER.test(timer)) at(node.parent, 'sleep');
-     // negative: a wait for something to be GONE passes at once if it never came —
--    // `state: 'detached' | 'hidden'` however spelled, or a `waitFor` state the scan cannot read.
--    if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && (ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name)) && node.name.text === 'state') {
-+    // `state: 'detached' | 'hidden'` however spelled, or a `waitFor…` state the scan cannot read (a getter's included).
-+    if (ts.isObjectLiteralElementLike(node) && node.name && keyOf(node.name) === 'state') {
-       const state = ts.isPropertyAssignment(node) ? literal(node.initializer) : UNKNOWN;
-       const call = ts.findAncestor(node, ts.isCallExpression);
--      if (state === 'detached' || state === 'hidden' || (typeof state !== 'string' && call && named(call.expression, 'waitFor'))) at(call ?? node, 'negative');
-+      const waitName = call && member(call.expression)?.name;
-+      if (state === 'detached' || state === 'hidden' || (typeof state !== 'string' && typeof waitName === 'string' && waitName.startsWith('waitFor')))
-+        at(call ?? node, 'negative');
+-    // … or a computed key folded from pieces no one string holds (`page['wait' + 'ForTimeout']`).
+-    const folded = ts.isElementAccessExpression(node) ? node.argumentExpression : ts.isComputedPropertyName(node) ? node.expression : undefined;
+-    const timer = folded && !ts.isStringLiteralLike(bare(folded)) ? text(constant(folded)) : UNKNOWN;
+-    if (typeof timer === 'string' && TIMER.test(timer)) at(node.parent, 'sleep');
+-    // negative: a wait for something to be GONE passes at once if it never came —
+-    // `state: 'detached' | 'hidden'` however spelled, or a `waitFor…` state the scan cannot read (a getter's included).
+-    if (ts.isObjectLiteralElementLike(node) && node.name && keyOf(node.name) === 'state') {
+-      const state = ts.isPropertyAssignment(node) ? literal(node.initializer) : UNKNOWN;
+-      const call = ts.findAncestor(node, ts.isCallExpression);
+-      const waitName = call && member(call.expression)?.name;
+-      if (state === 'detached' || state === 'hidden' || (typeof state !== 'string' && typeof waitName === 'string' && waitName.startsWith('waitFor')))
+-        at(call ?? node, 'negative');
++    // negative: a wait for something to be GONE passes at once if it never came — `state: 'detached' | 'hidden'`
++    // however spelled, wherever it is written (the wait table below reads a state it cannot read).
++    if (ts.isPropertyAssignment(node) && keyOf(node.name) === 'state') {
++      const state = literal(node.initializer);
++      if (typeof state === 'string' && ABSENT_STATES.has(state)) at(ts.findAncestor(node, ts.isCallExpression) ?? node, 'negative');
      }
++    // … or a wait that can ask for absence, named without a call (bound, passed, `.apply`): what it waits for is unread.
++    if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && absenceWait(member(node)!.name) && !called(node)) at(node, 'negative');
      // read: a read method named without being called — passed, aliased, bound, destructured — is a read nobody judges.
      if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && isRead(member(node)!.name) && !called(node)) refs.push(node);
-+    // A destructured key the scan cannot fold may be any method: a read too.
-     const key =
-       ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)
--        ? (node.propertyName ?? node.name)
-+        ? keyOf(node.propertyName ?? (node.name as ts.Identifier))
-         : (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && assignedTo(node.parent)
--          ? node.name
-+          ? keyOf(node.name)
+     // A destructured key the scan cannot fold may be any method: a read too.
+@@ -683,6 +784,7 @@ export function scan(file: string, raw: string): Site[] {
+           ? keyOf(node.name)
            : undefined;
--    if (key && (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) && isRead(key.text)) refs.push(node);
-+    if (key === UNKNOWN || isRead(key)) refs.push(node);
+     if (key === UNKNOWN || isRead(key)) refs.push(node);
++    if (absenceWait(key)) at(node, 'negative');
      if (ts.isCallExpression(node)) calls.push(node);
      if (ts.isIdentifier(node)) identifiers.push(node);
      if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
-@@ -686,7 +730,8 @@ export function scan(file: string, raw: string): Site[] {
-     while (ts.isParenthesizedExpression(n.parent)) n = n.parent;
-     if (ts.isCallExpression(n.parent) && n.parent.expression === n) return false; // `f(…)`
-     const via = n.parent;
--    return !(ts.isPropertyAccessExpression(via) && (via.name.text === 'call' || via.name.text === 'apply') && ts.isCallExpression(via.parent) && via.parent.expression === via);
-+    const by = (ts.isPropertyAccessExpression(via) || ts.isElementAccessExpression(via)) && via.expression === n ? member(via)!.name : undefined;
-+    return !((by === 'call' || by === 'apply') && ts.isCallExpression(via.parent) && via.parent.expression === via);
+@@ -851,19 +953,23 @@ export function scan(file: string, raw: string): Site[] {
    };
-   const readNodes = (): ts.Node[] => [...calls.filter((c) => readOf(c)), ...identifiers.filter(isHelperRef), ...refs];
-   const within = (n: ts.Node, outer: ts.Node) => n.pos >= outer.pos && n.end <= outer.end;
-@@ -812,10 +857,13 @@ export function scan(file: string, raw: string): Site[] {
+   for (const call of calls) {
+     // goto: a raw hash navigation outside the harness.
+-    if (file !== HARNESS && named(call.expression, 'goto') && call.arguments.some((a) => a.getText(sf).includes('#'))) at(call, 'goto');
++    const hash = (n: ts.Node): boolean => (textRoot(n) && fold(n).includes('#')) || ts.forEachChild(n, hash) === true;
++    if (file !== HARNESS && named(call.expression, 'goto') && call.arguments.some(hash)) at(call, 'goto');
+     // negative: a poll not proven to wait for presence.
+     if (isPoll(call)) {
        const m = matcherOf(call);
        if (!waitsForPresence(evaluate(call.arguments[0]), m)) at(m?.call ?? call, 'negative');
      }
--    // negative: a `waitFor` whose options the scan cannot read may be waiting for absence.
--    const options = named(call.expression, 'waitFor') && call.arguments[0] ? bare(call.arguments[0]) : undefined;
--    if (options && (!ts.isObjectLiteralExpression(options) || options.properties.some((p) => ts.isSpreadAssignment(p) || (p.name && ts.isComputedPropertyName(p.name)))))
-+    // negative: a `waitFor…` whose options the scan cannot read — `waitFor`'s own a variable, any one's a spread or
-+    // a key `keyOf` cannot fold — may be waiting for absence.
-+    const name = member(call.expression)?.name;
-+    const unread = (a: ts.Expression) => ts.isObjectLiteralExpression(a) && a.properties.some((p) => ts.isSpreadAssignment(p) || (p.name && keyOf(p.name) === UNKNOWN));
-+    if (typeof name === 'string' && name.startsWith('waitFor') && call.arguments.some((a) => unread(bare(a))))
-       at(call, 'negative');
-+    else if (name === 'waitFor' && call.arguments[0] && !ts.isObjectLiteralExpression(bare(call.arguments[0]))) at(call, 'negative');
+-    // negative: a `waitFor…` whose options the scan cannot read — `waitFor`'s own a variable, any one's a spread or
+-    // a key `keyOf` cannot fold — may be waiting for absence.
+-    const name = member(call.expression)?.name;
+-    const unread = (a: ts.Expression) => ts.isObjectLiteralExpression(a) && a.properties.some((p) => ts.isSpreadAssignment(p) || (p.name && keyOf(p.name) === UNKNOWN));
+-    if (typeof name === 'string' && name.startsWith('waitFor') && call.arguments.some((a) => unread(bare(a))))
+-      at(call, 'negative');
+-    else if (name === 'waitFor' && call.arguments[0] && !ts.isObjectLiteralExpression(bare(call.arguments[0]))) at(call, 'negative');
++    // negative: a `waitFor…` that may pass on what never came (the wait table), called directly, by `.call` or `.apply`.
++    // `.apply`'s list is one value the table cannot read.
++    let wait = member(call.expression);
++    let args: readonly ts.Expression[] | undefined = call.arguments;
++    if ((wait?.name === 'call' || wait?.name === 'apply') && member(wait.of)) {
++      args = wait.name === 'call' ? args.slice(1) : undefined;
++      wait = member(wait.of);
++    }
++    const waitName = wait?.name;
++    if (absenceWait(waitName) && (!args || waitMayPassOnAbsence(waitName, args))) at(call, 'negative');
      // sleep: a wait whose failure is swallowed waits out its timeout when the thing never comes.
      const caught = named(call.expression, 'catch') ? bare(member(call.expression)!.of) : undefined;
      if (caught && ts.isCallExpression(caught) && isWait(caught)) at(call, 'sleep');
-@@ -1109,8 +1157,63 @@ describe('journey waits', () => {
-       ['const { count: n } = box;', ['read']],
-       ['let see;\n({ isVisible: see } = box);', ['read']],
-       ['({ count } = box);', ['read']],
--      // …but an uncalled COMPUTED member is indexing, indistinguishable from a read method: out of reach.
-+      // …but an uncalled COMPUTED member is indexing, indistinguishable from a read method: out of reach,
-+      // as is a name passed as an argument (`Reflect.get`), which is no property-name form.
-       ['expect(await Reflect.apply(box[m], box, [])).toBe(true);', []],
-+      ["expect(await Reflect.get(box, 'isVisible').call(box)).toBe(true);", []],
-+      // A PROPERTY NAME means its static value however it is spelled — an
-+      // identifier, a string, a template, a number, or a computed key folding
-+      // those (`'is' + 'Visible'`, `` `is${'Visible'}` ``) — at every consumer:
-+      // a destructured read (declaration, `=`, `for…of`, parameter, catch)…
-+      ['const { ["isVisible"]: read } = box;\nexpect(await Reflect.apply(read, box, [])).toBe(true);', ['read']],
-+      ['const { [`count`]: n } = box;', ['read']],
-+      ["const { ['is' + 'Visible']: see } = box;", ['read']],
-+      ['const { [`is${"Visible"}`]: see } = box;', ['read']],
-+      ["const { [('count' as const)]: n } = box;", ['read']],
-+      ['let see;\n({ ["isVisible"]: see } = box);', ['read']],
-+      ["for ({ ['count']: n } of boxes);", ['read']],
-+      ['for ({ count: n } of boxes);', ['read']],
-+      ['async function f({ ["isVisible"]: see }) {}', ['read']],
-+      ["try {} catch ({ ['count']: n }) {}", ['read']],
-+      ['const { 0: first, ["name"]: n } = box;', []],
-+      // …a computed member, called or named…
-+      ["expect(await box['is' + 'Visible']()).toBe(true);", ['positive']],
-+      ["expect(await box['is' + 'Visible']()).toBe(false);", []],
-+      ["const see = box[`is${'Visible'}`];", ['read']],
-+      ['await expect.poll(() => box["is" + "Hidden"]()).toBe(false);', []],
-+      ["expect(await box.isVisible())['to' + 'Be'](false);", []],
-+      ["expect(await box.isVisible())['to' + 'Be'](true);", ['positive']],
-+      // …a helper's `.call`…
-+      [`${H}expect(await hidden['call'](null, box)).toBe(true);`, []],
-+      [`${H}expect(await hidden['call'](null, box)).toBe(false);`, ['positive']],
-+      // …an absence option, on any waitFor…
-+      ["await toast.waitFor({ ['state']: 'detached' });", ['negative']],
-+      ["await page.waitForSelector('x', { ['state']: 'hidden' });", ['negative']],
-+      ["await page.waitForSelector('x', { [`sta${'te'}`]: 'detached' });", ['negative']],
-+      ["await toast.waitFor({ ['timeout']: 5_000 });", []],
-+      // …an absence by any waitFor, its state however written…
-+      ["await page.waitForSelector('x', { state: gone });", ['negative']],
-+      ["await page.waitForSelector('x', { state });", ['negative']],
-+      ["await page.waitForSelector('x', { state: 'hid' + 'den' });", ['negative']],
-+      ["await toast.waitFor({ get state() { return 'hidden'; } });", ['negative']],
-+      ["await page.waitForSelector('x', { get ['state']() { return 'hidden'; } });", ['negative']],
-+      ["await page.waitForSelector('x', { state: 'attached' });", []],
-+      ["await page.waitForEvent('popup', { predicate(p) { return true; } });", []],
-+      // …a timer, a key folded from pieces no one string holds — reported once…
-+      ["await page['wait' + 'ForTimeout'](300);", ['sleep']],
-+      ["await page[`waitFor${'Timeout'}`](300);", ['sleep']],
-+      ["globalThis['set' + 'Timeout'](go, 100);", ['sleep']],
-+      ["const { ['wait' + 'ForTimeout']: w } = page;", ['sleep']],
-+      ["const { ['waitForTimeout']: w } = page;", ['sleep']],
-+      // …and an expected object.
-+      ["await expect.poll(() => q()).toEqual({ ['a']: 'x' });", []],
-+      // A key the scan cannot fold may be any name: unsafe wherever a name decides.
-+      ['const { [k]: v } = box;', ['read']],
-+      ["({ ['is' + k]: see } = box);", ['read']],
-+      ["await page.waitForSelector('x', { [key]: value });", ['negative']],
-+      ["await page.waitForSelector('x', { ...o });", ['negative']],
-+      ["await expect.poll(() => q()).toEqual({ [k]: 'x' });", ['negative']],
-+      ['expect(await box[`is${k}`]()).toBe(false);', ['positive']],
-       // A REGEX'S SENSE is as invisible as a boolean's: only alternatives of
-       // plain non-empty text prove presence, like `toContain`.
-       ['await expect.poll(() => page.url()).toMatch(/^[^?]+$/);', ['negative']],
+@@ -1225,6 +1331,65 @@ describe('journey waits', () => {
+       ['await expect.poll(() => q()).toMatch(/pushed|in sync/i);', []],
+       ['await expect.poll(() => q()).toMatch(/a\\.b/);', []],
+       ['await expect.poll(() => page.url()).toMatch(/view=paths&inst=inst-tar/);', []],
++      // A TIMER NAME is its runtime text: escapes cooked (unicode, code point,
++      // hex), pieces folded, and a page script's own escapes cooked again —
++      // called, referenced, destructured or passed as a name.
++      ["await page['waitFor\\u0054imeout'](300);", ['sleep']],
++      ["await page['waitFor\\u{54}imeout'](300);", ['sleep']],
++      ["await page['waitFor\\u{0054}imeout'](300);", ['sleep']],
++      ["await page['\\x77aitForTimeout'](300);", ['sleep']],
++      ['await page[`waitFor\\u0054imeout`](300);', ['sleep']],
++      ["await page[`waitFor${'\\u0054'}imeout`](300);", ['sleep']],
++      ["await page['waitFor' + '\\x54imeout'](300);", ['sleep']],
++      ["const w = page['waitFor\\u0054imeout'];", ['sleep']],
++      ["const { 'waitFor\\u0054imeout': w } = page;", ['sleep']],
++      ["const { ['set\\u0054imeout']: s } = globalThis;", ['sleep']],
++      ["Reflect.get(page, 'waitFor\\x54imeout');", ['sleep']],
++      ['await page.waitFor\\u0054imeout(300);', ['sleep']],
++      ['const { waitFor\\u{54}imeout } = page;', ['sleep']],
++      ['await page.addInitScript("set\\\\u0054imeout(go, 100)");', ['sleep']],
++      ['await page.addInitScript("window[\'set\\\\x54imeout\'](go, 100)");', ['sleep']],
++      ['await page.addInitScript("window[\'set\\\\124imeout\'](go, 100)");', ['sleep']],
++      ['await page.addInitScript(String.raw`set\\u0054imeout(go, 100)`);', ['sleep']],
++      // …while a name only the run decides stays out of reach.
++      ['await page[k](300);', []],
++      ["async function f(t) {\n  await page['waitFor' + t](300);\n}", []],
++      // A raw hash navigation is its runtime URL however the `#` is written.
++      ['await page.goto(`${origin}\\u0023/items`);', ['goto']],
++      ["await page.goto(origin + '\\x23/items');", ['goto']],
++      ['await page.goto(url);', []],
++      // EVERY WAIT that can ask for absence (playwright-core's types) is read
++      // where it asks — options, a positional state, a URL matcher, a page
++      // function — and is a negative when the scan cannot read it, in any
++      // calling form; a wait for an event cannot pass on nothing.
++      ["async function f(options) {\n  await page.waitForSelector('x', options);\n}", ['negative']],
++      ["await page.waitForSelector('x', open ? a : b);", ['negative']],
++      ["await page.waitForSelector('x', opts());", ['negative']],
++      ['await page.waitForSelector(...args);', ['negative']],
++      ["await page.waitForSelector('x', ...rest);", ['negative']],
++      ["await page.waitForSelector('x');", []],
++      ['await page.waitForSelector(sel, { timeout: 1 });', []],
++      ["await page.waitForSelector.call(page, 'x', { state: gone });", ['negative']],
++      ["await page.waitForSelector.call(page, 'x', { state: 'attached' });", []],
++      ["await page.waitForSelector.apply(page, ['x', o]);", ['negative']],
++      ['const w = page.waitForSelector.bind(page);', ['negative']],
++      ['const { waitForSelector } = page;', ['negative']],
++      ["await Reflect.apply(page.waitForSelector, page, ['x', o]);", ['negative']],
++      ["await toast.waitFor({ ...o, state: 'hidden' });", ['negative']],
++      ["await handle.waitForElementState('hidden');", ['negative']],
++      ['await handle.waitForElementState(s);', ['negative']],
++      ["await handle.waitForElementState('visible');", []],
++      ["await page.waitForFunction(() => !document.querySelector('x'));", ['negative']],
++      ["await page.waitForURL((u) => !u.href.includes('q='));", ['negative']],
++      ['await page.waitForURL(/^(?!.*q=)/);', ['negative']],
++      ['await page.waitForURL(url);', ['negative']],
++      ["await page.waitForURL('**');", ['negative']],
++      ['await page.waitForURL(/#\\/active/, { timeout: 1 });', []],
++      ["await page.waitForURL('http://x/#/items');", []],
++      ["await page.waitForEvent('popup', pick);", []],
++      ["await page.waitForRequest((r) => !r.url().includes('x'));", []],
++      ['await page.waitForLoadState(s);', []],
++      ["await page.waitForSomething('x');", ['negative']],
+     ];
+     expect(spellings.filter(([code, want]) => JSON.stringify(rules(code)) !== JSON.stringify(want)).map(([code, want]) => `${code} → ${JSON.stringify(rules(code))}, want ${JSON.stringify(want)}`)).toEqual([]);
+   });
 ```
 
 **Paths the rework touched:**
@@ -361,97 +415,47 @@ index f942f07974a8651aacee9eb1e5ea36e68dd4fa04..f39b0fcf71b0525c3911fa4d7518c0df
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
 
 ```
-5a4991e Add property-name rows to the wait guard, failing on a2f250a's scanner
+e890667 Add runtime-text timer, goto and wait-matrix rows to the wait guard, failing on 32c3721's scanner
 
-A property name means its static value however it is spelled: an
-identifier, a string, a template, a number, or a computed key folding
-those. These rows exercise every consumer that decides by a name (a
-destructured read in a declaration, `=`, `for…of`, parameter and catch;
-a computed member called or named; a matcher; a helper's `.call`; the
-`state` option of any waitFor; an expected object), plus a key the scan
-cannot fold, which must count as unsafe.
-
-On this commit, `npx -y -p node@24 node node_modules/vitest/vitest.mjs
-run tests/journey-waits.test.ts` fails 24 of the new rows; the scanner
-is unchanged from a2f250a (and 3cfbb69).
+`npx -y -p node@24 node node_modules/vitest/vitest.mjs run tests/journey-waits.test.ts`
+fails 34 of the new rows here.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 
-d9d6365 A property name means its static value at every consumer; an unfoldable key is unsafe
+3c6c82f Timer names, goto URLs and every absence-capable wait are judged by what runs
 
-Invariant: wherever the wait guard decides by a NAME, it reads that name
-one way. A name means its static value however spelled (identifier,
-string, no-substitution template, number, or a computed key folding
-those with `+` and `${}`, through parentheses and `as`); a key it cannot
-fold may be any name, so it counts as unsafe wherever a name decides.
-The choke point is `keyOf` (with `constant` for computed expressions);
-before, each consumer had its own `isIdentifier || isStringLiteralLike`
-test, so each spelling left a sibling open.
+Invariant: wherever the wait guard decides by a name or URL, it reads the
+value the expression has when built from literals alone (escapes cooked,
+`+` and `${}` folded, a page script's own escapes cooked again), never its
+source spelling; and every wait that can pass on what never came is read
+where it asks, or counted as a negative. A piece held in any binding
+(`const` included) or computed by a call stays the documented dynamic
+boundary, the one reads already have, now named in the header; a binding
+holding the WHOLE name is still caught, because its literal is scanned.
 
-Consumers enumerated in tests/journey-waits.test.ts:
-- member(): element-access names (reads, `.call`/`.apply`, matchers,
-  `expect['poll']`, `goto`, `waitFor`) — fixed, now folds computed keys.
-- literal(): an expected object's keys — fixed; unfoldable stays UNKNOWN.
-- destructured read keys: BindingElement (declaration, parameter, catch)
-  and `=` targets — fixed; an unfoldable key is now a `read`.
-- assignedTo(): a `for (… of/in …)` initializer is a destructuring
-  target too — fixed (it was missed even for plain keys).
-- the `state` option — fixed, any spelling of the key.
-- waitFor options — widened from `waitFor` to every `waitFor…` call:
-  a spread or unfoldable key in any object argument is a negative
-  (`waitForSelector('x', { ['state']: 'hidden' })` passed before).
-- isHelperRef(): `helper['call'](…)` now judged like `helper.call(…)`.
-- checked clean: called() and matcherOf() already went through member();
-  export specifiers and declaration names are identifiers, not keys; the
-  timer check reads identifiers and string text, so computed timer names
-  were already caught by the string scan.
-Boundary, documented in the header and tested: an uncalled `x[k]` stays
-indexing; a name passed as an argument (`Reflect.get`) is no property
-name form.
+Two recognition paths read source instead:
+- Timer names: the string scan matched raw text, so an escaped name
+  (`'waitForTimeout'`, `\x77…`, `\u{54}`) in a call, reference,
+  destructured key or `Reflect.get` argument reached no rule. Now `fold`
+  gives every whole string expression's runtime text (a tagged template's
+  raw text) and `decode` cooks a page script's own escape layers again; it
+  replaces both the raw string scan and the separate folded-key branch, so
+  each timer is reported once.
+- Waits: a `state:`-key hunt only saw object literals. A closed table from
+  playwright-core's types reads each wait where it can ask for absence:
+  `waitFor`/`waitForSelector` options (a variable, call, spread, unfoldable
+  key or non-literal state is negative), `waitForElementState`'s positional
+  state, `waitForURL`'s matcher (plain regex or glob-free URL only),
+  `waitForFunction` (a page function's sense is invisible), and an unknown
+  `waitFor…` fails closed. `.call` is judged with shifted arguments;
+  `.apply`, `.bind`, destructuring and passing are negative. Event waits
+  (`waitForEvent`, `…Request`, `…Response`, `…LoadState`, `…Navigation`)
+  need something to happen, so stay clean.
 
-Proof: the rows were committed first in 5a4991e; on that commit
-`npx -y -p node@24 node node_
+Consumers of the invariant:
+- fixed: the goto rule read raw source (`getText`), so an escaped `#`
+  slipped past; it reads runti
 … (truncated)
-
-d4135be Add timer-key and waitFor-state rows to the wait guard, failing on d9d6365
-
-Two more consumers decide by a name or its value: the timer rule (a key
-folded from pieces that no single string holds) and the `state` option
-of any `waitFor…` call (a variable, a folded value, a getter). Each
-`waitFor` twin is already a negative; these rows hold the siblings to
-the same verdict, and check a plain string key is reported once.
-
-On this commit, `npx -y -p node@24 node node_modules/vitest/vitest.mjs
-run tests/journey-waits.test.ts` fails 9 of the new rows; the scanner is
-unchanged from d9d6365.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-
-32c3721 The timer rule and every waitFor's state read names like the rest of the guard
-
-Same invariant as d9d6365: wherever the guard decides by a name, a
-static name means its folded value and an unreadable one is unsafe.
-d9d6365's message listed the timer check as checked clean; it was not.
-It saw only identifiers and raw string text, so a key folded from pieces
-(`page['wait' + 'ForTimeout']`, a template, a destructured computed key)
-reached no rule.
-
-Consumers fixed here:
-- timer: an element-access or computed key that `constant` folds to a
-  timer name is a sleep; a plain string key stays with the string scan,
-  so it is reported once.
-- `state`: read from any object member through `keyOf` (a getter or
-  method named `state` has a value the scan cannot read), and an
-  unreadable state is a negative on every `waitFor…` call, not only
-  `waitFor` (`waitForSelector('x', { state: gone })` passed before).
-Real journeys: every `state` they pass is a literal; the ledger counts
-are unchanged.
-
-Proof: the rows were committed first in d4135be; on that commit
-`npx -y -p node@24 node node_modules/vitest/vitest.mjs run
-tests/journey-waits.test.ts` fails 9 of them. It passes here.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ## Check against the contract
