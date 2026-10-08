@@ -1109,8 +1109,49 @@ describe('journey waits', () => {
       ['const { count: n } = box;', ['read']],
       ['let see;\n({ isVisible: see } = box);', ['read']],
       ['({ count } = box);', ['read']],
-      // …but an uncalled COMPUTED member is indexing, indistinguishable from a read method: out of reach.
+      // …but an uncalled COMPUTED member is indexing, indistinguishable from a read method: out of reach,
+      // as is a name passed as an argument (`Reflect.get`), which is no property-name form.
       ['expect(await Reflect.apply(box[m], box, [])).toBe(true);', []],
+      ["expect(await Reflect.get(box, 'isVisible').call(box)).toBe(true);", []],
+      // A PROPERTY NAME means its static value however it is spelled — an
+      // identifier, a string, a template, a number, or a computed key folding
+      // those (`'is' + 'Visible'`, `` `is${'Visible'}` ``) — at every consumer:
+      // a destructured read (declaration, `=`, `for…of`, parameter, catch)…
+      ['const { ["isVisible"]: read } = box;\nexpect(await Reflect.apply(read, box, [])).toBe(true);', ['read']],
+      ['const { [`count`]: n } = box;', ['read']],
+      ["const { ['is' + 'Visible']: see } = box;", ['read']],
+      ['const { [`is${"Visible"}`]: see } = box;', ['read']],
+      ["const { [('count' as const)]: n } = box;", ['read']],
+      ['let see;\n({ ["isVisible"]: see } = box);', ['read']],
+      ["for ({ ['count']: n } of boxes);", ['read']],
+      ['for ({ count: n } of boxes);', ['read']],
+      ['async function f({ ["isVisible"]: see }) {}', ['read']],
+      ["try {} catch ({ ['count']: n }) {}", ['read']],
+      ['const { 0: first, ["name"]: n } = box;', []],
+      // …a computed member, called or named…
+      ["expect(await box['is' + 'Visible']()).toBe(true);", ['positive']],
+      ["expect(await box['is' + 'Visible']()).toBe(false);", []],
+      ["const see = box[`is${'Visible'}`];", ['read']],
+      ['await expect.poll(() => box["is" + "Hidden"]()).toBe(false);', []],
+      ["expect(await box.isVisible())['to' + 'Be'](false);", []],
+      ["expect(await box.isVisible())['to' + 'Be'](true);", ['positive']],
+      // …a helper's `.call`…
+      [`${H}expect(await hidden['call'](null, box)).toBe(true);`, []],
+      [`${H}expect(await hidden['call'](null, box)).toBe(false);`, ['positive']],
+      // …an absence option, on any waitFor…
+      ["await toast.waitFor({ ['state']: 'detached' });", ['negative']],
+      ["await page.waitForSelector('x', { ['state']: 'hidden' });", ['negative']],
+      ["await page.waitForSelector('x', { [`sta${'te'}`]: 'detached' });", ['negative']],
+      ["await toast.waitFor({ ['timeout']: 5_000 });", []],
+      // …and an expected object.
+      ["await expect.poll(() => q()).toEqual({ ['a']: 'x' });", []],
+      // A key the scan cannot fold may be any name: unsafe wherever a name decides.
+      ['const { [k]: v } = box;', ['read']],
+      ["({ ['is' + k]: see } = box);", ['read']],
+      ["await page.waitForSelector('x', { [key]: value });", ['negative']],
+      ["await page.waitForSelector('x', { ...o });", ['negative']],
+      ["await expect.poll(() => q()).toEqual({ [k]: 'x' });", ['negative']],
+      ['expect(await box[`is${k}`]()).toBe(false);', ['positive']],
       // A REGEX'S SENSE is as invisible as a boolean's: only alternatives of
       // plain non-empty text prove presence, like `toContain`.
       ['await expect.poll(() => page.url()).toMatch(/^[^?]+$/);', ['negative']],
