@@ -15,7 +15,8 @@ import { describe, expect, it } from 'vitest';
 // is not a bracket. A timer named inside a string or template (a page script)
 // still counts. Six rules, each deny-by-default:
 //   sleep     no reference to `waitForTimeout`, `setTimeout` or `setInterval`
-//             — a call, a `.bind`, an import, a page script — and no wait
+//             — a call, a `.bind`, an import, a page script, a folded key —
+//             and no wait
 //             (`waitFor…`, an assertion) whose failure a `.catch` swallows:
 //             when the thing never comes, that is a timer;
 //   poller    no `while`, `do` or `for(;;)`-style loop that awaits —
@@ -60,9 +61,9 @@ import { describe, expect, it } from 'vitest';
 //             `toBeGreaterThan(n >= 0)`, `toBeGreaterThanOrEqual(n > 0)`,
 //             `toHaveLength(n > 0)`. Everything else is negative: `.not`, no
 //             matcher, a variable, an unknown matcher, a boolean (its sense —
-//             `!t.includes(x)` — is invisible). So is `waitFor` with
-//             `state: 'detached' | 'hidden'`, a state it cannot read, or
-//             options it cannot read;
+//             `!t.includes(x)` — is invisible). So is any `waitFor…` with
+//             `state: 'detached' | 'hidden'`, a state it cannot read (a
+//             variable, an expression, a getter), or options it cannot read;
 //   goto      no raw `page.goto` to a hash route outside the harness: `goTo`
 //             is the navigation that waits for the destination.
 // `expect`, `expect.soft`, `.poll` and every matcher are matched by name in
@@ -383,6 +384,7 @@ const PLAIN_TEXT = String.raw`(?:[^\\^$.|?*+()[\]{}/]|\\[^A-Za-z0-9])+`;
 /** A regex literal of plain-text alternatives, at most the `i` flag: it matches only where one of them IS — `toContain` by another name. */
 const PLAIN_REGEX = new RegExp(String.raw`^/${PLAIN_TEXT}(?:\|${PLAIN_TEXT})*/i?$`);
 const SLEEP = /\b(?:waitForTimeout|setTimeout|setInterval)\b/g;
+const TIMER = /^(?:waitForTimeout|setTimeout|setInterval)$/;
 /** What the scan cannot judge: a computed name, an ambiguous helper, a shape it does not reduce. */
 const UNKNOWN = Symbol('unknown');
 /** A value with no read in it — a URL, a field's text, stored data: it may be ANYTHING, an empty one included. */
@@ -647,7 +649,7 @@ export function scan(file: string, raw: string): Site[] {
 
   const visit = (node: ts.Node): void => {
     // sleep: any REFERENCE to a timer (a call, `.bind`, an import) …
-    if (ts.isIdentifier(node) && /^(?:waitForTimeout|setTimeout|setInterval)$/.test(node.text)) {
+    if (ts.isIdentifier(node) && TIMER.test(node.text)) {
       const ref = ts.isPropertyAccessExpression(node.parent) && node.parent.name === node ? node.parent : node;
       at(ts.isCallExpression(ref.parent) && ref.parent.expression === ref ? ref.parent : ref.parent, 'sleep');
     }
@@ -658,12 +660,18 @@ export function scan(file: string, raw: string): Site[] {
     }
     // poller: a loop that awaits — `persistedUntil` is the one.
     if ((ts.isWhileStatement(node) || ts.isDoStatement(node) || ts.isForStatement(node)) && hasAwait(node)) at(node, 'poller');
+    // … or a computed key folded from pieces no one string holds (`page['wait' + 'ForTimeout']`).
+    const folded = ts.isElementAccessExpression(node) ? node.argumentExpression : ts.isComputedPropertyName(node) ? node.expression : undefined;
+    const timer = folded && !ts.isStringLiteralLike(bare(folded)) ? text(constant(folded)) : UNKNOWN;
+    if (typeof timer === 'string' && TIMER.test(timer)) at(node.parent, 'sleep');
     // negative: a wait for something to be GONE passes at once if it never came —
-    // `state: 'detached' | 'hidden'` however spelled, or a `waitFor` state the scan cannot read.
-    if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && keyOf(node.name) === 'state') {
+    // `state: 'detached' | 'hidden'` however spelled, or a `waitFor…` state the scan cannot read (a getter's included).
+    if (ts.isObjectLiteralElementLike(node) && node.name && keyOf(node.name) === 'state') {
       const state = ts.isPropertyAssignment(node) ? literal(node.initializer) : UNKNOWN;
       const call = ts.findAncestor(node, ts.isCallExpression);
-      if (state === 'detached' || state === 'hidden' || (typeof state !== 'string' && call && named(call.expression, 'waitFor'))) at(call ?? node, 'negative');
+      const waitName = call && member(call.expression)?.name;
+      if (state === 'detached' || state === 'hidden' || (typeof state !== 'string' && typeof waitName === 'string' && waitName.startsWith('waitFor')))
+        at(call ?? node, 'negative');
     }
     // read: a read method named without being called — passed, aliased, bound, destructured — is a read nobody judges.
     if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && isRead(member(node)!.name) && !called(node)) refs.push(node);
