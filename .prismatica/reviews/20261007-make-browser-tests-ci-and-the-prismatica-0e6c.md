@@ -1,28 +1,59 @@
 ---
 id: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 contractId: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
-patchId: 1c9f0dcaf85405a8cd9621bd409a03498617d0d8
-reviewer: codex
+patchId: de9ae683c005de9abfc751894b4ab3908206e2f8
+reviewer: supervisor
 state: sealed
 verdict: request_changes
 findings:
   - family: journey-wait-guard-complete-enforcement
-    summary: "[P2] ac-7 still accepts positive reads through branching local helpers
-      and unledgered value absence polls."
-    counterexample: On ee6e56c, actual scan() returns [] for branching helpers whose
-      return paths have different rendered-state meanings, and for
-      compound/ambiguous value polls such as ["", ""], toBe(expected),
-      toMatch(/^$/) and toContain(""). The shared problem is that helper
-      analysis keeps only one return meaning and value-poll classification
-      treats unknown matcher evaluation as safe. Rework the exact named test
-      'browser journeys wait on events, never on fixed sleeps, hand-rolled
-      pollers or positive point-in-time reads' across the whole helper-return
-      and value-poll classification family. Reject ambiguous syntax rather than
-      inferring safety. Close the shared classification paths rather than adding
-      example-specific patterns. Earlier navigation and stored wait-guard
-      findings are resolved.
-createdAt: 2026-10-08T18:26:10.755Z
-sealedAt: 2026-10-08T18:34:28.501Z
+    summary: "[P2] ac-7 still lets a helper or poll callback with an un-counted
+      return path pass. returnsOf()/returned() in tests/journey-waits.test.ts
+      (lines 517-536) count only `return <expr>`, so a bare `return;`, a
+      reachable end of body (an if with no else, a switch fall-through, a try
+      whose catch falls off) or an implicit undefined is not a second return
+      path. That contradicts the header's own rule ('a second return path ...
+      leaves every call unjudged') and 85fe668's 'a guard ... means UNKNOWN';
+      the GUARDED row covers only `return 0;`. The same hole reaches all three
+      consumers of returned(): helperValue, reduce's arrow branch (inline poll
+      callbacks) and arrayOf. Fold-ins in the same 'nothing unreducible counts
+      as safe' family: `export { helper }` leaves the helper's read judged
+      nowhere, a read method passed uncalled (Reflect.apply) is not a read node
+      although helper references are, and toMatch accepts a regex whose sense is
+      absence."
+    counterexample: "Ran scan() from 33daf16, extracted unchanged into a scratch
+      script, with file 'synthetic.browser.test.ts'. Each of these returns []
+      (accepted): (A1) `async function hidden(b, open) { if (!open) return;
+      return b.isHidden(); } await expect.poll(() => hidden(box,
+      open)).toBeFalsy();` With open=false it returns undefined and passes at
+      once with nothing on screen, yet the scan judges it a presence wait. (A2)
+      the same with `if (open) return b.isHidden();` and an implicit
+      fall-through. (A3) inline: `await expect.poll(async () => { if (!open)
+      return; return box.isHidden(); }).toBeFalsy();` (A4) `async function
+      rows(b, open) { if (!open) return; return b.count(); } await
+      expect.poll(() => rows(box, open)).toBeUndefined();` (E7) `async function
+      rows(b) { try { return b.count(); } catch { } } await expect.poll(() =>
+      rows(box)).toBeUndefined();` (E9) `async function hidden(b, k) { switch
+      (k) { case 1: return b.isHidden(); } } await expect.poll(() => hidden(box,
+      k)).toBeFalsy();` Same family: (B1) `async function rows(b) { return
+      b.count(); } export { rows };` returns [], while `export { rows as r }`
+      and `export default rows` return ['read']. A file importing it, `import {
+      rows } from './x'; expect(await rows(box)).toBe(1);`, also returns [].
+      (D1) `expect(await Reflect.apply(box.isVisible, box, [])).toBe(true);`
+      returns []. (C1/C2) `await expect.poll(() =>
+      page.url()).toMatch(/^[^?]+$/);` and `.toMatch(/^(?!.*composer=).+/)`
+      return []: a regex's sense is as invisible as a boolean's, and C2 is the
+      ledgered `.not.toMatch(/composer=/)` spelled differently. A repository
+      sweep found no real journey site using any of these shapes today (the
+      three real bare `return;` hits are in page scripts and fakes), so the
+      holes are latent guard gaps, as in the prior rejection. Fix shape:
+      returned() yields a value only when the body's ONE return statement, bare
+      returns counted, is its last top-level statement; otherwise UNKNOWN. Treat
+      `export { name }` as exporting the helper. Treat an uncalled reference to
+      a READS method as a read. Refuse toMatch regexes containing a lookahead or
+      a negated class, or treat every regex as unprovable."
+createdAt: 2026-10-08T19:00:42.123Z
+sealedAt: 2026-10-08T19:10:37.407Z
 ---
 
 # Review: Make browser tests, CI and the Prismatica Gate fast, deterministic and trustworthy
@@ -36,7 +67,7 @@ sealedAt: 2026-10-08T18:34:28.501Z
 - **Contract:** 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/49
 - **Risk tier:** normal — a feature or bug — full checks plus a sealed fresh-eyes review
-- **Diff patch-id:** `1c9f0dcaf85405a8cd9621bd409a03498617d0d8`
+- **Diff patch-id:** `de9ae683c005de9abfc751894b4ab3908206e2f8`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
 ## The plan the owner approved
@@ -322,6 +353,7 @@ Limit: CPU throttling exists only in Chromium; WebKit gets host load and slow st
 - tests/repertoire-experience.browser.test.ts
 - tests/repertoire-inbound.browser.test.ts
 - tests/review-ownership.browser.test.ts
+- tests/setar-practice-inbound.browser.test.ts
 - tests/setar-practice.browser.test.ts
 - tests/setar-review-ui.browser.test.ts
 - tests/setarArchive.browser.test.ts
@@ -392,22 +424,10 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
+If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
 
-**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-make-browser-tests-ci-and-the-prismatica-0e6c/findings.json`
 
-```bash
-cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-make-browser-tests-ci-and-the-prismatica-0e6c/findings.json'
-```
-
-**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
-
-**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
-
-```bash
-prismatica seal '20261007-make-browser-tests-ci-and-the-prismatica-0e6c' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-make-browser-tests-ci-and-the-prismatica-0e6c/findings.json'
-```
-
-You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-make-browser-tests-ci-and-the-prismatica-0e6c/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
+with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory. A finding names an invariant: sweep the repository for every instance of it and list each one found plus the consumers checked clean, in one round — not one counterexample at a time.
