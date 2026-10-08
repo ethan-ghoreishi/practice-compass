@@ -253,6 +253,41 @@ export interface PracticeApp {
 }
 
 /**
+ * The `delayStorageMs` fixture, as a document init script. A transaction stays
+ * alive while its own requests keep arriving, so each readwrite transaction
+ * the app opens gets a chain of no-op reads that ends only after `ms` REAL
+ * milliseconds. Real, because `page.clock` fakes `performance.now` and every
+ * timer: this script is registered before the clock is installed, so the
+ * `performance.now` it captures is the browser's own (the self-test in
+ * journey-harness.browser.test.ts proves the delay actually takes effect).
+ *
+ * The harness's own transactions (`storageBarrier`, `writePersistedState`)
+ * call the original through `unslowed`, so a proof run delays the app, never
+ * the instruments measuring it.
+ */
+const slowStorage = (ms: number) => `(() => {
+  const now = performance.now.bind(performance);
+  const open = IDBDatabase.prototype.transaction;
+  function transaction(stores, mode, options) {
+    const tx = open.call(this, stores, mode, options);
+    if (mode !== 'readwrite') return tx;
+    const store = tx.objectStore(tx.objectStoreNames[0]);
+    const until = now() + ${ms};
+    let finished = false;
+    tx.addEventListener('complete', () => { finished = true; });
+    tx.addEventListener('abort', () => { finished = true; });
+    // Dexie commits explicitly; that would end the hold early. Without it the
+    // transaction commits on its own once the last no-op read has returned.
+    tx.commit = () => {};
+    const spin = () => { if (!finished && now() < until) store.count().onsuccess = spin; };
+    spin();
+    return tx;
+  }
+  transaction.unslowed = open;
+  IDBDatabase.prototype.transaction = transaction;
+})();`;
+
+/**
  * Start the app and open it in a fresh, isolated browser context.
  *
  * `now` fixes the browser's clock before any script runs, so every date the
@@ -289,8 +324,18 @@ export async function openPracticeApp(options: {
    * on the page it left; this makes that window wide enough to see.
    */
   delayPagesMs?: number;
+  /**
+   * Keep every readwrite transaction the APP opens alive this many real
+   * milliseconds before it may commit — a slow device's storage. A write then
+   * lands late, exactly as it can on a phone, so a journey that reads or
+   * reloads before the write it depends on is ordered after it fails here
+   * instead of on one unlucky runner. `PRACTICE_DELAY_STORAGE_MS` sets it for
+   * a whole proof run.
+   */
+  delayStorageMs?: number;
 }): Promise<PracticeApp> {
   const engine = options.engine ?? 'chromium';
+  const delayStorageMs = options.delayStorageMs ?? (Number(process.env.PRACTICE_DELAY_STORAGE_MS) || 0);
   // EVERY SERVER GETS ITS OWN DEPENDENCY CACHE. Vite's default cache directory
   // is `node_modules/.vite`, and this suite runs ten test files at once, each
   // starting its own dev server on the same checkout — plus the rollback
@@ -342,8 +387,15 @@ export async function openPracticeApp(options: {
       deviceScaleFactor: 2,
       ...(options.colorScheme ? { colorScheme: options.colorScheme } : {}),
     });
+    if (delayStorageMs) await context.addInitScript(slowStorage(delayStorageMs));
     if (options.initScript) await context.addInitScript(options.initScript);
     page = await context.newPage();
+    // A proof run's slow device, Chromium only (CDP has no WebKit twin): every
+    // render, effect and continuation the app schedules takes N times longer.
+    const throttle = Number(process.env.PRACTICE_CPU_THROTTLE);
+    if (throttle > 1 && engine === 'chromium') {
+      await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: throttle });
+    }
     if (options.delayPagesMs) {
       const delay = options.delayPagesMs;
       const loaded = new Set<string>();

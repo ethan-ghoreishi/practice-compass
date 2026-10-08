@@ -143,3 +143,301 @@ jobs:
     ).toEqual(['playwright@1.63.0 install --with-deps chromium webkit'])
   })
 })
+
+// ---------------------------------------------------------------------------
+// The runner itself: every workflow that runs the suite is bounded in time,
+// fails over from a dead package mirror, runs one Node major, runs once per
+// kind of ref, and gives way to a newer run. All of it DISCOVERED from the
+// workflow files — a suite workflow is one whose job runs a suite command —
+// with a synthetic negative beside each check so none of them passes vacuously.
+//
+// The workflows are read by indentation, not by a YAML library: the files are
+// plain block YAML, and a reader this small has nothing to drift from GitHub's.
+// ---------------------------------------------------------------------------
+
+type Block = { key: string; indent: number; lines: string[] }
+
+/** Comment lines and trailing comments removed; blank lines dropped. */
+function meaningful(text: string): string[] {
+  return text
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('#') && l.trim() !== '')
+    .map((l) => l.replace(/\s+#\s[^'"]*$/, '').replace(/\s+$/, ''))
+}
+
+const indentOf = (line: string) => line.length - line.trimStart().length
+
+/** The `key:` children directly under `lines` at their first indent, each with its own lines. */
+function children(lines: string[]): Block[] {
+  const out: Block[] = []
+  const indent = lines.length ? indentOf(lines[0]) : 0
+  for (const line of lines) {
+    if (indentOf(line) === indent && /^\s*[\w$.-]+:/.test(line)) {
+      out.push({ key: line.trim().split(':')[0], indent, lines: [line] })
+    } else out.at(-1)?.lines.push(line)
+  }
+  return out
+}
+
+/** The lines under a block's own key line. */
+const body = (b: Block | undefined) => (b ? b.lines.slice(1) : [])
+const child = (lines: string[], key: string) => children(lines).find((c) => c.key === key)
+/** `key: value` on a block's own line, unquoted. */
+const scalar = (lines: string[], key: string) =>
+  child(lines, key)?.lines[0].split(':').slice(1).join(':').trim().replace(/^['"]|['"]$/g, '')
+
+/** Each `- ` item of a list, with its lines. */
+function items(lines: string[]): string[][] {
+  const out: string[][] = []
+  const indent = lines.length ? indentOf(lines[0]) : 0
+  for (const line of lines) {
+    if (indentOf(line) === indent && line.trimStart().startsWith('- ')) out.push([line])
+    else out.at(-1)?.push(line)
+  }
+  return out
+}
+
+/** A step's own fields, as though its `- ` were not there. */
+const stepFields = (step: string[]) => {
+  const [first, ...rest] = step
+  const indent = indentOf(first) + 2
+  return [' '.repeat(indent) + first.trimStart().slice(2), ...rest]
+}
+
+/** The values of a flow list (`[a, b]`) or a block list under a key. */
+function listValues(b: Block | undefined): string[] {
+  if (!b) return []
+  const inline = b.lines[0].split(':').slice(1).join(':').trim()
+  if (inline.startsWith('[')) return inline.slice(1, -1).split(',').map((v) => v.trim().replace(/^['"]|['"]$/g, ''))
+  if (inline) return [inline.replace(/^['"]|['"]$/g, '')]
+  return body(b).map((l) => l.trim().replace(/^- /, '').replace(/^['"]|['"]$/g, ''))
+}
+
+type RefKind = 'pull_request' | 'push:main' | 'push:branch'
+
+export type RunnerAudit = {
+  runsSuite: boolean
+  /** The kinds of ref a run of this workflow checks. */
+  refKinds: RefKind[]
+  dispatch: boolean
+  /** The concurrency group, if any, and whether it cancels a superseded run. */
+  concurrency: { group: string; cancels: boolean } | null
+  suiteJobs: {
+    name: string
+    timeoutMinutes: number | null
+    nodeVersion: string | null
+    /** The browser-install step's own bound, null if it has none. */
+    installTimeout: number | null
+    /** apt failover configured in a step BEFORE the browser install. */
+    failoverBeforeInstall: boolean
+    /** A dispatch-only drill that blackholes the Azure mirror before the install. */
+    drill: boolean
+    /** Each step's own text, comments removed. */
+    steps: string[]
+  }[]
+}
+
+export function auditRunner(rawText: string): RunnerAudit {
+  const top = children(meaningful(rawText))
+  const on = top.find((b) => b.key === 'on' || b.key === '"on"' || b.key === 'true')
+  const events = on ? (body(on).length ? children(body(on)) : listValues(on).map((key) => ({ key, indent: 0, lines: [key] }))) : []
+  const refKinds: RefKind[] = []
+  let dispatch = false
+  for (const e of events) {
+    if (e.key === 'pull_request' || e.key === 'pull_request_target') refKinds.push('pull_request')
+    if (e.key === 'workflow_dispatch') dispatch = true
+    if (e.key === 'push') {
+      const only = listValues(child(body(e), 'branches'))
+      const ignored = listValues(child(body(e), 'branches-ignore'))
+      if (only.length) {
+        if (only.includes('main')) refKinds.push('push:main')
+        if (only.some((b) => b !== 'main')) refKinds.push('push:branch')
+      } else {
+        if (!ignored.includes('main')) refKinds.push('push:main')
+        refKinds.push('push:branch')
+      }
+    }
+  }
+
+  const concurrencyOf = (lines: string[]) => {
+    const c = child(lines, 'concurrency')
+    if (!c) return null
+    const group = body(c).length ? (scalar(body(c), 'group') ?? '') : (scalar(lines, 'concurrency') ?? '')
+    return { group, cancels: body(c).length > 0 && scalar(body(c), 'cancel-in-progress') === 'true' }
+  }
+
+  const suiteJobs: RunnerAudit['suiteJobs'] = []
+  let jobConcurrency: RunnerAudit['concurrency'] = null
+  for (const job of children(body(top.find((b) => b.key === 'jobs')))) {
+    const fields = body(job)
+    const stepList = items(body(child(fields, 'steps'))).map(stepFields)
+    const text = stepList.map((s) => s.join('\n'))
+    if (!text.some((t) => SUITE_COMMANDS.some((re) => re.test(t)))) continue
+    jobConcurrency ??= concurrencyOf(fields)
+    const install = text.findIndex((t) => /\bplaywright(@\S+)?\s+install\b/.test(t))
+    const before = install < 0 ? [] : text.slice(0, install)
+    const minutes = (lines: string[]) => {
+      const v = scalar(lines, 'timeout-minutes')
+      return v && /^\d+$/.test(v) ? Number(v) : null
+    }
+    const setupNode = stepList.find((s) => /uses:\s*actions\/setup-node@/.test(s.join('\n')))
+    suiteJobs.push({
+      name: job.key,
+      timeoutMinutes: minutes(fields),
+      nodeVersion: setupNode ? (scalar(body(child(setupNode, 'with')), 'node-version') ?? null) : null,
+      installTimeout: install < 0 ? null : minutes(stepList[install]),
+      failoverBeforeInstall: before.some((t) => /Acquire::https?::Timeout/.test(t)),
+      drill: before.some(
+        (t) =>
+          /if:.*github\.event_name == 'workflow_dispatch'.*inputs\.\w+/.test(t) &&
+          /azure\.archive\.ubuntu\.com/.test(t) &&
+          /\/etc\/hosts/.test(t),
+      ),
+      steps: text,
+    })
+  }
+  return {
+    runsSuite: suiteJobs.length > 0,
+    refKinds,
+    dispatch,
+    concurrency: concurrencyOf(top.flatMap((b) => b.lines)) ?? jobConcurrency,
+    suiteJobs,
+  }
+}
+
+function runners() {
+  return readdirSync(WORKFLOW_DIR)
+    .filter((f) => f.endsWith('.yml') || f.endsWith('.yaml'))
+    .sort()
+    .map((name) => ({ name, text: readFileSync(join(WORKFLOW_DIR, name), 'utf8') }))
+    .map(({ name, text }) => ({ name, ...auditRunner(text) }))
+    .filter((w) => w.runsSuite)
+}
+
+/** What is wrong with one suite workflow's bounds and failover; empty when nothing is. */
+function boundsProblems(w: RunnerAudit & { name: string }): string[] {
+  return w.suiteJobs.flatMap((j) => [
+    ...(j.timeoutMinutes === null || j.timeoutMinutes > 60 ? [`${w.name}/${j.name}: no job timeout-minutes (at most 60)`] : []),
+    ...(j.installTimeout === null ? [`${w.name}/${j.name}: browser install has no timeout-minutes`] : []),
+    ...(!j.failoverBeforeInstall ? [`${w.name}/${j.name}: no apt mirror failover before the browser install`] : []),
+  ])
+}
+
+const SUITE_JOB = (extra: { top?: string; job?: string; before?: string; node?: string } = {}) => `
+name: synthetic
+on:
+  push:
+    branches-ignore: [main]
+${extra.top ?? ''}
+jobs:
+  check:
+    runs-on: ubuntu-latest
+${extra.job ?? '    timeout-minutes: 20'}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${extra.node ?? '24'}
+${extra.before ?? `      - run: printf 'Acquire::http::Timeout "10";' | sudo tee /etc/apt/apt.conf.d/99-mirror-failover`}
+      - run: npx playwright install --with-deps chromium webkit
+        timeout-minutes: 10
+      - run: npm test
+`
+
+describe('the runner around the suite', () => {
+  it('every workflow that runs the test suite bounds its time and fails over from a dead package mirror', () => {
+    const suite = runners()
+    expect(suite.length).toBeGreaterThan(0)
+    expect(suite.flatMap(boundsProblems)).toEqual([])
+    // The failover is PROVEN on the real runner image by a drill CI offers —
+    // dispatch only, before the install, never on an ordinary run.
+    expect(suite.filter((w) => w.refKinds.includes('push:branch') && w.dispatch && w.suiteJobs.some((j) => j.drill)).map((w) => w.name)).toHaveLength(1)
+
+    // Synthetic workflows missing any of these are reported.
+    const problems = (text: string) => boundsProblems({ name: 'synthetic.yml', ...auditRunner(text) })
+    expect(problems(SUITE_JOB())).toEqual([])
+    expect(problems(SUITE_JOB({ job: '' }))).toEqual(['synthetic.yml/check: no job timeout-minutes (at most 60)'])
+    expect(problems(SUITE_JOB({ job: '    timeout-minutes: 360' }))).toEqual(['synthetic.yml/check: no job timeout-minutes (at most 60)'])
+    expect(problems(SUITE_JOB({ before: '' }))).toEqual(['synthetic.yml/check: no apt mirror failover before the browser install'])
+    expect(
+      problems(SUITE_JOB().replace('install --with-deps chromium webkit\n        timeout-minutes: 10', 'install --with-deps chromium webkit')),
+    ).toEqual(['synthetic.yml/check: browser install has no timeout-minutes'])
+    // Failover configured AFTER the install protects nothing.
+    expect(
+      problems(
+        SUITE_JOB({ before: '' }).replace(
+          '      - run: npm test',
+          `      - run: printf 'Acquire::http::Timeout "10";' | sudo tee /etc/apt/apt.conf.d/99-mirror-failover\n      - run: npm test`,
+        ),
+      ),
+    ).toEqual(['synthetic.yml/check: no apt mirror failover before the browser install'])
+    // A drill that runs on every push, or blackholes nothing, is not the drill.
+    const drill = (condition: string, command: string) =>
+      auditRunner(SUITE_JOB({ before: `      - if: ${condition}\n        run: ${command}` })).suiteJobs[0].drill
+    expect(drill("github.event_name == 'workflow_dispatch' && inputs.dead_mirror_drill", "echo '10.255.255.1 azure.archive.ubuntu.com' | sudo tee -a /etc/hosts")).toBe(true)
+    expect(drill('always()', "echo '10.255.255.1 azure.archive.ubuntu.com' | sudo tee -a /etc/hosts")).toBe(false)
+    expect(drill("github.event_name == 'workflow_dispatch' && inputs.dead_mirror_drill", 'echo nothing')).toBe(false)
+  })
+
+  it('every workflow that runs the test suite uses one Node major', () => {
+    const major = (v: string | null) => (v === null ? null : Number(v.split('.')[0]))
+    const offMajor = (w: RunnerAudit & { name: string }) =>
+      w.suiteJobs.filter((j) => major(j.nodeVersion) !== 24).map((j) => `${w.name}/${j.name}: node ${j.nodeVersion}`)
+    const suite = runners()
+    expect(suite.length).toBeGreaterThan(1)
+    expect(suite.flatMap(offMajor)).toEqual([])
+    // A synthetic workflow on another major is reported.
+    expect(offMajor({ name: 'synthetic.yml', ...auditRunner(SUITE_JOB({ node: '22' })) })).toEqual(['synthetic.yml/check: node 22'])
+    expect(offMajor({ name: 'synthetic.yml', ...auditRunner(SUITE_JOB({ node: '24.3' })) })).toEqual([])
+  })
+
+  it('the suite runs once per ref kind and superseded runs are cancelled', () => {
+    const duplicates = (ws: (RunnerAudit & { name: string })[]) =>
+      (['pull_request', 'push:main', 'push:branch'] as RefKind[])
+        .map((kind) => [kind, ws.filter((w) => w.refKinds.includes(kind)).map((w) => w.name)] as const)
+        .filter(([, names]) => names.length > 1)
+    const uncancelled = (ws: (RunnerAudit & { name: string })[]) =>
+      ws.filter((w) => !w.concurrency?.cancels || !w.concurrency.group.includes('${{ github.workflow }}')).map((w) => w.name)
+
+    const suite = runners()
+    expect(suite.length).toBeGreaterThan(1)
+    expect(duplicates(suite)).toEqual([])
+    expect(uncancelled(suite)).toEqual([])
+    // On a pull request the Gate — and only the Gate — runs the suite; CI
+    // runs on branch pushes and on dispatch.
+    const gate = suite.filter((w) => w.suiteJobs.some((j) => j.steps.some((s) => SUITE_COMMANDS[1].test(s))))
+    expect(suite.filter((w) => w.refKinds.includes('pull_request')).map((w) => w.name)).toEqual(gate.map((w) => w.name))
+    expect(gate).toHaveLength(1)
+    const ci = suite.filter((w) => w.refKinds.includes('push:branch'))
+    expect(ci.map((w) => [w.refKinds, w.dispatch])).toEqual([[['push:branch'], true]])
+
+    // Synthetic duplicates and an unkeyed group are reported.
+    const named = (name: string, text: string) => ({ name, ...auditRunner(text) })
+    const prToo = named('ci.yml', SUITE_JOB().replace('on:\n', 'on:\n  pull_request:\n'))
+    const gateLike = named('gate.yml', SUITE_JOB().replace('  push:\n    branches-ignore: [main]\n', '  pull_request:\n'))
+    expect(duplicates([prToo, gateLike])).toEqual([['pull_request', ['ci.yml', 'gate.yml']]])
+    const bareOn = named('bare.yml', SUITE_JOB().replace('on:\n  push:\n    branches-ignore: [main]\n', 'on: [push, pull_request]\n'))
+    expect(bareOn.refKinds).toEqual(['push:main', 'push:branch', 'pull_request'])
+    const keyed = named('keyed.yml', SUITE_JOB({ top: 'concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: true' }))
+    const unkeyed = named('unkeyed.yml', SUITE_JOB({ top: 'concurrency:\n  group: pages\n  cancel-in-progress: true' }))
+    const kept = named('kept.yml', SUITE_JOB({ top: 'concurrency:\n  group: ${{ github.workflow }}-${{ github.ref }}\n  cancel-in-progress: false' }))
+    expect(uncancelled([keyed, unkeyed, kept, named('none.yml', SUITE_JOB())])).toEqual(['unkeyed.yml', 'kept.yml', 'none.yml'])
+  })
+
+  it('the deploy check runs exactly the steps CI proves on every push', () => {
+    // CI's check minus its dispatch-only drill; deploy's check minus its upload.
+    const proven = (w: RunnerAudit) =>
+      w.suiteJobs[0].steps.filter((s) => !/github\.event_name == 'workflow_dispatch'/.test(s) && !/upload-pages-artifact/.test(s))
+    const suite = runners()
+    const ci = suite.filter((w) => w.refKinds.includes('push:branch'))
+    const deploy = suite.filter((w) => w.refKinds.includes('push:main'))
+    expect([ci.length, deploy.length]).toEqual([1, 1])
+    expect(proven(deploy[0])).toEqual(proven(ci[0]))
+    // Every step that matters is in the comparison: setup, install, lint, test, build.
+    expect(proven(ci[0]).join('\n')).toMatch(/setup-node[\s\S]*npm ci[\s\S]*playwright install[\s\S]*npm run lint[\s\S]*npm test[\s\S]*npm run build/)
+
+    // A synthetic divergence is reported.
+    const text = readFileSync(join(WORKFLOW_DIR, deploy[0].name), 'utf8')
+    expect(proven(auditRunner(text.replace(/node-version: \d+/, 'node-version: 18')))).not.toEqual(proven(ci[0]))
+    expect(proven(auditRunner(text.replace('      - run: npm run lint\n', '')))).not.toEqual(proven(ci[0]))
+  })
+})
