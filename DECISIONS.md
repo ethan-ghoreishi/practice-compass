@@ -2,6 +2,70 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Browser journeys wait on events; CI and the Gate are bounded and run once (2026-10-08)
+
+One technical lane (contract 20261007-…-0e6c, issue #49). Four families had failed
+lanes that never touched them. Each is now held in one shared place and proven by
+a discriminating test; the planner's account was validated, and where it was
+wrong, measured instead.
+
+- **Navigation: the planner's mechanism was refuted; the hazard was the current
+  route.** Measured with `delayPagesMs` in both engines: on a `page.goto` hop React
+  hides the outgoing page behind the Suspense fallback (`display: none`), so the old
+  visible-nav wait already held through a lazy load. The outgoing page stays
+  VISIBLE only in the transition a tap starts. What failed was `goTo` to the route a
+  tap had just opened: in WebKit that is a full document load, which aborted the
+  write the tap issued. The layout journey's CI failure (`webkit@1280px: expected 0
+  to be greater than 0`) reproduces every time with slow storage and the old `goTo`.
+  A one-off audit found 44 such call sites (about 100 calls) in 11 journeys. `goTo` now refuses
+  the current route, and returns once `main` is visible and its h1 has been replaced
+  (element or text; a page with no h1 by its text). Two URLs with one heading pass
+  `arrival`. A read helper that may already be on its page uses `show`. Rejected:
+  a no-op same-route `goTo` (hides the hazard), and a required arrival on every call
+  (the heading signal held in every case probed).
+- **Persistence: `reload` waits on a barrier, never 400 ms.** An empty readwrite
+  transaction over every store, opened outside the app, completes only after every
+  earlier readwrite transaction (scheduling across connections). Proven in both
+  engines by `delayStorageMs`, which holds the app's own writes open N real ms. It
+  captures `performance.now` before `page.clock` fakes it, and it disables Dexie's
+  explicit `commit()` on held transactions, which otherwise ended the hold. The
+  barrier cannot see a write not yet ISSUED. The effect-claimed `signalledThrough`
+  marker is therefore read through `persistedUntil` until it is exact: the Gate's
+  `{"ctorThrows":true}: expected undefined to be 1`. That one did not reproduce
+  locally under slow storage or 20x CPU; the wait is right regardless. The two local
+  `until` pollers now go through `persistedUntil` and keep their timeouts.
+- **Waits are events, by construction.** `tests/journey-waits.test.ts` reads every
+  test file and the harness. It refuses fixed sleeps, loops that sleep, positive
+  point-in-time existence or state assertions, unledgered polled negatives and raw
+  hash `page.goto`, and its ledger says why each exception stands. 44 positive reads
+  became `expect.poll` with the same matcher. Two polled negatives that followed a
+  positive arrival became point-in-time reads. Element disappearances became
+  `waitFor({ state: 'detached' })`: the slow-storage run showed a 1 s default poll
+  is a timer, not an event, wherever a write precedes the change. The three polled
+  value changes left are ledgered as disappearances after presence. A sync is
+  awaited to completion (`syncNow`, Sync now enabled again) before its message is
+  read. A negative claim first waits for a positive "finished" signal (a failed
+  restore's "Import failed:", the tab bar after Save). The one left with no such
+  signal uses the bounded `quietWindow`.
+- **Runner: bounded, aligned, once per ref.** Jobs are bounded at 20 min and the
+  browser install at 10. `Acquire::http(s)::Timeout 10` makes apt move through the
+  image's mirror list in seconds rather than two minutes per file (`Acquire::Retries`
+  is a bounded download retry, not a test retry). Node 24 everywhere. CI runs on
+  branch pushes and dispatch only, so the Gate is the one pull-request run.
+  Superseded runs cancel, grouped by workflow (deploy: one at a time). Deploy's check
+  is CI's steps exactly. A dispatch-only drill points the Azure mirror at
+  10.255.255.1, an address that drops packets so the connection hangs as the dead
+  mirror did. Failover is proven on the real image after ship; no container runtime
+  here can show it before.
+- **Measured locally** (Mac, 12 cores, Node 24, the Gate's `vitest run
+  --reporter=json`). Before: 145 s in parallel, 723 s single-threaded (a lower
+  bound: that copy had no git checkout, so the 4 rollback journeys failed fast).
+  After: 122-127 s in parallel, 566-569 s single-threaded, 516/516 every time.
+  Also green: 3 shuffle seeds, 12 busy loops of host load, slow storage
+  everywhere (341 s), Chromium at 20x CPU (the 80 tests in tests/), and those
+  80 tests 10 times over. The GitHub step timings and the mirror drill are
+  observed after ship, never recorded here.
+
 ## Setar review and archive lines, visible choices, and Repertoire search typing (2026-10-07)
 
 Five reports, one heavy lane (contract 20261007-…-039e, issue #47).

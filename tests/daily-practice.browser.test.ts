@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Page } from 'playwright';
-import { goTo, importBackup, importOutcome, openPracticeApp, reload } from './practiceBrowser';
+import { goTo, importBackup, importOutcome, openPracticeApp, reload, show, type PracticeApp } from './practiceBrowser';
 import v12 from './fixtures/practice-decisions-v12.json?raw';
 
 // ---------------------------------------------------------------------------
@@ -43,7 +43,7 @@ describe('the daily practice loop, end to end', () => {
       expect(await segmentCount(page)).toBeGreaterThan(1);
       // A warm-up appears, and it is FIRST and familiar — not the demanding
       // new material, whatever it is labelled.
-      expect(await page.locator('.list-row').filter({ hasText: 'Warm-up' }).count()).toBe(1);
+      await expect.poll(() => page.locator('.list-row').filter({ hasText: 'Warm-up' }).count()).toBe(1);
       const firstRow = page.locator('.list-row').first();
       expect(await firstRow.textContent()).toContain('Warm-up');
       expect(await firstRow.textContent()).toContain('Warm up on something you already know');
@@ -56,7 +56,6 @@ describe('the daily practice loop, end to end', () => {
       await page.getByRole('button', { name: 'Stable alone' }).click();
       await page.getByRole('button', { name: 'Save block' }).click();
       await reload(app);
-      await goTo(app, '/plan');
       // The plan is still running, one segment done, the rest still pending —
       // and it came back out of storage, not out of React state.
       await expect
@@ -66,7 +65,7 @@ describe('the daily practice loop, end to end', () => {
 
       // --- 3. THE DATE SHOWN IS THE DATE SAVED, after a reload -------------
       let savedDate = '';
-      await practise(page, app.origin, ITEM, async () => {
+      await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Stable alone' }).click();
         await page.getByRole('button', { name: 'Change' }).click();
         savedDate = await page.getByLabel('Next review date').inputValue();
@@ -75,11 +74,11 @@ describe('the daily practice loop, end to end', () => {
         await page.getByRole('button', { name: 'Save block' }).click();
       });
       await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(savedDate);
+      expect(await persistedReviewDate(app, ITEM)).toBe(savedDate);
 
       // …and the item's PENDING ROW agrees: at that date the item appears
       // under Due reviews, which reads the ROW, not the item.
-      const itemTitle = await itemTitleOf(page, app.origin, ITEM);
+      const itemTitle = await itemTitleOf(app, ITEM);
       await page.clock.setFixedTime(new Date(`${savedDate}T09:00:00`));
       await goTo(app, '/');
       await expect.poll(() => page.getByRole('heading', { name: 'Due reviews' }).isVisible()).toBe(true);
@@ -89,27 +88,27 @@ describe('the daily practice loop, end to end', () => {
       await page.clock.setFixedTime(CLOCK);
 
       // --- 4. A SECOND successful close the same day does NOT advance again -
-      await practise(page, app.origin, ITEM, async () => {
+      await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Performable' }).click();
         await page.getByRole('button', { name: 'Change' }).click();
         expect(await page.getByLabel('Next review date').inputValue()).toBe(savedDate);
         await page.getByRole('button', { name: 'Save block' }).click();
       });
       await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(savedDate);
+      expect(await persistedReviewDate(app, ITEM)).toBe(savedDate);
 
       // --- 5. `same` keeps it too; only `worse` brings it forward ----------
-      await practise(page, app.origin, ITEM, async () => {
+      await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Same' }).click();
         await page.getByRole('button', { name: 'Change' }).click();
         expect(await page.getByLabel('Next review date').inputValue()).toBe(savedDate);
         await page.getByRole('button', { name: 'Save block' }).click();
       });
       await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(savedDate);
+      expect(await persistedReviewDate(app, ITEM)).toBe(savedDate);
 
       let repairedDate = '';
-      await practise(page, app.origin, ITEM, async () => {
+      await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Worse' }).click();
         await page.getByRole('button', { name: 'Change' }).click();
         repairedDate = await page.getByLabel('Next review date').inputValue();
@@ -117,31 +116,31 @@ describe('the daily practice loop, end to end', () => {
         await page.getByRole('button', { name: 'Save block' }).click();
       });
       await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(repairedDate);
+      expect(await persistedReviewDate(app, ITEM)).toBe(repairedDate);
 
       // --- 6. A date the owner types wins, in either direction -------------
       const chosen = '2027-05-09';
-      await practise(page, app.origin, ITEM, async () => {
+      await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Slightly better' }).click();
         await page.getByRole('button', { name: 'Change' }).click();
         await page.getByLabel('Next review date').fill(chosen);
         await page.getByRole('button', { name: 'Save block' }).click();
       });
       await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(chosen);
+      expect(await persistedReviewDate(app, ITEM)).toBe(chosen);
 
       // …and once it is the owner's, successful practice leaves it alone.
-      await practise(page, app.origin, ITEM, async () => {
+      await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Stable in context' }).click();
         await page.getByRole('button', { name: 'Change' }).click();
         expect(await page.getByLabel('Next review date').inputValue()).toBe(chosen);
         await page.getByRole('button', { name: 'Save block' }).click();
       });
       await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(chosen);
+      expect(await persistedReviewDate(app, ITEM)).toBe(chosen);
 
       // --- 7. Explicit No, then Schedule again from the item ---------------
-      await practise(page, app.origin, ITEM, async () => {
+      await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Stable alone' }).click();
         await page.getByRole('button', { name: 'Change' }).click();
         await page.getByRole('group', { name: '' }).first().waitFor().catch(() => {});
@@ -153,24 +152,23 @@ describe('the daily practice loop, end to end', () => {
       await expect.poll(() => page.getByRole('button', { name: 'Schedule again' }).isVisible()).toBe(true);
 
       const rearmed = '2027-06-20';
-      const blocksBeforeRearm = await practiceBlockCount(page, app.origin, ITEM);
-      await goTo(app, `/items/${ITEM}`);
+      const blocksBeforeRearm = await practiceBlockCount(app, ITEM);
       await page.getByRole('button', { name: 'Schedule again' }).click();
       await page.getByLabel('Next review date').fill(rearmed);
       await page.getByRole('button', { name: 'Save date' }).click();
       await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(rearmed);
+      expect(await persistedReviewDate(app, ITEM)).toBe(rearmed);
       // Re-arming is administration: it logged no practice.
-      expect(await practiceBlockCount(page, app.origin, ITEM)).toBe(blocksBeforeRearm);
-      const blocksBefore = await practiceBlockCount(page, app.origin, ITEM);
+      expect(await practiceBlockCount(app, ITEM)).toBe(blocksBeforeRearm);
+      const blocksBefore = await practiceBlockCount(app, ITEM);
 
       // --- 8. Saving without a result answers nothing about the schedule ---
-      await practise(page, app.origin, ITEM, async () => {
+      await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Save without a result' }).click();
       });
       await reload(app);
-      expect(await persistedReviewDate(page, app.origin, ITEM)).toBe(rearmed);
-      expect(await practiceBlockCount(page, app.origin, ITEM)).toBe(blocksBefore + 1);
+      expect(await persistedReviewDate(app, ITEM)).toBe(rearmed);
+      expect(await practiceBlockCount(app, ITEM)).toBe(blocksBefore + 1);
 
       // --- 9. Across local midnight, with the draft intact -----------------
       // A DIFFERENT item, with no pending date at all, so the proposal is
@@ -196,7 +194,7 @@ describe('the daily practice loop, end to end', () => {
       const afterMidnight = await page.getByLabel('Next review date').inputValue();
       await page.getByRole('button', { name: 'Save block' }).click();
       await reload(app);
-      expect(await persistedReviewDate(page, app.origin, FRESH)).toBe(afterMidnight);
+      expect(await persistedReviewDate(app, FRESH)).toBe(afterMidnight);
 
       // --- 10. The preview reflects the practice that has actually happened -
       // Everything above really was practised today, so a freshly built plan
@@ -216,17 +214,17 @@ describe('the daily practice loop, end to end', () => {
       // the OTHER half of "no stale preview" the review named: not data
       // changing beneath the plan, but the CLOCK moving past it while it sits
       // open, unstarted.
-      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
+      await expect.poll(() => page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
       await page.clock.setFixedTime(new Date('2027-01-16T00:15:00'));
       await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
       await expect
         .poll(() => page.getByText(/plan was built for a day that has passed/).isVisible().catch(() => false))
         .toBe(true);
-      expect(await page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
+      await expect.poll(() => page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
       // Regenerating clears it: the owner's swaps/removals up to that point
       // are the thing being protected, not the stale label itself.
       await page.getByRole('button', { name: 'Regenerate' }).click();
-      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
+      await expect.poll(() => page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
 
       // --- 11b. THE START-PLAN RACE: NO event, NO poll — the exact gap step
       // 11's own dispatched visibilitychange never exercises, and a real
@@ -241,11 +239,11 @@ describe('the daily practice loop, end to end', () => {
       await expect
         .poll(() => page.getByText(/plan was built for a day that has passed/).isVisible().catch(() => false))
         .toBe(true);
-      expect(await page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
+      await expect.poll(() => page.getByRole('button', { name: 'Start plan' }).isDisabled()).toBe(true);
       // The click installed nothing: still the preview, not the runner.
-      expect(await page.getByRole('button', { name: 'Regenerate' }).isVisible()).toBe(true);
+      await expect.poll(() => page.getByRole('button', { name: 'Regenerate' }).isVisible()).toBe(true);
       await page.getByRole('button', { name: 'Regenerate' }).click();
-      expect(await page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
+      await expect.poll(() => page.getByRole('button', { name: 'Start plan' }).isEnabled()).toBe(true);
       // Genuinely fresh now: the same click succeeds.
       await page.getByRole('button', { name: 'Start plan' }).click();
       await expect
@@ -276,16 +274,16 @@ describe('the daily practice loop, end to end', () => {
       await page.getByRole('button', { name: 'Save block' }).click();
       // Still on the close screen: that click refreshed the stale decision
       // rather than saving it. The musician's own words survived untouched.
-      expect(await page.getByRole('button', { name: 'Save block' }).isVisible()).toBe(true);
+      await expect.poll(() => page.getByRole('button', { name: 'Save block' }).isVisible()).toBe(true);
       expect(await page.getByPlaceholder('What did you notice?').inputValue()).toBe(raceDraft);
       await expect
         .poll(() => page.getByLabel('Next review date').inputValue())
         .not.toBe(previewedBeforeRace);
       const correctedDate = await page.getByLabel('Next review date').inputValue();
       await page.getByRole('button', { name: 'Save block' }).click();
-      await page.waitForTimeout(300);
+      await page.getByRole('navigation', { name: 'Primary' }).waitFor();
       await reload(app);
-      expect(await persistedReviewDate(page, app.origin, RACE_ITEM)).toBe(correctedDate);
+      expect(await persistedReviewDate(app, RACE_ITEM)).toBe(correctedDate);
       await page.clock.setFixedTime(CLOCK);
     } finally {
       await app.close();
@@ -311,19 +309,20 @@ async function totalMinutes(page: Page): Promise<number> {
 }
 
 /** The item's own title, read from its detail screen. */
-async function itemTitleOf(page: Page, origin: string, itemId: string): Promise<string> {
-  await page.goto(`${origin}#/items/${itemId}`);
-  await page.locator('h1.page-title').first().waitFor();
-  return ((await page.locator('h1.page-title').first().textContent()) ?? '').trim();
+async function itemTitleOf(app: PracticeApp, itemId: string): Promise<string> {
+  await show(app, `/items/${itemId}`);
+  return ((await app.page.locator('h1.page-title').first().textContent()) ?? '').trim();
 }
 
 /** Run one ordinary block on an item and close it however `close` says. */
-async function practise(page: Page, origin: string, itemId: string, close: () => Promise<void>): Promise<void> {
-  await page.goto(`${origin}#/items/${itemId}`);
+async function practise(app: PracticeApp, itemId: string, close: () => Promise<void>): Promise<void> {
+  const { page } = app;
+  await show(app, `/items/${itemId}`);
   await page.getByRole('button', { name: 'Start a block' }).click();
   await finishBlock(page);
   await close();
-  await page.waitForTimeout(300);
+  // Saving leaves the close screen for the tab bar: the block is recorded.
+  await page.getByRole('navigation', { name: 'Primary' }).waitFor();
 }
 
 async function finishBlock(page: Page): Promise<void> {
@@ -336,8 +335,9 @@ async function finishBlock(page: Page): Promise<void> {
  * "change review date" control — a real control showing the persisted value,
  * never a debug hook.
  */
-async function persistedReviewDate(page: Page, origin: string, itemId: string): Promise<string> {
-  await page.goto(`${origin}#/items/${itemId}`);
+async function persistedReviewDate(app: PracticeApp, itemId: string): Promise<string> {
+  const { page } = app;
+  await show(app, `/items/${itemId}`);
   const open = page.getByRole('button', { name: /Change review date|Schedule again/ });
   await open.waitFor();
   const label = await open.textContent();
@@ -353,9 +353,9 @@ async function persistedReviewDate(page: Page, origin: string, itemId: string): 
  * honest count of practice, and the thing an administrative action must never
  * move.
  */
-async function practiceBlockCount(page: Page, origin: string, itemId: string): Promise<number> {
-  await page.goto(`${origin}#/items/${itemId}`);
-  const stat = page.locator('.stat').filter({ hasText: 'Blocks' }).first();
+async function practiceBlockCount(app: PracticeApp, itemId: string): Promise<number> {
+  await show(app, `/items/${itemId}`);
+  const stat = app.page.locator('.stat').filter({ hasText: 'Blocks' }).first();
   await stat.waitFor();
   return Number(((await stat.locator('.stat-value').textContent()) ?? '').trim());
 }

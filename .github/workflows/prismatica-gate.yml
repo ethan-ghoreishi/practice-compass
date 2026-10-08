@@ -12,10 +12,16 @@ on:
       - main
 permissions:
   contents: read
+# A newer push to the same pull request makes the running gate moot.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 jobs:
   prismatica-gate:
     name: prismatica-gate
     runs-on: ubuntu-latest
+    # About 2.5x a normal run. GitHub's own default is six hours.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,7 +44,17 @@ jobs:
           else
             echo "no npm lock file at the repository root — nothing to install"
           fi
+      # A dead package mirror once hung the browser install below for 50+
+      # minutes: apt waits two minutes per file before moving on. The runner
+      # image lists several mirrors (mirror+file), so a short timeout makes apt
+      # fail over to the next one in seconds. Acquire::Retries is a bounded
+      # transport retry for one download, not a retry of any check.
+      - name: fail over from a dead apt mirror in seconds
+        run: |
+          printf 'Acquire::http::Timeout "10";\nAcquire::https::Timeout "10";\nAcquire::Retries "3";\n' | sudo tee /etc/apt/apt.conf.d/99-mirror-failover
+          grep -rqs 'mirror+file:' /etc/apt/sources.list /etc/apt/sources.list.d/ || echo '::warning::apt sources list no mirror+file failover on this image'
       - name: install the pinned browsers the repository's own checks need
+        timeout-minutes: 10
         # The gate runs this repository's checks, which drive real browsers.
         # They fail with a setup message rather than skipping, so every engine
         # the suite can drive has to be here before the gate runs. Unversioned

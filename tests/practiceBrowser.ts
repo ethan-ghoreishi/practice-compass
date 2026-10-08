@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
-import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Page } from 'playwright';
+import { chromium, webkit, type Browser, type BrowserContext, type BrowserType, type Locator, type Page } from 'playwright';
 
 // ---------------------------------------------------------------------------
 // A small harness for driving the REAL app in a real browser from an ordinary
@@ -499,14 +499,18 @@ export async function importBackup(app: PracticeApp, name: string, json: string)
  * screens hide the tab bar (they are the one place the app asks for undivided
  * attention), so from one of those this takes the route directly instead of
  * waiting forever for a nav that is deliberately not there.
+ *
+ * Each tap ARRIVES before the next: a tab tap renders in a transition that
+ * keeps the outgoing page on screen, and Settings' own copy also has a link
+ * named "Settings" — the one a tap made from Settings would otherwise find.
  */
 export async function openSettings(app: PracticeApp): Promise<void> {
   const { page } = app;
   if (await page.getByRole('navigation', { name: 'Primary' }).isVisible()) {
     await page.getByRole('link', { name: 'More' }).click();
-    // "Settings" also names a link inside Settings' own copy once the page is
-    // open, so take the one on the More menu — the first in the document.
+    await arrive(page, 'More');
     await page.getByRole('link', { name: 'Settings' }).first().click();
+    await arrive(page, 'Settings & backup');
   } else {
     await goTo(app, '/settings');
   }
@@ -519,37 +523,99 @@ export async function importOutcome(app: PracticeApp): Promise<string> {
 }
 
 /**
- * Go to a route the way the owner does, then wait for the app to settle.
+ * Go to a route the way the owner does, and return only once the DESTINATION
+ * is the page on screen.
  *
- * The practice screens (`/active`, `/close`, `/routine/…`) deliberately hide
- * the tab bar — they are the one place the app asks for undivided attention —
- * so those routes wait on their own first control instead.
+ * WHAT IT WAITS FOR. Before navigating it holds the outgoing page's level-1
+ * heading (the element itself, or that there is none); it returns once `main`
+ * is visible and that heading has been replaced — a different element, or the
+ * same element with different text (one page component given new params). A
+ * page with no heading of its own (Today) is told apart by its text instead.
+ * Measured with `delayPagesMs` in both engines: while a lazy page loads, React
+ * hides the outgoing page behind the Suspense fallback, so "visible" alone
+ * covers that window; the heading covers the rest — the moment between the
+ * URL changing and React rendering it at all, and an in-app tap's transition,
+ * which keeps the outgoing page VISIBLE until the destination commits.
  *
- * WHAT `page.goto` ACTUALLY DOES HERE IS ENGINE-DEPENDENT, AND MEASURED. The
- * app is hash-routed, so `goto` to a DIFFERENT `#/route` is a same-document
+ * Two routes that render the SAME heading cannot be told apart by it, so a
+ * journey moving between them passes `arrival` — a heading or a locator only
+ * the destination has. Without one, the wait times out and THROWS naming that
+ * cause: never a hang, never a quiet return on the page it left.
+ *
+ * NEVER THE ROUTE YOU ARE ALREADY ON, and this refuses one outright. The app is
+ * hash-routed, so `goto` to a DIFFERENT `#/route` is a same-document
  * navigation in Chromium and WebKit alike (a `window` marker survives it).
  * `goto` to the URL the page is ALREADY on is not: Chromium keeps it
- * same-document (it fires `popstate`, so the router re-renders and Playwright
- * waits on a real navigation), while WebKit performs a FULL DOCUMENT LOAD —
- * tearing down whatever the app has in flight, which GitHub's Linux WebKit
- * then reports as an access-control page error. So a journey must never call
- * this for the route it is already on: an owner already on a screen does not
- * reload it to "go" there — use the in-app control (`openSettings`) instead,
- * and call `reload` when a fresh document is the point. The same-URL case is
- * deliberately NOT turned into a no-op here: Chromium's `popstate` navigation
- * is slack that other journeys' route waits currently rely on, and removing
- * it made one of them race its own in-app navigation under a full-suite run.
+ * same-document, while WebKit performs a FULL DOCUMENT LOAD — tearing down
+ * whatever the app has in flight: a fetch (which GitHub's Linux WebKit reports
+ * as an access-control page error) or a write the tap before it issued (the
+ * practice screen then opened on no block at all). An owner already on a
+ * screen does not reload it to "go" there: wait for whatever brought you there
+ * to arrive, use the in-app control (`openSettings`), or call `reload` when a
+ * fresh document is the point.
  */
 const FOCUSED_ROUTES = /^\/(active|close|routine)/;
 
-export async function goTo(app: PracticeApp, hashPath: string): Promise<void> {
-  await app.page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
-  if (FOCUSED_ROUTES.test(hashPath)) {
-    await app.page.locator('main').waitFor({ timeout: 20_000 });
-    await app.page.waitForFunction(() => (document.querySelector('main')?.textContent ?? '').length > 0);
-    return;
+const routeOf = (hash: string) => `/${hash.replace(/^#?\/?/, '')}`;
+
+export async function goTo(
+  app: PracticeApp,
+  hashPath: string,
+  options: { arrival?: string | RegExp | Locator; timeout?: number } = {},
+): Promise<void> {
+  const { page } = app;
+  const timeout = options.timeout ?? 20_000;
+  if (routeOf(await page.evaluate(() => location.hash)) === routeOf(hashPath)) {
+    throw new Error(
+      `goTo(${hashPath}): the page is already on that route. Never goTo the route you are on — ` +
+        'wait for whatever brought you here to arrive, or reload() for a fresh document.',
+    );
   }
-  await app.page.getByRole('navigation', { name: 'Primary' }).waitFor();
+  const outgoing = await page.evaluateHandle(() => document.querySelector('main h1'));
+  const from = await page.evaluate((h) => (h ? (h.textContent ?? '') : (document.querySelector('main')?.textContent ?? '')), outgoing);
+  await page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
+  try {
+    const { arrival } = options;
+    if (arrival) {
+      const target =
+        typeof arrival === 'string' || arrival instanceof RegExp
+          ? page.getByRole('heading', { level: 1, name: arrival, ...(typeof arrival === 'string' ? { exact: true } : {}) })
+          : arrival;
+      await target.waitFor({ timeout });
+    } else {
+      await page.waitForFunction(
+        ([old, text]) => {
+          const main = document.querySelector('main');
+          if (!main || main.getClientRects().length === 0) return false;
+          const h = main.querySelector('h1');
+          if (h !== old) return true;
+          return (h ? (h.textContent ?? '') : (main.textContent ?? '')) !== text;
+        },
+        [outgoing, from] as const,
+        { timeout },
+      );
+    }
+    if (!FOCUSED_ROUTES.test(hashPath)) await page.getByRole('navigation', { name: 'Primary' }).waitFor({ timeout });
+  } catch (e) {
+    const heading = (await outgoing.evaluate((h) => h?.textContent ?? null).catch(() => null)) ?? '(none)';
+    throw new Error(
+      `goTo(${hashPath}) never arrived within ${timeout}ms: the outgoing heading ${JSON.stringify(heading)} is still the page's. ` +
+        'If the destination shares that heading, pass an arrival.',
+      { cause: e },
+    );
+  } finally {
+    await outgoing.dispose().catch(() => {});
+  }
+}
+
+/**
+ * Be on `hashPath`: `goTo` it unless the journey is already there. For a
+ * helper that reads one page and is called both from elsewhere and from that
+ * page — a SETTLED page. Straight after a tap that navigates, wait for that
+ * tap's own arrival instead.
+ */
+export async function show(app: PracticeApp, hashPath: string): Promise<void> {
+  if (routeOf(await app.page.evaluate(() => location.hash)) !== routeOf(hashPath)) await goTo(app, hashPath);
 }
 
 /**
@@ -563,14 +629,47 @@ export async function arrive(page: Page, heading: string | RegExp): Promise<void
   await page.getByRole('heading', { level: 1, name: heading, ...(typeof heading === 'string' ? { exact: true } : {}) }).waitFor({ timeout: 20_000 });
 }
 
-/** Reload, proving a claim survived in IndexedDB rather than in React state. */
+/**
+ * Wait until every write the app has ALREADY ISSUED, to any store, has landed.
+ *
+ * An IndexedDB transaction whose scope overlaps an earlier readwrite one
+ * cannot start until that one has finished — across connections, so this one
+ * (opened here, outside the app) included. An empty readwrite transaction over
+ * every store therefore completes only after them all: an acknowledgement
+ * read from the storage itself, not a guess at how long a write takes. It says
+ * nothing about a write the app has NOT issued yet (one an effect or an async
+ * continuation makes later); wait for that write's own value (`persistedUntil`).
+ */
+async function storageBarrier(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve, reject) => {
+        const req = indexedDB.open('practice-compass');
+        req.onerror = () => reject(req.error);
+        req.onsuccess = () => {
+          const db = req.result;
+          const open = IDBDatabase.prototype.transaction as IDBDatabase['transaction'] & { unslowed?: IDBDatabase['transaction'] };
+          const tx = (open.unslowed ?? open).call(db, Array.from(db.objectStoreNames), 'readwrite');
+          tx.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          tx.onabort = () => {
+            db.close();
+            reject(tx.error);
+          };
+        };
+      }),
+  );
+}
+
+/**
+ * Reload, proving a claim survived in IndexedDB rather than in React state.
+ * A fresh document aborts any write still open, so the reload waits for every
+ * write the app has already issued (`storageBarrier`) — never a fixed sleep.
+ */
 export async function reload(app: PracticeApp): Promise<void> {
-  // The store persists to IndexedDB asynchronously (that is the whole reason
-  // App gates render on `hydrated`), so a reload fired in the same tick as the
-  // click can outrun the write. This wait is about the storage platform, not
-  // about the app: it is real wall-clock time in Node, unaffected by the
-  // page's faked clock.
-  await app.page.waitForTimeout(400);
+  await storageBarrier(app.page);
   await app.page.reload();
   await app.page.locator('main, nav[aria-label="Primary"]').first().waitFor({ timeout: 20_000 });
 }
@@ -621,7 +720,8 @@ export async function writePersistedState(app: PracticeApp, state: unknown, vers
         req.onerror = () => reject(req.error);
         req.onsuccess = () => {
           const db = req.result;
-          const tx = db.transaction('kv', 'readwrite');
+          const open = IDBDatabase.prototype.transaction as IDBDatabase['transaction'] & { unslowed?: IDBDatabase['transaction'] };
+          const tx = (open.unslowed ?? open).call(db, 'kv', 'readwrite');
           tx.objectStore('kv').put({ key, value: JSON.stringify({ state, version }) });
           tx.oncomplete = () => {
             db.close();
@@ -672,6 +772,17 @@ export async function persistedUntil<T>(
     }
     await app.page.waitForTimeout(50);
   }
+}
+
+/**
+ * A NEGATIVE claim's window: `ms` of real time in which something that must
+ * NOT happen would have shown by now. The one sanctioned fixed wait, and only
+ * for that: call it after a POSITIVE signal that the action the claim is about
+ * has finished (its write landed, its message showed), never to wait for
+ * something to happen — that is an event or a poll.
+ */
+export async function quietWindow(app: PracticeApp, ms: number): Promise<void> {
+  await app.page.waitForTimeout(ms);
 }
 
 /**
@@ -915,7 +1026,7 @@ export function remoteStateText(db: unknown, deviceName = 'the other device'): s
 /** Connect sync through the REAL Settings form and run the first sync. */
 export async function connectSync(app: PracticeApp): Promise<void> {
   const { page } = app;
-  await goTo(app, '/settings');
+  await openSettings(app);
   // The sync form's fields sit inside a labelled group rather than carrying
   // their own accessible names. That is pre-existing Settings markup this lane
   // is explicitly not reshaping, so this reaches them the way they actually
@@ -933,6 +1044,18 @@ export async function connectSync(app: PracticeApp): Promise<void> {
   // README.md. A cold document with no request in flight is the only state a
   // journey may drive on from, so this waits for the ENABLED button: the
   // sync's own completion, read through the real control.
+  await page.getByRole('button', { name: 'Sync now', disabled: false }).waitFor({ timeout: 20_000 });
+}
+
+/**
+ * Run one sync through the real Sync now button and wait for it to FINISH: the
+ * button is disabled for exactly as long as the sync runs (`connectSync`
+ * above), so its return to enabled is the sync's own completion. A sync is
+ * several storage writes; reading its message on a timer races them.
+ */
+export async function syncNow(app: PracticeApp): Promise<void> {
+  const { page } = app;
+  await page.getByRole('button', { name: 'Sync now' }).click();
   await page.getByRole('button', { name: 'Sync now', disabled: false }).waitFor({ timeout: 20_000 });
 }
 

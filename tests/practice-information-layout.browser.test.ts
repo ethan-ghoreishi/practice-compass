@@ -95,7 +95,7 @@ describe('the changed surfaces, rendered', () => {
           await goTo(app, `/items/${FARSI_ITEM}`);
           const editButton = page.getByRole('button', { name: 'Edit Working notes' });
           // Its OWN accessible name, not the section's.
-          expect(await editButton.count(), where).toBe(1);
+          await expect.poll(() => editButton.count(), { message: where }).toBe(1);
           // Keyboard-reachable and keyboard-activatable.
           await editButton.focus();
           expect(await page.evaluate(() => document.activeElement?.getAttribute('aria-label')), where).toBe(
@@ -167,10 +167,10 @@ describe('the changed surfaces, rendered', () => {
           // --- The close screen's own controls --------------------------
           await goTo(app, `/items/${FARSI_ITEM}`);
           await page.getByRole('button', { name: 'Start a block' }).click();
-          await goTo(app, '/active');
+          await app.page.getByRole('button', { name: 'Finish' }).waitFor();
           // The practice screen's notebook and its block observation are two
           // separate, separately named controls.
-          expect(await page.getByRole('button', { name: /Working notes/ }).count(), where).toBeGreaterThan(0);
+          await expect.poll(() => page.getByRole('button', { name: /Working notes/ }).count(), { message: where }).toBeGreaterThan(0);
           await page.getByRole('button', { name: /Note an observation for this block/ }).click();
           const observation = page.getByLabel('Observation for this block');
           expect(

@@ -6,7 +6,9 @@ import {
   openPracticeApp,
   readPersistedState,
   reload,
+  show,
   writePersistedState,
+  type PracticeApp,
 } from './practiceBrowser';
 import v11 from './fixtures/practice-decisions-v11.json?raw';
 import { SCHEMA_VERSION } from '../src/domain/types';
@@ -78,7 +80,7 @@ describe('the lesson agenda, end to end', () => {
       await expect
         .poll(() => classB.getByText('آیا نقطهٔ فرودم درست است؟', { exact: false }).first().isVisible())
         .toBe(true);
-      await expect.poll(() => classA.getByText('Nothing committed to this class yet').isVisible()).toBe(false);
+      expect(await classA.getByText('Nothing committed to this class yet').isVisible()).toBe(false);
       await expect.poll(() => classB.getByText('Nothing committed to this class yet').isVisible()).toBe(true);
       await expect.poll(() => classA.getByText('No open questions for this class').isVisible()).toBe(true);
 
@@ -93,15 +95,12 @@ describe('the lesson agenda, end to end', () => {
       await questionCard.getByRole('button', { name: 'Mark asked' }).click();
 
       await reload(app);
-      await goTo(app, '/lessons');
 
       // It has left the OPEN list for that class…
       await expect.poll(() => classB.getByText('Already asked at this class').isVisible()).toBe(true);
       await expect.poll(() => classB.getByText('بله، سبک‌تر.').first().isVisible()).toBe(true);
       // …and it was NOT carried forward to the other class.
-      await expect
-        .poll(() => classA.getByText('آیا نقطهٔ فرودم درست است؟', { exact: false }).count())
-        .toBe(0);
+      expect(await classA.getByText('آیا نقطهٔ فرودم درست است؟', { exact: false }).count()).toBe(0);
       // No practice was logged by any of it.
       await goTo(app, '/');
       await expect.poll(() => page.getByText(/Practised today: 0 min · 0 blocks/).isVisible()).toBe(true);
@@ -111,8 +110,8 @@ describe('the lesson agenda, end to end', () => {
       // a FARSI-titled item: the two combinations that only differ when the
       // title and the question disagree, which matching-language seed data can
       // never show.
-      await addQuestionToItem(page, /Question but never flagged/, FARSI_QUESTION);
-      await addQuestionToItem(page, /آوازِ افشاری/, ENGLISH_QUESTION);
+      await addQuestionToItem(app, /Question but never flagged/, FARSI_QUESTION);
+      await addQuestionToItem(app, /آوازِ افشاری/, ENGLISH_QUESTION);
 
       await reload(app);
       await goTo(app, '/lessons');
@@ -134,7 +133,6 @@ describe('the lesson agenda, end to end', () => {
         });
       });
       await reload(app);
-      await goTo(app, '/lessons');
       await classA.getByRole('button', { name: 'Copy' }).first().click();
       const status = page.getByRole('status').filter({ hasText: 'Couldn’t copy' }).first();
       await status.waitFor();
@@ -143,13 +141,13 @@ describe('the lesson agenda, end to end', () => {
       const fallback = page.getByLabel('Questions text to select and copy');
       await fallback.waitFor();
       expect(await fallback.inputValue()).toContain(FARSI_QUESTION);
-      expect(await page.getByRole('button', { name: 'Download' }).first().isEnabled()).toBe(true);
+      await expect.poll(() => page.getByRole('button', { name: 'Download' }).first().isEnabled()).toBe(true);
 
       // --- 7. The controls this lane added are reachable by role and name ---
       for (const name of ['Mark asked', 'Add answer', 'Remove this question']) {
-        expect(await classA.getByRole('button', { name }).first().isVisible(), name).toBe(true);
+        await expect.poll(() => classA.getByRole('button', { name }).first().isVisible(), { message: name }).toBe(true);
       }
-      expect(await classA.getByLabel('New question for this class').first().isVisible()).toBe(true);
+      await expect.poll(() => classA.getByLabel('New question for this class').first().isVisible()).toBe(true);
 
       // --- 8. An INVALID new-model import is refused, old data still there --
       const broken = JSON.parse(v11) as { data: { lessonAgenda: unknown[] } };
@@ -198,8 +196,7 @@ describe('the lesson agenda, end to end', () => {
       // Idempotent: a SECOND, ordinary reload (now genuinely current, nothing
       // left behind) creates no duplicate.
       await reload(app);
-      await goTo(app, `/items/${HYDRATION_ITEM}`);
-      expect(await page.getByText('hydration leftover question').count()).toBe(1);
+      await expect.poll(() => page.getByText('hydration leftover question').count()).toBe(1);
     } finally {
       await app.close();
     }
@@ -207,12 +204,9 @@ describe('the lesson agenda, end to end', () => {
 });
 
 /** Raise a question from the ITEM surface, the way the owner does. */
-async function addQuestionToItem(
-  page: import('playwright').Page,
-  title: RegExp,
-  text: string,
-): Promise<void> {
-  await page.goto(page.url().replace(/#.*$/, '') + '#/repertoire');
+async function addQuestionToItem(app: PracticeApp, title: RegExp, text: string): Promise<void> {
+  const { page } = app;
+  await show(app, '/repertoire');
   await page.getByRole('button', { name: 'Practice list' }).click();
   await page.getByRole('link', { name: title }).first().click();
   await page.getByRole('button', { name: '+ Ask about this' }).click();

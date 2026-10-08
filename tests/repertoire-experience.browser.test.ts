@@ -119,7 +119,7 @@ describe('musical terms, managed', () => {
       await page.getByRole('button', { name: 'Composer / maestro' }).click();
       const mine = page.locator('.list-row', { hasText: 'درویش من' });
       expect(await mine.innerText()).toContain('1 piece');
-      expect(await page.getByRole('button', { name: 'Delete درویش من' }).isDisabled()).toBe(true);
+      await expect.poll(() => page.getByRole('button', { name: 'Delete درویش من' }).isDisabled()).toBe(true);
       await page.getByRole('button', { name: 'Archive درویش من' }).click();
       await until(app, (d) => d.musicTerms.find((t) => t.id === 'term-my-darvish')?.archived, (a) => a === true);
       await page.getByRole('button', { name: 'Dastgāh / Āvāz' }).click();
@@ -167,7 +167,7 @@ describe('musical terms, managed', () => {
       await page.getByRole('button', { name: /Add a term/ }).click();
       const freshName = page.getByRole('textbox', { name: 'Term name' });
       expect([await freshName.inputValue(), await freshName.isEnabled()]).toEqual(['', true]);
-      expect(await page.getByRole('textbox', { name: 'Other spellings' }).isEnabled()).toBe(true);
+      await expect.poll(() => page.getByRole('textbox', { name: 'Other spellings' }).isEnabled()).toBe(true);
       expect(await page.getByText('Saved.').count()).toBe(0);
       await freshName.fill('سه‌ضربی');
       await page.getByRole('button', { name: 'Add term' }).click();
@@ -183,7 +183,7 @@ describe('musical terms, managed', () => {
       await repairStorage(page);
       await page.getByRole('button', { name: 'Try again' }).click();
       await until(app, (d) => d.musicTerms.find((t) => t.id === added!.id)?.archived, (a) => a === true);
-      await expect.poll(() => page.getByText(/Not saved/).count()).toBe(0);
+      await page.getByText(/Not saved/).first().waitFor({ state: 'detached', timeout: 20_000 });
       await page.getByRole('button', { name: 'Restore چهارپاره' }).click();
       await until(app, (d) => d.musicTerms.find((t) => t.id === added!.id)?.archived, (a) => a === undefined);
       // DELETE whose write FAILS: the row is gone, the outcome is not — it
@@ -198,7 +198,7 @@ describe('musical terms, managed', () => {
       await page.getByText(/deleted — Saved\./).waitFor({ timeout: 10_000 });
       // A REFERENCED custom term cannot be deleted (the archived ختایی is on a
       // piece); a BUILT-IN offers no Delete at all.
-      expect(await page.getByRole('button', { name: 'Delete ختایی' }).isDisabled()).toBe(true);
+      await expect.poll(() => page.getByRole('button', { name: 'Delete ختایی' }).isDisabled()).toBe(true);
       expect(await page.getByRole('button', { name: 'Delete رنگ' }).count()).toBe(0);
 
       // THROUGH A RELOAD everything above holds, identities included.
@@ -213,7 +213,6 @@ describe('musical terms, managed', () => {
 
       // A FAILED WRITE never says Saved: the draft stays, and Try again writes
       // what is on screen NOW.
-      await goTo(app, '/terms');
       await page.getByRole('button', { name: 'Composer / maestro' }).click();
       await page.getByRole('button', { name: 'Edit مرتضی محجوبی' }).click();
       const nameBox = page.getByRole('textbox', { name: 'Name of مرتضی محجوبی' });
@@ -281,7 +280,8 @@ describe('musical terms, managed', () => {
       expect(await inlineName.inputValue()).toBe('جزوهٔ کلاس');
       await repairStorage(page);
       await page.getByRole('button', { name: 'Try again' }).click();
-      await expect.poll(() => inlineName.count()).toBe(0);
+      // The field closes once the retried write has landed, however slow storage is.
+      await inlineName.waitFor({ state: 'detached', timeout: 20_000 });
       const inline = await until(app, (d) => d.materials.filter((m) => m.title === 'جزوهٔ کلاس'), (m) => m.length === 1);
       expect(await page.getByRole('combobox', { name: 'Study source' }).inputValue()).toBe(inline[0].id);
 
@@ -318,11 +318,11 @@ describe('musical terms, managed', () => {
       expect((await db(app)).items.find((i) => i.id === firstId[0])!.materialId).toBeUndefined();
       const stageUrl = page.url();
       await choice.getByRole('button', { name: 'Decide later' }).click();
-      await expect.poll(() => choice.count()).toBe(0);
+      await choice.waitFor({ state: 'detached', timeout: 20_000 });
       await page.locator('button[aria-label^="Practise "]').first().click();
       await page.waitForURL(/#\/active/, { timeout: 10_000 });
       await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 10_000 });
-      await page.goto(stageUrl);
+      await goTo(app, new URL(stageUrl).hash.slice(1));
       await choice.waitFor({ timeout: 10_000 });
       await reload(app);
       await choice.waitFor({ timeout: 10_000 });
@@ -337,7 +337,7 @@ describe('musical terms, managed', () => {
       await choice.getByText(/Not saved/).waitFor({ timeout: 10_000 });
       await repairStorage(page);
       await choice.getByRole('button', { name: 'Try again' }).click();
-      await expect.poll(() => choice.count()).toBe(0);
+      await choice.waitFor({ state: 'detached', timeout: 20_000 });
       await page.getByText(/Study source chosen — Saved\./).waitFor({ timeout: 10_000 });
       await until(
         app,
@@ -433,8 +433,10 @@ describe('browsing, and coming back to it', () => {
       // the session instrument.
       const pathsOnTar = async () => {
         await expect.poll(() => page.url()).toMatch(/view=paths&inst=inst-tar/);
-        expect(await page.getByRole('button', { name: 'Pathways', exact: true }).getAttribute('aria-pressed')).toBe('true');
-        expect(await instruments.getByRole('button', { name: 'Tar', exact: true }).getAttribute('aria-pressed')).toBe('true');
+        // The URL moves before the render it asks for: a pressed state read
+        // straight after it can still be the outgoing view's, so it is polled.
+        await expect.poll(() => page.getByRole('button', { name: 'Pathways', exact: true }).getAttribute('aria-pressed')).toBe('true');
+        await expect.poll(() => instruments.getByRole('button', { name: 'Tar', exact: true }).getAttribute('aria-pressed')).toBe('true');
       };
       // Each hop acts only once the page it went to is on screen: until a
       // lazy page has loaded, the one being left is still there — and a
@@ -473,11 +475,15 @@ describe('browsing, and coming back to it', () => {
       expect(await session()).toBe('inst-setar');
 
       // STALE or UNKNOWN parameters open the nearest honest view.
-      await goTo(app, '/repertoire?view=bogus&inst=gone&composer=term%3Agone&quick=zzz&group=nope');
+      // Same page, same heading: it has arrived when the view it falls back to is the one pressed.
+      await goTo(app, '/repertoire?view=bogus&inst=gone&composer=term%3Agone&quick=zzz&group=nope', {
+        arrival: page.getByRole('button', { name: 'My repertoire', pressed: true }),
+      });
       expect(await page.getByRole('button', { name: 'My repertoire' }).getAttribute('aria-pressed')).toBe('true');
       expect(await instruments.getByRole('button', { name: 'Setar', exact: true }).getAttribute('aria-pressed')).toBe('true');
       expect(await composer().inputValue()).toBe('');
       expect((await worksShown()).length).toBe(9);
+      expect(page.url()).toMatch(/composer=/);
       await page.getByRole('button', { name: 'Clear filters' }).click();
       await expect.poll(() => page.url()).not.toMatch(/composer=/);
       expect(await session()).toBe('inst-setar');
@@ -701,7 +707,7 @@ describe('the whole repertoire experience, in both engines', () => {
           expect(linkedPlaced, where).toEqual(['radif:mirza-abdollah:abu-ata:sayakhi']);
           expect((await db(app)).items.length, where).toBe(itemsBefore);
           await page.getByRole('button', { name: 'Practise Untitled tasnif' }).waitFor();
-          expect(await page.locator('.stage-unit', { hasText: 'Untitled tasnif' }).count(), where).toBe(1);
+          await expect.poll(() => page.locator('.stage-unit', { hasText: 'Untitled tasnif' }).count(), { message: where }).toBe(1);
 
           // TAR shares the definition, never the practice.
           await goTo(app, '/repertoire?view=paths&inst=inst-tar');

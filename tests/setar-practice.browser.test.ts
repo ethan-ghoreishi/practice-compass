@@ -21,6 +21,7 @@ import {
   remoteStateText,
   stampSourceIndex,
   persistedDb,
+  persistedUntil,
   readPersistedState,
   reload,
   type Engine,
@@ -40,15 +41,8 @@ const OWNER_V16: { data: PracticeDB; files: unknown[] } = JSON.parse(OWNER_V16_T
 
 type Db = PracticeDB;
 const db = async (app: PracticeApp) => (await persistedDb(app)) as unknown as Db;
-const until = async <V,>(app: PracticeApp, read: (d: Db) => V, ok: (v: V) => boolean, timeout = 15_000): Promise<V> => {
-  const deadline = Date.now() + timeout;
-  for (;;) {
-    const v = read(await db(app));
-    if (ok(v)) return v;
-    if (Date.now() > deadline) throw new Error(`never satisfied: ${JSON.stringify(v)}`);
-    await app.page.waitForTimeout(100);
-  }
-};
+const until = <V,>(app: PracticeApp, read: (d: Db) => V, ok: (v: V) => boolean, timeout = 15_000): Promise<V> =>
+  persistedUntil(app, (s) => read((s.state as { db: Db }).db), ok, timeout);
 const wrap = (data: unknown, files?: unknown[]) =>
   JSON.stringify({ app: 'practice-compass', schemaVersion: SCHEMA_VERSION, exportedAt: T, data, ...(files ? { files } : {}) });
 
@@ -148,7 +142,10 @@ describe('pathway membership, reversibly', () => {
         const daramad = 'درآمد شور';
         await page.getByRole('button', { name: `Add ${daramad} to your items` }).click();
         const shared = await until(app, (d) => d.items.find((i) => i.title === daramad), (i) => !!i);
-        await goTo(app, '/pathway/setar-radif-mirza/setar-radif-mirza-shur');
+        // Both pathways' Shur stages share one heading, so each hop between
+        // them arrives at the stage's own link back to ITS pathway.
+        const backTo = (pathwayId: string) => page.locator(`main a[href="#/pathway/${pathwayId}"]`);
+        await goTo(app, '/pathway/setar-radif-mirza/setar-radif-mirza-shur', { arrival: backTo('setar-radif-mirza') });
         // The SAME item answers it here: no second Add.
         await page.getByRole('button', { name: `Practise ${daramad}` }).waitFor();
         expect(await page.getByRole('button', { name: `Add ${daramad} to your items` }).count()).toBe(0);
@@ -160,10 +157,10 @@ describe('pathway membership, reversibly', () => {
         await page.getByRole('button', { name: 'Remove from pathway (keeps the item)' }).click();
         await until(app, (d) => d.pathways.find((p) => p.id === 'setar-radif-mirza')!.hiddenRefs ?? [], (r) => r.length === 1);
         // Only the selected pathway changed: the mixed pathway still shows it.
-        await goTo(app, '/pathway/setar-radif/setar-radif-shur');
+        await goTo(app, '/pathway/setar-radif/setar-radif-shur', { arrival: backTo('setar-radif') });
         await page.getByRole('button', { name: `Practise ${daramad}` }).waitFor();
         expect((await db(app)).items.find((i) => i.id === shared!.id)!.catalogRefs).toEqual(shared!.catalogRefs);
-        await goTo(app, '/pathway/setar-radif-mirza/setar-radif-mirza-shur');
+        await goTo(app, '/pathway/setar-radif-mirza/setar-radif-mirza-shur', { arrival: backTo('setar-radif-mirza') });
         await page.getByText(/Hidden suggestions \(1\)/).click();
         await page.getByRole('button', { name: `Restore ${daramad}` }).click();
         await page.getByRole('button', { name: `Practise ${daramad}` }).waitFor();
@@ -711,7 +708,7 @@ describe('the archive, from the NAS folder to the practice item', () => {
         expect((await publishTool.publishIndex({ transport: fakeTransport(remote), indexText: scanText(root) })).status).toBe('unchanged');
         expect(remote.sourceIndex!.commit).toBe(commitBefore);
         await refreshArchive(app);
-        expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+        await expect.poll(() => page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
 
         // SAME-PATH BYTE REPLACEMENT: the semantic hash is unchanged by design,
         // and the reference opens the NAS's current bytes.
@@ -788,7 +785,7 @@ describe('the archive, from the NAS folder to the practice item', () => {
         await expect(publishTool.publishIndex({ transport: fakeTransport(remote, { interrupt: true }), indexText: scanText(root) })).rejects.toThrow();
         expect(remote.sourceIndex!.text).toBe(v3);
         await refreshArchive(app);
-        expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+        await expect.poll(() => page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
 
         // A REFUSED DIGEST changes nothing.
         const tampered = JSON.parse(v3);
@@ -888,7 +885,7 @@ describe('Review Setar setup, interrupted', () => {
         expect(offered, where).toEqual(expect.arrayContaining(['mat-radif', 'mat-radif-borumand', 'create']));
         expect(offered, where).not.toContain('mat-radif-tar');
         await source.selectOption('mat-radif');
-        expect(await page.getByText(/Keeping fresh — choose which items \(0 chosen\)/).count(), where).toBe(1);
+        await expect.poll(() => page.getByText(/Keeping fresh — choose which items \(0 chosen\)/).count(), { message: where }).toBe(1);
 
         // --- EVIDENCE, BEFORE and AFTER are on the row ------------------------
         const mahur = page.getByRole('group', { name: `Setup of ${MAHUR.title}` });
@@ -897,7 +894,7 @@ describe('Review Setar setup, interrupted', () => {
         expect(shown, where).toMatch(/Place: not placed → ماهور/);
         expect(shown, where).toMatch(/Study source: none → ردیف میرزا عبدالله/);
         // A proposed row the owner saw is selected; one they clear stays out.
-        expect(await mahur.getByRole('checkbox', { name: /^Kind of / }).isChecked(), where).toBe(true);
+        await expect.poll(() => mahur.getByRole('checkbox', { name: /^Kind of / }).isChecked(), { message: where }).toBe(true);
         await page.getByRole('group', { name: `Setup of ${TORK2.title}` }).getByRole('checkbox', { name: /^Place of / }).uncheck();
         // An exception asks; a choice is explicit.
         await page.getByRole('combobox', { name: `Place of ${ABU_ATA.title}` }).selectOption('0');
@@ -977,7 +974,7 @@ describe('Review Setar setup, interrupted', () => {
         expect(await again.getByRole('combobox', { name: `Suggestion of ${MAHUR.title}` }).inputValue(), where).toBe('-1');
         expect(await page.getByRole('combobox', { name: `Kind of ${RENG_HARBI.title}` }).count(), where).toBe(0);
         // The row the owner cleared is offered again, as a proposal, not applied.
-        expect(await page.getByRole('group', { name: `Setup of ${TORK2.title}` }).getByRole('checkbox', { name: /^Place of / }).count(), where).toBe(1);
+        await expect.poll(() => page.getByRole('group', { name: `Setup of ${TORK2.title}` }).getByRole('checkbox', { name: /^Place of / }).count(), { message: where }).toBe(1);
         expect(JSON.stringify(await db(app)), where).toBe(JSON.stringify(after));
 
         // --- THE PREMISE the owner saw is the one the commit checks ------------
@@ -1192,7 +1189,7 @@ describe('archive associations, through every reader', () => {
         expect(d.archiveSources[0]!.suppressions, where).toEqual(start.archiveSources[0]!.suppressions);
         expect(owned(d), where).toBe(owned(start));
         expect(await readers(KERESHMEH_M.id, L7), where).toEqual(LINKED);
-        expect(await page.getByText('in this class’s archive').count(), where).toBeGreaterThan(0);
+        await expect.poll(() => page.getByText('in this class’s archive').count(), { message: where }).toBeGreaterThan(0);
 
         // The class-9 unlink the owner made earlier: Relink from the ITEM.
         expect(await readers(SABA.id, L9), where).toEqual(UNLINKED);

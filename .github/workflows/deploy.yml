@@ -12,29 +12,45 @@ permissions:
   pages: write
   id-token: write
 
+# One deploy at a time: a newer push to main supersedes the running one.
 concurrency:
-  group: pages
+  group: ${{ github.workflow }}
   cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    # About 2.5x a normal run. GitHub's own default is six hours.
+    timeout-minutes: 20
+    # Exactly CI's check steps, in CI's order (ci-browser-setup.test.ts holds
+    # them equal), so every push CI passed has already proven this job.
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
+      # A dead package mirror once hung the browser install for 50+ minutes:
+      # apt waits two minutes per file before moving on. The runner image lists
+      # several mirrors (mirror+file), so a short timeout makes apt fail over
+      # to the next one in seconds. Acquire::Retries is a bounded transport
+      # retry for one download, not a retry of any check.
+      - name: fail over from a dead apt mirror in seconds
+        run: |
+          printf 'Acquire::http::Timeout "10";\nAcquire::https::Timeout "10";\nAcquire::Retries "3";\n' | sudo tee /etc/apt/apt.conf.d/99-mirror-failover
+          grep -rqs 'mirror+file:' /etc/apt/sources.list /etc/apt/sources.list.d/ || echo '::warning::apt sources list no mirror+file failover on this image'
       # The suite drives real browsers through Playwright as a library, and the
       # harness FAILS with a setup message rather than skipping when an engine
       # is missing. So every engine the suite can drive is installed here.
       # Unversioned on purpose: it resolves the Playwright `npm ci` just
       # installed, so package-lock.json keeps pinning the browser revisions.
       # Removing an engine reopens a CI-only failure, not a local one.
-      - run: npx playwright install --with-deps chromium webkit
+      - name: install the pinned browsers
+        timeout-minutes: 10
+        run: npx playwright install --with-deps chromium webkit
       - run: npm run lint
       - run: npm test
       - run: npm run build
@@ -45,6 +61,7 @@ jobs:
   deploy:
     needs: check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

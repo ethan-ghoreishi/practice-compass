@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import V13_SETAR_TEXT from './fixtures/setar-legacy-v13.json?raw';
-import { goTo, importBackup, openPracticeApp, persistedUntil, reload, type PracticeApp } from './practiceBrowser';
+import { goTo, importBackup, openPracticeApp, persistedUntil, reload, show, type PracticeApp } from './practiceBrowser';
 
 // ---------------------------------------------------------------------------
 // ac-17 — a class's notes can be cleared, and are never written to the wrong
@@ -29,7 +29,7 @@ async function persistedNotes(app: PracticeApp, lessonId: string): Promise<strin
  * class's editor, which is the very confusion this test exists to rule out.
  */
 async function openLesson(app: PracticeApp, label: string) {
-  await goTo(app, '/lessons');
+  await show(app, '/lessons');
   const card = app.page.getByRole('article').filter({ hasText: label });
   await card.first().waitFor({ timeout: 20_000 });
   if (!(await card.getByRole('button', { name: /Class notes/ }).first().isVisible())) {
@@ -73,7 +73,7 @@ describe('class notes', () => {
       await reload(app);
       expect(await persistedNotes(app, 'L-38-upcoming')).toBeUndefined();
       card = await openLesson(app, 'Class 38 · 2026-09-27');
-      expect(await card.getByText('No notes yet.').first().isVisible()).toBe(true);
+      await expect.poll(() => card.getByText('No notes yet.').first().isVisible()).toBe(true);
 
       // --- writing real notes, and a DRAFT that is never committed ---------
       await card.getByRole('button', { name: 'Edit Class notes' }).click();
@@ -97,7 +97,7 @@ describe('class notes', () => {
       await card.getByRole('textbox', { name: 'Class notes' }).fill('typed for class 38 only');
       card = await openLesson(app, 'Class 1 · 2023-09-26');
       // The first class shows ITS OWN notes, not the draft.
-      expect(await card.getByText('Started the first chahārmezrāb.').first().isVisible()).toBe(true);
+      await expect.poll(() => card.getByText('Started the first chahārmezrāb.').first().isVisible()).toBe(true);
       await card.getByRole('button', { name: 'Edit Class notes' }).click();
       expect(await card.getByRole('textbox', { name: 'Class notes' }).inputValue()).toBe(
         'Started the first chahārmezrāb.',

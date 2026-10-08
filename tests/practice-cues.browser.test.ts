@@ -7,6 +7,7 @@ import {
   importOutcome,
   openPracticeApp,
   persistedDb,
+  persistedUntil,
   readPersistedState,
   reload,
   writePersistedState,
@@ -253,6 +254,20 @@ const persisted = async (app: PracticeApp) =>
     activePlan: { pointer: number } | null;
   };
 
+/**
+ * The persisted boundary marker, once it has landed. The claim is made in an
+ * EFFECT, after the render that already shows the boundary ("Target reached",
+ * "Segment 2 of 3"), so a read straight after that render can precede the
+ * write. This waits for the exact marker; the assertion beside it, and the
+ * count of cues, still say it was claimed exactly once.
+ */
+const markerLanded = (app: PracticeApp, clock: 'active' | 'activeRoutine', through: number) =>
+  persistedUntil(
+    app,
+    (s) => (s.state as { [k in typeof clock]: { signalledThrough?: number } | null })[clock]?.signalledThrough,
+    (v) => v === through,
+  );
+
 describe('the practice sound, through every door', () => {
   it('practice sound reuses one gesture primed context across all start and resume doors', async () => {
     for (const engine of ['chromium', 'webkit'] as Engine[]) {
@@ -417,7 +432,7 @@ describe('the practice sound, through every door', () => {
         await page.getByRole('button', { name: 'Turn on sound' }).waitFor();
         expect(await contexts(app)).toBe(0);
         await primedBy(app, 'practice-screen recovery', () => page.getByRole('button', { name: 'Turn on sound' }).click());
-        await expect.poll(() => page.getByRole('button', { name: 'Turn on sound' }).count()).toBe(0);
+        await page.getByRole('button', { name: 'Turn on sound' }).waitFor({ state: 'detached', timeout: 20_000 });
         // Recovery is a tap on the sound alone: the clock is exactly as it was.
         expect((await persisted(app)).active).toEqual(clockBefore);
         await discardBlock(page);
@@ -453,7 +468,7 @@ describe('the practice sound, through every door', () => {
           // and none is queued for later.
           await page.clock.fastForward(601_000);
           await expect.poll(() => page.locator('main').innerText(), { timeout: 10_000 }).toContain('Target reached');
-          expect((await persisted(app)).active!.signalledThrough, label).toBe(1);
+          expect(await markerLanded(app, 'active', 1), label).toBe(1);
           expect(count(await since(app, from), 'start'), label).toBe(0);
           const note = await page.locator('main').innerText();
           if (label.includes('ctorThrows') || label.includes('unsupported')) expect(note, label).toMatch(/no practice sound|off on this page/);
@@ -520,12 +535,12 @@ describe('the practice sound, through every door', () => {
         expect(await cues(startedFrom)).toBe(0);
         await page.clock.runFor(4_000);
         await expect.poll(() => page.locator('main').innerText()).toContain('Target reached');
-        expect((await persisted(app)).active!.signalledThrough).toBe(1);
+        expect(await markerLanded(app, 'active', 1)).toBe(1);
         expect(await cues(startedFrom)).toBe(1);
         // Practising past target never announces again, and never auto-finishes.
         await page.clock.runFor(120_000);
         expect(await cues(startedFrom)).toBe(1);
-        expect(await page.getByRole('button', { name: 'Finish' }).count()).toBe(1);
+        await expect.poll(() => page.getByRole('button', { name: 'Finish' }).count()).toBe(1);
         // Pause and Resume replay nothing consumed.
         await page.getByRole('button', { name: 'Pause' }).click();
         await page.clock.runFor(30_000);
@@ -563,7 +578,7 @@ describe('the practice sound, through every door', () => {
         await expect.poll(() => page.locator('main').innerText()).toContain('Target reached');
         await page.clock.runFor(2_000);
         expect(await cues(from)).toBe(1);
-        expect((await persisted(app)).active!.signalledThrough).toBe(1);
+        expect(await markerLanded(app, 'active', 1)).toBe(1);
         // …and the same again through a second navigation: nothing replays.
         await goTo(app, '/');
         await goTo(app, '/active');
@@ -591,12 +606,12 @@ describe('the practice sound, through every door', () => {
         // this new page has no running context, and none is created for it.
         expect(count(await trace(app), 'vibrate')).toBe(1);
         expect(count(await trace(app), 'ctor')).toBe(0);
-        expect((await persisted(app)).active!.signalledThrough).toBe(1);
+        expect(await markerLanded(app, 'active', 1)).toBe(1);
         // Turning the sound on afterwards plays the TEST cue, never the boundary.
         await page.getByRole('button', { name: 'Turn on sound' }).click();
         await page.clock.runFor(1_000);
         expect(count(await trace(app), 'start')).toBe(2);
-        expect((await persisted(app)).active!.signalledThrough).toBe(1);
+        expect(await markerLanded(app, 'active', 1)).toBe(1);
         await discardBlock(page);
 
         // --- A ROUTINE: natural boundary, background catch-up, final ------
@@ -607,7 +622,7 @@ describe('the practice sound, through every door', () => {
         await page.clock.runFor(62_000);
         await expect.poll(() => page.locator('main').innerText()).toContain('Segment 2 of 3');
         expect(await cues(from)).toBe(1);
-        expect((await persisted(app)).activeRoutine!.signalledThrough).toBe(1);
+        expect(await markerLanded(app, 'activeRoutine', 1)).toBe(1);
         // The arrival is visible for a window, then not.
         expect(await page.locator('main').innerText()).toContain('New segment');
         await page.clock.runFor(10_000);

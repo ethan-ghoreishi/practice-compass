@@ -1,33 +1,64 @@
-# Checks for branches and pull requests. Pushes to main are checked AND
-# deployed by deploy.yml (lint + tests + build gate the Pages deployment in
-# one dependency chain there).
+# Checks for branch pushes. Pull requests are checked by the Prismatica Gate
+# alone (prismatica-gate.yml), so a lane's push runs the suite once here and
+# once there, never a third time. Pushes to main are checked AND deployed by
+# deploy.yml, whose check job runs exactly these steps (ci-browser-setup.test.ts).
 name: CI
 
 on:
-  pull_request:
   push:
     branches-ignore: [main]
   workflow_dispatch:
+    inputs:
+      dead_mirror_drill:
+        description: Blackhole the Azure apt mirror before the browser install, to prove failover on the real runner
+        type: boolean
+        default: false
+
+# A newer push to the same branch makes the running check moot.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    # About 2.5x a normal run. GitHub's own default is six hours.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
+      # Dispatch-only drill: make the runner's first apt mirror unreachable
+      # (an address that drops packets, so a connection hangs as it did when
+      # the mirror died) and print the mirror setup this image really uses.
+      - name: dead-mirror drill
+        if: github.event_name == 'workflow_dispatch' && inputs.dead_mirror_drill
+        run: |
+          echo '10.255.255.1 azure.archive.ubuntu.com' | sudo tee -a /etc/hosts
+          cat /etc/apt/apt-mirrors.txt /etc/apt/sources.list.d/* 2>/dev/null || true
+      # A dead package mirror once hung the browser install for 50+ minutes:
+      # apt waits two minutes per file before moving on. The runner image lists
+      # several mirrors (mirror+file), so a short timeout makes apt fail over
+      # to the next one in seconds. Acquire::Retries is a bounded transport
+      # retry for one download, not a retry of any check.
+      - name: fail over from a dead apt mirror in seconds
+        run: |
+          printf 'Acquire::http::Timeout "10";\nAcquire::https::Timeout "10";\nAcquire::Retries "3";\n' | sudo tee /etc/apt/apt.conf.d/99-mirror-failover
+          grep -rqs 'mirror+file:' /etc/apt/sources.list /etc/apt/sources.list.d/ || echo '::warning::apt sources list no mirror+file failover on this image'
       # The suite drives real browsers through Playwright as a library, and the
       # harness FAILS with a setup message rather than skipping when an engine
       # is missing. So every engine the suite can drive is installed here.
       # Unversioned on purpose: it resolves the Playwright `npm ci` just
       # installed, so package-lock.json keeps pinning the browser revisions.
       # Removing an engine reopens a CI-only failure, not a local one.
-      - run: npx playwright install --with-deps chromium webkit
+      - name: install the pinned browsers
+        timeout-minutes: 10
+        run: npx playwright install --with-deps chromium webkit
       - run: npm run lint
       - run: npm test
       - run: npm run build

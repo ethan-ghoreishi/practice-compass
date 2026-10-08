@@ -278,7 +278,6 @@ describe('the archive graph at every inbound door', () => {
         items: local.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'from the other device' } : i)),
       };
       publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 9999);
-      await goTo(app, '/settings');
       await page.getByRole('button', { name: 'Sync now' }).click();
       await expect.poll(() => syncMessage(page), { timeout: 60_000 }).toMatch(/Brought the GitHub copy/i);
       await expect
@@ -344,7 +343,7 @@ describe('the archive graph at every inbound door', () => {
       // --- THE ACTIVE/REVISION GUARD IS UNCHANGED -------------------------
       await goTo(app, '/items/own-dashti');
       await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       await page.getByRole('button', { name: 'Finish' }).waitFor({ timeout: 20_000 });
       const duringPractice = JSON.stringify(await readPersistedState(app));
       await importBackup(app, 'setar-v14.json', V14_TEXT);

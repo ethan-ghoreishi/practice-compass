@@ -161,7 +161,7 @@ describe('the repertoire model at every inbound door', () => {
       // --- UNFINISHED PRACTICE still refuses a deliberate replacement -----
       await goTo(app, '/items/it-iraq');
       await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       await page.getByRole('button', { name: 'Pause' }).click();
       const guarded = await state(app);
       await importBackup(app, 'while-practising.json', LEGACY_TEXT);
@@ -181,7 +181,6 @@ describe('the repertoire model at every inbound door', () => {
         musicTerms: local.musicTerms.map((t) => (t.id === 'term-mahjoubi' ? { ...t, name: 'محجوبی (from the other device)' } : t)),
       };
       publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 9001);
-      await goTo(app, '/settings');
       await page.getByRole('button', { name: 'Sync now' }).click();
       await expect.poll(() => syncMessage(page), { timeout: 60_000 }).toMatch(/Brought the GitHub copy/i);
       await persistedUntil(
@@ -210,7 +209,6 @@ describe('the repertoire model at every inbound door', () => {
         ),
       };
       publishRemote(remote, remoteStateText(otherEdit), await hashState(otherEdit), 9200);
-      await goTo(app, '/settings');
       await page.getByRole('button', { name: 'Sync now' }).click();
       await page.getByRole('button', { name: 'Take the GitHub copy' }).waitFor({ timeout: 60_000 });
       await page.getByRole('button', { name: 'Take the GitHub copy' }).click();
