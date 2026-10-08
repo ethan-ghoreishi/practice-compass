@@ -1,59 +1,27 @@
 ---
 id: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 contractId: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
-patchId: de9ae683c005de9abfc751894b4ab3908206e2f8
-reviewer: supervisor
+patchId: 924c3d2ef8fc2478d9869fecac5ca802cfd7523f
+reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: journey-wait-guard-complete-enforcement
-    summary: "[P2] ac-7 still lets a helper or poll callback with an un-counted
-      return path pass. returnsOf()/returned() in tests/journey-waits.test.ts
-      (lines 517-536) count only `return <expr>`, so a bare `return;`, a
-      reachable end of body (an if with no else, a switch fall-through, a try
-      whose catch falls off) or an implicit undefined is not a second return
-      path. That contradicts the header's own rule ('a second return path ...
-      leaves every call unjudged') and 85fe668's 'a guard ... means UNKNOWN';
-      the GUARDED row covers only `return 0;`. The same hole reaches all three
-      consumers of returned(): helperValue, reduce's arrow branch (inline poll
-      callbacks) and arrayOf. Fold-ins in the same 'nothing unreducible counts
-      as safe' family: `export { helper }` leaves the helper's read judged
-      nowhere, a read method passed uncalled (Reflect.apply) is not a read node
-      although helper references are, and toMatch accepts a regex whose sense is
-      absence."
-    counterexample: "Ran scan() from 33daf16, extracted unchanged into a scratch
-      script, with file 'synthetic.browser.test.ts'. Each of these returns []
-      (accepted): (A1) `async function hidden(b, open) { if (!open) return;
-      return b.isHidden(); } await expect.poll(() => hidden(box,
-      open)).toBeFalsy();` With open=false it returns undefined and passes at
-      once with nothing on screen, yet the scan judges it a presence wait. (A2)
-      the same with `if (open) return b.isHidden();` and an implicit
-      fall-through. (A3) inline: `await expect.poll(async () => { if (!open)
-      return; return box.isHidden(); }).toBeFalsy();` (A4) `async function
-      rows(b, open) { if (!open) return; return b.count(); } await
-      expect.poll(() => rows(box, open)).toBeUndefined();` (E7) `async function
-      rows(b) { try { return b.count(); } catch { } } await expect.poll(() =>
-      rows(box)).toBeUndefined();` (E9) `async function hidden(b, k) { switch
-      (k) { case 1: return b.isHidden(); } } await expect.poll(() => hidden(box,
-      k)).toBeFalsy();` Same family: (B1) `async function rows(b) { return
-      b.count(); } export { rows };` returns [], while `export { rows as r }`
-      and `export default rows` return ['read']. A file importing it, `import {
-      rows } from './x'; expect(await rows(box)).toBe(1);`, also returns [].
-      (D1) `expect(await Reflect.apply(box.isVisible, box, [])).toBe(true);`
-      returns []. (C1/C2) `await expect.poll(() =>
-      page.url()).toMatch(/^[^?]+$/);` and `.toMatch(/^(?!.*composer=).+/)`
-      return []: a regex's sense is as invisible as a boolean's, and C2 is the
-      ledgered `.not.toMatch(/composer=/)` spelled differently. A repository
-      sweep found no real journey site using any of these shapes today (the
-      three real bare `return;` hits are in page scripts and fakes), so the
-      holes are latent guard gaps, as in the prior rejection. Fix shape:
-      returned() yields a value only when the body's ONE return statement, bare
-      returns counted, is its last top-level statement; otherwise UNKNOWN. Treat
-      `export { name }` as exporting the helper. Treat an uncalled reference to
-      a READS method as a read. Refuse toMatch regexes containing a lookahead or
-      a negated class, or treat every regex as unprovable."
-createdAt: 2026-10-08T19:00:42.123Z
-sealedAt: 2026-10-08T19:10:37.407Z
+    summary: "[P2] ac-7 fails open for statically known computed destructuring keys.
+      Every recognisable rendered-state read must reach a judgement or ledger
+      entry."
+    counterexample: 'On HEAD 3cfbb69, scan() accepts const { ["isVisible"]: read } =
+      box; expect(await Reflect.apply(read, box, [])).toBe(true). The same gap
+      exists across the guarded read methods, string/no-substitution-template
+      computed keys, and declaration/assignment/parameter destructuring. No real
+      journey currently uses these forms. Close the family at shared
+      property-name extraction rather than patching individual examples. Support
+      all statically knowable property-name forms consistently; genuinely
+      dynamic keys may remain outside the supported boundary but must be
+      documented/tested as such. Earlier helper-return, export, read-reference,
+      regex and navigation findings are resolved.'
+createdAt: 2026-10-08T19:47:09.532Z
+sealedAt: 2026-10-08T20:05:11.098Z
 ---
 
 # Review: Make browser tests, CI and the Prismatica Gate fast, deterministic and trustworthy
@@ -67,297 +35,412 @@ sealedAt: 2026-10-08T19:10:37.407Z
 - **Contract:** 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/49
 - **Risk tier:** normal — a feature or bug — full checks plus a sealed fresh-eyes review
-- **Diff patch-id:** `de9ae683c005de9abfc751894b4ab3908206e2f8`
+- **Diff patch-id:** `924c3d2ef8fc2478d9869fecac5ca802cfd7523f`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
-## The plan the owner approved
 
-Verbatim. `assumptions` and `possibleConflicts` are the Planner's advisory
-reading — check them against the diff rather than accepting them.
+## Re-review after a rejection — scoped to the rework
 
-````yaml
-# Approved intent: Make browser tests, CI and the Prismatica Gate fast, deterministic and trustworthy
+The last review of this contract asked for changes. This is NOT the whole plan
+restated: it is what changed since the previously reviewed head, the findings
+that review recorded, and the paths the rework touched — read any file you need
+from the lane. The same Check already bound to this head is not to be rerun
+wholesale.
 
-The owner imported this plan and confirmed the change. Its approved meaning is
-recorded here verbatim; the transport snapshot is deliberately omitted.
+Verify each prior finding's FAMILY across every consumer in the repository, not
+only the lines this rework changed: a family is closed when no instance of its
+invariant survives anywhere, and a fix that reached one consumer while a sibling
+still breaks it is not closed.
 
-- **Kind:** technical
-- **Risk tier:** normal
-- **Builder:** claude
+**Approved intent:** `.prismatica/intents/20261007-make-browser-tests-ci-and-the-prismatica-0e6c.md`
 
-## What the owner asked for
+**Findings from the previous review:**
 
-This is the wording the owner and the planning agent settled on together, taken
-from the plan itself — not a description reconstructed afterwards.
+- **journey-wait-guard-complete-enforcement** — [P2] ac-7 still lets a helper or poll callback with an un-counted return path pass. returnsOf()/returned() in tests/journey-waits.test.ts (lines 517-536) count only `return <expr>`, so a bare `return;`, a reachable end of body (an if with no else, a switch fall-through, a try whose catch falls off) or an implicit undefined is not a second return path. That contradicts the header's own rule ('a second return path ... leaves every call unjudged') and 85fe668's 'a guard ... means UNKNOWN'; the GUARDED row covers only `return 0;`. The same hole reaches all three consumers of returned(): helperValue, reduce's arrow branch (inline poll callbacks) and arrayOf. Fold-ins in the same 'nothing unreducible counts as safe' family: `export { helper }` leaves the helper's read judged nowhere, a read method passed uncalled (Reflect.apply) is not a read node although helper references are, and toMatch accepts a regex whose sense is absence.
+  _counterexample:_ Ran scan() from 33daf16, extracted unchanged into a scratch script, with file 'synthetic.browser.test.ts'. Each of these returns [] (accepted): (A1) `async function hidden(b, open) { if (!open) return; return b.isHidden(); } await expect.poll(() => hidden(box, open)).toBeFalsy();` With open=false it returns undefined and passes at once with nothing on screen, yet the scan judges it a presence wait. (A2) the same with `if (open) return b.isHidden();` and an implicit fall-through. (A3) inline: `await expect.poll(async () => { if (!open) return; return box.isHidden(); }).toBeFalsy();` (A4) `async function rows(b, open) { if (!open) return; return b.count(); } await expect.poll(() => rows(box, open)).toBeUndefined();` (E7) `async function rows(b) { try { return b.count(); } catch { } } await expect.poll(() => rows(box)).toBeUndefined();` (E9) `async function hidden(b, k) { switch (k) { case 1: return b.isHidden(); } } await expect.poll(() => hidden(box, k)).toBeFalsy();` Same family: (B1) `async function rows(b) { return b.count(); } export { rows };` returns [], while `export { rows as r }` and `export default rows` return ['read']. A file importing it, `import { rows } from './x'; expect(await rows(box)).toBe(1);`, also returns []. (D1) `expect(await Reflect.apply(box.isVisible, box, [])).toBe(true);` returns []. (C1/C2) `await expect.poll(() => page.url()).toMatch(/^[^?]+$/);` and `.toMatch(/^(?!.*composer=).+/)` return []: a regex's sense is as invisible as a boolean's, and C2 is the ledgered `.not.toMatch(/composer=/)` spelled differently. A repository sweep found no real journey site using any of these shapes today (the three real bare `return;` hits are in page scripts and fakes), so the holes are latent guard gaps, as in the prior rejection. Fix shape: returned() yields a value only when the body's ONE return statement, bare returns counted, is its last top-level statement; otherwise UNKNOWN. Treat `export { name }` as exporting the helper. Treat an uncalled reference to a READS method as a read. Refuse toMatch regexes containing a lookahead or a negated class, or treat every regex as unprovable.
 
-> Design one coherent, durable lane to make browser tests, CI and Prismatica Gate fast, deterministic and trustworthy, so future lanes do not experience the issues that have been happening (e.g. not blocked by unrelated flakes, timing races, long installs or runner/network problems). Known areas: practice-cues persistence timing; WebKit/browser journey flakes; UI/URL/render timing races; Playwright/system dependency install stalls; CI/Gate duplication and runtime; missing time bounds and poor failure isolation; Node/runtime differences between CI and Gate. Solve these together as one reliability problem. Validate rather than assume the known remedies, including persisted-state waits, workflow timeouts/package-source strategy and Node 24 alignment. Fix root causes, preserve test strength and product behaviour, and improve both reliability and runtime. Avoid sleeps, blind retries, skipped/weakened assertions and unrelated cleanup. Agreed while planning: Claude builds; CI keeps its push trigger and the Gate stays the single pull-request check (CI's pull_request trigger is dropped — verified: main has no branch protection, rulesets or required checks, and `prismatica merge` requires only a passing prismatica-gate check and a CLEAN merge state).
+**What changed since the previously reviewed head:**
 
-## Why
-
-Since 2026-09-16, 18 CI and 17 Gate runs failed. Setup defects (missing WebKit, shallow clone, shared Vite cache, sync left in flight) are already fixed. Four root-cause families remain open, and each has hit a lane that did not touch it:
-(1) PERSISTENCE ORDERING. A persisted read sees a write only if the write's IndexedDB transaction was created first. Writes created synchronously in the store action behind a UI cue are ordered. Writes created later — the effect-claimed `signalledThrough` marker (ActiveBlock.tsx:37, RoutineRunner effects), async continuations (import, sync, refresh, restore) — are not. That is the practice-sound Gate failure (practice-cues.browser.test.ts reads at 456/523/566/594/599/610). `reload()` hides the same race behind `waitForTimeout(400)` on every call (~130 call sites); three journeys add 300 ms sleeps; two files hand-roll their own pollers.
-(2) NAVIGATION SETTLE. `goTo` (218 calls) waits for `nav[Primary]` or non-empty `<main>`. The OUTGOING page satisfies both while the lazy destination is still pending in the router's transition, so `goTo` returns before the destination exists. Point-in-time reads then hit the old page: the layout WebKit failure (`count()` of Working notes = 0) and the repertoire navigation failures. `arrive` fixes this only at the 22 sites that call it.
-(3) TRANSITION-HELD CONTROLS. While a URL render is pending, React holds a controlled input or select at its last rendered value (the ac-7 Composer failure, fixed by polling). The family is any positive point-in-time read of transition-rendered state: ~115 `count()`/`isVisible()` reads, unclassified.
-(4) RUNNER EXPOSURE.
-- No `timeout-minutes` anywhere, so a dead Azure apt mirror stalled `playwright install --with-deps` for 50+ minutes against GitHub's 6-hour default, twice on one PR.
-- Every lane push runs the full suite three times on identical code (CI push, CI pull_request, Gate), tripling flake and infrastructure exposure.
-- Node 22 in CI and deploy, Node 24 in the Gate, Node 26 locally.
-These are one problem: the proof a lane depends on fails for reasons the lane did not cause.
-
-## Today
-
-- Gate ~7–8 min, of which the suite takes 5.5–6 min on a 4-vCPU runner; locally the full suite takes 143 s in parallel and 733 s single-threaded.
-- A dead package mirror hangs the job until it is cancelled by hand.
-- The suite runs three times per PR push, with no cancelling of superseded runs.
-- Several helpers report success before what they claim ("went to", "reloaded after the write", "read the persisted marker") has happened. Most runs pass, and an unlucky runner fails a lane that touched none of it.
-
-## Instead
-
-Every family is closed by an invariant enforced in one shared place and proven by a discriminating test. New tests live in exactly these files:
-- N1 and N2 self-tests: `tests/journey-harness.browser.test.ts`.
-- The N3 guard: `tests/journey-waits.test.ts`.
-- N4: `tests/ci-browser-setup.test.ts`.
-Scope lists each touchable test file explicitly, because Prismatica's secret check refuses a wildcard filename.
-- N1 — navigation settles: `goTo` returns only after the destination has committed.
-  - Mechanism, probed in both engines with `delayPagesMs` = 1500: before navigating, tag the outgoing `main h1` element; then wait until `main h1` is a different element or the same element with different text.
-  - Probe result: during the pending window the old h1 stayed for ~1.5 s. A different lazy page (first load or cached), a redirect (`/items`), a focused route (`/active`) and the same component with new params (`/items/X` → `/items/Y`, committed synchronously inside the popstate) all resolved.
-  - `goTo` takes an optional explicit arrival (a heading or locator) for the documented exception, where two pages share a heading. On timeout it throws naming that cause, never hangs. The never-goTo-the-current-route rule stays.
-  - If the self-test refutes the heading signal, fall back to a required arrival on every call, enforced by the N3 guard.
-- N2 — persistence is ordered:
-  - `reload()` replaces its 400 ms sleep with an IndexedDB barrier: a readwrite `kv` transaction, awaited to completion, which is ordered after every write already issued.
-  - Every read of an effect-issued or async write waits for its exact expected value (`persistedUntil` is the one poller; the local `until` copies fold into it), or for a UI acknowledgement that itself awaits storage.
-  - A negative claim first waits for a positive "action finished" signal, then reads at a point in time.
-  - New harness option, mirroring `delayPagesMs`: `delayStorageMs` (also settable by env for a proof run). An init script keeps the app's readwrite transactions open that long by chaining no-op requests, so writes complete late as on a slow device.
-- N3 — journeys wait on events. A static guard over `tests/*.ts`, with a visible ledger as in `direction.test.ts`, enforces:
-  1. No `waitForTimeout` or promise-wrapped `setTimeout`, except ledgered entries, each with its reason: the harness fixtures (`delayPagesMs`, `delayStorageMs`), page-side fakes (the AudioContext fake's `onended`), and one harness helper for bounded negative windows.
-  2. No hand-rolled persistence pollers.
-  3. No positive point-in-time existence or state assertion: `expect(await X.count())` compared ≥ 1, or `expect(await X.isVisible|isChecked|isEnabled|isDisabled()).toBe(true)`. These become `expect.poll` (about 34 sites).
-  4. Every polled negative (`expect.poll(...)` with `.not`, `toBe(0)`, `toBe(false)` or `toEqual([])`; 7 sites today) is a ledgered disappearance-after-presence wait. Its test has already waited for the same thing to be present, so the poll cannot pass vacuously.
-  Value reads (`inputValue`, `innerText`, …) after an N1-settled destination stay as they are. A transition-rendered control read straight after a URL-only wait is polled, as ac-7 already is.
-- N4 — workflows are bounded and aligned:
-  - Each suite workflow has a job `timeout-minutes` (about 2.5× the normal run) and a bounded browser-install step.
-  - apt fails over from a dead mirror in seconds before `playwright install --with-deps`; the mirror experiment picks the mechanism.
-  - All suite workflows use Node 24.
-  - CI runs on branch pushes and manual dispatch only; the Gate is the only pull-request run.
-  - Superseded runs cancel, with concurrency keyed `${{ github.workflow }}` plus the ref or PR (groups are repo-wide).
-  - `deploy.yml`'s check job runs the same setup and check steps as `ci.yml`'s, so CI on push proves deploy's check by construction. Parity ignores only deploy's upload and deploy steps and CI's drill step.
-  - CI offers a dispatch-only dead-mirror drill (an input, default off, that blackholes the Azure mirror host before the install), so failover is proven on the real runner image rather than assumed.
-  - The install-step bound exceeds the drill's measured failover time.
-  - `ci-browser-setup.test.ts` discovers all of this from the workflow files, with synthetic negatives.
-Expected result:
-- Suite runs per PR push go from 3 to 2.
-- Worst-case infrastructure hang goes from 6 h to the step bound, and a dead mirror passes via failover.
-- The ≥52 s serial reload sleep and the other sleeps go, saving roughly 15–25 s of runner suite time. Record real before/after numbers.
-- The main gain is zero reruns from these families.
-
-## Advisory — the planning agent's reading, not established fact
-
-The two lists below are the planning agent's interpretation. Deterministic code
-checked that this plan is complete, in scope, correctly bound, and correctly
-tiered; it did not and cannot check whether this reading of the app is right.
-Verify them against the code.
-
-**Assumptions**
-
-- Dexie creates the IDB transaction synchronously inside the store action once the DB is open, and the IDB spec orders a later transaction with an overlapping scope after it across connections. N2's barrier relies on both. A transaction still open at unload is aborted, which is why a reload that beats a slow write loses it. The `delayStorageMs` self-test proves all of this in both engines rather than assuming it.
-- The ubuntu-latest apt mirror list falls back between mirrors (the stalled logs show Azure http `Ign`, then archive.ubuntu.com `Hit`); the stall was per-file network timeouts. This Mac has no container runtime, so failover cannot be reproduced before review. The N4 drill proves it on GitHub after ship. Before review, the timeout and fallback settings are chosen from apt's documented `Acquire::*` behaviour, and the step bound is the guarantee if the drill disagrees.
-- Proofs run Gate-equivalent: Node 24 via `npx -y -p node@24`, `npx vitest run --reporter=json`. The local default is Node 26.
-- Lifecycle and proof — what is proven where.
-BEFORE REVIEW, local and Gate-equivalent, by the builder:
-(a) Each new discriminating test fails on the pre-fix harness:
-  - N1: from a page to a lazy destination under `delayPagesMs` 1500, both engines.
-  - N2: with `delayStorageMs` 1500, an action then `reload()` loses the write with the old 400 ms sleep and keeps it with the barrier.
-  - N3 and N4: synthetic snippets.
-(b) Then the fix; affected journeys ×10, Chromium also under CDP 20× throttle.
-(c) Full suite: plain ×2, `--sequence.shuffle` seeds ×3, under host CPU load ×1, `--no-file-parallelism` ×1, and ×1 with `delayStorageMs` set globally.
-(d) lint, tsc, build, actionlint over the workflows (a binary or `npx`, never a dependency), `prismatica check`. Local before/after suite timings go in DECISIONS now, never after ship.
-AFTER SHIP, before merge — observed, never committed:
-- CI(push) and the Gate must pass on the exact head on their first run (the first real run of the edited workflows), and the builder dispatches the mirror drill on the lane branch.
-- Any failure is diagnosed. A code fix goes back through check → review → seal → ship.
-- At most one rerun, and only for a diagnosed infrastructure fault outside this lane's remedies.
-- GitHub step timings go in the final report.
-AFTER MERGE: the first deploy run on main is watched; parity with CI makes it low-risk.
-Limit: CPU throttling exists only in Chromium; WebKit gets host load and slow storage.
-
-**Possible conflicts**
-
-- AGENTS.md has 8 bytes of always-loaded budget left (claude 32760/32768). The Harness sentence must be rewritten in place at net ≤ 0 bytes (N1–N3 replace clauses, never append).
-- `prismatica update` edits only the Gate pin, byte-preserving, but refuses while an open lane's scope allows prismatica-gate.yml. Do not upgrade Prismatica during this lane.
-- Some `goTo` callers may rely on it returning early, or navigate to a URL that redirects. N1 must treat the redirect target as the destination, and the full suite is the arbiter.
-- `Acquire::Retries` is a bounded transport retry for a package download, not a test retry. Reviewers should judge it against the no-blind-retries rule on that basis.
-- Tier stays normal: Prismatica 0.10.0 derives it from honest risk answers, and heavy (which adds a Gate-enforced signed owner decision) is for auth, payments, saved data and schema. Integrity is carried instead by the review focus, the discovery tests and the lane's own Gate run. If the owner wants a signed decision anyway, `prismatica amend <id> --tier heavy` before building starts is the supported route; after an approved seal it can no longer be amended.
-
-## The complete approved plan
-
-```json
-{
-  "format": "prismatica/start@1",
-  "request": "Design one coherent, durable lane to make browser tests, CI and Prismatica Gate fast, deterministic and trustworthy, so future lanes do not experience the issues that have been happening (e.g. not blocked by unrelated flakes, timing races, long installs or runner/network problems). Known areas: practice-cues persistence timing; WebKit/browser journey flakes; UI/URL/render timing races; Playwright/system dependency install stalls; CI/Gate duplication and runtime; missing time bounds and poor failure isolation; Node/runtime differences between CI and Gate. Solve these together as one reliability problem. Validate rather than assume the known remedies, including persisted-state waits, workflow timeouts/package-source strategy and Node 24 alignment. Fix root causes, preserve test strength and product behaviour, and improve both reliability and runtime. Avoid sleeps, blind retries, skipped/weakened assertions and unrelated cleanup. Agreed while planning: Claude builds; CI keeps its push trigger and the Gate stays the single pull-request check (CI's pull_request trigger is dropped — verified: main has no branch protection, rulesets or required checks, and `prismatica merge` requires only a passing prismatica-gate check and a CLEAN merge state).",
-  "builder": "claude",
-  "summary": "Make browser tests, CI and the Prismatica Gate fast, deterministic and trustworthy",
-  "rationale": "Since 2026-09-16, 18 CI and 17 Gate runs failed. Setup defects (missing WebKit, shallow clone, shared Vite cache, sync left in flight) are already fixed. Four root-cause families remain open, and each has hit a lane that did not touch it:\n(1) PERSISTENCE ORDERING. A persisted read sees a write only if the write's IndexedDB transaction was created first. Writes created synchronously in the store action behind a UI cue are ordered. Writes created later — the effect-claimed `signalledThrough` marker (ActiveBlock.tsx:37, RoutineRunner effects), async continuations (import, sync, refresh, restore) — are not. That is the practice-sound Gate failure (practice-cues.browser.test.ts reads at 456/523/566/594/599/610). `reload()` hides the same race behind `waitForTimeout(400)` on every call (~130 call sites); three journeys add 300 ms sleeps; two files hand-roll their own pollers.\n(2) NAVIGATION SETTLE. `goTo` (218 calls) waits for `nav[Primary]` or non-empty `<main>`. The OUTGOING page satisfies both while the lazy destination is still pending in the router's transition, so `goTo` returns before the destination exists. Point-in-time reads then hit the old page: the layout WebKit failure (`count()` of Working notes = 0) and the repertoire navigation failures. `arrive` fixes this only at the 22 sites that call it.\n(3) TRANSITION-HELD CONTROLS. While a URL render is pending, React holds a controlled input or select at its last rendered value (the ac-7 Composer failure, fixed by polling). The family is any positive point-in-time read of transition-rendered state: ~115 `count()`/`isVisible()` reads, unclassified.\n(4) RUNNER EXPOSURE.\n- No `timeout-minutes` anywhere, so a dead Azure apt mirror stalled `playwright install --with-deps` for 50+ minutes against GitHub's 6-hour default, twice on one PR.\n- Every lane push runs the full suite three times on identical code (CI push, CI pull_request, Gate), tripling flake and infrastructure exposure.\n- Node 22 in CI and deploy, Node 24 in the Gate, Node 26 locally.\nThese are one problem: the proof a lane depends on fails for reasons the lane did not cause.",
-  "kind": "technical",
-  "currentBehaviour": "- Gate ~7–8 min, of which the suite takes 5.5–6 min on a 4-vCPU runner; locally the full suite takes 143 s in parallel and 733 s single-threaded.\n- A dead package mirror hangs the job until it is cancelled by hand.\n- The suite runs three times per PR push, with no cancelling of superseded runs.\n- Several helpers report success before what they claim (\"went to\", \"reloaded after the write\", \"read the persisted marker\") has happened. Most runs pass, and an unlucky runner fails a lane that touched none of it.",
-  "desiredBehaviour": "Every family is closed by an invariant enforced in one shared place and proven by a discriminating test. New tests live in exactly these files:\n- N1 and N2 self-tests: `tests/journey-harness.browser.test.ts`.\n- The N3 guard: `tests/journey-waits.test.ts`.\n- N4: `tests/ci-browser-setup.test.ts`.\nScope lists each touchable test file explicitly, because Prismatica's secret check refuses a wildcard filename.\n- N1 — navigation settles: `goTo` returns only after the destination has committed.\n  - Mechanism, probed in both engines with `delayPagesMs` = 1500: before navigating, tag the outgoing `main h1` element; then wait until `main h1` is a different element or the same element with different text.\n  - Probe result: during the pending window the old h1 stayed for ~1.5 s. A different lazy page (first load or cached), a redirect (`/items`), a focused route (`/active`) and the same component with new params (`/items/X` → `/items/Y`, committed synchronously inside the popstate) all resolved.\n  - `goTo` takes an optional explicit arrival (a heading or locator) for the documented exception, where two pages share a heading. On timeout it throws naming that cause, never hangs. The never-goTo-the-current-route rule stays.\n  - If the self-test refutes the heading signal, fall back to a required arrival on every call, enforced by the N3 guard.\n- N2 — persistence is ordered:\n  - `reload()` replaces its 400 ms sleep with an IndexedDB barrier: a readwrite `kv` transaction, awaited to completion, which is ordered after every write already issued.\n  - Every read of an effect-issued or async write waits for its exact expected value (`persistedUntil` is the one poller; the local `until` copies fold into it), or for a UI acknowledgement that itself awaits storage.\n  - A negative claim first waits for a positive \"action finished\" signal, then reads at a point in time.\n  - New harness option, mirroring `delayPagesMs`: `delayStorageMs` (also settable by env for a proof run). An init script keeps the app's readwrite transactions open that long by chaining no-op requests, so writes complete late as on a slow device.\n- N3 — journeys wait on events. A static guard over `tests/*.ts`, with a visible ledger as in `direction.test.ts`, enforces:\n  1. No `waitForTimeout` or promise-wrapped `setTimeout`, except ledgered entries, each with its reason: the harness fixtures (`delayPagesMs`, `delayStorageMs`), page-side fakes (the AudioContext fake's `onended`), and one harness helper for bounded negative windows.\n  2. No hand-rolled persistence pollers.\n  3. No positive point-in-time existence or state assertion: `expect(await X.count())` compared ≥ 1, or `expect(await X.isVisible|isChecked|isEnabled|isDisabled()).toBe(true)`. These become `expect.poll` (about 34 sites).\n  4. Every polled negative (`expect.poll(...)` with `.not`, `toBe(0)`, `toBe(false)` or `toEqual([])`; 7 sites today) is a ledgered disappearance-after-presence wait. Its test has already waited for the same thing to be present, so the poll cannot pass vacuously.\n  Value reads (`inputValue`, `innerText`, …) after an N1-settled destination stay as they are. A transition-rendered control read straight after a URL-only wait is polled, as ac-7 already is.\n- N4 — workflows are bounded and aligned:\n  - Each suite workflow has a job `timeout-minutes` (about 2.5× the normal run) and a bounded browser-install step.\n  - apt fails over from a dead mirror in seconds before `playwright install --with-deps`; the mirror experiment picks the mechanism.\n  - All suite workflows use Node 24.\n  - CI runs on branch pushes and manual dispatch only; the Gate is the only pull-request run.\n  - Superseded runs cancel, with concurrency keyed `${{ github.workflow }}` plus the ref or PR (groups are repo-wide).\n  - `deploy.yml`'s check job runs the same setup and check steps as `ci.yml`'s, so CI on push proves deploy's check by construction. Parity ignores only deploy's upload and deploy steps and CI's drill step.\n  - CI offers a dispatch-only dead-mirror drill (an input, default off, that blackholes the Azure mirror host before the install), so failover is proven on the real runner image rather than assumed.\n  - The install-step bound exceeds the drill's measured failover time.\n  - `ci-browser-setup.test.ts` discovers all of this from the workflow files, with synthetic negatives.\nExpected result:\n- Suite runs per PR push go from 3 to 2.\n- Worst-case infrastructure hang goes from 6 h to the step bound, and a dead mirror passes via failover.\n- The ≥52 s serial reload sleep and the other sleeps go, saving roughly 15–25 s of runner suite time. Record real before/after numbers.\n- The main gain is zero reruns from these families.",
-  "mustNotChange": [
-    "Product code and behaviour: nothing under src/ changes, and no app debug hook, data attribute or test-only signal is added. If a family genuinely cannot be closed from the harness, stop and ask for an amend.",
-    "Test strength: an exact assertion stays exact (`toBe(1)` never becomes `> 0` or 'defined'), every engine and viewport loop stays, no assertion is skipped or deleted, Vitest retry stays 0, and timeouts are never raised as a fix.",
-    "Harness rules in AGENTS.md and DECISIONS 2026-09-29 stay: every page error is kept, never goTo the current route, connectSync waits for Sync now, one private Vite cache per server, the fake GitHub remembers main, and a missing browser fails rather than skipping.",
-    "Gate integrity: the `npx --yes prismatica@0.10.0 gate` command and pin, its pull_request trigger to main, `.prismatica/` config and checks, both engines installed before the suite, and the lockfile-pinned unversioned Playwright install.",
-    "Review focus, so it is settled up front:\n- every changed assertion keeps or strengthens its matcher and its engine and viewport coverage;\n- the Gate-integrity items above hold;\n- for each discriminating test, the commit message names the pre-fix command or commit that showed it failing, so the reviewer can re-run it."
-  ],
-  "assumptions": [
-    "Dexie creates the IDB transaction synchronously inside the store action once the DB is open, and the IDB spec orders a later transaction with an overlapping scope after it across connections. N2's barrier relies on both. A transaction still open at unload is aborted, which is why a reload that beats a slow write loses it. The `delayStorageMs` self-test proves all of this in both engines rather than assuming it.",
-    "The ubuntu-latest apt mirror list falls back between mirrors (the stalled logs show Azure http `Ign`, then archive.ubuntu.com `Hit`); the stall was per-file network timeouts. This Mac has no container runtime, so failover cannot be reproduced before review. The N4 drill proves it on GitHub after ship. Before review, the timeout and fallback settings are chosen from apt's documented `Acquire::*` behaviour, and the step bound is the guarantee if the drill disagrees.",
-    "Proofs run Gate-equivalent: Node 24 via `npx -y -p node@24`, `npx vitest run --reporter=json`. The local default is Node 26.",
-    "Lifecycle and proof — what is proven where.\nBEFORE REVIEW, local and Gate-equivalent, by the builder:\n(a) Each new discriminating test fails on the pre-fix harness:\n  - N1: from a page to a lazy destination under `delayPagesMs` 1500, both engines.\n  - N2: with `delayStorageMs` 1500, an action then `reload()` loses the write with the old 400 ms sleep and keeps it with the barrier.\n  - N3 and N4: synthetic snippets.\n(b) Then the fix; affected journeys ×10, Chromium also under CDP 20× throttle.\n(c) Full suite: plain ×2, `--sequence.shuffle` seeds ×3, under host CPU load ×1, `--no-file-parallelism` ×1, and ×1 with `delayStorageMs` set globally.\n(d) lint, tsc, build, actionlint over the workflows (a binary or `npx`, never a dependency), `prismatica check`. Local before/after suite timings go in DECISIONS now, never after ship.\nAFTER SHIP, before merge — observed, never committed:\n- CI(push) and the Gate must pass on the exact head on their first run (the first real run of the edited workflows), and the builder dispatches the mirror drill on the lane branch.\n- Any failure is diagnosed. A code fix goes back through check → review → seal → ship.\n- At most one rerun, and only for a diagnosed infrastructure fault outside this lane's remedies.\n- GitHub step timings go in the final report.\nAFTER MERGE: the first deploy run on main is watched; parity with CI makes it low-risk.\nLimit: CPU throttling exists only in Chromium; WebKit gets host load and slow storage."
-  ],
-  "possibleConflicts": [
-    "AGENTS.md has 8 bytes of always-loaded budget left (claude 32760/32768). The Harness sentence must be rewritten in place at net ≤ 0 bytes (N1–N3 replace clauses, never append).",
-    "`prismatica update` edits only the Gate pin, byte-preserving, but refuses while an open lane's scope allows prismatica-gate.yml. Do not upgrade Prismatica during this lane.",
-    "Some `goTo` callers may rely on it returning early, or navigate to a URL that redirects. N1 must treat the redirect target as the destination, and the full suite is the arbiter.",
-    "`Acquire::Retries` is a bounded transport retry for a package download, not a test retry. Reviewers should judge it against the no-blind-retries rule on that basis.",
-    "Tier stays normal: Prismatica 0.10.0 derives it from honest risk answers, and heavy (which adds a Gate-enforced signed owner decision) is for auth, payments, saved data and schema. Integrity is carried instead by the review focus, the discovery tests and the lane's own Gate run. If the owner wants a signed decision anyway, `prismatica amend <id> --tier heavy` before building starts is the supported route; after an approved seal it can no longer be amended."
-  ],
-  "scope": {
-    "allow": [
-      ".github/workflows/ci.yml",
-      ".github/workflows/deploy.yml",
-      ".github/workflows/prismatica-gate.yml",
-      "tests/practiceBrowser.ts",
-      "tests/ci-browser-setup.test.ts",
-      "tests/journey-harness.browser.test.ts",
-      "tests/journey-waits.test.ts",
-      "tests/daily-practice.browser.test.ts",
-      "tests/lesson-agenda.browser.test.ts",
-      "tests/lessonNotes.browser.test.ts",
-      "tests/musical-term-suggestions.browser.test.ts",
-      "tests/practice-cues.browser.test.ts",
-      "tests/practice-information-inbound.browser.test.ts",
-      "tests/practice-information-layout.browser.test.ts",
-      "tests/practice-information.browser.test.ts",
-      "tests/repertoire-experience.browser.test.ts",
-      "tests/repertoire-inbound.browser.test.ts",
-      "tests/repertoire-viewport.browser.test.ts",
-      "tests/review-ownership.browser.test.ts",
-      "tests/setar-practice-inbound.browser.test.ts",
-      "tests/setar-practice.browser.test.ts",
-      "tests/setar-review-ui.browser.test.ts",
-      "tests/setarArchive.browser.test.ts",
-      "tests/setarInbound.browser.test.ts",
-      "DECISIONS.md",
-      "AGENTS.md"
-    ],
-    "forbid": [
-      "src/**",
-      "package.json",
-      "package-lock.json",
-      "vite.config.ts",
-      ".prismatica/**",
-      "tests/fixtures/**"
-    ]
-  },
-  "exclusions": [
-    "Product fixes, including the open gaps listed in AGENTS.md.",
-    "A container image or a browser cache for CI (an independent version pin, font and geometry drift, small gain).",
-    "Sharding or matrix jobs (the Gate runs the suite as one Prismatica check).",
-    "A shared dev server: measured cold launch 0.6–0.9 s per app locally, a small gain against the isolation and rollback-root complexity.",
-    "Splitting or rewriting journeys for speed, new dependencies, the Playwright test runner, README edits, and other unrelated cleanup."
-  ],
-  "acceptance": [
-    {
-      "description": "N4: every workflow that runs the suite (discovered, never listed) has a job time bound, a bounded browser-install step, and apt mirror failover configured before `playwright install --with-deps`; CI offers the dispatch-only dead-mirror drill. Synthetic workflows missing any of these are reported.",
-      "test": "every workflow that runs the test suite bounds its time and fails over from a dead package mirror"
-    },
-    {
-      "description": "N4: every workflow that runs the suite sets up the same Node major, 24; a synthetic workflow on another major is reported.",
-      "test": "every workflow that runs the test suite uses one Node major"
-    },
-    {
-      "description": "N4: on pull_request only the Gate runs the suite, CI runs on branch pushes and dispatch, and every suite workflow cancels superseded runs with a concurrency group keyed by its own workflow; synthetic duplicates and an unkeyed group are reported.",
-      "test": "the suite runs once per ref kind and superseded runs are cancelled"
-    },
-    {
-      "description": "N4: deploy.yml's check job runs the same setup and check steps, in the same order, as ci.yml's check job (deploy adds only its upload and deploy steps); a synthetic divergence is reported.",
-      "test": "the deploy check runs exactly the steps CI proves on every push"
-    },
-    {
-      "description": "N1: in Chromium and WebKit, with slow page modules, goTo returns only after the destination has committed and the outgoing heading is gone. Covers a first-load lazy page, a cached page, the same page with new params, a focused route and a redirecting URL; a shared-heading pair passed an explicit arrival works, and one without it fails loudly. Fails on the pre-fix goTo.",
-      "test": "navigation returns only once the destination page has rendered, in Chromium and WebKit, even when page modules load slowly"
-    },
-    {
-      "description": "N2: in Chromium and WebKit, with `delayStorageMs` 1500, an action followed by reload() keeps the write and later reads observe it. The pre-fix 400 ms sleep loses it.",
-      "test": "persisted reads and reload are ordered after every write the app has already issued, in Chromium and WebKit"
-    },
-    {
-      "description": "N3: the static guard rejects synthetic offenders of all four rules (a sleep, a local poller, a positive point-in-time existence assertion, an unledgered polled negative) and finds none in the real journeys and harness.",
-      "test": "browser journeys wait on events, never on fixed sleeps, hand-rolled pollers or positive point-in-time reads"
-    },
-    {
-      "description": "N2 applied: every read of the effect-claimed signal marker waits for it to land and still asserts exactly one claim.",
-      "test": "practice sound reuses one gesture primed context across all start and resume doors"
-    },
-    {
-      "description": "N2 applied to routine boundaries, pause and save: persisted reads wait for effect-issued writes, and minutes stay exact.",
-      "test": "practice cues preserve wall clock boundaries and every recorded minute"
-    },
-    {
-      "description": "N1 applied: the WebKit 1280px failure path (Working notes count after reaching the active page) is deterministic.",
-      "test": "practice information controls render accessible directional text at phone and desktop widths"
-    },
-    {
-      "description": "N1/N3 applied: the repertoire navigation journey that failed four times is deterministic.",
-      "test": "repertoire navigation restores browse context without changing session scope"
-    },
-    {
-      "description": "N3 applied: the transition-held select read stays polled and exact under 20× CPU slowdown.",
-      "test": "repertoire search keeps every typed character under heavy cpu slowdown"
-    }
-  ],
-  "risk": {
-    "touchesAuth": false,
-    "touchesPayments": false,
-    "touchesSavedData": false,
-    "copyOnly": false,
-    "rationale": "Tests, the harness and CI workflows only; no product code, schema or stored data, so tier normal (a sealed fresh-eyes review gates the merge). The Gate workflow is the merge choke point: its command, pin and engine install are pinned by mustNotChange and the discovery tests, the review focus is fixed up front, and the lane's own Gate run executes the edited workflow before merge."
-  },
-  "desiredRules": [],
-  "docsDelta": [
-    "DECISIONS.md",
-    "AGENTS.md"
-  ]
-}
+```diff
+diff --git a/DECISIONS.md b/DECISIONS.md
+index 849e2943ef736afc5f3d6cee3c3800818a6fa2dd..ef5a022687326f8aa66fa63d28a14d5df42ef8d9 100644
+--- a/DECISIONS.md
++++ b/DECISIONS.md
+@@ -57,7 +57,13 @@ wrong, measured instead.
+   be judged, and a value poll when its matcher passes on an empty value; a
+   pattern list missed `isHidden` polls, `[false, false]` and `toBe(undefined)`. A
+   wait whose failure `.catch` swallows is a timer when the thing never comes:
+-  daily-practice's one now fails loudly instead. Its ledger says why each exception
++  daily-practice's one now fails loudly instead. Recognising one more spelling at a
++  time kept leaving its siblings open, so what the guard cannot reduce counts as
++  unsafe: a helper means its one final `return` (a bare return or a reachable end
++  is a second path), an uncalled or destructured read method is a read, a helper
++  exported by name is judged where it stands, and only plain-text `toMatch`
++  alternatives prove presence (a regex's sense is as invisible as a boolean's).
++  Its ledger says why each exception
+   stands and how many sites it covers. 44 positive reads
+   became `expect.poll` with the same matcher. Two polled negatives that followed a
+   positive arrival became point-in-time reads. Element disappearances became
+diff --git a/tests/journey-waits.test.ts b/tests/journey-waits.test.ts
+index c198c5cc757627905c2e57b878c7f5e8612a0e81..f942f07974a8651aacee9eb1e5ea36e68dd4fa04 100644
+--- a/tests/journey-waits.test.ts
++++ b/tests/journey-waits.test.ts
+@@ -33,11 +33,14 @@ import { describe, expect, it } from 'vitest';
+ //             the value (one held in a variable), and a read mixed with a
+ //             value (`[await a.count(), url]`);
+ //   read      the same read OUTSIDE an assertion — a branch, a variable, a
+-//             `.bind`, a helper passed or aliased instead of called — is
+-//             refused unless ledgered with what it was read after. A HELPER is
+-//             a local function with a read in what it returns; it means what
+-//             its ONE return evaluates to, so a second return path or a
+-//             return the evaluation cannot reduce leaves every call unjudged;
++//             read method or helper named without a call (passed, aliased,
++//             bound, destructured in a declaration or an `=`) — is refused unless ledgered with what it
++//             was read after. A HELPER is a local function with a read in what
++//             it returns; it means what its ONE return evaluates to, and only
++//             when that return is the body's last statement: a second return,
++//             a bare `return;`, an end of body it can reach, a generator, or a
++//             return the evaluation cannot reduce leaves every call unjudged
++//             (inline callbacks and `.catch` fallbacks alike);
+ //   negative  every poll not PROVEN unable to pass on what never came is
+ //             ledgered with why it cannot: it follows a wait that SAW the thing
+ //             (a disappearance after presence), or it is a presence the table
+@@ -50,7 +53,9 @@ import { describe, expect, it } from 'vitest';
+ //             only a closed table proves it cannot pass on an empty value:
+ //             `toBe`/`toEqual` of a literal whose every leaf is a non-empty
+ //             string or a POSITIVE number (no boolean, 0, -1), `toContain` of a
+-//             non-empty string, `toMatch` of a regex that fails on '',
++//             non-empty string, `toMatch` of a regex of plain-text alternatives
++//             (no anchor, class, group, quantifier or `\D`-style escape, whose
++//             sense may be absence; at most the `i` flag),
+ //             `toBeGreaterThan(n >= 0)`, `toBeGreaterThanOrEqual(n > 0)`,
+ //             `toHaveLength(n > 0)`. Everything else is negative: `.not`, no
+ //             matcher, a variable, an unknown matcher, a boolean (its sense —
+@@ -64,13 +69,15 @@ import { describe, expect, it } from 'vitest';
+ // list (`all`, `allInnerTexts`) reads are VALUE reads, like `inputValue`:
+ // taken after the element was awaited. Deliberately out of reach: `for…of`/
+ // `for…in` loops (walks over a fixed list, as the engine loops are; a timed
+-// poller in one still trips `sleep`), a read method destructured or aliased
+-// (`const { count } = x`), a computed call OUTSIDE an assertion (`x[k]()`
+-// may be anything; inside one it is refused), an aliased `expect`, a helper
+-// exported to another file (its read is judged where it stands, as there is
+-// no caller here to judge), and Playwright's own web-first matchers
+-// (`toBeHidden`…), which these tests cannot reach: they import Vitest's
+-// `expect`; and a value COMPUTED to encode absence (a fallback string, a count
++// poller in one still trips `sleep`), a computed call OUTSIDE an assertion
++// (`x[k]()` may be anything; inside one it is refused), a computed member
++// named without a call (`x[k]` is indexing, indistinguishable from a read
++// method), an aliased `expect`,
++// a helper exported to another file in any spelling (`export function`,
++// `export { rows }`, `export default rows`: its read is judged where it
++// stands, as there is no caller here to judge), and Playwright's own
++// web-first matchers (`toBeHidden`…), which these tests cannot reach: they
++// import Vitest's `expect`; and a value COMPUTED to encode absence (a fallback string, a count
+ // of what is missing) — the table proves a poll cannot pass on an empty or
+ // sentinel value, not that the value means presence. Two helpers sharing a
+ // name, and a helper reached again while it is being evaluated, are judged
+@@ -251,6 +258,12 @@ const LEDGER: { file: string; rule: Rule; snippet: string; sites?: number; why:
+     snippet: '(await takeRemote.count())',
+     why: "after syncNow waited for the sync to finish, so whether it asks is its outcome. Only the unasked arm has been seen (the Edit tap saves nothing, so nothing local changed — the owner's setup gap); the GitHub copy is asserted after either",
+   },
++  {
++    file: 'repertoire-families.test.ts',
++    rule: 'read',
++    snippet: 'exp.count',
++    why: "a plain number in the test's own expectation table, not a Locator: no page is read",
++  },
+   // --- poller: counted loops that ACT each time, never waiting on a state ---
+   {
+     file: 'musical-term-suggestions.browser.test.ts',
+@@ -357,6 +370,10 @@ const READS: Record<string, unknown> = {
+   isDisabled: false,
+   isEditable: false,
+ };
++/** Plain non-empty text: no anchor, class, group, quantifier or letter escape, any of which may give a regex the sense of absence. */
++const PLAIN_TEXT = String.raw`(?:[^\\^$.|?*+()[\]{}/]|\\[^A-Za-z0-9])+`;
++/** A regex literal of plain-text alternatives, at most the `i` flag: it matches only where one of them IS — `toContain` by another name. */
++const PLAIN_REGEX = new RegExp(String.raw`^/${PLAIN_TEXT}(?:\|${PLAIN_TEXT})*/i?$`);
+ const SLEEP = /\b(?:waitForTimeout|setTimeout|setInterval)\b/g;
+ /** What the scan cannot judge: a computed name, an ambiguous helper, a shape it does not reduce. */
+ const UNKNOWN = Symbol('unknown');
+@@ -487,11 +504,8 @@ function provesPresence(m: Matcher): boolean {
+       return full(want);
+     case 'toContain':
+       return typeof want === 'string' && want !== '';
+-    case 'toMatch': {
+-      if (!arg || !ts.isRegularExpressionLiteral(arg)) return false;
+-      const end = arg.text.lastIndexOf('/');
+-      return !new RegExp(arg.text.slice(1, end), arg.text.slice(end + 1)).test('');
+-    }
++    case 'toMatch':
++      return !!arg && ts.isRegularExpressionLiteral(arg) && PLAIN_REGEX.test(arg.text);
+     case 'toBeGreaterThan':
+       return typeof want === 'number' && want >= 0;
+     case 'toBeGreaterThanOrEqual':
+@@ -514,26 +528,30 @@ function waitsForPresence(value: unknown, m: Matcher | null): boolean {
+   return passes(m, value) === false;
+ }
+ 
+-/** The expression a function returns: its body, or its ONE `return` — undefined for two or none. */
++/**
++ * The expression a function returns: its body, or its ONE `return` when that
++ * is the body's last statement — undefined (so UNKNOWN) for any other shape:
++ * a second `return`, a bare `return;`, an end of body it can reach, a generator.
++ */
+ function returned(fn: Fn): ts.Expression | undefined {
+-  if (!fn.body) return undefined;
++  if (!fn.body || fn.asteriskToken) return undefined;
+   if (!ts.isBlock(fn.body)) return fn.body;
+-  const returns = returnsOf(fn);
+-  return returns.length === 1 ? returns[0] : undefined;
++  const returns = returnStatements(fn.body);
++  return returns.length === 1 && returns[0] === fn.body.statements.at(-1) ? returns[0].expression : undefined;
+ }
+-/** Every expression a function can return, not counting functions nested in it. */
+-function returnsOf(fn: Fn): ts.Expression[] {
+-  if (!fn.body) return [];
+-  if (!ts.isBlock(fn.body)) return [fn.body];
+-  const out: ts.Expression[] = [];
++/** Every `return` in a body, bare ones included, not counting functions nested in it. */
++function returnStatements(body: ts.Node): ts.ReturnStatement[] {
++  const out: ts.ReturnStatement[] = [];
+   const find = (n: ts.Node): void => {
+-    if (ts.isReturnStatement(n)) {
+-      if (n.expression) out.push(n.expression);
+-    } else if (!ts.isFunctionLike(n)) ts.forEachChild(n, find);
++    if (ts.isReturnStatement(n)) out.push(n);
++    else if (!ts.isFunctionLike(n)) ts.forEachChild(n, find);
+   };
+-  ts.forEachChild(fn.body, find);
++  ts.forEachChild(body, find);
+   return out;
+ }
++/** Every expression a function can return. */
++const returnsOf = (fn: Fn): ts.Expression[] =>
++  !fn.body ? [] : !ts.isBlock(fn.body) ? [fn.body] : returnStatements(fn.body).flatMap((r) => (r.expression ? [r.expression] : []));
+ 
+ /** Climb out of `await`, parentheses, `!` and `as` — the read's value is still the read. */
+ function valueOf(node: ts.Node): ts.Node {
+@@ -574,6 +592,23 @@ export function scan(file: string, raw: string): Site[] {
+   /** Local (unexported) functions by the name they are called by. */
+   const fns = new Map<string, Fn[]>();
+   const isRead = (name: string | typeof UNKNOWN | undefined) => typeof name === 'string' && Object.hasOwn(READS, name);
++  /** Read methods named without a call (`Reflect.apply(x.count, …)`, `const { count } = x`). */
++  const refs: ts.Node[] = [];
++  /** Is this object literal (or one nested in it) the target of a destructuring `=`? */
++  const assignedTo = (literal: ts.Node): boolean => {
++    for (let n = literal; ts.isObjectLiteralExpression(n) || ts.isArrayLiteralExpression(n) || ts.isPropertyAssignment(n) || ts.isParenthesizedExpression(n); n = n.parent)
++      if (ts.isBinaryExpression(n.parent) && n.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && n.parent.left === n) return true;
++    return false;
++  };
++  /** Is this access the callee of a call — directly, or through `.call`/`.apply`, which `readOf` judges as the read? */
++  const called = (access: ts.Expression): boolean => {
++    let n: ts.Node = access;
++    while (ts.isParenthesizedExpression(n.parent) || ts.isNonNullExpression(n.parent) || ts.isAsExpression(n.parent)) n = n.parent;
++    const p = n.parent;
++    if (ts.isCallExpression(p) && p.expression === n) return true;
++    const via = (ts.isPropertyAccessExpression(p) || ts.isElementAccessExpression(p)) && p.expression === n ? member(p)!.name : undefined;
++    return (via === 'call' || via === 'apply') && ts.isCallExpression(p.parent) && p.parent.expression === p;
++  };
+ 
+   const visit = (node: ts.Node): void => {
+     // sleep: any REFERENCE to a timer (a call, `.bind`, an import) …
+@@ -595,8 +630,15 @@ export function scan(file: string, raw: string): Site[] {
+       const call = ts.findAncestor(node, ts.isCallExpression);
+       if (state === 'detached' || state === 'hidden' || (typeof state !== 'string' && call && named(call.expression, 'waitFor'))) at(call ?? node, 'negative');
+     }
+-    // read: a read bound for later is a read nobody judges.
+-    if (named(node as ts.Expression, 'bind') && isRead(member(member(node as ts.Expression)!.of)?.name)) at(ts.isCallExpression(node.parent) ? node.parent : node, 'read');
++    // read: a read method named without being called — passed, aliased, bound, destructured — is a read nobody judges.
++    if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && isRead(member(node)!.name) && !called(node)) refs.push(node);
++    const key =
++      ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)
++        ? (node.propertyName ?? node.name)
++        : (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && assignedTo(node.parent)
++          ? node.name
++          : undefined;
++    if (key && (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) && isRead(key.text)) refs.push(node);
+     if (ts.isCallExpression(node)) calls.push(node);
+     if (ts.isIdentifier(node)) identifiers.push(node);
+     if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
+@@ -607,6 +649,12 @@ export function scan(file: string, raw: string): Site[] {
+   };
+   const hasAwait = (node: ts.Node): boolean => ts.isAwaitExpression(node) || (ts.isForOfStatement(node) && !!node.awaitModifier) || ts.forEachChild(node, hasAwait) === true;
+   visit(sf);
++  // A function exported by name (`export { rows }`, `export default rows`) has callers elsewhere: no local helper.
++  for (const s of sf.statements) {
++    if (ts.isExportDeclaration(s) && !s.moduleSpecifier && s.exportClause && ts.isNamedExports(s.exportClause))
++      for (const e of s.exportClause.elements) fns.delete((e.propertyName ?? e.name).text);
++    if (ts.isExportAssignment(s) && ts.isIdentifier(s.expression)) fns.delete(s.expression.text);
++  }
+ 
+   // HELPERS: a local function with a read in what it returns. Its calls are reads.
+   const helpers = new Set<string>();
+@@ -640,7 +688,7 @@ export function scan(file: string, raw: string): Site[] {
+     const via = n.parent;
+     return !(ts.isPropertyAccessExpression(via) && (via.name.text === 'call' || via.name.text === 'apply') && ts.isCallExpression(via.parent) && via.parent.expression === via);
+   };
+-  const readNodes = (): ts.Node[] => [...calls.filter((c) => readOf(c)), ...identifiers.filter(isHelperRef)];
++  const readNodes = (): ts.Node[] => [...calls.filter((c) => readOf(c)), ...identifiers.filter(isHelperRef), ...refs];
+   const within = (n: ts.Node, outer: ts.Node) => n.pos >= outer.pos && n.end <= outer.end;
+   for (let grew = true; grew; ) {
+     grew = false;
+@@ -785,7 +833,8 @@ export function scan(file: string, raw: string): Site[] {
+     }
+     if (helperReturns.some((h) => within(r, h))) continue;
+     if (ts.isIdentifier(r)) at(r.parent, 'read');
+-    else if (!readOf(r as ts.CallExpression)!.computed) at(valueOf(r), 'read');
++    else if (!ts.isCallExpression(r)) at(r, 'read');
++    else if (!readOf(r)!.computed) at(valueOf(r), 'read');
+   }
+   return sites.sort((x, y) => x.line - y.line);
+ }
+@@ -892,7 +941,8 @@ describe('journey waits', () => {
+     const BRANCHY = 'async function state(b, open) {\n  if (open) return b.count();\n  return b.isHidden();\n}\n';
+     const TERNARY = 'const state = (b, open) => (open ? b.count() : b.isHidden());\n';
+     const GUARDED = 'async function rows(b, open) {\n  if (!open) return 0;\n  return b.count();\n}\n';
+-    const CYCLE = 'function f(b) {\n  return g(b);\n}\nfunction g(b) {\n  return f(b).catch(() => b.count());\n}\n';
++    const BARE = 'async function hidden(b, open) {\n  if (!open) return;\n  return b.isHidden();\n}\n';
++    const CYCLE ='function f(b) {\n  return g(b);\n}\nfunction g(b) {\n  return f(b).catch(() => b.count());\n}\n';
+     const spellings: [string, Rule[]][] = [
+       // a read with arguments, by computed name, optional chain, `.call`, parenthesised
+       ['expect(await box.isVisible({ timeout: 100 })).toBe(true);', ['positive']],
+@@ -1032,9 +1082,46 @@ describe('journey waits', () => {
+       // …while each table entry's provable side stays allowed.
+       ["await expect.poll(() => q()).toEqual(['a', 'b']);", []],
+       ["await expect.poll(() => q()).toEqual({ a: 'x', b: { c: 1 } });", []],
+-      ['await expect.poll(() => q()).toMatch(/a+/);', []],
+       ['await expect.poll(() => n()).toHaveLength(2);', []],
+       ['await expect.poll(() => n()).toBeGreaterThanOrEqual(1);', []],
++      // EVERY RETURN PATH counts: a bare `return;`, or an end of body the
++      // function can reach, returns undefined — a second path, so UNKNOWN.
++      [`${BARE}await expect.poll(() => hidden(box, open)).toBeFalsy();`, ['negative']],
++      [`${BARE}expect(await hidden(box, open)).toBe(true);`, ['positive']],
++      ['async function hidden(b, open) {\n  if (open) return b.isHidden();\n}\nawait expect.poll(() => hidden(box, open)).toBeFalsy();', ['negative']],
++      ['await expect.poll(async () => { if (!open) return; return box.isHidden(); }).toBeFalsy();', ['negative']],
++      ['async function rows(b, open) {\n  if (!open) return;\n  return b.count();\n}\nawait expect.poll(() => rows(box, open)).toBeUndefined();', ['negative']],
++      ['async function rows(b) {\n  try { return b.count(); } catch { }\n}\nawait expect.poll(() => rows(box)).toBeUndefined();', ['negative']],
++      ['async function hidden(b, k) {\n  switch (k) { case 1: return b.isHidden(); }\n}\nawait expect.poll(() => hidden(box, k)).toBeFalsy();', ['negative']],
++      ['expect(await box.isVisible().catch(() => { if (!open) return; return false; })).toBe(false);', ['positive']],
++      ['async function* rows(b) {\n  return b.count();\n}\nawait expect.poll(() => rows(box)).toBe(1);', ['negative']],
++      // A helper exported IN ANY SPELLING has its callers elsewhere: its read is judged where it stands, once.
++      ['async function rows(b) {\n  return b.count();\n}\nexport { rows };', ['read']],
++      ['const rows = (b) => b.count();\nexport { rows };', ['read']],
++      ['async function rows(b) {\n  return b.count();\n}\nexport { rows as r };', ['read']],
++      ['async function rows(b) {\n  return b.count();\n}\nexport default rows;', ['read']],
++      // A READ METHOD named without being called — passed, aliased, destructured — is a read nobody judges.
++      ['expect(await Reflect.apply(box.isVisible, box, [])).toBe(true);', ['positive']],
++      ['await expect.poll(() => Reflect.apply(box.count, box, [])).toBe(1);', ['negative']],
++      ['const see = box.isVisible;', ['read']],
++      ["const see = box['isVisible'];", ['read']],
++      ['const { isVisible } = box;', ['read']],
++      ['const { count: n } = box;', ['read']],
++      ['let see;\n({ isVisible: see } = box);', ['read']],
++      ['({ count } = box);', ['read']],
++      // …but an uncalled COMPUTED member is indexing, indistinguishable from a read method: out of reach.
++      ['expect(await Reflect.apply(box[m], box, [])).toBe(true);', []],
++      // A REGEX'S SENSE is as invisible as a boolean's: only alternatives of
++      // plain non-empty text prove presence, like `toContain`.
++      ['await expect.poll(() => page.url()).toMatch(/^[^?]+$/);', ['negative']],
++      ['await expect.poll(() => page.url()).toMatch(/^(?!.*composer=).+/);', ['negative']],
++      ['await expect.poll(() => page.url()).toMatch(/^[a-z:\\/.#]+$/);', ['negative']],
++      ['await expect.poll(() => q()).toMatch(/\\D/);', ['negative']],
++      ['await expect.poll(() => q()).toMatch(/a+/);', ['negative']],
++      ['await expect.poll(() => q()).toMatch(/x/m);', ['negative']],
++      ['await expect.poll(() => q()).toMatch(/pushed|in sync/i);', []],
++      ['await expect.poll(() => q()).toMatch(/a\\.b/);', []],
++      ['await expect.poll(() => page.url()).toMatch(/view=paths&inst=inst-tar/);', []],
+     ];
+     expect(spellings.filter(([code, want]) => JSON.stringify(rules(code)) !== JSON.stringify(want)).map(([code, want]) => `${code} → ${JSON.stringify(rules(code))}, want ${JSON.stringify(want)}`)).toEqual([]);
+   });
 ```
-````
 
+**Paths the rework touched:**
 
-## Files in this diff
+- `DECISIONS.md`
+- `tests/journey-waits.test.ts`
 
-- .github/workflows/ci.yml
-- .github/workflows/deploy.yml
-- .github/workflows/prismatica-gate.yml
-- AGENTS.md
-- DECISIONS.md
-- tests/ci-browser-setup.test.ts
-- tests/daily-practice.browser.test.ts
-- tests/journey-harness.browser.test.ts
-- tests/journey-waits.test.ts
-- tests/lesson-agenda.browser.test.ts
-- tests/lessonNotes.browser.test.ts
-- tests/musical-term-suggestions.browser.test.ts
-- tests/practice-cues.browser.test.ts
-- tests/practice-information-inbound.browser.test.ts
-- tests/practice-information-layout.browser.test.ts
-- tests/practice-information.browser.test.ts
-- tests/practiceBrowser.ts
-- tests/repertoire-experience.browser.test.ts
-- tests/repertoire-inbound.browser.test.ts
-- tests/review-ownership.browser.test.ts
-- tests/setar-practice-inbound.browser.test.ts
-- tests/setar-practice.browser.test.ts
-- tests/setar-review-ui.browser.test.ts
-- tests/setarArchive.browser.test.ts
-- tests/setarInbound.browser.test.ts
+**The builder's rework commit messages — claims to verify against the diff, never evidence:**
+
+```
+347c46e Add return-path, export, read-reference and regex-sense rows, failing on 33daf16's scanner
+
+Discriminating rows for the "nothing unreducible counts as safe" family,
+added before the fix. On 33daf16's scanner,
+`npx vitest run tests/journey-waits.test.ts` fails with 23 rows wrong:
+
+- a helper or inline callback with a bare `return;`, a reachable end of
+  body (if with no else, switch, try/catch) or a generator is evaluated
+  as if its one `return <expr>` were its only path;
+- `export { rows }` (declaration and arrow) leaves the helper's read
+  judged nowhere;
+- a read method referenced without a call (Reflect.apply, an alias, a
+  computed-name alias, a destructured name) is not a read;
+- toMatch accepts a regex whose sense is absence (negated class,
+  lookahead, anchored class, \D) or rests on a quantifier or `m` flag.
+
+`/a+/` moves from the allowed side to the negative side deliberately: no
+real poll uses a quantifier, and only plain text alternatives are now
+provable. Rows for `export { rows as r }`, `export default rows` and the
+real `/view=paths&inst=inst-tar/` pass already and stay as controls.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+456c6b5 A helper means its one final return; exports, read references and regex sense fail closed
+
+Invariant: the wait guard counts nothing as safe that it cannot reduce.
+A value it judges must be the ONLY value the code can produce, and every
+read of the page must reach a judgement somewhere.
+
+Fixes, each at the choke point every consumer goes through:
+
+- returned() now yields an expression only when the body has exactly one
+  `return` (bare ones counted, nested functions excluded), that return is
+  the body's last top-level statement, and the function is not a
+  generator. Anything else is UNKNOWN. Its four consumers are
+  helperValue (named helpers), reduce's arrow branch (inline poll and
+  expect callbacks), reduce's `.catch` fallback, and arrayOf (per-element
+  judgement). All four route through it and are covered by rows.
+  returnsOf still finds every returned expression, for helper detection
+  and the helper-return exemption.
+- A function exported by name (`export { rows }`, `{ rows as r }`,
+  `export default rows`) is no local helper. Its read is judged where it
+  stands, once, matching `export function`. Re-exports `from` another
+  module name no local function and are left alone.
+- An uncalled reference to a READS method is a read node, like a helper
+  reference. That covers a property or element access that is neither
+  called directly nor through `.call`/`.apply` (Reflect.apply, an alias,
+  `.bind`), and a destructured binding keyed by a READS name. The
+  special `.bind` rule is gone because this covers it. Inside an
+  assertion such a reference cannot be reduced, so it is positive or
+  negative. Outside one it is 'read'.
+- toMatch proves presence only for a regex literal made of plain-text
+  alternatives with at most the `i` flag: no anchor, class, group,
+  quantifier or letter escape. That is toContain by another name.
+  `/a+/` is now negative on purpose.
+
+Sweep (the scanner's own output over every tests/*.ts, not grep):
+- The 12 real `expect.poll(...)
+… (truncated)
+
+3cfbb69 Destructuring assignment of a read method is a read; say why the guard fails closed
+
+This closes the rest of the read-reference family. A READS-keyed property
+on the left of a destructuring `=` is now a read node, nested object and
+array patterns included: `({ isVisible: see } = box)`, `({ count } = box)`.
+Before this commit both rows passed unflagged on 456c6b5's scanner, as
+`npx vitest run tests/journey-waits.test.ts` shows.
+
+An uncalled COMPUTED member (`Reflect.apply(box[m], …)`) stays out of
+reach. It is indexing and can't be told apart from a read method. The
+header now lists it, and a `[]` row makes that limit executable.
+
+DECISIONS.md gets the reason for the method change: recognising one more
+spelling at a time kept leaving siblings open, so the guard now treats
+whatever it cannot reduce as unsafe.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ## Check against the contract
 
@@ -424,10 +507,22 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
+If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
 
-`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-make-browser-tests-ci-and-the-prismatica-0e6c/findings.json`
+**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
 
-with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
+```bash
+cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-make-browser-tests-ci-and-the-prismatica-0e6c/findings.json'
+```
+
+**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
+
+**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+
+```bash
+prismatica seal '20261007-make-browser-tests-ci-and-the-prismatica-0e6c' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-make-browser-tests-ci-and-the-prismatica-0e6c/findings.json'
+```
+
+You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261007-make-browser-tests-ci-and-the-prismatica-0e6c/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory. A finding names an invariant: sweep the repository for every instance of it and list each one found plus the consumers checked clean, in one round — not one counterexample at a time.
