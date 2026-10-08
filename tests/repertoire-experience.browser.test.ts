@@ -280,9 +280,9 @@ describe('musical terms, managed', () => {
       expect(await inlineName.inputValue()).toBe('جزوهٔ کلاس');
       await repairStorage(page);
       await page.getByRole('button', { name: 'Try again' }).click();
-      // The field closes once the retried write has landed, however slow storage is.
-      await inlineName.waitFor({ state: 'detached', timeout: 20_000 });
+      // The retried write lands first; the field closes once it has.
       const inline = await until(app, (d) => d.materials.filter((m) => m.title === 'جزوهٔ کلاس'), (m) => m.length === 1);
+      await inlineName.waitFor({ state: 'detached', timeout: 20_000 });
       expect(await page.getByRole('combobox', { name: 'Study source' }).inputValue()).toBe(inline[0].id);
 
       // Two sources both proven to be the Khonyagar course: the owner chooses,
@@ -337,13 +337,14 @@ describe('musical terms, managed', () => {
       await choice.getByText(/Not saved/).waitFor({ timeout: 10_000 });
       await repairStorage(page);
       await choice.getByRole('button', { name: 'Try again' }).click();
-      await choice.waitFor({ state: 'detached', timeout: 20_000 });
+      // "Saved." waits for IndexedDB; the choice closes once the write has landed.
       await page.getByText(/Study source chosen — Saved\./).waitFor({ timeout: 10_000 });
       await until(
         app,
         (d) => d.materials.filter((m) => m.instrumentId === 'inst-tar' && m.sourceKey).map((m) => m.id),
         (ids) => ids.length === 1 && khon.includes(ids[0]),
       );
+      await choice.waitFor({ state: 'detached', timeout: 20_000 });
       // …and the answer reached exactly the items it named.
       const keyed = (await db(app)).materials.find((m) => m.instrumentId === 'inst-tar' && m.sourceKey)!.id;
       expect((await db(app)).items.filter((i) => waiting.includes(i.id)).map((i) => i.materialId)).toEqual([keyed, keyed]);

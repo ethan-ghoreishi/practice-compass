@@ -16,11 +16,13 @@ wrong, measured instead.
   VISIBLE only in the transition a tap starts. What failed was `goTo` to the route a
   tap had just opened: in WebKit that is a full document load, which aborted the
   write the tap issued. The layout journey's CI failure (`webkit@1280px: expected 0
-  to be greater than 0`) reproduces every time with slow storage and the old `goTo`.
+  to be greater than 0`) reproduced in 4 of 4 runs with slow storage and the old `goTo`.
   A one-off audit found 44 such call sites (about 100 calls) in 11 journeys. `goTo` now refuses
   the current route, and returns once `main` is visible and its h1 has been replaced
   (element or text; a page with no h1 by its text). Two URLs with one heading pass
-  `arrival`. A read helper that may already be on its page uses `show`. Rejected:
+  `arrival`. A read helper that may already be on its page uses `show`. It is opt-in,
+  for a page already settled, and it is not the rejected no-op: `goTo` itself still
+  refuses, and a tap followed by a navigation still waits for the tap's arrival. Rejected:
   a no-op same-route `goTo` (hides the hazard), and a required arrival on every call
   (the heading signal held in every case probed).
 - **Persistence: `reload` waits on a barrier, never 400 ms.** An empty readwrite
@@ -44,7 +46,11 @@ wrong, measured instead.
   is a timer, not an event, wherever a write precedes the change. The three polled
   value changes left are ledgered as disappearances after presence. A sync is
   awaited to completion (`syncNow`, Sync now enabled again) before its message is
-  read. A negative claim first waits for a positive "finished" signal (a failed
+  read. No wait now allows longer than the harness's existing event waits:
+  `connectSync` already gives the same Sync-now-enabled signal 20 s. The 1 s was a
+  poll default that raced writes, not a chosen bound, and `waitFor` throws when
+  its bound runs out, so no assertion was dropped. A negative claim first waits
+  for a positive "finished" signal (a failed
   restore's "Import failed:", the tab bar after Save). The one left with no such
   signal uses the bounded `quietWindow`.
 - **Runner: bounded, aligned, once per ref.** Jobs are bounded at 20 min and the
