@@ -1,29 +1,28 @@
 ---
 id: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 contractId: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
-patchId: ce4c5031e94ded27c80bb96dd390cc0c422110fd
+patchId: 1c9f0dcaf85405a8cd9621bd409a03498617d0d8
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: journey-wait-guard-complete-enforcement
-    summary: "[P2] ac-7 still silently accepts positive state reads and unledgered
-      absence waits in ordinary supported syntax."
-    counterexample: "HEAD's actual scan() returns [] for expect(await
-      box.isVisible({ timeout: 100 })).toBe(true); expect(await
-      box[\"isVisible\"]()).toBe(true); await expect.poll(() =>
-      box.isHidden()).toBe(true); await expect.poll(() =>
-      Promise.all([a.isChecked(), b.isChecked()])).toEqual([false, false]); The
-      first two require positive violations; the latter two require negative
-      violations and ledgered prerequisites. Rework the exact named test
+    summary: "[P2] ac-7 still accepts positive reads through branching local helpers
+      and unledgered value absence polls."
+    counterexample: On ee6e56c, actual scan() returns [] for branching helpers whose
+      return paths have different rendered-state meanings, and for
+      compound/ambiguous value polls such as ["", ""], toBe(expected),
+      toMatch(/^$/) and toContain(""). The shared problem is that helper
+      analysis keeps only one return meaning and value-poll classification
+      treats unknown matcher evaluation as safe. Rework the exact named test
       'browser journeys wait on events, never on fixed sleeps, hand-rolled
-      pollers or positive point-in-time reads' and the whole
-      supported-read/absence classification family. Do not patch only these
-      examples: make the AST-based classifier robust across supported call
-      syntax, computed access, arguments, inverted visibility and compound
-      expectations. The earlier navigation finding is resolved."
-createdAt: 2026-10-08T14:57:19.803Z
-sealedAt: 2026-10-08T15:13:08.271Z
+      pollers or positive point-in-time reads' across the whole helper-return
+      and value-poll classification family. Reject ambiguous syntax rather than
+      inferring safety. Close the shared classification paths rather than adding
+      example-specific patterns. Earlier navigation and stored wait-guard
+      findings are resolved.
+createdAt: 2026-10-08T18:26:10.755Z
+sealedAt: 2026-10-08T18:34:28.501Z
 ---
 
 # Review: Make browser tests, CI and the Prismatica Gate fast, deterministic and trustworthy
@@ -37,7 +36,7 @@ sealedAt: 2026-10-08T15:13:08.271Z
 - **Contract:** 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/49
 - **Risk tier:** normal — a feature or bug — full checks plus a sealed fresh-eyes review
-- **Diff patch-id:** `ce4c5031e94ded27c80bb96dd390cc0c422110fd`
+- **Diff patch-id:** `1c9f0dcaf85405a8cd9621bd409a03498617d0d8`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
 ## The plan the owner approved
@@ -342,6 +341,25 @@ Limit: CPU throttling exists only in Chromium; WebKit gets host load and slow st
 - [ ] **ac-10** — N1 applied: the WebKit 1280px failure path (Working notes count after reaching the active page) is deterministic. _(proof: practice information controls render accessible directional text at phone and desktop widths)_
 - [ ] **ac-11** — N1/N3 applied: the repertoire navigation journey that failed four times is deterministic. _(proof: repertoire navigation restores browse context without changing session scope)_
 - [ ] **ac-12** — N3 applied: the transition-held select read stays polled and exact under 20× CPU slowdown. _(proof: repertoire search keeps every typed character under heavy cpu slowdown)_
+
+## Flow impact — detected vs reported
+
+**Detected from the diff:**
+
+_none_
+
+**Possibly affected (shares a mechanic with a detected flow):**
+
+_none_
+
+**What the agent reported:**
+
+_No flow entries yet._
+
+
+**Gaps between detected and reported:**
+
+_None — the report matches what was detected._
 
 ## Also look for
 
