@@ -298,11 +298,11 @@ describe('the archive graph at every inbound door', () => {
       publishRemote(remote, remoteStateText(brokenRemote), await hashState(brokenRemote), 10_000);
       await page.getByRole('button', { name: 'Sync now' }).click();
       await expect
-        .poll(async () => (await syncMessage(page)).includes('instrument that does not exist'), {
+        .poll(() => syncMessage(page), {
           timeout: 60_000,
           interval: 500,
         })
-        .toBe(true);
+        .toContain('instrument that does not exist');
       expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
 
       // …and the NESTED malformation is refused by this door too, not only by
@@ -312,11 +312,11 @@ describe('the archive graph at every inbound door', () => {
       publishRemote(remote, remoteStateText(brokenNested), await hashState(brokenNested), 10_001);
       await page.getByRole('button', { name: 'Sync now' }).click();
       await expect
-        .poll(async () => (await syncMessage(page)).includes('unreadable role list'), {
+        .poll(() => syncMessage(page), {
           timeout: 60_000,
           interval: 500,
         })
-        .toBe(true);
+        .toContain('unreadable role list');
       expect(JSON.stringify(await readPersistedState(app))).toBe(beforePull);
 
       // --- BOTH CHANGED: "Take the GitHub copy" is the same door -----------

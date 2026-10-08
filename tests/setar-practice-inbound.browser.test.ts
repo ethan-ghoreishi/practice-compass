@@ -172,7 +172,7 @@ describe('study provenance at every saved-data boundary', () => {
         const badRemote = malformed(pulled, 5);
         publishRemote(remote, remoteStateText(badRemote), await hashState(badRemote), 901);
         await page.getByRole('button', { name: 'Sync now' }).click();
-        await expect.poll(async () => (await syncMessage(page)).includes('study source'), { timeout: 60_000 }).toBe(true);
+        await expect.poll(() => syncMessage(page), { timeout: 60_000 }).toContain('study source');
         expect(await stateBytes(app), where).toBe(beforeBadPull);
 
         // Both changed: the owner edits here, another device there.

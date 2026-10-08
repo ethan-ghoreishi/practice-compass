@@ -387,7 +387,7 @@ describe('browsing, and coming back to it', () => {
       await cpu.send('Emulation.setCPUThrottlingRate', { rate: 1 });
       await expect.poll(() => page.url()).toMatch(/q=shur/);
       await expect.poll(() => page.url()).toMatch(/composer=term%3Acomposer%3Adarvish-khan/);
-      await expect.poll(async () => (await worksShown()).sort()).toEqual(['Pish-daramad in Shur', 'پیش‌درآمد شور'].sort());
+      await expect.poll(async () => (await worksShown()).sort()).toEqual(['Pish-daramad in Shur', 'پیش‌درآمد شور']);
 
       // Open a work and come BACK: the same query, facet and results.
       await page.getByRole('link', { name: /Pish-daramad in Shur/ }).click();
