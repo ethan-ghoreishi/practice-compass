@@ -63,10 +63,16 @@ wrong, measured instead.
   is a second path), an uncalled or destructured read method is a read, a helper
   exported by name is judged where it stands, and only plain-text `toMatch`
   alternatives prove presence (a regex's sense is as invisible as a boolean's).
-  Every name it decides by (a read, a matcher, a timer, `state`) goes through one
-  reader, `keyOf`, which folds a static computed key (`['is' + 'Visible']`) and
-  calls one it cannot fold unsafe, as is a `state` on any `waitFor…` it cannot
-  read; each consumer read names its own way, so each spelling opened a sibling.
+  Every name it decides by (a read, a matcher, `state`) goes through one reader,
+  `keyOf`, which folds a static computed key (`['is' + 'Visible']`) and calls one
+  it cannot fold unsafe; each consumer read names its own way, so each spelling
+  opened a sibling. Timer names and goto URLs are judged by a string's runtime
+  text (escapes cooked, pieces folded, a page script's escapes cooked again): raw
+  source text let `'waitFor\u0054imeout'` and an escaped `#` through. Every wait
+  that can ask for absence is read where Playwright's types let it ask (options,
+  `waitForElementState`'s state, `waitForURL`'s matcher, `waitForFunction`'s page
+  function) in any calling form, and unread is negative; a `state:`-key hunt
+  missed options passed as a variable.
   Its ledger says why each exception
   stands and how many sites it covers. 44 positive reads
   became `expect.poll` with the same matcher. Two polled negatives that followed a

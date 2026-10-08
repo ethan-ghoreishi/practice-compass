@@ -16,7 +16,8 @@ import { describe, expect, it } from 'vitest';
 // still counts. Six rules, each deny-by-default:
 //   sleep     no reference to `waitForTimeout`, `setTimeout` or `setInterval`
 //             — a call, a `.bind`, an import, a page script, a folded key —
-//             and no wait
+//             by its RUNTIME text (escapes cooked, `+` and `${}` folded, a page
+//             script's own escapes cooked again), and no wait
 //             (`waitFor…`, an assertion) whose failure a `.catch` swallows:
 //             when the thing never comes, that is a timer;
 //   poller    no `while`, `do` or `for(;;)`-style loop that awaits —
@@ -61,10 +62,18 @@ import { describe, expect, it } from 'vitest';
 //             `toBeGreaterThan(n >= 0)`, `toBeGreaterThanOrEqual(n > 0)`,
 //             `toHaveLength(n > 0)`. Everything else is negative: `.not`, no
 //             matcher, a variable, an unknown matcher, a boolean (its sense —
-//             `!t.includes(x)` — is invisible). So is any `waitFor…` with
-//             `state: 'detached' | 'hidden'`, a state it cannot read (a
-//             variable, an expression, a getter), or options it cannot read;
-//   goto      no raw `page.goto` to a hash route outside the harness: `goTo`
+//             `!t.includes(x)` — is invisible). So is every wait that may pass
+//             on what never came, read where Playwright's types let it ask:
+//             `state: 'detached' | 'hidden'` anywhere; `waitFor`/
+//             `waitForSelector` options it cannot read (a variable, a call, a
+//             spread, an unfoldable key, a state that is not a literal);
+//             `waitForElementState('hidden')` or an unread state; `waitForURL`
+//             unless a plain regex or glob-free URL; `waitForFunction` (a page
+//             function's sense is invisible); a `waitFor…` not in the table; and
+//             any of these by `.apply`, `.bind`, destructuring or passing. Event
+//             waits (`waitForEvent`, `…Request`, `…Response`, `…LoadState`,
+//             `…Navigation`) need something to happen, so cannot;
+//   goto      no raw `page.goto` to a hash route (by runtime text) outside the harness: `goTo`
 //             is the navigation that waits for the destination.
 // `expect`, `expect.soft`, `.poll` and every matcher are matched by name in
 // any spelling (`expect['poll']`, `['not']`). Every NAME — a read, a matcher,
@@ -81,7 +90,11 @@ import { describe, expect, it } from 'vitest';
 // (`x[k]()` may be anything; inside one it is refused), a computed member
 // named without a call (`x[k]` is indexing, everywhere and indistinguishable
 // from a read method, where destructuring a locator is not), a name passed as
-// an argument (`Reflect.get(x, 'count')`), an aliased `expect`,
+// an argument (`Reflect.get(x, 'count')`), an aliased `expect`, a name or
+// URL with a piece held in any binding (`const` included) or computed by a
+// call (`page['waitFor' + t]`, `'a'.concat(b)`) (runtime text is what an
+// expression built from literals alone evaluates to; a binding holding the
+// WHOLE name is still caught, as its literal is scanned),
 // a helper exported to another file in any spelling (`export function`,
 // `export { rows }`, `export default rows`: its read is judged where it
 // stands, as there is no caller here to judge), and Playwright's own
@@ -125,6 +138,12 @@ const LEDGER: { file: string; rule: Rule; snippet: string; sites?: number; why: 
     rule: 'sleep',
     snippet: 'waitForTimeout(ms)',
     why: 'quietWindow: the one bounded window for a NEGATIVE claim, called only after a positive signal',
+  },
+  {
+    file: 'practiceBrowser.ts',
+    rule: 'negative',
+    snippet: 'page.waitForFunction( ([old, text]) =>',
+    why: "goTo's arrival: true only once a rendered <main> exists whose heading element or text differs from the outgoing one captured before navigating, and a Primary-nav presence wait follows; the N1 self-test fails the pre-fix goTo in both engines",
   },
   {
     file: 'practice-cues.browser.test.ts',
@@ -448,6 +467,88 @@ function constant(node: ts.Expression): string | number | typeof UNKNOWN {
   return UNKNOWN;
 }
 const text = (v: string | number | typeof UNKNOWN) => (v === UNKNOWN ? v : String(v));
+
+/**
+ * A string expression's RUNTIME text — escapes cooked, `+` and `${}` folded, a
+ * tagged template's raw text — with NUL where a part is not static.
+ */
+function fold(node: ts.Expression): string {
+  const e = bare(node);
+  const raw = (t: ts.TemplateLiteralLikeNode) => t.rawText ?? t.text;
+  if (ts.isTaggedTemplateExpression(e)) {
+    const t = e.template;
+    return ts.isNoSubstitutionTemplateLiteral(t) ? raw(t) : raw(t.head) + t.templateSpans.map((s) => fold(s.expression) + raw(s.literal)).join('');
+  }
+  if (ts.isStringLiteralLike(e)) return e.text;
+  if (ts.isTemplateExpression(e)) return e.head.text + e.templateSpans.map((s) => fold(s.expression) + s.literal.text).join('');
+  if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken) return fold(e.left) + fold(e.right);
+  return '\0';
+}
+/** Is this a whole string expression — not a piece of a larger `+`, template or tagged template? */
+function textRoot(node: ts.Node): node is ts.Expression {
+  const kind =
+    ts.isStringLiteralLike(node) || ts.isTemplateExpression(node) || ts.isTaggedTemplateExpression(node) || (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken);
+  let p = node.parent;
+  while (p && (ts.isParenthesizedExpression(p) || ts.isAsExpression(p) || ts.isSatisfiesExpression(p) || ts.isNonNullExpression(p))) p = p.parent;
+  return kind && !(ts.isTemplateSpan(p) || ts.isTaggedTemplateExpression(p) || (ts.isBinaryExpression(p) && p.operatorToken.kind === ts.SyntaxKind.PlusToken));
+}
+const ESCAPE = /\\+(?:u\{([0-9a-fA-F]+)\}|u([0-9a-fA-F]{4})|x([0-9a-fA-F]{2})|([0-7]{1,3}))|\\+\r?\n/g;
+/** Text a page script cooks again: every escape layer decoded (`\\u0054`, `\\x54`, `\\124` → `T`), so a name under any of them is the name. */
+function decode(s: string): string {
+  for (let prev = ''; prev !== s; ) {
+    prev = s;
+    s = s.replace(ESCAPE, (all, cp, u, x, o) => {
+      if (cp === undefined && u === undefined && x === undefined && o === undefined) return '';
+      const n = o !== undefined ? parseInt(o, 8) : parseInt(cp ?? u ?? x, 16);
+      return n <= 0x10ffff ? String.fromCodePoint(n) : all;
+    });
+  }
+  return s;
+}
+
+/** A wait that may pass on what never came, read where Playwright lets it ask (playwright-core's types). */
+const ABSENT_STATES = new Set(['detached', 'hidden']);
+/** Waits for an EVENT — something must happen, so none can pass on nothing; `waitForTimeout` is a sleep, judged as one. */
+const EVENT_WAITS = new Set(['waitForEvent', 'waitForRequest', 'waitForResponse', 'waitForLoadState', 'waitForNavigation', 'waitForTimeout']);
+const absenceWait = (name: string | typeof UNKNOWN | undefined): name is string => typeof name === 'string' && name.startsWith('waitFor') && !EVENT_WAITS.has(name);
+/** Options that may ask for absence: not an object literal, a spread, a key `keyOf` cannot fold, or a `state` that is not a literal presence. */
+function optionsMayAskAbsence(a: ts.Expression): boolean {
+  const e = bare(a);
+  if (!ts.isObjectLiteralExpression(e)) return true;
+  return e.properties.some((p) => {
+    if (ts.isSpreadAssignment(p) || !p.name) return true;
+    const key = keyOf(p.name);
+    if (key !== 'state') return key === UNKNOWN;
+    const state = ts.isPropertyAssignment(p) ? literal(p.initializer) : UNKNOWN;
+    return typeof state !== 'string' || ABSENT_STATES.has(state);
+  });
+}
+/** A URL matcher that names a URL to be AT: plain regex alternatives (as `toMatch`), or a string with no glob in it. */
+function urlPresence(a: ts.Expression): boolean {
+  const e = bare(a);
+  if (ts.isRegularExpressionLiteral(e)) return PLAIN_REGEX.test(e.text);
+  const url = constant(e);
+  return typeof url === 'string' && url !== '' && !/[*?[\]{}]/.test(url);
+}
+/** May this `waitFor…` call pass on what never came? Unknown waits, and anything the scan cannot read, may. */
+function waitMayPassOnAbsence(name: string, args: readonly ts.Expression[]): boolean {
+  if (EVENT_WAITS.has(name)) return false;
+  if (args.some(ts.isSpreadElement)) return true;
+  switch (name) {
+    case 'waitFor':
+      return args.length > 0 && optionsMayAskAbsence(args[0]);
+    case 'waitForSelector':
+      return args.length > 1 && optionsMayAskAbsence(args[1]);
+    case 'waitForElementState': {
+      const state = args[0] ? text(constant(args[0])) : UNKNOWN;
+      return state === UNKNOWN || ABSENT_STATES.has(state);
+    }
+    case 'waitForURL':
+      return !(args[0] && urlPresence(args[0]));
+    default: // `waitForFunction`: a page function's sense is as invisible as a boolean's; and any wait not in the table
+      return true;
+  }
+}
 /** THE one reading of a property name — `a`, `'a'`, `1`, `['a']`, `` [`a`] ``, `['is' + 'A']` — UNKNOWN for a key it cannot fold. */
 function keyOf(name: ts.PropertyName): string | typeof UNKNOWN {
   if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
@@ -620,8 +721,13 @@ function callEnd(text: string, from: number): number {
 export function scan(file: string, raw: string): Site[] {
   const sf = ts.createSourceFile(file, raw, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const sites: Site[] = [];
-  const at = (node: ts.Node, rule: Rule, text = node.getText(sf), pos = node.getStart(sf)) =>
+  /** One negative per wait: its literal `state` and the wait table both read it. (Two reads in one assertion stay two sites.) */
+  const negatives = new Set<number>();
+  const at = (node: ts.Node, rule: Rule, text = node.getText(sf), pos = node.getStart(sf)) => {
+    if (rule === 'negative' && negatives.has(pos)) return;
+    if (rule === 'negative') negatives.add(pos);
     sites.push({ file, rule, line: sf.getLineAndCharacterOfPosition(pos).line + 1, text: text.replace(/\s+/g, ' ').trim() });
+  };
   const calls: ts.CallExpression[] = [];
   const identifiers: ts.Identifier[] = [];
   /** Local (unexported) functions by the name they are called by. */
@@ -653,26 +759,21 @@ export function scan(file: string, raw: string): Site[] {
       const ref = ts.isPropertyAccessExpression(node.parent) && node.parent.name === node ? node.parent : node;
       at(ts.isCallExpression(ref.parent) && ref.parent.expression === ref ? ref.parent : ref.parent, 'sleep');
     }
-    // … or a timer named inside a string or template: a page script, `page['waitForTimeout']`.
-    if (ts.isStringLiteralLike(node) || ts.isTemplateLiteralToken(node)) {
-      const text = node.getText(sf);
+    // … or a timer named by a string's RUNTIME text: a page script, `page['waitFor\u0054imeout']`, `['wait' + 'ForTimeout']`.
+    if (textRoot(node)) {
+      const text = decode(fold(node));
       for (const m of text.matchAll(SLEEP)) at(node, 'sleep', text.slice(m.index, callEnd(text, m.index + m[0].length)), node.getStart(sf) + m.index);
     }
     // poller: a loop that awaits — `persistedUntil` is the one.
     if ((ts.isWhileStatement(node) || ts.isDoStatement(node) || ts.isForStatement(node)) && hasAwait(node)) at(node, 'poller');
-    // … or a computed key folded from pieces no one string holds (`page['wait' + 'ForTimeout']`).
-    const folded = ts.isElementAccessExpression(node) ? node.argumentExpression : ts.isComputedPropertyName(node) ? node.expression : undefined;
-    const timer = folded && !ts.isStringLiteralLike(bare(folded)) ? text(constant(folded)) : UNKNOWN;
-    if (typeof timer === 'string' && TIMER.test(timer)) at(node.parent, 'sleep');
-    // negative: a wait for something to be GONE passes at once if it never came —
-    // `state: 'detached' | 'hidden'` however spelled, or a `waitFor…` state the scan cannot read (a getter's included).
-    if (ts.isObjectLiteralElementLike(node) && node.name && keyOf(node.name) === 'state') {
-      const state = ts.isPropertyAssignment(node) ? literal(node.initializer) : UNKNOWN;
-      const call = ts.findAncestor(node, ts.isCallExpression);
-      const waitName = call && member(call.expression)?.name;
-      if (state === 'detached' || state === 'hidden' || (typeof state !== 'string' && typeof waitName === 'string' && waitName.startsWith('waitFor')))
-        at(call ?? node, 'negative');
+    // negative: a wait for something to be GONE passes at once if it never came — `state: 'detached' | 'hidden'`
+    // however spelled, wherever it is written (the wait table below reads a state it cannot read).
+    if (ts.isPropertyAssignment(node) && keyOf(node.name) === 'state') {
+      const state = literal(node.initializer);
+      if (typeof state === 'string' && ABSENT_STATES.has(state)) at(ts.findAncestor(node, ts.isCallExpression) ?? node, 'negative');
     }
+    // … or a wait that can ask for absence, named without a call (bound, passed, `.apply`): what it waits for is unread.
+    if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && absenceWait(member(node)!.name) && !called(node)) at(node, 'negative');
     // read: a read method named without being called — passed, aliased, bound, destructured — is a read nobody judges.
     if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && isRead(member(node)!.name) && !called(node)) refs.push(node);
     // A destructured key the scan cannot fold may be any method: a read too.
@@ -683,6 +784,7 @@ export function scan(file: string, raw: string): Site[] {
           ? keyOf(node.name)
           : undefined;
     if (key === UNKNOWN || isRead(key)) refs.push(node);
+    if (absenceWait(key)) at(node, 'negative');
     if (ts.isCallExpression(node)) calls.push(node);
     if (ts.isIdentifier(node)) identifiers.push(node);
     if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
@@ -851,19 +953,23 @@ export function scan(file: string, raw: string): Site[] {
   };
   for (const call of calls) {
     // goto: a raw hash navigation outside the harness.
-    if (file !== HARNESS && named(call.expression, 'goto') && call.arguments.some((a) => a.getText(sf).includes('#'))) at(call, 'goto');
+    const hash = (n: ts.Node): boolean => (textRoot(n) && fold(n).includes('#')) || ts.forEachChild(n, hash) === true;
+    if (file !== HARNESS && named(call.expression, 'goto') && call.arguments.some(hash)) at(call, 'goto');
     // negative: a poll not proven to wait for presence.
     if (isPoll(call)) {
       const m = matcherOf(call);
       if (!waitsForPresence(evaluate(call.arguments[0]), m)) at(m?.call ?? call, 'negative');
     }
-    // negative: a `waitFor…` whose options the scan cannot read — `waitFor`'s own a variable, any one's a spread or
-    // a key `keyOf` cannot fold — may be waiting for absence.
-    const name = member(call.expression)?.name;
-    const unread = (a: ts.Expression) => ts.isObjectLiteralExpression(a) && a.properties.some((p) => ts.isSpreadAssignment(p) || (p.name && keyOf(p.name) === UNKNOWN));
-    if (typeof name === 'string' && name.startsWith('waitFor') && call.arguments.some((a) => unread(bare(a))))
-      at(call, 'negative');
-    else if (name === 'waitFor' && call.arguments[0] && !ts.isObjectLiteralExpression(bare(call.arguments[0]))) at(call, 'negative');
+    // negative: a `waitFor…` that may pass on what never came (the wait table), called directly, by `.call` or `.apply`.
+    // `.apply`'s list is one value the table cannot read.
+    let wait = member(call.expression);
+    let args: readonly ts.Expression[] | undefined = call.arguments;
+    if ((wait?.name === 'call' || wait?.name === 'apply') && member(wait.of)) {
+      args = wait.name === 'call' ? args.slice(1) : undefined;
+      wait = member(wait.of);
+    }
+    const waitName = wait?.name;
+    if (absenceWait(waitName) && (!args || waitMayPassOnAbsence(waitName, args))) at(call, 'negative');
     // sleep: a wait whose failure is swallowed waits out its timeout when the thing never comes.
     const caught = named(call.expression, 'catch') ? bare(member(call.expression)!.of) : undefined;
     if (caught && ts.isCallExpression(caught) && isWait(caught)) at(call, 'sleep');
@@ -1247,7 +1353,7 @@ describe('journey waits', () => {
       ['await page.addInitScript(String.raw`set\\u0054imeout(go, 100)`);', ['sleep']],
       // …while a name only the run decides stays out of reach.
       ['await page[k](300);', []],
-      ["const t = 'Timeout';\nawait page['waitFor' + t](300);", []],
+      ["async function f(t) {\n  await page['waitFor' + t](300);\n}", []],
       // A raw hash navigation is its runtime URL however the `#` is written.
       ['await page.goto(`${origin}\\u0023/items`);', ['goto']],
       ["await page.goto(origin + '\\x23/items');", ['goto']],
