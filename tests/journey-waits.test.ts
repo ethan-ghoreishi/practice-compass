@@ -544,5 +544,78 @@ describe('journey waits', () => {
     expect(rules("await toast.waitFor({ state: 'hidden', timeout: 5_000 });")).toEqual(['negative']);
     expect(rules("await row.waitFor({ state: 'attached' });")).toEqual([]);
     expect(rules('await expect.poll(() => q()).toBe(null);')).toEqual(['negative']);
+
+    // EVERY SPELLING of a read, a matcher and an absence is judged the same
+    // way: the claim is checked against what the read returns when the thing
+    // is absent. One table, so a run shows every miss at once.
+    const H = 'async function hidden(b) {\n  return b.isHidden();\n}\n';
+    const spellings: [string, Rule[]][] = [
+      // a read with arguments, by computed name, optional chain, `.call`, parenthesised
+      ['expect(await box.isVisible({ timeout: 100 })).toBe(true);', ['positive']],
+      ['expect(await box["isVisible"]()).toBe(true);', ['positive']],
+      ['expect(await box[`count`]()).toBe(1);', ['positive']],
+      ['expect(await box?.isVisible()).toBe(true);', ['positive']],
+      ['expect(await box.isVisible?.()).toBe(true);', ['positive']],
+      ['expect(await box.isVisible.call(box)).toBe(true);', ['positive']],
+      ['expect(await (box.isVisible)()).toBe(true);', ['positive']],
+      ['expect(await box[method]()).toBe(true);', ['positive']],
+      ['expect(await box[method]()).toBe(false);', ['positive']],
+      ['const see = box.isVisible.bind(box);', ['read']],
+      // the assertion by any spelling: soft, a computed matcher, resolves, a not by name
+      ['expect.soft(await box.isVisible()).toBe(true);', ['positive']],
+      ['expect(await box.isVisible())["toBe"](true);', ['positive']],
+      ['await expect(box.isVisible()).resolves.toBe(true);', ['positive']],
+      ['expect(await box.isVisible())["not"].toBe(false);', ['positive']],
+      ['await expect(box.isVisible()).rejects.toThrow();', ['positive']],
+      // compound and inverted point-in-time claims
+      ['expect(await Promise.all([a.isChecked(), b.isChecked()])).toEqual([true, false]);', ['positive']],
+      ['expect(await Promise.all([a.isChecked(), b.isChecked()])).toEqual([false, false]);', []],
+      ['expect(!(await box.isVisible())).toBe(true);', ['positive']],
+      ['expect(await box.count()).toBeLessThan(1);', []],
+      ['expect(await box.count()).toBeGreaterThanOrEqual(1);', ['positive']],
+      ['expect(await box.isHidden()).toBeTruthy();', []],
+      ['expect(await box.isVisible({ timeout: 100 })).toBe(false);', []],
+      // a POLLED absence, by any spelling, is a negative to ledger
+      ['await expect.poll(() => box.isHidden()).toBe(true);', ['negative']],
+      ['await expect.poll(() => Promise.all([a.isChecked(), b.isChecked()])).toEqual([false, false]);', ['negative']],
+      ['await expect.poll(() => Promise.all([a.isChecked(), b.isChecked()])).toEqual([true, false]);', ['negative']],
+      ['await expect.poll(async () => [await a.count(), await b.count()]).toEqual([1, 0]);', ['negative']],
+      ['await expect.poll(() => box.isVisible()).not.toBe(true);', ['negative']],
+      ['await expect.poll(() => box.isVisible())["toBe"](false);', ['negative']],
+      ['await expect.poll(() => box.count()).toBeLessThan(1);', ['negative']],
+      ['await expect.poll(() => box.count()).toBeLessThanOrEqual(0);', ['negative']],
+      ['await expect.poll(() => box.isChecked()).toBeFalsy();', ['negative']],
+      ['await expect.poll(async () => !(await box.isVisible())).toBe(true);', ['negative']],
+      ['await expect.poll(async () => { const n = await box.count(); return n; }).toBe(1);', ['negative']],
+      ['await expect.poll(async () => { await go(); return box.isHidden(); }).toBe(true);', ['negative']],
+      ['await expect.poll(async () => ({ on: await box.isChecked() })).toEqual({ on: true });', ['negative']],
+      ['await expect.poll(() => box.count()).toBe(expected);', ['negative']],
+      ['await expect.poll(() => box["isHidden"]()).toBe(true);', ['negative']],
+      ['await expect.poll(() => box.isVisible({ timeout: 100 })).toBe(false);', ['negative']],
+      ['await expect.soft.poll(() => box.count()).toBe(0);', ['negative']],
+      ['await expect["poll"](() => box.count()).toBe(0);', ['negative']],
+      ['await expect.poll(() => box.count());', ['negative']],
+      [`${H}await expect.poll(() => hidden(box)).toBe(true);`, ['negative']],
+      [`${H}await expect.poll(hidden).toBe(true);`, ['negative']],
+      // …while a polled PRESENCE, by the same spellings, stays allowed
+      ['await expect.poll(() => box.isHidden()).toBe(false);', []],
+      ['await expect.poll(() => Promise.all([a.isChecked(), b.isChecked()])).toEqual([true, true]);', []],
+      ['await expect.poll(async () => [await name.inputValue(), await name.isEnabled()]).toEqual(["", true]);', []],
+      ['await expect.poll(async () => { await go(); return box.count(); }).toBe(2);', []],
+      ['await expect.poll(() => box.count()).toBeGreaterThan(0);', []],
+      ['await expect.poll(() => box["isVisible"]({ timeout: 100 })).toBe(true);', []],
+      [`${H}await expect.poll(() => hidden(box)).toBe(false);`, []],
+      // an absence by waitFor, however the option is spelled
+      ["await toast.waitFor({ 'state': 'detached' });", ['negative']],
+      ['await toast.waitFor({ state: `hidden` });', ['negative']],
+      ["await toast.waitFor({ state: 'hidden' as const });", ['negative']],
+      ['await toast.waitFor({ state });', ['negative']],
+      ['await toast.waitFor({ state: gone });', ['negative']],
+      ["await toast['waitFor']({ state: 'detached' });", ['negative']],
+      ["await toast.waitFor({ 'state': 'visible' });", []],
+      // a raw hash navigation by a computed name
+      ["await page['goto'](`${origin}#/items`);", ['goto']],
+    ];
+    expect(spellings.filter(([code, want]) => JSON.stringify(rules(code)) !== JSON.stringify(want)).map(([code, want]) => `${code} → ${JSON.stringify(rules(code))}, want ${JSON.stringify(want)}`)).toEqual([]);
   });
 });
