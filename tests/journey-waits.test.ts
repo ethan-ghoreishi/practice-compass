@@ -38,15 +38,18 @@ import { describe, expect, it } from 'vitest';
 //             a local function with a read in what it returns; it means what
 //             its ONE return evaluates to, so a second return path or a
 //             return the evaluation cannot reduce leaves every call unjudged;
-//   negative  every poll that is not PROVEN to wait for presence is ledgered as
-//             a disappearance AFTER presence: an absence wait passes at once if
-//             the thing never arrived, so its test waited for it first. A poll
+//   negative  every poll not PROVEN unable to pass on what never came is
+//             ledgered with why it cannot: it follows a wait that SAW the thing
+//             (a disappearance after presence), or it is a presence the table
+//             below cannot see (a variable, template or boolean expectation, a
+//             read mixed with a value). A poll
 //             of reads waits for presence when the same evaluation fails at
 //             every read's absent value, element by element (`[true, false]`
 //             still waits on nothing for its second half). A poll of a value
 //             (no read in it) may hold ANY value, an empty one included, so
-//             only a closed table proves presence: `toBe`/`toEqual` of a
-//             literal with no empty or boolean leaf anywhere, `toContain` of a
+//             only a closed table proves it cannot pass on an empty value:
+//             `toBe`/`toEqual` of a literal whose every leaf is a non-empty
+//             string or a POSITIVE number (no boolean, 0, -1), `toContain` of a
 //             non-empty string, `toMatch` of a regex that fails on '',
 //             `toBeGreaterThan(n >= 0)`, `toBeGreaterThanOrEqual(n > 0)`,
 //             `toHaveLength(n > 0)`. Everything else is negative: `.not`, no
@@ -67,8 +70,11 @@ import { describe, expect, it } from 'vitest';
 // exported to another file (its read is judged where it stands, as there is
 // no caller here to judge), and Playwright's own web-first matchers
 // (`toBeHidden`…), which these tests cannot reach: they import Vitest's
-// `expect`. Two helpers sharing a name, and a helper reached again while it is
-// being evaluated, are judged unknown.
+// `expect`; and a value COMPUTED to encode absence (a fallback string, a count
+// of what is missing) — the table proves a poll cannot pass on an empty or
+// sentinel value, not that the value means presence. Two helpers sharing a
+// name, and a helper reached again while it is being evaluated, are judged
+// unknown; so is `!` on a read that is not awaited.
 //
 // A ledger entry names its file, the rule, a snippet of the site (whitespace
 // collapsed), how many sites it vouches for (`sites`, default 1) and WHY they
@@ -389,9 +395,9 @@ function literal(node: ts.Expression | undefined): unknown {
 }
 const unjudgeable = (v: unknown): boolean => v === UNKNOWN || v === OPAQUE || (typeof v === 'object' && v !== null && Object.values(v).some(unjudgeable));
 const hasOpaque = (v: unknown): boolean => v === OPAQUE || (Array.isArray(v) && v.some(hasOpaque));
-/** Every leaf THERE: no 0, '', boolean, null, undefined, empty list or empty object anywhere inside. */
+/** Every leaf THERE: no 0 or negative sentinel (`indexOf`'s -1), '', boolean, null, undefined, empty list or empty object anywhere inside. */
 const full = (v: unknown): boolean =>
-  typeof v === 'number' ? v !== 0 && !Number.isNaN(v) : typeof v === 'string' ? v !== '' : typeof v === 'object' && v !== null && Object.values(v).length > 0 && Object.values(v).every(full);
+  typeof v === 'number' ? v > 0 : typeof v === 'string' ? v !== '' : typeof v === 'object' && v !== null && Object.values(v).length > 0 && Object.values(v).every(full);
 
 /** The member an access names — `x.a`, `x?.a`, `x['a']`, `` x[`a`] `` — UNKNOWN for a computed key. */
 function member(node: ts.Expression): { of: ts.Expression; name: string | typeof UNKNOWN } | undefined {
@@ -700,7 +706,11 @@ export function scan(file: string, raw: string): Site[] {
       return all ? reduce(all, used) : UNKNOWN;
     }
     if (ts.isArrayLiteralExpression(e)) return e.elements.map((x) => reduce(x, used));
+    // `!` sees the read's value only through `await`: on the bare Promise it is a constant false.
     if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
+      let operand: ts.Expression = e.operand;
+      while (ts.isParenthesizedExpression(operand)) operand = operand.expression;
+      if (!ts.isAwaitExpression(operand)) return UNKNOWN;
       const v = reduce(e.operand, used);
       return unjudgeable(v) ? UNKNOWN : !v;
     }
