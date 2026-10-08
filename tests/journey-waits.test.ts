@@ -1010,7 +1010,11 @@ describe('journey waits', () => {
       ['await expect.poll(() => q()).toBeTruthy();', ['negative']],
       ["await expect.poll(() => main.innerText().then((t) => !t.includes('x'))).toBe(true);", ['negative']],
       ['await expect.poll(() => n()).toHaveLength(0);', ['negative']],
-      ['await expect.poll(() => n()).toBeGreaterThanOrEqual(0);', ['negative']],
+      ["await expect.poll(() => q().indexOf('x')).toBe(-1);", ['negative']],
+      // `!` on a read that is not awaited negates the PROMISE: a constant false, whatever is on screen.
+      ['await expect.poll(() => !box.isVisible()).toBe(false);', ['negative']],
+      ['function gone(b) {\n  return !b.isVisible();\n}\nawait expect.poll(() => gone(box)).toBe(false);', ['negative']],
+      ['expect(!box.isVisible()).toBe(true);', ['positive']],
       // …a subject mixing a read with a value is judged as neither…
       ['await expect.poll(async () => [await name.inputValue(), await name.isEnabled()]).toEqual(["", true]);', ['negative']],
       ['await expect.poll(async () => [await a.count(), q()]).toEqual([1, "x"]);', ['negative']],
