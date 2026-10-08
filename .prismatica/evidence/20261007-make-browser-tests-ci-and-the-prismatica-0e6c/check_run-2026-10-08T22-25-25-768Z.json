@@ -1,0 +1,111 @@
+{
+  "contractId": "20261007-make-browser-tests-ci-and-the-prismatica-0e6c",
+  "event": "check_run",
+  "at": "2026-10-08T22:25:25.768Z",
+  "pass": true,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "detail": "npx vitest run --reporter=json"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "no separate journey command is configured — browser tests may be included in another configured runner, which is not inferred here"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "25 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "12 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "all required docs were updated"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "instruction-budget",
+      "status": "pass",
+      "detail": "prismatica-instructions/2: claude 32759 of 32768 bytes (CLAUDE.md 865 B, AGENTS.md 31894 B); codex 31894 of 32768 bytes (AGENTS.md 31894 B)"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "no mapped flow overlaps this change"
+    },
+    {
+      "name": "implementation",
+      "status": "pass",
+      "detail": "attribution, not proof: prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified"
+    }
+  ],
+  "changedFiles": [
+    ".github/workflows/ci.yml",
+    ".github/workflows/deploy.yml",
+    ".github/workflows/prismatica-gate.yml",
+    "AGENTS.md",
+    "DECISIONS.md",
+    "tests/ci-browser-setup.test.ts",
+    "tests/daily-practice.browser.test.ts",
+    "tests/journey-harness.browser.test.ts",
+    "tests/journey-waits.test.ts",
+    "tests/lesson-agenda.browser.test.ts",
+    "tests/lessonNotes.browser.test.ts",
+    "tests/musical-term-suggestions.browser.test.ts",
+    "tests/practice-cues.browser.test.ts",
+    "tests/practice-information-inbound.browser.test.ts",
+    "tests/practice-information-layout.browser.test.ts",
+    "tests/practice-information.browser.test.ts",
+    "tests/practiceBrowser.ts",
+    "tests/repertoire-experience.browser.test.ts",
+    "tests/repertoire-inbound.browser.test.ts",
+    "tests/review-ownership.browser.test.ts",
+    "tests/setar-practice-inbound.browser.test.ts",
+    "tests/setar-practice.browser.test.ts",
+    "tests/setar-review-ui.browser.test.ts",
+    "tests/setarArchive.browser.test.ts",
+    "tests/setarInbound.browser.test.ts"
+  ],
+  "prismaticaVersion": "0.10.0"
+}
