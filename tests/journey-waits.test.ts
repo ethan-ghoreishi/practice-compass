@@ -892,7 +892,8 @@ describe('journey waits', () => {
     const BRANCHY = 'async function state(b, open) {\n  if (open) return b.count();\n  return b.isHidden();\n}\n';
     const TERNARY = 'const state = (b, open) => (open ? b.count() : b.isHidden());\n';
     const GUARDED = 'async function rows(b, open) {\n  if (!open) return 0;\n  return b.count();\n}\n';
-    const CYCLE = 'function f(b) {\n  return g(b);\n}\nfunction g(b) {\n  return f(b).catch(() => b.count());\n}\n';
+    const BARE = 'async function hidden(b, open) {\n  if (!open) return;\n  return b.isHidden();\n}\n';
+    const CYCLE ='function f(b) {\n  return g(b);\n}\nfunction g(b) {\n  return f(b).catch(() => b.count());\n}\n';
     const spellings: [string, Rule[]][] = [
       // a read with arguments, by computed name, optional chain, `.call`, parenthesised
       ['expect(await box.isVisible({ timeout: 100 })).toBe(true);', ['positive']],
@@ -1032,9 +1033,42 @@ describe('journey waits', () => {
       // …while each table entry's provable side stays allowed.
       ["await expect.poll(() => q()).toEqual(['a', 'b']);", []],
       ["await expect.poll(() => q()).toEqual({ a: 'x', b: { c: 1 } });", []],
-      ['await expect.poll(() => q()).toMatch(/a+/);', []],
       ['await expect.poll(() => n()).toHaveLength(2);', []],
       ['await expect.poll(() => n()).toBeGreaterThanOrEqual(1);', []],
+      // EVERY RETURN PATH counts: a bare `return;`, or an end of body the
+      // function can reach, returns undefined — a second path, so UNKNOWN.
+      [`${BARE}await expect.poll(() => hidden(box, open)).toBeFalsy();`, ['negative']],
+      [`${BARE}expect(await hidden(box, open)).toBe(true);`, ['positive']],
+      ['async function hidden(b, open) {\n  if (open) return b.isHidden();\n}\nawait expect.poll(() => hidden(box, open)).toBeFalsy();', ['negative']],
+      ['await expect.poll(async () => { if (!open) return; return box.isHidden(); }).toBeFalsy();', ['negative']],
+      ['async function rows(b, open) {\n  if (!open) return;\n  return b.count();\n}\nawait expect.poll(() => rows(box, open)).toBeUndefined();', ['negative']],
+      ['async function rows(b) {\n  try { return b.count(); } catch { }\n}\nawait expect.poll(() => rows(box)).toBeUndefined();', ['negative']],
+      ['async function hidden(b, k) {\n  switch (k) { case 1: return b.isHidden(); }\n}\nawait expect.poll(() => hidden(box, k)).toBeFalsy();', ['negative']],
+      ['expect(await box.isVisible().catch(() => { if (!open) return; return false; })).toBe(false);', ['positive']],
+      ['async function* rows(b) {\n  return b.count();\n}\nawait expect.poll(() => rows(box)).toBe(1);', ['negative']],
+      // A helper exported IN ANY SPELLING has its callers elsewhere: its read is judged where it stands, once.
+      ['async function rows(b) {\n  return b.count();\n}\nexport { rows };', ['read']],
+      ['const rows = (b) => b.count();\nexport { rows };', ['read']],
+      ['async function rows(b) {\n  return b.count();\n}\nexport { rows as r };', ['read']],
+      ['async function rows(b) {\n  return b.count();\n}\nexport default rows;', ['read']],
+      // A READ METHOD named without being called — passed, aliased, destructured — is a read nobody judges.
+      ['expect(await Reflect.apply(box.isVisible, box, [])).toBe(true);', ['positive']],
+      ['await expect.poll(() => Reflect.apply(box.count, box, [])).toBe(1);', ['negative']],
+      ['const see = box.isVisible;', ['read']],
+      ["const see = box['isVisible'];", ['read']],
+      ['const { isVisible } = box;', ['read']],
+      ['const { count: n } = box;', ['read']],
+      // A REGEX'S SENSE is as invisible as a boolean's: only alternatives of
+      // plain non-empty text prove presence, like `toContain`.
+      ['await expect.poll(() => page.url()).toMatch(/^[^?]+$/);', ['negative']],
+      ['await expect.poll(() => page.url()).toMatch(/^(?!.*composer=).+/);', ['negative']],
+      ['await expect.poll(() => page.url()).toMatch(/^[a-z:\\/.#]+$/);', ['negative']],
+      ['await expect.poll(() => q()).toMatch(/\\D/);', ['negative']],
+      ['await expect.poll(() => q()).toMatch(/a+/);', ['negative']],
+      ['await expect.poll(() => q()).toMatch(/x/m);', ['negative']],
+      ['await expect.poll(() => q()).toMatch(/pushed|in sync/i);', []],
+      ['await expect.poll(() => q()).toMatch(/a\\.b/);', []],
+      ['await expect.poll(() => page.url()).toMatch(/view=paths&inst=inst-tar/);', []],
     ];
     expect(spellings.filter(([code, want]) => JSON.stringify(rules(code)) !== JSON.stringify(want)).map(([code, want]) => `${code} → ${JSON.stringify(rules(code))}, want ${JSON.stringify(want)}`)).toEqual([]);
   });
