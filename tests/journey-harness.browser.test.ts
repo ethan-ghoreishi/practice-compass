@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   goTo,
   openPracticeApp,
-  persistedDb,
   readPersistedState,
   reload,
+  writePersistedState,
   type Engine,
   type PracticeApp,
 } from './practiceBrowser';
@@ -25,6 +25,7 @@ import {
 
 const NOW = new Date('2026-10-01T09:00:00Z');
 const ENGINES: Engine[] = ['chromium', 'webkit'];
+const SHARED = 'Repertoire';
 
 /** Every level-1 heading inside `<main>`, right now — a point-in-time value read, no auto-wait. */
 const headings = (app: PracticeApp) =>
@@ -36,7 +37,13 @@ describe('the journey harness', () => {
       const app = await openPracticeApp({ now: NOW, engine, delayPagesMs: 1500 });
       const { page } = app;
       try {
-        const [a, b] = (await persistedDb(app)).items as { id: string; title: string }[];
+        // One item is titled like the Repertoire page, so its own page and
+        // Repertoire share a heading — the pair an arrival exists for.
+        const persisted = await readPersistedState(app);
+        const [a, b] = (persisted.state as { db: { items: { id: string; title: string }[] } }).db.items;
+        b.title = SHARED;
+        await writePersistedState(app, persisted.state, persisted.version);
+        await reload(app);
         expect(await headings(app), engine).toEqual([]); // Today has no page title
 
         // A first-load lazy page, from a page with no heading of its own.
@@ -68,7 +75,20 @@ describe('the journey harness', () => {
         await goTo(app, `/items/${a.id}`);
         expect(await headings(app), engine).toEqual([a.title]);
         await goTo(app, `/items/${b.id}`);
-        expect(await headings(app), engine).toEqual([b.title]);
+        expect(await headings(app), engine).toEqual([SHARED]);
+
+        // A destination sharing the outgoing heading, its module still loading.
+        // The heading cannot tell them apart — the page being left already
+        // shows it — so as an arrival it is refused before anything moves…
+        await expect(goTo(app, '/repertoire?view=all', { arrival: SHARED })).rejects.toThrow(/already shows the arrival/);
+        expect(new URL(page.url()).hash, engine).toBe(`#/items/${b.id}`);
+        // …and an arrival only the destination has is waited for through the
+        // slow load: on return, the view is the destination's and the item
+        // page, its heading included, is gone.
+        await goTo(app, '/repertoire?view=all', { arrival: page.getByRole('button', { name: 'Practice list', pressed: true }) });
+        expect(await headings(app), engine).toEqual([SHARED]);
+        expect(await page.getByRole('button', { name: 'Practice list' }).getAttribute('aria-pressed'), engine).toBe('true');
+        expect(await page.getByRole('button', { name: 'Start a block' }).count(), engine).toBe(0);
 
         // A focused route (no tab bar), then a URL that redirects: the
         // redirect's target is the destination.
@@ -77,12 +97,18 @@ describe('the journey harness', () => {
         await goTo(app, '/items');
         expect(await headings(app), engine).toEqual(['Repertoire']);
 
-        // Two URLs sharing one heading cannot be told apart by it. Without an
-        // explicit arrival that fails LOUDLY, naming the cause — never a hang
-        // and never a quiet early return; with one, it is the caller's word.
+        // The same page with another view keeps its heading element and
+        // text. Without an arrival that fails LOUDLY, naming the cause —
+        // never a hang and never a quiet early return…
         await expect(goTo(app, '/repertoire?view=paths', { timeout: 3_000 })).rejects.toThrow(/pass an arrival/);
-        await goTo(app, '/repertoire?view=list', { arrival: 'Repertoire' });
-        expect(await headings(app), engine).toEqual(['Repertoire']);
+        await page.getByRole('button', { name: 'Pathways', pressed: true }).waitFor();
+        // …the shared heading as the arrival is refused…
+        await expect(goTo(app, '/repertoire?view=works', { arrival: SHARED })).rejects.toThrow(/already shows the arrival/);
+        // …and the destination's own view is what it waits for.
+        await goTo(app, '/repertoire?view=works', { arrival: page.getByRole('button', { name: 'My repertoire', pressed: true }) });
+        expect(await page.getByRole('button', { name: 'My repertoire' }).getAttribute('aria-pressed'), engine).toBe('true');
+        expect(await page.getByRole('button', { name: 'Pathways' }).getAttribute('aria-pressed'), engine).toBe('false');
+        expect(await headings(app), engine).toEqual([SHARED]);
 
         // Back to a page with no title at all: the outgoing heading is gone.
         await goTo(app, '/');

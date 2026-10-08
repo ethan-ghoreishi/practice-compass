@@ -166,7 +166,7 @@ describe('musical terms, managed', () => {
       // button — nothing from the finished save carries over.
       await page.getByRole('button', { name: /Add a term/ }).click();
       const freshName = page.getByRole('textbox', { name: 'Term name' });
-      expect([await freshName.inputValue(), await freshName.isEnabled()]).toEqual(['', true]);
+      await expect.poll(async () => [await freshName.inputValue(), await freshName.isEnabled()]).toEqual(['', true]);
       await expect.poll(() => page.getByRole('textbox', { name: 'Other spellings' }).isEnabled()).toBe(true);
       expect(await page.getByText('Saved.').count()).toBe(0);
       await freshName.fill('سه‌ضربی');

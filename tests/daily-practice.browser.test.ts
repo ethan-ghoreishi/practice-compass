@@ -40,7 +40,7 @@ describe('the daily practice loop, end to end', () => {
       // showed the shorter session's plan.
       await page.getByRole('button', { name: '30 min', exact: true }).click();
       await expect.poll(() => totalMinutes(page)).toBe(30);
-      expect(await segmentCount(page)).toBeGreaterThan(1);
+      await expect.poll(() => segmentCount(page)).toBeGreaterThan(1);
       // A warm-up appears, and it is FIRST and familiar — not the demanding
       // new material, whatever it is labelled.
       await expect.poll(() => page.locator('.list-row').filter({ hasText: 'Warm-up' }).count()).toBe(1);

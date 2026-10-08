@@ -540,7 +540,9 @@ export async function importOutcome(app: PracticeApp): Promise<string> {
  * Two routes that render the SAME heading cannot be told apart by it, so a
  * journey moving between them passes `arrival` — a heading or a locator only
  * the destination has. Without one, the wait times out and THROWS naming that
- * cause: never a hang, never a quiet return on the page it left.
+ * cause: never a hang, never a quiet return on the page it left. An arrival
+ * the page being left ALREADY shows would return at once, on that page, so it
+ * is refused before navigating: every arrival is the destination's own.
  *
  * NEVER THE ROUTE YOU ARE ALREADY ON, and this refuses one outright. The app is
  * hash-routed, so `goto` to a DIFFERENT `#/route` is a same-document
@@ -571,16 +573,22 @@ export async function goTo(
         'wait for whatever brought you here to arrive, or reload() for a fresh document.',
     );
   }
+  const { arrival } = options;
+  const target =
+    typeof arrival === 'string' || arrival instanceof RegExp
+      ? page.getByRole('heading', { level: 1, name: arrival, ...(typeof arrival === 'string' ? { exact: true } : {}) })
+      : arrival;
+  if (target && (await target.count()) > 0) {
+    throw new Error(
+      `goTo(${hashPath}): the page being left already shows the arrival, so it cannot tell the destination apart — ` +
+        'pass something only the destination has.',
+    );
+  }
   const outgoing = await page.evaluateHandle(() => document.querySelector('main h1'));
   const from = await page.evaluate((h) => (h ? (h.textContent ?? '') : (document.querySelector('main')?.textContent ?? '')), outgoing);
   await page.goto(`${app.origin}#${hashPath}`.replace('##', '#'));
   try {
-    const { arrival } = options;
-    if (arrival) {
-      const target =
-        typeof arrival === 'string' || arrival instanceof RegExp
-          ? page.getByRole('heading', { level: 1, name: arrival, ...(typeof arrival === 'string' ? { exact: true } : {}) })
-          : arrival;
+    if (target) {
       await target.waitFor({ timeout });
     } else {
       await page.waitForFunction(

@@ -22,6 +22,7 @@ import {
   reload,
   remoteStateText,
   syncMessage,
+  syncNow,
   type TrackedRequestFailure,
   writePersistedState,
 } from './practiceBrowser';
@@ -327,18 +328,17 @@ describe('the archive graph at every inbound door', () => {
         items: pulled.items.map((i) => (i.id === 'own-dashti' ? { ...i, title: 'the GitHub copy' } : i)),
       };
       publishRemote(remote, remoteStateText(keepRemote), await hashState(keepRemote), 11_000);
-      await page.getByRole('button', { name: 'Sync now' }).click();
+      await syncNow(app); // finished, so whether it asks is its outcome, not a race
+      // Asked or not, the device ends on the GitHub copy with its archive.
       const takeRemote = page.getByRole('button', { name: /Take the GitHub copy|Keep the GitHub copy/ });
-      if ((await takeRemote.count()) > 0) {
-        await takeRemote.first().click();
-        await expect
-          .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
-            timeout: 60_000,
-            interval: 500,
-          })
-          .toBe('the GitHub copy');
-        expect((await shape(app)).archiveSources).toHaveLength(1);
-      }
+      if ((await takeRemote.count()) > 0) await takeRemote.first().click();
+      await expect
+        .poll(async () => (await shape(app)).items.find((i) => i.id === 'own-dashti')?.title, {
+          timeout: 60_000,
+          interval: 500,
+        })
+        .toBe('the GitHub copy');
+      expect((await shape(app)).archiveSources).toHaveLength(1);
 
       // --- THE ACTIVE/REVISION GUARD IS UNCHANGED -------------------------
       await goTo(app, '/items/own-dashti');
@@ -372,7 +372,9 @@ describe('the archive graph at every inbound door', () => {
       expect(parsed.data.lessons.find((l) => l.id === 'L-1')!.recordings!.map((r) => r.path)).toContain(REPAIRED_PATH);
 
       // --- BOTH HYDRATION BRANCHES ----------------------------------------
-      // `migrate`: a persisted database declaring the OLD version.
+      // `migrate`: a persisted database declaring the OLD version. The
+      // reload's on-open sync sets the store when it lands; it finishes first.
+      await syncNow(app);
       const current = await readPersistedState(app);
       await writePersistedState(app, { ...(current.state as object), db: JSON.parse(V13_SETAR_TEXT).data }, 13);
       await reload(app);
@@ -385,6 +387,9 @@ describe('the archive graph at every inbound door', () => {
       // exactly why the check cannot live only there.
       await importBackup(app, 'setar-v14.json', V14_TEXT);
       await reload(app);
+      // The reload's on-open sync sets the store when it lands, which would
+      // write the valid database back over the bytes written below.
+      await syncNow(app);
       const valid = await readPersistedState(app);
       const validDb = (valid.state as { db: Shape }).db;
       await writePersistedState(

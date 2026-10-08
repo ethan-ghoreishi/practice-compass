@@ -20,6 +20,7 @@ import {
   reload,
   remoteStateText,
   syncMessage,
+  syncNow,
   writePersistedState,
   type PracticeApp,
 } from './practiceBrowser';
@@ -234,6 +235,8 @@ describe('the repertoire model at every inbound door', () => {
       expect(db.schemaVersion).toBe(SCHEMA_VERSION);
       expect(db.items.find((i) => i.id === 'it-iraq')!.catalogRefs).toEqual(EXPECT.legacy.bindings['it-iraq']);
       // `merge`: persisted bytes declaring the CURRENT version, malformed.
+      // The reload's on-open sync finishes first, or it writes over them.
+      await syncNow(app);
       const valid = await readPersistedState(app);
       for (const c of [MALFORMED[0], MALFORMED[4]]) {
         await writePersistedState(app, { ...(valid.state as object), db: c.db(clone((valid.state as { db: Db }).db)) }, SCHEMA_VERSION);

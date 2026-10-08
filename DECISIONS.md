@@ -20,7 +20,11 @@ wrong, measured instead.
   A one-off audit found 44 such call sites (about 100 calls) in 11 journeys. `goTo` now refuses
   the current route, and returns once `main` is visible and its h1 has been replaced
   (element or text; a page with no h1 by its text). Two URLs with one heading pass
-  `arrival`. A read helper that may already be on its page uses `show`. It is opt-in,
+  `arrival`, which must be the destination's own: `goTo` refuses one the page being
+  left already shows, before navigating. That holds by construction: an arrival
+  both pages show proves nothing about which one it matched. A real-browser probe
+  did not reproduce an early return (the role locator skips the heading hidden
+  behind the Suspense fallback); the refusal does not depend on that. A read helper that may already be on its page uses `show`. It is opt-in,
   for a page already settled, and it is not the rejected no-op: `goTo` itself still
   refuses, and a tap followed by a navigation still waits for the tap's arrival. Rejected:
   a no-op same-route `goTo` (hides the hazard), and a required arrival on every call
@@ -35,11 +39,19 @@ wrong, measured instead.
   marker is therefore read through `persistedUntil` until it is exact: the Gate's
   `{"ctorThrows":true}: expected undefined to be 1`. That one did not reproduce
   locally under slow storage or 20x CPU; the wait is right regardless. The two local
-  `until` pollers now go through `persistedUntil` and keep their timeouts.
-- **Waits are events, by construction.** `tests/journey-waits.test.ts` reads every
-  test file and the harness. It refuses fixed sleeps, loops that sleep, positive
-  point-in-time existence or state assertions, unledgered polled negatives and raw
-  hash `page.goto`, and its ledger says why each exception stands. 44 positive reads
+  `until` pollers now go through `persistedUntil` and keep their timeouts. A test
+  that writes the store directly while sync is connected first lets the reload's
+  on-open sync finish (`syncNow`), or that sync writes the valid database back
+  over the bytes (seen under slow storage once a racy branch read was ordered).
+- **Waits are events, by construction.** `tests/journey-waits.test.ts` parses every
+  test file and the harness with TypeScript, so quoted `//`, `)` and regex text
+  cannot hide or end code; a regex scan let both through. Every rule is
+  deny-by-default: any timer reference (page scripts included), any loop that
+  awaits, a state read (`count`, `is*`) asserted anywhere but `expect.poll` or a
+  claim of absence (compound arrays judged per element, local helpers followed),
+  the same read outside an assertion, every absence wait (`waitFor` detached or
+  hidden too), and raw hash `page.goto`. Its ledger says why each exception
+  stands and how many sites it covers. 44 positive reads
   became `expect.poll` with the same matcher. Two polled negatives that followed a
   positive arrival became point-in-time reads. Element disappearances became
   `waitFor({ state: 'detached' })`: the slow-storage run showed a 1 s default poll

@@ -906,7 +906,9 @@ describe('Review Setar setup, interrupted', () => {
         await page.getByText(/Keeping fresh — choose which items/).click();
         await page.getByRole('button', { name: 'Choose every item without a note' }).click();
         const fresh = (title: string) => page.getByRole('checkbox', { name: `Keeping fresh: ${title}` });
-        expect([await fresh(SABA.title).isChecked(), await fresh(KERESHMEH_MAHUR.title).isChecked()], where).toEqual([true, true]);
+        await expect
+          .poll(() => Promise.all([fresh(SABA.title).isChecked(), fresh(KERESHMEH_MAHUR.title).isChecked()]), { message: where })
+          .toEqual([true, true]);
         expect([await fresh(RIZ.title).isChecked(), await fresh(JANG.title).isChecked(), await fresh(MAHUR.title).isChecked()], where).toEqual([false, false, false]);
         await fresh(SABA.title).uncheck();
         await fresh(RIZ.title).check();
@@ -1147,6 +1149,8 @@ describe('archive associations, through every reader', () => {
         await fresh('/lessons');
         await page.getByRole('button', { name: new RegExp(`Class ${lesson.number}\\b`) }).first().click();
         const title = base.items.find((i) => i.id === itemId)!.title;
+        // The opened class's own control is there first, so a missing Unlink is an answer.
+        await page.getByRole('button', { name: 'Link existing…' }).waitFor({ timeout: 20_000 });
         const inList = await page.getByRole('button', { name: `Unlink ${title} from this lesson — the item is kept` }).count();
         await page.getByRole('button', { name: 'Link existing…' }).click();
         const pickerLesson = await page
@@ -1459,6 +1463,7 @@ describe('recovery and difference controls, on a phone', () => {
           // English title beside Farsi values. The group resolves from its bare
           // title, the owner's values from themselves, the generated copy is LTR.
           await page.getByText('Review Setar setup').click();
+          await page.getByRole('combobox', { name: 'Pathway to place items in' }).waitFor({ timeout: 20_000 });
           if (await page.getByText('Which instrument is your Setar?').count()) {
             await page.locator('details', { hasText: 'Which instrument is your Setar?' }).last().locator('select').selectOption('inst-setar');
           }
