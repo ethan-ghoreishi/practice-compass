@@ -47,10 +47,14 @@ wrong, measured instead.
   test file and the harness with TypeScript, so quoted `//`, `)` and regex text
   cannot hide or end code; a regex scan let both through. Every rule is
   deny-by-default: any timer reference (page scripts included), any loop that
-  awaits, a state read (`count`, `is*`) asserted anywhere but `expect.poll` or a
-  claim of absence (compound arrays judged per element, local helpers followed),
-  the same read outside an assertion, every absence wait (`waitFor` detached or
-  hidden too), and raw hash `page.goto`. Its ledger says why each exception
+  awaits, a state read (`count`, `is*`) asserted at one instant unless the
+  assertion passes only when the thing is absent, the same read outside an
+  assertion, every absence wait, and raw hash `page.goto`. One evaluation decides
+  both directions: the matcher is run on what each read returns when the thing is
+  absent (`isHidden` true), through any spelling of the read, `expect` and
+  matcher (arguments, computed names, `.call`, `.not`, `Promise.all`, arrays per
+  element). A poll is an absence wait when any read in it passes absent or cannot
+  be judged; a pattern list missed `isHidden` polls and `[false, false]`. Its ledger says why each exception
   stands and how many sites it covers. 44 positive reads
   became `expect.poll` with the same matcher. Two polled negatives that followed a
   positive arrival became point-in-time reads. Element disappearances became

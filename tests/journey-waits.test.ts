@@ -19,26 +19,40 @@ import { describe, expect, it } from 'vitest';
 //   poller    no `while`, `do` or `for(;;)`-style loop that awaits —
 //             `persistedUntil` is the one poller;
 //   positive  a rendered-state read with no auto-wait — `count`, `isVisible`,
-//             `isHidden`, `isChecked`, `isEnabled`, `isDisabled`, `isEditable`
-//             — is asserted only inside `expect.poll`, or by an `expect` that
-//             provably claims the thing ABSENT (directly, or as an array
-//             element paired with an absent literal). Anything else in an
-//             assertion is positive or unjudgeable, and refused;
-//   read      the same read OUTSIDE an assertion — a branch, a variable — is
-//             refused unless ledgered with what it was read after. A local
-//             helper that returns a read makes each of its calls a read;
-//   negative  every absence wait — `expect.poll(…)` with `.not`, `toBe(0)`,
-//             `toBe(false)`, `toBe(null)`, `toEqual([])`, `toBeFalsy()`,
-//             `toBeUndefined()`…, or `waitFor({ state: 'detached' | 'hidden' })`
-//             — is ledgered as a disappearance AFTER presence: it passes at
-//             once if the thing never arrived, so its test waited for it first;
+//             `isHidden`, `isChecked`, `isEnabled`, `isDisabled`, `isEditable`,
+//             by any spelling (arguments, `x['count']`, `?.`, `.call`, a local
+//             helper) — is asserted at one instant only by an `expect` that
+//             PASSES ONLY IF THE THING IS ABSENT: the matcher is evaluated on
+//             what the read returns then (0, false; `isHidden` true), through
+//             `.not`, `.resolves`, `!`, `Promise.all`, a `.catch` falling back
+//             to that same value, and arrays judged element by element. Anything it cannot evaluate (a computed name, a
+//             variable, a comparison, an object) is refused;
+//   read      the same read OUTSIDE an assertion — a branch, a variable, a
+//             `.bind` — is refused unless ledgered with what it was read
+//             after. A local helper that returns a read makes each of its
+//             calls a read;
+//   negative  every absence wait is ledgered as a disappearance AFTER presence:
+//             it passes at once if the thing never arrived, so its test waited
+//             for it first. A poll of a read is one when ANY read in it passes
+//             absent, or cannot be judged (by the same evaluation; `[true,
+//             false]` still waits on nothing for its second half). A poll of
+//             anything else is one by its literal: `.not`, `toBe(0)`,
+//             `toBe(null)`, `toEqual([])`, `toBeFalsy()`…. So is a poll with
+//             no matcher, and `waitFor` with `state: 'detached' | 'hidden'` or
+//             a state it cannot read;
 //   goto      no raw `page.goto` to a hash route outside the harness: `goTo`
 //             is the navigation that waits for the destination.
-// Geometry (`boundingBox`) and list (`all`, `allInnerTexts`) reads are VALUE
-// reads, like `inputValue`: taken after the element was awaited. Deliberately
-// out of reach: `for…of`/`for…in` loops (walks over a fixed list, as the
-// engine loops are; a timed poller in one still trips `sleep`), a `state:`
-// given as a non-literal, and recursion (no helper here calls itself).
+// `expect`, `expect.soft`, `.poll` and every matcher are matched by name in
+// any spelling (`expect['poll']`, `['not']`). Geometry (`boundingBox`) and
+// list (`all`, `allInnerTexts`) reads are VALUE reads, like `inputValue`:
+// taken after the element was awaited. Deliberately out of reach: `for…of`/
+// `for…in` loops (walks over a fixed list, as the engine loops are; a timed
+// poller in one still trips `sleep`), a read method destructured or aliased
+// (`const { count } = x`), a computed call OUTSIDE an assertion (`x[k]()`
+// may be anything; inside one it is refused), an aliased `expect`, a helper exported to another
+// file, recursion (no helper here calls itself), and Playwright's own web-first
+// matchers (`toBeHidden`…), which these tests cannot reach: they import
+// Vitest's `expect`.
 //
 // A ledger entry names its file, the rule, a snippet of the site (whitespace
 // collapsed), how many sites it vouches for (`sites`, default 1) and WHY they
@@ -272,43 +286,107 @@ const READS: Record<string, unknown> = {
   isEditable: false,
 };
 const SLEEP = /\b(?:waitForTimeout|setTimeout|setInterval)\b/g;
-const EQUALS = new Set(['toBe', 'toEqual', 'toStrictEqual']);
-const NOT_LITERAL = Symbol('not a literal');
+/** What the scan cannot judge: a computed name, a non-literal value, a matcher it does not know. */
+const UNKNOWN = Symbol('unknown');
+type Verdict = boolean | typeof UNKNOWN;
 
-/** A literal's value — `true`, `0`, `[false, 0]` — or NOT_LITERAL for anything the scan cannot judge. */
-function literal(e: ts.Expression | undefined): unknown {
-  if (!e) return NOT_LITERAL;
+/** Through parentheses, `await`, `!.` and `as` — the value is still the value. */
+function bare(e: ts.Expression): ts.Expression {
+  while (ts.isParenthesizedExpression(e) || ts.isAwaitExpression(e) || ts.isNonNullExpression(e) || ts.isAsExpression(e) || ts.isSatisfiesExpression(e)) e = e.expression;
+  return e;
+}
+
+/** A literal's value — `true`, `0`, `[false, 0]`, `'hidden' as const` — or UNKNOWN. */
+function literal(node: ts.Expression | undefined): unknown {
+  if (!node) return UNKNOWN;
+  const e = bare(node);
   if (e.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (e.kind === ts.SyntaxKind.FalseKeyword) return false;
   if (e.kind === ts.SyntaxKind.NullKeyword) return null;
+  if (ts.isIdentifier(e) && e.text === 'undefined') return undefined;
   if (ts.isNumericLiteral(e)) return Number(e.text);
-  if (ts.isStringLiteral(e) || ts.isNoSubstitutionTemplateLiteral(e)) return e.text;
+  if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.MinusToken && ts.isNumericLiteral(e.operand)) return -Number(e.operand.text);
+  if (ts.isStringLiteralLike(e)) return e.text;
   if (ts.isArrayLiteralExpression(e)) return e.elements.map(literal);
-  return NOT_LITERAL;
+  return UNKNOWN;
 }
+const unjudgeable = (v: unknown): boolean => v === UNKNOWN || (Array.isArray(v) && v.some(unjudgeable));
 
-const isExpect = (n: ts.Node): n is ts.CallExpression => ts.isCallExpression(n) && ts.isIdentifier(n.expression) && n.expression.text === 'expect';
-const isPoll = (n: ts.Node): n is ts.CallExpression =>
-  ts.isCallExpression(n) &&
-  ts.isPropertyAccessExpression(n.expression) &&
-  n.expression.name.text === 'poll' &&
-  ts.isIdentifier(n.expression.expression) &&
-  n.expression.expression.text === 'expect';
+/** The member an access names — `x.a`, `x?.a`, `x['a']`, `` x[`a`] `` — UNKNOWN for a computed key. */
+function member(node: ts.Expression): { of: ts.Expression; name: string | typeof UNKNOWN } | undefined {
+  const e = bare(node);
+  if (ts.isPropertyAccessExpression(e)) return { of: e.expression, name: e.name.text };
+  if (ts.isElementAccessExpression(e)) {
+    const key = bare(e.argumentExpression);
+    return { of: e.expression, name: ts.isStringLiteralLike(key) ? key.text : UNKNOWN };
+  }
+  return undefined;
+}
+const named = (e: ts.Expression, name: string) => member(e)?.name === name;
 
-/** The matcher an `expect(…)`/`expect.poll(…)` call is chained into: `.not?.name(args)`. */
-function matcherOf(subject: ts.CallExpression): { not: boolean; name: string; args: readonly ts.Expression[]; call: ts.CallExpression } | null {
+/** `expect` or `expect.soft`, by any spelling. */
+const isExpectFn = (node: ts.Expression): boolean => {
+  const e = bare(node);
+  return (ts.isIdentifier(e) && e.text === 'expect') || (named(e, 'soft') && isExpectFn(member(e)!.of));
+};
+const isExpect = (n: ts.Node): n is ts.CallExpression => ts.isCallExpression(n) && isExpectFn(n.expression);
+const isPoll = (n: ts.Node): n is ts.CallExpression => ts.isCallExpression(n) && named(n.expression, 'poll') && isExpectFn(member(n.expression)!.of);
+
+type Matcher = { not: boolean; rejects: boolean; name: string; args: readonly ts.Expression[]; call: ts.CallExpression };
+/** The matcher an `expect(…)`/`expect.poll(…)` call is chained into, through `.not`, `.resolves`, `.rejects`, by any spelling. */
+function matcherOf(subject: ts.CallExpression): Matcher | null {
   let node: ts.Node = subject;
   let not = false;
-  let access = node.parent;
-  if (ts.isPropertyAccessExpression(access) && access.expression === node && access.name.text === 'not') {
-    not = true;
+  let rejects = false;
+  for (;;) {
+    while (ts.isParenthesizedExpression(node.parent)) node = node.parent;
+    const access = node.parent;
+    if (!(ts.isPropertyAccessExpression(access) || ts.isElementAccessExpression(access)) || access.expression !== node) return null;
+    const name = member(access)!.name;
+    if (name === UNKNOWN) return null;
+    if (name === 'not') not = !not;
+    else if (name === 'rejects') rejects = true;
+    else if (name !== 'resolves') {
+      const call = access.parent;
+      return ts.isCallExpression(call) && call.expression === access ? { not, rejects, name, args: call.arguments, call } : null;
+    }
     node = access;
-    access = access.parent;
   }
-  if (!ts.isPropertyAccessExpression(access) || access.expression !== node) return null;
-  const call = access.parent;
-  if (!ts.isCallExpression(call) || call.expression !== access) return null;
-  return { not, name: access.name.text, args: call.arguments, call };
+}
+
+/** Does a matcher pass on `actual`? UNKNOWN when either side, or the matcher, cannot be judged. */
+function passes(m: Matcher | null, actual: unknown, want: unknown = literal(m?.args[0])): Verdict {
+  if (!m || m.rejects || unjudgeable(actual)) return UNKNOWN;
+  const num = typeof actual === 'number' && typeof want === 'number';
+  const verdicts: Record<string, () => Verdict> = {
+    toBe: () => (unjudgeable(want) ? UNKNOWN : !Array.isArray(actual) && Object.is(actual, want)),
+    toEqual: () => (unjudgeable(want) ? UNKNOWN : JSON.stringify(actual) === JSON.stringify(want)),
+    toBeTruthy: () => !!actual,
+    toBeFalsy: () => !actual,
+    toBeNull: () => actual === null,
+    toBeUndefined: () => actual === undefined,
+    toBeDefined: () => actual !== undefined,
+    toBeGreaterThan: () => (num ? (actual as number) > (want as number) : UNKNOWN),
+    toBeGreaterThanOrEqual: () => (num ? (actual as number) >= (want as number) : UNKNOWN),
+    toBeLessThan: () => (num ? (actual as number) < (want as number) : UNKNOWN),
+    toBeLessThanOrEqual: () => (num ? (actual as number) <= (want as number) : UNKNOWN),
+    toHaveLength: () => (Array.isArray(actual) && typeof want === 'number' ? actual.length === want : UNKNOWN),
+  };
+  verdicts.toStrictEqual = verdicts.toEqual;
+  const v = Object.hasOwn(verdicts, m.name) ? verdicts[m.name]() : UNKNOWN;
+  return v === UNKNOWN ? v : v !== m.not;
+}
+
+/** The expression a poll callback returns: its body, or its one `return`. */
+function returned(fn: ts.ArrowFunction | ts.FunctionExpression): ts.Expression | undefined {
+  if (!ts.isBlock(fn.body)) return fn.body;
+  const returns: ts.ReturnStatement[] = [];
+  const find = (n: ts.Node): void => {
+    if (ts.isReturnStatement(n)) returns.push(n);
+    else if (!ts.isFunctionLike(n)) ts.forEachChild(n, find);
+  };
+  ts.forEachChild(fn.body, find);
+  return returns.length === 1 ? returns[0].expression : undefined;
 }
 
 /** Climb out of `await`, parentheses, `!` and `as` — the read's value is still the read. */
@@ -347,6 +425,7 @@ export function scan(file: string, raw: string): Site[] {
   const at = (node: ts.Node, rule: Rule, text = node.getText(sf), pos = node.getStart(sf)) =>
     sites.push({ file, rule, line: sf.getLineAndCharacterOfPosition(pos).line + 1, text: text.replace(/\s+/g, ' ').trim() });
   const calls: ts.CallExpression[] = [];
+  const isRead = (name: string | typeof UNKNOWN | undefined) => typeof name === 'string' && Object.hasOwn(READS, name);
 
   const visit = (node: ts.Node): void => {
     // sleep: any REFERENCE to a timer (a call, `.bind`, an import) …
@@ -361,91 +440,148 @@ export function scan(file: string, raw: string): Site[] {
     }
     // poller: a loop that awaits — `persistedUntil` is the one.
     if ((ts.isWhileStatement(node) || ts.isDoStatement(node) || ts.isForStatement(node)) && hasAwait(node)) at(node, 'poller');
-    // negative: a wait for something to be GONE passes at once if it never came.
-    if (
-      ts.isPropertyAssignment(node) &&
-      node.name.getText(sf) === 'state' &&
-      ts.isStringLiteral(node.initializer) &&
-      (node.initializer.text === 'detached' || node.initializer.text === 'hidden')
-    ) {
-      let call: ts.Node = node;
-      while (!ts.isCallExpression(call) && !ts.isSourceFile(call)) call = call.parent;
-      at(call, 'negative');
+    // negative: a wait for something to be GONE passes at once if it never came —
+    // `state: 'detached' | 'hidden'` however spelled, or a `waitFor` state the scan cannot read.
+    if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && (ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name)) && node.name.text === 'state') {
+      const state = ts.isPropertyAssignment(node) ? literal(node.initializer) : UNKNOWN;
+      const call = ts.findAncestor(node, ts.isCallExpression);
+      if (state === 'detached' || state === 'hidden' || (typeof state !== 'string' && call && named(call.expression, 'waitFor'))) at(call ?? node, 'negative');
     }
+    // read: a read bound for later is a read nobody judges.
+    if (named(node as ts.Expression, 'bind') && isRead(member(member(node as ts.Expression)!.of)?.name)) at(ts.isCallExpression(node.parent) ? node.parent : node, 'read');
     if (ts.isCallExpression(node)) calls.push(node);
     ts.forEachChild(node, visit);
   };
   const hasAwait = (node: ts.Node): boolean => ts.isAwaitExpression(node) || (ts.isForOfStatement(node) && !!node.awaitModifier) || ts.forEachChild(node, hasAwait) === true;
   visit(sf);
 
+  // A local helper that returns a read makes each of ITS calls a read.
+  const helpers = new Map<string, unknown>();
+  /** A read call's absent value (UNKNOWN through a computed name), or undefined for a call that is no read. */
+  const readOf = (c: ts.CallExpression): { absent: unknown; computed: boolean } | undefined => {
+    const callee = bare(c.expression);
+    if (ts.isIdentifier(callee)) return helpers.has(callee.text) ? { absent: helpers.get(callee.text), computed: false } : undefined;
+    let m = member(callee);
+    if (m && (m.name === 'call' || m.name === 'apply') && member(m.of)) m = member(m.of);
+    if (!m) return undefined;
+    if (m.name === UNKNOWN) return { absent: UNKNOWN, computed: true };
+    return isRead(m.name) ? { absent: READS[m.name], computed: false } : undefined;
+  };
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const c of calls) {
+      const read = readOf(c);
+      if (!read) continue;
+      const value = valueOf(c);
+      const holder = value.parent;
+      const name = localName(ts.isReturnStatement(holder) ? ts.findAncestor(holder, ts.isFunctionLike) : ts.isArrowFunction(holder) && holder.body === value ? holder : undefined);
+      if (name && !helpers.has(name)) {
+        helpers.set(name, read.absent);
+        grew = true;
+      }
+    }
+  }
+
+  /** What `e` evaluates to when every read in it finds the thing ABSENT. */
+  const absentValue = (node: ts.Expression): unknown => {
+    const e = bare(node);
+    if (ts.isIdentifier(e) && helpers.has(e.text)) return helpers.get(e.text); // `expect.poll(helper)`
+    if (ts.isArrowFunction(e) || ts.isFunctionExpression(e)) {
+      const r = returned(e);
+      return r ? absentValue(r) : UNKNOWN;
+    }
+    if (ts.isCallExpression(e)) {
+      const read = readOf(e);
+      if (read) return read.absent;
+      const m = member(e.expression);
+      // `read.catch(() => fallback)`: absent either way only when the fallback IS the absent value.
+      if (m?.name === 'catch' && e.arguments.length === 1 && (ts.isArrowFunction(e.arguments[0]) || ts.isFunctionExpression(e.arguments[0]))) {
+        const absent = absentValue(m.of);
+        const r = returned(e.arguments[0]);
+        return !unjudgeable(absent) && r && Object.is(literal(r), absent) ? absent : UNKNOWN;
+      }
+      return m?.name === 'all' && ts.isIdentifier(bare(m.of)) && (bare(m.of) as ts.Identifier).text === 'Promise' && e.arguments.length === 1 ? absentValue(e.arguments[0]) : UNKNOWN;
+    }
+    if (ts.isArrayLiteralExpression(e)) return e.elements.map(absentValue);
+    if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
+      const v = absentValue(e.operand);
+      return unjudgeable(v) ? UNKNOWN : !v;
+    }
+    return literal(e);
+  };
+  /** The array an assertion's subject resolves to, through a callback and `Promise.all`. */
+  const arrayOf = (node: ts.Expression): ts.ArrayLiteralExpression | undefined => {
+    const e = bare(node);
+    if (ts.isArrayLiteralExpression(e)) return e;
+    if (ts.isArrowFunction(e) || ts.isFunctionExpression(e)) {
+      const r = returned(e);
+      return r && arrayOf(r);
+    }
+    if (ts.isCallExpression(e) && named(e.expression, 'all') && e.arguments.length === 1) return arrayOf(e.arguments[0]);
+    return undefined;
+  };
+  /**
+   * For every read in an assertion's subject: does the assertion PASS when the
+   * thing is absent? An array asserted element by element is judged per
+   * element; anything the scan cannot evaluate is UNKNOWN.
+   */
+  const claims = (assertion: ts.CallExpression): Map<ts.Node, Verdict> => {
+    const subject = assertion.arguments[0];
+    const m = matcherOf(assertion);
+    const out = new Map<ts.Node, Verdict>();
+    if (!subject) return out;
+    const reads: ts.Node[] = calls.filter((c) => c.pos >= subject.pos && c.end <= subject.end && readOf(c));
+    if (ts.isIdentifier(bare(subject)) && helpers.has((bare(subject) as ts.Identifier).text)) reads.push(subject);
+    const array = arrayOf(subject);
+    const want = literal(m?.args[0]);
+    if (array && m && !m.not && (m.name === 'toEqual' || m.name === 'toStrictEqual') && Array.isArray(want) && want.length === array.elements.length) {
+      for (const r of reads) {
+        const i = array.elements.findIndex((el) => r.pos >= el.pos && r.end <= el.end);
+        out.set(r, i < 0 ? UNKNOWN : passes(m, absentValue(array.elements[i]), want[i]));
+      }
+    } else {
+      const v = passes(m, absentValue(subject));
+      for (const r of reads) out.set(r, v);
+    }
+    return out;
+  };
+
   for (const call of calls) {
     // goto: a raw hash navigation outside the harness.
-    if (file !== HARNESS && ts.isPropertyAccessExpression(call.expression) && call.expression.name.text === 'goto' && call.arguments.some((a) => a.getText(sf).includes('#')))
-      at(call, 'goto');
-    // negative: a polled absence.
+    if (file !== HARNESS && named(call.expression, 'goto') && call.arguments.some((a) => a.getText(sf).includes('#'))) at(call, 'goto');
+    // negative: a polled absence. With a read in it, the claim is judged against
+    // the read's absent value, per element; with none, by its literal.
     if (isPoll(call)) {
       const m = matcherOf(call);
-      if (!m) continue;
-      const v = literal(m.args[0]);
+      const judged = [...claims(call).values()];
+      const v = literal(m?.args[0]);
       const negative =
-        m.not ||
-        ['toBeFalsy', 'toBeNull', 'toBeUndefined'].includes(m.name) ||
-        (EQUALS.has(m.name) && (v === 0 || v === false || v === null || (Array.isArray(v) && v.length === 0))) ||
-        (m.name === 'toHaveLength' && v === 0);
-      if (negative) at(m.call, 'negative');
+        !m ||
+        (judged.length > 0
+          ? judged.some((j) => j !== false)
+          : m.not ||
+            ['toBeFalsy', 'toBeNull', 'toBeUndefined'].includes(m.name) ||
+            (['toBe', 'toEqual', 'toStrictEqual'].includes(m.name) && (v === 0 || v === false || v === null || (Array.isArray(v) && v.length === 0))) ||
+            (m.name === 'toHaveLength' && v === 0));
+      if (negative) at(m?.call ?? call, 'negative');
     }
   }
 
   // positive / read: a rendered-state read is allowed only inside `expect.poll`,
-  // or as an `expect` claiming the thing ABSENT. A local helper that returns a
-  // read makes each of ITS calls a read.
-  const helpers = new Map<string, string>();
-  const methodOf = (c: ts.CallExpression): string | undefined =>
-    ts.isPropertyAccessExpression(c.expression) && c.arguments.length === 0 && Object.hasOwn(READS, c.expression.name.text)
-      ? c.expression.name.text
-      : ts.isIdentifier(c.expression)
-        ? helpers.get(c.expression.text)
-        : undefined;
-  const judged = new Set<ts.CallExpression>();
-  for (let grew = true; grew; ) {
-    grew = false;
-    for (const c of calls) {
-      const method = methodOf(c);
-      if (!method || judged.has(c)) continue;
-      judged.add(c);
-      let a: ts.Node = c.parent;
-      while (!ts.isSourceFile(a) && !isPoll(a)) a = a.parent;
-      if (isPoll(a)) continue;
-      const absent = READS[method];
-      const value = valueOf(c);
-      const holder = value.parent;
-      const assertion = isExpect(holder) && holder.arguments[0] === value ? holder : ts.isArrayLiteralExpression(holder) && isExpect(holder.parent) && holder.parent.arguments[0] === holder ? holder.parent : null;
-      if (assertion) {
-        const m = matcherOf(assertion);
-        const v = literal(m?.args[0]);
-        const claimed = assertion === holder ? v : Array.isArray(v) && v.length === (holder as ts.ArrayLiteralExpression).elements.length ? v[(holder as ts.ArrayLiteralExpression).elements.indexOf(value as ts.Expression)] : NOT_LITERAL;
-        const claimsAbsent =
-          !!m &&
-          ((EQUALS.has(m.name) && (m.not ? typeof absent === 'boolean' && claimed === !absent : claimed === absent)) ||
-            (!m.not && m.name === (absent === true ? 'toBeTruthy' : 'toBeFalsy') && assertion === holder));
-        if (!claimsAbsent) at(m?.call ?? assertion, 'positive');
-        continue;
-      }
-      let inside: ts.Node = holder;
-      while (!ts.isSourceFile(inside) && !isExpect(inside) && !ts.isFunctionLike(inside)) inside = inside.parent;
-      if (isExpect(inside)) {
-        at(matcherOf(inside)?.call ?? inside, 'positive'); // a read the scan cannot judge, inside an assertion
-        continue;
-      }
-      const fn = ts.isReturnStatement(holder) ? ts.findAncestor(holder, ts.isFunctionLike) : ts.isArrowFunction(holder) && holder.body === value ? holder : undefined;
-      const name = localName(fn);
-      if (name) {
-        if (!helpers.has(name)) grew = true;
-        helpers.set(name, method);
-        continue;
-      }
-      at(value, 'read');
+  // or as an `expect` that passes only when the thing is ABSENT.
+  for (const c of calls) {
+    const read = readOf(c);
+    if (!read) continue;
+    const assertion = ts.findAncestor(c.parent, (a) => isPoll(a) || isExpect(a)) as ts.CallExpression | undefined;
+    if (assertion && isPoll(assertion)) continue; // judged above
+    if (assertion) {
+      if (claims(assertion).get(c) !== true) at(matcherOf(assertion)?.call ?? assertion, 'positive');
+      continue;
     }
+    const value = valueOf(c);
+    const holder = value.parent;
+    if (localName(ts.isReturnStatement(holder) ? ts.findAncestor(holder, ts.isFunctionLike) : ts.isArrowFunction(holder) && holder.body === value ? holder : undefined)) continue; // its calls are judged
+    if (!read.computed) at(value, 'read');
   }
   return sites.sort((x, y) => x.line - y.line);
 }
@@ -557,7 +693,7 @@ describe('journey waits', () => {
       ['expect(await box?.isVisible()).toBe(true);', ['positive']],
       ['expect(await box.isVisible?.()).toBe(true);', ['positive']],
       ['expect(await box.isVisible.call(box)).toBe(true);', ['positive']],
-      ['expect(await (box.isVisible)()).toBe(true);', ['positive']],
+      ['await expect((box.isVisible)()).resolves.toBe(true);', ['positive']],
       ['expect(await box[method]()).toBe(true);', ['positive']],
       ['expect(await box[method]()).toBe(false);', ['positive']],
       ['const see = box.isVisible.bind(box);', ['read']],
@@ -570,7 +706,8 @@ describe('journey waits', () => {
       // compound and inverted point-in-time claims
       ['expect(await Promise.all([a.isChecked(), b.isChecked()])).toEqual([true, false]);', ['positive']],
       ['expect(await Promise.all([a.isChecked(), b.isChecked()])).toEqual([false, false]);', []],
-      ['expect(!(await box.isVisible())).toBe(true);', ['positive']],
+      ['expect(!(await box.isVisible())).toBe(true);', []],
+      ['expect(!(await box.isVisible())).toBe(false);', ['positive']],
       ['expect(await box.count()).toBeLessThan(1);', []],
       ['expect(await box.count()).toBeGreaterThanOrEqual(1);', ['positive']],
       ['expect(await box.isHidden()).toBeTruthy();', []],
@@ -605,6 +742,10 @@ describe('journey waits', () => {
       ['await expect.poll(() => box.count()).toBeGreaterThan(0);', []],
       ['await expect.poll(() => box["isVisible"]({ timeout: 100 })).toBe(true);', []],
       [`${H}await expect.poll(() => hidden(box)).toBe(false);`, []],
+      ['await expect.poll(() => box.isVisible().catch(() => false)).toBe(true);', []],
+      ['await expect.poll(() => box.isVisible().catch(() => false)).toBe(false);', ['negative']],
+      ['await expect.poll(() => box.isVisible().catch(() => true)).toBe(true);', ['negative']],
+      ['expect(await box.isVisible().catch(() => true)).toBe(true);', ['positive']],
       // an absence by waitFor, however the option is spelled
       ["await toast.waitFor({ 'state': 'detached' });", ['negative']],
       ['await toast.waitFor({ state: `hidden` });', ['negative']],
