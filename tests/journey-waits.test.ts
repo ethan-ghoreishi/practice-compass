@@ -1183,6 +1183,20 @@ describe('journey waits', () => {
       ["await page.waitForSelector('x', { ['state']: 'hidden' });", ['negative']],
       ["await page.waitForSelector('x', { [`sta${'te'}`]: 'detached' });", ['negative']],
       ["await toast.waitFor({ ['timeout']: 5_000 });", []],
+      // …an absence by any waitFor, its state however written…
+      ["await page.waitForSelector('x', { state: gone });", ['negative']],
+      ["await page.waitForSelector('x', { state });", ['negative']],
+      ["await page.waitForSelector('x', { state: 'hid' + 'den' });", ['negative']],
+      ["await toast.waitFor({ get state() { return 'hidden'; } });", ['negative']],
+      ["await page.waitForSelector('x', { get ['state']() { return 'hidden'; } });", ['negative']],
+      ["await page.waitForSelector('x', { state: 'attached' });", []],
+      ["await page.waitForEvent('popup', { predicate(p) { return true; } });", []],
+      // …a timer, a key folded from pieces no one string holds — reported once…
+      ["await page['wait' + 'ForTimeout'](300);", ['sleep']],
+      ["await page[`waitFor${'Timeout'}`](300);", ['sleep']],
+      ["globalThis['set' + 'Timeout'](go, 100);", ['sleep']],
+      ["const { ['wait' + 'ForTimeout']: w } = page;", ['sleep']],
+      ["const { ['waitForTimeout']: w } = page;", ['sleep']],
       // …and an expected object.
       ["await expect.poll(() => q()).toEqual({ ['a']: 'x' });", []],
       // A key the scan cannot fold may be any name: unsafe wherever a name decides.
