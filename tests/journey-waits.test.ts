@@ -756,6 +756,30 @@ describe('journey waits', () => {
       ["await toast.waitFor({ 'state': 'visible' });", []],
       // a raw hash navigation by a computed name
       ["await page['goto'](`${origin}#/items`);", ['goto']],
+      // a poll of a VALUE is an absence wait when its matcher passes on an empty value
+      ['await expect.poll(() => q()).toBe(undefined);', ['negative']],
+      ["await expect.poll(() => q()).toBe('');", ['negative']],
+      ['await expect.poll(() => n()).toBeLessThan(1);', ['negative']],
+      ['await expect.poll(() => n()).toBeGreaterThanOrEqual(0);', ['negative']],
+      ['await expect.poll(() => q())["toBeNull"]();', ['negative']],
+      ['await expect.poll(() => n()).toBeGreaterThan(0);', []],
+      ["await expect.poll(() => q()).toBe('x');", []],
+      ["await expect.poll(() => q()).toContain('x');", []],
+      ['await expect.poll(() => page.url()).toMatch(/q=/);', []],
+      // a helper read through `.call`; `.all` that is not Promise's
+      [`${H}expect(await hidden.call(null, box)).toBe(false);`, ['positive']],
+      ['expect(await foo.all([await a.count()])).toEqual([0]);', ['positive']],
+      // a waitFor whose options the scan cannot read
+      ['await toast.waitFor(opts);', ['negative']],
+      ['await toast.waitFor({ ...o });', ['negative']],
+      ['await toast.waitFor({ [key]: value });', ['negative']],
+      ['await toast.waitFor();', []],
+      ['await toast.waitFor({ timeout: 5_000 });', []],
+      // a wait whose failure is swallowed waits out its timeout when the thing never comes: a timer
+      ['await row.waitFor().catch(() => {});', ['sleep']],
+      ["await page.waitForURL(/#\\/items/).catch(() => {});", ['sleep']],
+      ['await expect.poll(() => row.count()).toBe(1).catch(() => {});', ['sleep']],
+      ['await box.isVisible().catch(() => false);', ['read']],
     ];
     expect(spellings.filter(([code, want]) => JSON.stringify(rules(code)) !== JSON.stringify(want)).map(([code, want]) => `${code} → ${JSON.stringify(rules(code))}, want ${JSON.stringify(want)}`)).toEqual([]);
   });
