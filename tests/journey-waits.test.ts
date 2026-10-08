@@ -23,15 +23,19 @@ import { describe, expect, it } from 'vitest';
 //   - as a member: `.n`, `?.n`, an escaped identifier, `[s]`, `?.[s]`;
 //   - as a key, in an object literal or a destructuring pattern (declaration,
 //     parameter, catch, `=`, `for…of`): `n`, an escaped identifier, a string,
-//     a number, `[s]`;
-// where `s` is STATIC TEXT: strings, templates and numbers, escapes cooked,
-// folded through `+`, `${}`, parentheses and `as` from literals alone. A
-// timer name and a hash URL are also recognised as the runtime text of any
-// string expression built that way, and a timer as a page script cooks its
-// own escapes again. In a supported position a name that is not static text
-// is UNKNOWN, and unknown FAILS CLOSED: refused in an assertion, a read when
-// destructured, a negative in wait options. `SUPPORTED` below derives every
-// spelling × position cell from this policy alone.
+//     `[s]`;
+// where `s` is STATIC TEXT: strings and templates, escapes cooked, folded
+// through `+`, `${}`, parentheses and `as` from literals alone. A timer name
+// and a hash URL are also recognised as the runtime text of any string
+// expression built that way, and a timer as a page script cooks its own
+// escapes again. A name that is not static text is UNKNOWN. Unknown FAILS
+// CLOSED in an assertion or a poll (refused), as a destructuring key (a read)
+// and as a key in wait options (a negative). Anywhere else — a member called
+// or named outside an assertion, an assertion reached by an unknown name, a
+// piece of timer or URL text held in a binding — it is EXCLUDED. `SUPPORTED`
+// below derives every spelling × position cell from this policy alone; the
+// matrix spells the matcher as `toBe`, and the interaction rows prove each
+// matcher's judgement.
 //
 // SUPPORTED JUDGEMENTS. Six rules, each deny-by-default:
 //   sleep     a timer named anywhere but a comment — called, referenced,
@@ -390,18 +394,18 @@ const LEDGER: { file: string; rule: Rule; snippet: string; sites?: number; why: 
  * with one example; the test asserts no verdict on them, only that none is
  * also a supported cell.
  */
-const EXCLUDED: { class: string; example: string }[] = [
-  { class: 'a name or URL with a piece held in a binding (`const` included) or computed by a call', example: "async function f(t) {\n  await page['waitFor' + t](300);\n}" },
-  { class: 'a URL held whole in a binding', example: 'await page.goto(url);' },
-  { class: 'a computed call outside an assertion, its name unknown', example: 'await page[k](300);' },
-  { class: 'an uncalled computed member, its name unknown (indexing)', example: 'expect(await Reflect.apply(box[m], box, [])).toBe(true);' },
-  { class: 'a name passed as an argument to reflection', example: "expect(await Reflect.get(box, 'isVisible').call(box)).toBe(true);" },
-  { class: 'an aliased `expect`', example: 'const e = expect;\nawait e.poll(() => q()).toBe(null);' },
-  { class: 'a `for…of`/`for…in` loop that awaits, with no timer in it', example: 'for (const b of boxes) if (await ok(b)) break;' },
-  { class: "the meaning of a helper imported from another file at its call (its own read is refused where it is defined)", example: "import { rows } from './rows';\nexpect(await rows(box)).toBe(1);" },
-  { class: "Playwright's web-first matchers, unreachable through Vitest's `expect`", example: 'await expect(box).toBeHidden();' },
-  { class: 'a value COMPUTED to encode absence (the table proves a poll cannot pass on an empty value, not that the value means presence)', example: "await expect.poll(() => (gone() ? 'gone' : 'there')).toBe('gone');" },
-  { class: 'a file outside `tests/*.ts`', example: '// tests/sub/x.ts, tests/x.tsx, tests/x.js' },
+const EXCLUDED: { id: string; class: string; example: string }[] = [
+  { id: 'binding-piece', class: 'a name or URL, or a piece of one, held in a binding (`const` included) or computed by a call', example: "async function f(t) {\n  await page['waitFor' + t](300);\n}" },
+  { id: 'computed-call', class: 'a call by an unknown name outside an assertion', example: 'await page[k](300);' },
+  { id: 'computed-member', class: 'a member by an unknown name, not called, outside an assertion (indexing)', example: 'expect(await Reflect.apply(box[m], box, [])).toBe(true);' },
+  { id: 'unknown-assertion', class: 'an assertion reached by an unknown name, with no read in it (with one, the read is refused)', example: 'await expect[k](() => q()).toBe(null);' },
+  { id: 'reflection', class: 'a name passed as an argument to reflection', example: "expect(await Reflect.get(box, 'isVisible').call(box)).toBe(true);" },
+  { id: 'aliased-expect', class: 'an aliased `expect`', example: 'const e = expect;\nawait e.poll(() => q()).toBe(null);' },
+  { id: 'for-of-loop', class: 'a `for…of`/`for…in` loop that awaits, with no timer in it', example: 'for (const b of boxes) if (await ok(b)) break;' },
+  { id: 'imported-helper', class: 'the meaning of a helper imported from another file at its call (its own read is refused where it is defined)', example: "import { rows } from './rows';\nexpect(await rows(box)).toBe(1);" },
+  { id: 'web-first-matcher', class: "Playwright's web-first matchers, unreachable through Vitest's `expect`", example: 'await expect(box).toBeHidden();' },
+  { id: 'encoded-absence', class: 'a value COMPUTED to encode absence (the table proves a poll cannot pass on an empty value, not that the value means presence)', example: "await expect.poll(() => (gone() ? 'gone' : 'there')).toBe('gone');" },
+  { id: 'unscanned-file', class: 'a file outside `tests/*.ts`', example: '// tests/sub/x.ts, tests/x.tsx, tests/x.js' },
 ];
 
 const DIR = join(process.cwd(), 'tests');
@@ -1025,11 +1029,12 @@ function scanAll(): Site[] {
 // ---------------------------------------------------------------------------
 // SUPPORTED: every spelling class the contract names, at every position it
 // names, with the verdict the POLICY gives — a static name one verdict, an
-// unknown name the fail-closed one, or `unchecked` where the contract excludes
-// it. The verdict is read off the class alone, never through the scanner's own
+// unknown name the fail-closed one, or the `EXCLUDED` class it falls in where
+// the contract does not check it. The verdict is read off the class alone, never through the scanner's own
 // readers, so a cell cannot pass by agreeing with itself.
 // ---------------------------------------------------------------------------
-type Want = Rule[] | 'unchecked';
+/** A verdict, or the `EXCLUDED` class the cell falls in. */
+type Want = Rule[] | { unchecked: string };
 const code = (n: string) => n.codePointAt(0)!.toString(16);
 const uEsc = (n: string) => `\\u${code(n).padStart(4, '0')}${n.slice(1)}`;
 const xEsc = (n: string) => `\\x${code(n).padStart(2, '0')}${n.slice(1)}`;
@@ -1080,6 +1085,8 @@ const presentOf = (n: string) => (typeof READS[n] === 'number' ? '1' : String(!R
 const TIMERS = ['waitForTimeout', 'setTimeout', 'setInterval'];
 const on = (n: string) => (n === 'waitForTimeout' ? 'page' : 'globalThis');
 const WAITS = ['waitFor', 'waitForSelector'];
+const OTHER_WAITS = ['waitForElementState', 'waitForURL', 'waitForFunction', 'waitForAnythingElse'];
+const EVENTS = ['waitForEvent', 'waitForRequest', 'waitForResponse', 'waitForLoadState', 'waitForNavigation'];
 const [waitOn, before] = [(n: string) => (n === 'waitFor' ? 'toast' : 'page'), (n: string) => (n === 'waitFor' ? '' : "'x', ")];
 const DESTRUCTURING = [(k: string) => `const { ${k}: v } = box;`, (k: string) => `({ ${k}: v } = box);`, (k: string) => `async function f({ ${k}: v }) {}`, (k: string) => `try {} catch ({ ${k}: v }) {}`, (k: string) => `for (const { ${k}: v } of boxes);`, (k: string) => `for ({ ${k}: v } of boxes);`];
 const POLICY: Position[] = [
@@ -1090,24 +1097,29 @@ const POLICY: Position[] = [
   { names: READ_NAMES, as: 'member', code: (s, n) => `expect(await box${s}.apply(box, [])).toBe(${absentOf(n)});`, known: [], unknown: ['positive'] },
   { names: READ_NAMES, as: 'member', code: (s, n) => `await expect.poll(() => box${s}()).toBe(${absentOf(n)});`, known: ['negative'], unknown: ['negative'] },
   { names: READ_NAMES, as: 'member', code: (s, n) => `await expect.poll(() => box${s}()).toBe(${presentOf(n)});`, known: [], unknown: ['negative'] },
-  { names: READ_NAMES, as: 'member', code: (s) => `const v = await box${s}();`, known: ['read'], unknown: 'unchecked' },
-  { names: READ_NAMES, as: 'member', code: (s) => `const f = box${s};`, known: ['read'], unknown: 'unchecked' },
+  { names: READ_NAMES, as: 'member', code: (s) => `const v = await box${s}();`, known: ['read'], unknown: { unchecked: 'computed-call' } },
+  { names: READ_NAMES, as: 'member', code: (s) => `const f = box${s};`, known: ['read'], unknown: { unchecked: 'computed-member' } },
   ...DESTRUCTURING.map((d): Position => ({ names: READ_NAMES, as: 'key', code: (s) => d(s), known: ['read'], unknown: ['read'] })),
   // A timer: a sleep wherever it is named.
-  { names: TIMERS, as: 'member', code: (s, n) => `await ${on(n)}${s}(1);`, known: ['sleep'], unknown: 'unchecked' },
-  { names: TIMERS, as: 'member', code: (s, n) => `const w = ${on(n)}${s};`, known: ['sleep'], unknown: 'unchecked' },
-  { names: TIMERS, as: 'member', code: (s, n) => `${on(n)}${s}.call(${on(n)}, go, 1);`, known: ['sleep'], unknown: 'unchecked' },
+  { names: TIMERS, as: 'member', code: (s, n) => `await ${on(n)}${s}(1);`, known: ['sleep'], unknown: { unchecked: 'computed-call' } },
+  { names: TIMERS, as: 'member', code: (s, n) => `const w = ${on(n)}${s};`, known: ['sleep'], unknown: { unchecked: 'computed-member' } },
+  { names: TIMERS, as: 'member', code: (s, n) => `${on(n)}${s}.call(${on(n)}, go, 1);`, known: ['sleep'], unknown: { unchecked: 'computed-member' } },
   { names: TIMERS, as: 'key', code: (s, n) => `const { ${s}: w } = ${on(n)};`, known: ['sleep'], unknown: ['read'] },
-  { names: TIMERS, as: 'text', code: (s, n) => `Reflect.get(${on(n)}, ${s});`, known: ['sleep'], unknown: 'unchecked' },
-  { names: TIMERS, as: 'script', code: (s) => `await page.addInitScript(${s} + '(go, 1)');`, known: ['sleep'], unknown: 'unchecked' },
+  { names: TIMERS, as: 'text', code: (s, n) => `Reflect.get(${on(n)}, ${s});`, known: ['sleep'], unknown: { unchecked: 'binding-piece' } },
+  { names: TIMERS, as: 'script', code: (s) => `await page.addInitScript(${s} + '(go, 1)');`, known: ['sleep'], unknown: { unchecked: 'binding-piece' } },
   // A wait that can ask for absence: negative unless its options are read as presence.
   { names: WAITS, as: 'member', code: (s, n) => `await ${waitOn(n)}${s}(${before(n)}{ state: 'hidden' });`, known: ['negative'], unknown: ['negative'] },
-  { names: WAITS, as: 'member', code: (s, n) => `await ${waitOn(n)}${s}(${before(n)}{ state: 'visible' });`, known: [], unknown: 'unchecked' },
-  { names: WAITS, as: 'member', code: (s, n) => `await ${waitOn(n)}${s}(${before(n)}opts);`, known: ['negative'], unknown: 'unchecked' },
-  { names: WAITS, as: 'member', code: (s, n) => `await ${waitOn(n)}${s}.call(${waitOn(n)}, ${before(n)}{ state: 'visible' });`, known: [], unknown: 'unchecked' },
-  { names: WAITS, as: 'member', code: (s, n) => `await ${waitOn(n)}${s}.call(${waitOn(n)}, ${before(n)}opts);`, known: ['negative'], unknown: 'unchecked' },
-  { names: WAITS, as: 'member', code: (s, n) => `const w = ${waitOn(n)}${s};`, known: ['negative'], unknown: 'unchecked' },
+  { names: WAITS, as: 'member', code: (s, n) => `await ${waitOn(n)}${s}(${before(n)}{ state: 'visible' });`, known: [], unknown: { unchecked: 'computed-call' } },
+  { names: WAITS, as: 'member', code: (s, n) => `await ${waitOn(n)}${s}(${before(n)}opts);`, known: ['negative'], unknown: { unchecked: 'computed-call' } },
+  { names: WAITS, as: 'member', code: (s, n) => `await ${waitOn(n)}${s}.call(${waitOn(n)}, ${before(n)}{ state: 'visible' });`, known: [], unknown: { unchecked: 'computed-member' } },
+  { names: WAITS, as: 'member', code: (s, n) => `await ${waitOn(n)}${s}.call(${waitOn(n)}, ${before(n)}opts);`, known: ['negative'], unknown: { unchecked: 'computed-member' } },
+  { names: WAITS, as: 'member', code: (s, n) => `const w = ${waitOn(n)}${s};`, known: ['negative'], unknown: { unchecked: 'computed-member' } },
   { names: WAITS, as: 'key', code: (s, n) => `const { ${s}: w } = ${waitOn(n)};`, known: ['negative'], unknown: ['read'] },
+  // Every other wait name: absence-capable ones are negative wherever named, event waits are not.
+  { names: OTHER_WAITS, as: 'member', code: (s) => `const w = page${s};`, known: ['negative'], unknown: { unchecked: 'computed-member' } },
+  { names: OTHER_WAITS, as: 'key', code: (s) => `const { ${s}: w } = page;`, known: ['negative'], unknown: ['read'] },
+  { names: EVENTS, as: 'member', code: (s) => `const w = page${s};`, known: [], unknown: { unchecked: 'computed-member' } },
+  { names: EVENTS, as: 'key', code: (s) => `const { ${s}: w } = page;`, known: [], unknown: ['read'] },
   ...WAITS.flatMap((w): Position[] => [
     { names: ['state'], as: 'key', code: (s) => `await ${waitOn(w)}.${w}(${before(w)}{ ${s}: 'detached' });`, known: ['negative'], unknown: ['negative'] },
     { names: ['state'], as: 'key', code: (s) => `await ${waitOn(w)}.${w}(${before(w)}{ ${s}: 'attached' });`, known: [], unknown: ['negative'] },
@@ -1132,12 +1144,12 @@ const POLICY: Position[] = [
   { names: ['soft'], as: 'member', code: (s) => `expect${s}(await box.isVisible()).toBe(false);`, known: [], unknown: ['read'] },
   { names: ['poll'], as: 'member', code: (s) => `await expect${s}(() => box.count()).toBe(0);`, known: ['negative'], unknown: ['read'] },
   { names: ['poll'], as: 'member', code: (s) => `await expect${s}(() => box.count()).toBe(1);`, known: [], unknown: ['read'] },
-  { names: ['poll'], as: 'member', code: (s) => `await expect${s}(() => q()).toBe(null);`, known: ['negative'], unknown: 'unchecked' },
+  { names: ['poll'], as: 'member', code: (s) => `await expect${s}(() => q()).toBe(null);`, known: ['negative'], unknown: { unchecked: 'unknown-assertion' } },
   { names: ['a'], as: 'key', code: (s) => `await expect.poll(() => q()).toEqual({ ${s}: 'x' });`, known: [], unknown: ['negative'] },
   { names: ['a'], as: 'key', code: (s) => `await expect.poll(() => q()).toEqual({ ${s}: '' });`, known: ['negative'], unknown: ['negative'] },
   // A raw hash navigation: by its method's name and its URL's runtime text.
-  { names: ['goto'], as: 'member', code: (s) => `await page${s}(\`\${origin}#/items\`);`, known: ['goto'], unknown: 'unchecked' },
-  { names: ['#/items'], as: 'text', code: (s) => `await page.goto(origin + ${s});`, known: ['goto'], unknown: 'unchecked' },
+  { names: ['goto'], as: 'member', code: (s) => `await page${s}(\`\${origin}#/items\`);`, known: ['goto'], unknown: { unchecked: 'computed-call' } },
+  { names: ['#/items'], as: 'text', code: (s) => `await page.goto(origin + ${s});`, known: ['goto'], unknown: { unchecked: 'binding-piece' } },
 ];
 /** Every cell: [source, the policy's verdict, the spelling class it exercises]. */
 const SUPPORTED: [string, Want, string][] = POLICY.flatMap((p) =>
@@ -1533,8 +1545,8 @@ describe('journey waits', () => {
 
     // THE CONTRACT'S MATRIX: every supported spelling at every supported
     // position gets the policy's verdict; an unchecked cell is asserted nothing.
-    const judged = SUPPORTED.filter((c): c is [string, Rule[], string] => c[1] !== 'unchecked');
-    expect(judged.length).toBeGreaterThan(1000);
+    const judged = SUPPORTED.filter((c): c is [string, Rule[], string] => Array.isArray(c[1]));
+    expect(judged.length).toBeGreaterThan(2000);
     expect(judged.filter(([src, want]) => JSON.stringify(rules(src)) !== JSON.stringify(want)).map(([src, want, cls]) => `${cls}: ${src} → ${JSON.stringify(rules(src))}, want ${JSON.stringify(want)}`)).toEqual([]);
     // No cell is vacuous: an escaped spelling holds a backslash for the scanner to cook, and each name's spellings differ.
     for (const [kind, table] of Object.entries(SPELLINGS))
@@ -1543,6 +1555,9 @@ describe('journey waits', () => {
         expect(spelled.filter(([cls, src]) => /escaped/.test(cls) && !src.includes('\\')).map(([cls]) => `${kind} ${cls}`)).toEqual([]);
         expect(new Set(spelled.map(([, src]) => src)).size, `${kind} ${n}`).toBe(spelled.length);
       }
+    // Every unchecked cell falls in a declared EXCLUDED class.
+    const ids = new Set(EXCLUDED.map((e) => e.id));
+    expect(SUPPORTED.flatMap(([src, want]) => (Array.isArray(want) || ids.has(want.unchecked) ? [] : [`${want.unchecked}: ${src}`]))).toEqual([]);
     // The boundary is one line: nothing excluded is also a judged cell or a judged interaction.
     const asserted = new Set([...judged.map(([src]) => src), ...spellings.map(([src]) => src)]);
     expect(EXCLUDED.filter((e) => asserted.has(e.example)).map((e) => e.class)).toEqual([]);

@@ -60,9 +60,10 @@ wrong, measured instead.
   string's runtime text), the judgements it makes, and an `EXCLUDED` list of
   classes it does not check (a name piece held in a binding, a computed call
   outside an assertion, reflection, an aliased `expect`, an imported helper's
-  meaning…), which are unchecked, not proved safe. Within the contract an
-  unknown name or shape fails closed. Its test derives every spelling × position
-  cell's verdict from that policy alone; breaking a shared reader (member
+  meaning…), which are unchecked, not proved safe. An unknown name fails closed
+  in an assertion, a poll, a destructuring key and wait options, and every cell
+  it leaves unchecked names its excluded class. Its test derives every spelling ×
+  position cell's verdict from that policy alone; breaking a shared reader (member
   keys, destructuring keys, `+` folding, page-script escapes, option keys) fails
   its whole column. Why a contract: closing one more spelling per review kept
   leaving siblings open, and "every spelling" has no end. The stopping rule: a
