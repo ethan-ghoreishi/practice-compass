@@ -7,6 +7,7 @@ import {
   openPracticeApp,
   persistedDb,
   persistedUntil,
+  quietWindow,
   readPersistedState,
   reload,
   type PracticeApp,
@@ -176,7 +177,7 @@ describe('the item notebook, while you are playing', () => {
 
         // --- While the clock RUNS ----------------------------------------
         await page.getByRole('button', { name: 'Start a block' }).click();
-        await goTo(app, '/active');
+        await app.page.getByRole('button', { name: 'Finish' }).waitFor();
         // Let the timer genuinely tick — a re-render every second is exactly
         // what used to reset a caret or overwrite fresh text.
         await page.clock.runFor(3_000);
@@ -211,7 +212,7 @@ describe('the item notebook, while you are playing', () => {
         // --- Discard, and they are STILL the item's ----------------------
         await goTo(app, `/items/${FARSI_ITEM}`);
         await page.getByRole('button', { name: 'Start a block' }).click();
-        await goTo(app, '/active');
+        await app.page.getByRole('button', { name: 'Finish' }).waitFor();
         await editNotes(page, 'written during a block that gets discarded');
         await page.getByRole('button', { name: 'Discard block' }).click();
         await reload(app);
@@ -222,7 +223,6 @@ describe('the item notebook, while you are playing', () => {
         await editNotes(page, '');
         await reload(app);
         expect(await savedNotes(app, FARSI_ITEM), where).toBeUndefined();
-        await goTo(app, `/items/${FARSI_ITEM}`);
         expect(await page.locator('main').innerText(), where).toContain('No notes yet.');
         // Nothing resurrects the retired text that used to live beside it.
         expect(await page.locator('main').innerText(), where).not.toContain('فرود روشن نیست');
@@ -255,8 +255,8 @@ describe('the item notebook, while you are playing', () => {
         await page.getByText(/Not saved/).waitFor({ timeout: 10_000 });
         // The text is still on screen, still editable, with a way out.
         expect(await notesBox(page).inputValue(), where).toBe('words that must not be lost');
-        expect(await page.getByRole('button', { name: 'Try again' }).isVisible(), where).toBe(true);
-        expect(await page.getByRole('button', { name: 'Copy the text' }).isVisible(), where).toBe(true);
+        await expect.poll(() => page.getByRole('button', { name: 'Try again' }).isVisible(), { message: where }).toBe(true);
+        await expect.poll(() => page.getByRole('button', { name: 'Copy the text' }).isVisible(), { message: where }).toBe(true);
         expect(await page.getByText('Saved.').count(), where).toBe(0);
         // And restoring storage lets the retry actually succeed.
         await repairStorage(page);
@@ -323,7 +323,7 @@ describe('the item notebook, while you are playing', () => {
         );
         // Real wall-clock time (Node's, not the page's faked clock) for a
         // NEGATIVE claim: a wrongly-owned write would have painted by now.
-        await page.waitForTimeout(500);
+        await quietWindow(app, 500);
         expect(await page.getByText('Saved.').count(), where).toBe(0);
         expect(await savedNotes(app, FARSI_ITEM), where).toBe(farsiNotesBefore);
 
@@ -425,7 +425,7 @@ describe('a notebook belongs to ITS item, never to whatever is on screen', () =>
       // --- Skip into the segment whose item is DELETED mid-run ------------
       await page.getByRole('button', { name: 'Skip' }).click();
       await expect.poll(() => page.locator('main').innerText()).toContain('Bound to a doomed item');
-      expect(await page.getByRole('button', { name: /^Show Working notes$/ }).count()).toBe(1);
+      await expect.poll(() => page.getByRole('button', { name: /^Show Working notes$/ }).count()).toBe(1);
       await goTo(app, '/items/i-nodate');
       await page.getByRole('button', { name: 'Delete item' }).click();
       await goTo(app, `/routine/${routineId}`);
@@ -449,7 +449,6 @@ describe('a notebook belongs to ITS item, never to whatever is on screen', () =>
       // --- A STALE editor must not overwrite newer content ----------------
       // The panel is open with an old draft while the SAME item's data is
       // replaced underneath it (an import — exactly what a sync pull does).
-      await goTo(app, `/items/${ENGLISH_ITEM}`);
       await page.getByRole('button', { name: 'Edit Working notes' }).click();
       await notesBox(page).fill('stale draft from before the replacement');
       const replaced = await persistedDb(app);
@@ -504,7 +503,7 @@ describe('reflection at the close of a block', () => {
       await goTo(app, `/items/${FARSI_ITEM}`);
       await editNotes(page, 'the notebook, which reflection must never touch');
       await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       // The scratch capture is explicitly THIS BLOCK's observation.
       await page.getByRole('button', { name: /Note an observation for this block/ }).click();
       await page.getByLabel('Observation for this block').fill('scratch: the forud landed twice');
@@ -542,7 +541,7 @@ describe('reflection at the close of a block', () => {
       // --- The next session READS the decision, labelled as a past one ----
       await goTo(app, `/items/${FARSI_ITEM}`);
       await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       const activeText = await page.locator('main').innerText();
       expect(activeText).toContain('Last time you decided to try:');
       expect(activeText).toContain('try it without the ornament');
@@ -555,7 +554,7 @@ describe('reflection at the close of a block', () => {
       await reload(app);
       await goTo(app, `/items/${FARSI_ITEM}`);
       await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       expect(await page.locator('main').innerText()).toContain('try it without the ornament');
       await page.getByRole('button', { name: 'Discard block' }).click();
 
@@ -573,7 +572,7 @@ describe('reflection at the close of a block', () => {
       const before = await scheduleBefore();
       await goTo(app, `/items/${ENGLISH_ITEM}`);
       await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       await page.getByRole('button', { name: 'Finish' }).click();
       await page.getByRole('button', { name: 'Save without a result' }).click();
       await reload(app);
@@ -585,7 +584,7 @@ describe('reflection at the close of a block', () => {
       // The authored text survives; the decision refreshes to the real day.
       await goTo(app, `/items/${ENGLISH_ITEM}`);
       await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       await page.getByRole('button', { name: 'Finish' }).click();
       await page.getByPlaceholder('What did you notice?').fill('typed just before midnight');
       await page.getByPlaceholder('The one thing to try next time').fill('decided just before midnight');
@@ -859,7 +858,7 @@ describe('clearer wording, identical decisions', () => {
       await page.getByRole('button', { name: 'Quick add' }).click();
       await page.getByRole('group', { name: 'Title' }).locator('input').fill('title-only quick add');
       await page.getByRole('button', { name: 'Begin practice' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       await page.getByRole('button', { name: 'Discard block' }).click();
       let db = await persistedDb(app);
       const quick = db.items.find((i) => i.title === 'title-only quick add') as Record<string, unknown>;
@@ -880,14 +879,14 @@ describe('clearer wording, identical decisions', () => {
       expect(startText).toMatch(/attending to/);
       // The seven modes and eighteen focus values are one tap away, never gone.
       await page.getByRole('button', { name: 'Change practice approach' }).click();
-      expect(await page.getByRole('group', { name: 'Mode' }).getByRole('button').count()).toBe(7);
-      expect(await page.getByRole('group', { name: 'Focus' }).getByRole('button').count()).toBe(18);
+      await expect.poll(() => page.getByRole('group', { name: 'Mode' }).getByRole('button').count()).toBe(7);
+      await expect.poll(() => page.getByRole('group', { name: 'Focus' }).getByRole('button').count()).toBe(18);
 
       // --- The full form: every retained choice, with its own name --------
       await goTo(app, `/items/${ENGLISH_ITEM}`);
       await page.getByRole('button', { name: 'Edit', exact: true }).click();
-      expect(await page.getByRole('group', { name: 'Status' }).getByRole('combobox').count()).toBe(1);
-      expect(await page.getByRole('combobox', { name: 'Status' }).locator('option').count()).toBe(8);
+      await expect.poll(() => page.getByRole('group', { name: 'Status' }).getByRole('combobox').count()).toBe(1);
+      await expect.poll(() => page.getByRole('combobox', { name: 'Status' }).locator('option').count()).toBe(8);
       // The two estimates are named for what they are, with anchored levels…
       const form = await page.locator('main').innerText();
       expect(form).toContain(RATING_LABELS.importance);
@@ -896,7 +895,7 @@ describe('clearer wording, identical decisions', () => {
       expect(form).toContain('not measurements');
       // …and each star carries its OWN accessible name and selected state.
       for (const n of [1, 2, 3, 4, 5]) {
-        expect(await page.getByRole('button', { name: `${RATING_LABELS.importance} ${n}` }).count(), `star ${n}`).toBe(1);
+        await expect.poll(() => page.getByRole('button', { name: `${RATING_LABELS.importance} ${n}` }).count(), { message: `star ${n}` }).toBe(1);
       }
       const chosenStar = page.getByRole('button', { name: `${RATING_LABELS.difficulty} 3` });
       expect(await chosenStar.getAttribute('aria-pressed')).toBe('true');
@@ -916,7 +915,6 @@ describe('clearer wording, identical decisions', () => {
       await page.getByRole('combobox', { name: 'Status' }).selectOption('new');
       await page.getByRole('button', { name: 'Save changes' }).click();
       await reload(app);
-      await goTo(app, `/items/${FARSI_ITEM}`);
       const newWithHistory = await page.locator('main').innerText();
       // The status label is shown for what it is, with the real history right
       // there beside it — the wording never stands in as evidence that nothing

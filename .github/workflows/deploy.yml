@@ -12,29 +12,61 @@ permissions:
   pages: write
   id-token: write
 
+# One deploy at a time: a newer push to main supersedes the running one.
 concurrency:
-  group: pages
+  group: ${{ github.workflow }}
   cancel-in-progress: true
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    # About 2.5x a normal run. GitHub's own default is six hours.
+    timeout-minutes: 20
+    # Exactly CI's check steps, in CI's order (ci-browser-setup.test.ts holds
+    # them equal), so every push CI passed has already proven this job.
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
       - run: npm ci
+      # A dead Azure mirror hung `apt-get update` inside the browser install
+      # until it was cancelled by hand, at 39 and 55 minutes (2026-10-07). apt's
+      # own failover never finished, whatever its timeouts: the dead-mirror drill
+      # hung the same way with Acquire::http::Timeout 10. So apt never meets a
+      # dead mirror. Each mirror in the image's list (mirror+file) answers one
+      # bounded fetch here or is left out; if none answers, the list stays.
+      - name: leave unreachable apt mirrors out
+        run: |
+          codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+          lists=$(grep -rhosE 'mirror\+file:[^[:space:]]+' /etc/apt/sources.list /etc/apt/sources.list.d/ | sed 's/^mirror+file://' | sort -u || true)
+          [ -n "$lists" ] || echo '::warning::apt sources list no mirror+file failover on this image'
+          for list in $lists; do
+            kept=''
+            while IFS= read -r line || [ -n "$line" ]; do
+              url=${line%%[[:space:]]*}
+              case $url in
+                http://*|https://*)
+                  if curl -fsS --max-time 5 -o /dev/null "${url%/}/dists/$codename/InRelease"; then kept="$kept$line"$'\n'
+                  else echo "::warning::apt mirror $url did not answer within 5 s; left out of $list"; fi ;;
+                *) kept="$kept$line"$'\n' ;;
+              esac
+            done < "$list"
+            if printf '%s' "$kept" | grep -qE '^https?://'; then printf '%s' "$kept" | sudo tee "$list"
+            else echo "::warning::no mirror in $list answered; it is left as it was"; fi
+          done
       # The suite drives real browsers through Playwright as a library, and the
       # harness FAILS with a setup message rather than skipping when an engine
       # is missing. So every engine the suite can drive is installed here.
       # Unversioned on purpose: it resolves the Playwright `npm ci` just
       # installed, so package-lock.json keeps pinning the browser revisions.
       # Removing an engine reopens a CI-only failure, not a local one.
-      - run: npx playwright install --with-deps chromium webkit
+      - name: install the pinned browsers
+        timeout-minutes: 10
+        run: npx playwright install --with-deps chromium webkit
       - run: npm run lint
       - run: npm test
       - run: npm run build
@@ -45,6 +77,7 @@ jobs:
   deploy:
     needs: check
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

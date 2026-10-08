@@ -12,10 +12,16 @@ on:
       - main
 permissions:
   contents: read
+# A newer push to the same pull request makes the running gate moot.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 jobs:
   prismatica-gate:
     name: prismatica-gate
     runs-on: ubuntu-latest
+    # About 2.5x a normal run. GitHub's own default is six hours.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,7 +44,33 @@ jobs:
           else
             echo "no npm lock file at the repository root — nothing to install"
           fi
+      # A dead Azure mirror hung `apt-get update` inside the browser install
+      # until it was cancelled by hand, at 39 and 55 minutes (2026-10-07). apt's
+      # own failover never finished, whatever its timeouts: the dead-mirror drill
+      # hung the same way with Acquire::http::Timeout 10. So apt never meets a
+      # dead mirror. Each mirror in the image's list (mirror+file) answers one
+      # bounded fetch here or is left out; if none answers, the list stays.
+      - name: leave unreachable apt mirrors out
+        run: |
+          codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+          lists=$(grep -rhosE 'mirror\+file:[^[:space:]]+' /etc/apt/sources.list /etc/apt/sources.list.d/ | sed 's/^mirror+file://' | sort -u || true)
+          [ -n "$lists" ] || echo '::warning::apt sources list no mirror+file failover on this image'
+          for list in $lists; do
+            kept=''
+            while IFS= read -r line || [ -n "$line" ]; do
+              url=${line%%[[:space:]]*}
+              case $url in
+                http://*|https://*)
+                  if curl -fsS --max-time 5 -o /dev/null "${url%/}/dists/$codename/InRelease"; then kept="$kept$line"$'\n'
+                  else echo "::warning::apt mirror $url did not answer within 5 s; left out of $list"; fi ;;
+                *) kept="$kept$line"$'\n' ;;
+              esac
+            done < "$list"
+            if printf '%s' "$kept" | grep -qE '^https?://'; then printf '%s' "$kept" | sudo tee "$list"
+            else echo "::warning::no mirror in $list answered; it is left as it was"; fi
+          done
       - name: install the pinned browsers the repository's own checks need
+        timeout-minutes: 10
         # The gate runs this repository's checks, which drive real browsers.
         # They fail with a setup message rather than skipping, so every engine
         # the suite can drive has to be here before the gate runs. Unversioned

@@ -14,6 +14,7 @@ import {
   openPracticeApp,
   openSettings,
   persistedDb,
+  persistedUntil,
   publishRemote,
   publishSourceIndex,
   reload,
@@ -124,15 +125,8 @@ async function seeded(engine: Engine, data: Db, viewport: { width: number; heigh
   return app;
 }
 const db = async (app: PracticeApp) => (await persistedDb(app)) as unknown as Db;
-const until = async <V,>(app: PracticeApp, read: (d: Db) => V, ok: (v: V) => boolean, timeout = 15_000): Promise<V> => {
-  const deadline = Date.now() + timeout;
-  for (;;) {
-    const v = read(await db(app));
-    if (ok(v)) return v;
-    if (Date.now() > deadline) throw new Error(`never satisfied: ${JSON.stringify(v)}`);
-    await app.page.waitForTimeout(100);
-  }
-};
+const until = <V,>(app: PracticeApp, read: (d: Db) => V, ok: (v: V) => boolean, timeout = 15_000): Promise<V> =>
+  persistedUntil(app, (s) => read((s.state as { db: Db }).db), ok, timeout);
 async function refreshArchive(app: PracticeApp) {
   await openSettings(app);
   await app.page.getByRole('button', { name: 'Refresh Setar archive' }).click();
@@ -439,7 +433,7 @@ describe('answered archive questions', () => {
         await reload(app);
         await refreshArchive(app);
         expect(await toDecide(), where).toBe('1');
-        expect(await answers(Q2!).count(), where).toBe(1);
+        await expect.poll(() => answers(Q2!).count(), { message: where }).toBe(1);
         expect(await answers(Q1!).count(), where).toBe(0);
 
         // THE MATCH MOVES AFTER THE ANSWER: Q2 skipped, then its only
@@ -492,7 +486,7 @@ describe('answered archive questions', () => {
         await retitle('تصنیف-تست');
         await reload(app);
         await refreshArchive(app);
-        expect(await answers(Q2!).count(), where).toBe(1);
+        await expect.poll(() => answers(Q2!).count(), { message: where }).toBe(1);
         await answeredThenMoved();
         // Apply writes the skip on screen: a suppression, and the renamed item untouched.
         const renamedBefore = (await db(app)).items.find((i) => i.id === 'it-q2');

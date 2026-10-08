@@ -20,6 +20,7 @@ import {
   reload,
   remoteStateText,
   syncMessage,
+  syncNow,
   writePersistedState,
   type PracticeApp,
 } from './practiceBrowser';
@@ -161,7 +162,7 @@ describe('the repertoire model at every inbound door', () => {
       // --- UNFINISHED PRACTICE still refuses a deliberate replacement -----
       await goTo(app, '/items/it-iraq');
       await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       await page.getByRole('button', { name: 'Pause' }).click();
       const guarded = await state(app);
       await importBackup(app, 'while-practising.json', LEGACY_TEXT);
@@ -181,7 +182,6 @@ describe('the repertoire model at every inbound door', () => {
         musicTerms: local.musicTerms.map((t) => (t.id === 'term-mahjoubi' ? { ...t, name: 'محجوبی (from the other device)' } : t)),
       };
       publishRemote(remote, remoteStateText(pulled), await hashState(pulled), 9001);
-      await goTo(app, '/settings');
       await page.getByRole('button', { name: 'Sync now' }).click();
       await expect.poll(() => syncMessage(page), { timeout: 60_000 }).toMatch(/Brought the GitHub copy/i);
       await persistedUntil(
@@ -210,7 +210,6 @@ describe('the repertoire model at every inbound door', () => {
         ),
       };
       publishRemote(remote, remoteStateText(otherEdit), await hashState(otherEdit), 9200);
-      await goTo(app, '/settings');
       await page.getByRole('button', { name: 'Sync now' }).click();
       await page.getByRole('button', { name: 'Take the GitHub copy' }).waitFor({ timeout: 60_000 });
       await page.getByRole('button', { name: 'Take the GitHub copy' }).click();
@@ -236,6 +235,8 @@ describe('the repertoire model at every inbound door', () => {
       expect(db.schemaVersion).toBe(SCHEMA_VERSION);
       expect(db.items.find((i) => i.id === 'it-iraq')!.catalogRefs).toEqual(EXPECT.legacy.bindings['it-iraq']);
       // `merge`: persisted bytes declaring the CURRENT version, malformed.
+      // The reload's on-open sync finishes first, or it writes over them.
+      await syncNow(app);
       const valid = await readPersistedState(app);
       for (const c of [MALFORMED[0], MALFORMED[4]]) {
         await writePersistedState(app, { ...(valid.state as object), db: c.db(clone((valid.state as { db: Db }).db)) }, SCHEMA_VERSION);

@@ -188,7 +188,6 @@ describe('musical term suggestions', () => {
 
           // --- RELOAD: what was chosen is what the fields read ---------------
           await reload(app);
-          await goTo(app, '/items/it-literal');
           await page.getByRole('button', { name: 'Edit', exact: true }).first().click();
           expect(await field(page, 'Form').inputValue(), label).toBe('تصنیف');
           expect(await page.locator('main').innerText(), label).toContain('Shared term');

@@ -223,7 +223,7 @@ describe('the Setar archive, rendered', () => {
           const owning = wide
             ? page.locator('main')
             : page.getByRole('article').filter({ hasText: 'Class 25 · 2025-08-05' });
-          expect(await owning.getByRole('button', { name: /Remove My take, 3 August/ }).count()).toBe(1);
+          await expect.poll(() => owning.getByRole('button', { name: /Remove My take, 3 August/ }).count()).toBe(1);
           // A class the archive gave a recording to is NOT invited to add one.
           // Class 12 is a purely imported class: it keeps no copy of its
           // session's files, so its own `recordings` array is empty and the
@@ -264,7 +264,7 @@ describe('the Setar archive, rendered', () => {
           expect(await page.getByRole('button', { name: 'Open' }).count()).toBe(0);
           await materialToggle.click();
           const openButtons = page.getByRole('button', { name: 'Open' });
-          expect(await openButtons.count()).toBeGreaterThan(0);
+          await expect.poll(() => openButtons.count()).toBeGreaterThan(0);
           // Every control has an accessible name and is reachable by keyboard.
           await page.keyboard.press('Tab');
           expect(await page.evaluate(() => document.activeElement?.tagName ?? '')).not.toBe('BODY');
@@ -295,7 +295,7 @@ describe('the Setar archive, rendered', () => {
 
           // --- REPEAT REFRESH: nothing at all; then ONE new class -----------
           await refresh(app);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await expect.poll(() => page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
           await page.getByRole('button', { name: 'Already current' }).click();
           await page.getByText('Already current.').first().waitFor({ timeout: 20_000 });
 
@@ -346,7 +346,7 @@ describe('the Setar archive, rendered', () => {
           // and an answer given there is written, not thrown away as "Already
           // current".
           await refresh(app);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await expect.poll(() => page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
           expect(await page.getByRole('button', { name: 'Use archive value' }).count()).toBe(0);
           await page.getByRole('button', { name: /^Review differences \(\d+\)$/ }).click();
           await page
@@ -367,7 +367,7 @@ describe('the Setar archive, rendered', () => {
           // …and the difference is gone, because it has been taken.
           await refresh(app);
           expect(await page.getByRole('group', { name: `composer of ${better.key}` }).count()).toBe(0);
-          expect(await page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
+          await expect.poll(() => page.getByRole('button', { name: 'Already current' }).count()).toBe(1);
 
           // --- AN INVALID INDEX IS ACTIONABLE, and changes nothing ----------
           publishSourceIndex(remote, '{"format":"setar-archive-index","version":99}', 'source-index-commit-3');

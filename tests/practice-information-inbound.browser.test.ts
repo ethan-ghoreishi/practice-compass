@@ -19,6 +19,7 @@ import {
   reload,
   remoteStateText,
   syncMessage,
+  syncNow,
   writePersistedState,
 } from './practiceBrowser';
 import v12Text from './fixtures/practice-information-v12.json?raw';
@@ -131,7 +132,7 @@ describe('every inbound door reaches the same validated practice model', () => {
       const refusalText = await page.locator('body').innerText();
       expect(refusalText).toMatch(/notes/i);
       // The refusal screen offers a real way back in, and NO downgrade.
-      expect(await page.getByLabel('Restore backup file').count()).toBe(1);
+      await expect.poll(() => page.getByLabel('Restore backup file').count()).toBe(1);
       // Raw stored bytes are byte-identical to what was written: rendering the
       // refusal, by itself, writes nothing.
       expect(JSON.stringify(await readPersistedState(app))).toBe(written);
@@ -143,7 +144,8 @@ describe('every inbound door reaches the same validated practice model', () => {
         mimeType: 'application/json',
         buffer: Buffer.from('{ not json', 'utf8'),
       });
-      await page.waitForTimeout(300);
+      // The refusal is reported only once the restore has finished trying.
+      await page.getByText(/^Import failed:/).waitFor({ timeout: 20_000 });
       expect(JSON.stringify(await readPersistedState(app))).toBe(written);
 
       // --- 5. A VALID recovery file gets the owner back in ---------------
@@ -401,7 +403,7 @@ describe('a replacement door never installs what it has not checked', () => {
       // --- Unfinished practice REFUSES a deliberate replacement -----------
       await goTo(app, `/items/${FARSI_ITEM}`);
       await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       await page.getByRole('button', { name: 'Pause' }).click();
       const guardedBytes = JSON.stringify(await readPersistedState(app));
       await importBackup(app, 'while-practising.json', wrap(db, [validFile]));
@@ -423,8 +425,8 @@ describe('a replacement door never installs what it has not checked', () => {
 
       // --- A SYNC PULL goes through the same validated install -------------
       await goTo(app, '/settings');
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      await expect.poll(() => syncMessage(page)).toMatch(/pushed|in sync/i);
+      await syncNow(app);
+      expect(await syncMessage(page)).toMatch(/pushed|in sync/i);
       expect(remote.calls.some((c) => c.startsWith('POST git/commits'))).toBe(true);
 
       // Another device publishes a DIFFERENT, valid snapshot. Its attachment
@@ -438,8 +440,8 @@ describe('a replacement door never installs what it has not checked', () => {
         items: local.items.map((i) => (i.id === FARSI_ITEM ? { ...i, title: 'pulled from the other device' } : i)),
       };
       publishRemote(remote, remoteStateText(pulledDb), await hashState(pulledDb), 99);
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      await expect.poll(() => syncMessage(page)).toMatch(/Brought the GitHub copy/i);
+      await syncNow(app);
+      expect(await syncMessage(page)).toMatch(/Brought the GitHub copy/i);
       await persistedUntil(
         app,
         (st) => (st.state as { db: { items: { id: string; title: string }[] } }).db.items.find((i) => i.id === FARSI_ITEM)?.title,
@@ -455,8 +457,8 @@ describe('a replacement door never installs what it has not checked', () => {
         items: pulledDb.items.map((i) => (i.id === FARSI_ITEM ? { ...i, notes: { was: 'an object' } } : i)),
       };
       publishRemote(remote, remoteStateText(badDb), await hashState(badDb), 100);
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      await expect.poll(() => syncMessage(page)).toMatch(/notes should be text/i);
+      await syncNow(app);
+      expect(await syncMessage(page)).toMatch(/notes should be text/i);
       expect(JSON.stringify(await persistedDb(app))).toBe(beforeBadPull);
 
       // …and a remote snapshot is a bare database with no `files` of its own —
@@ -466,8 +468,8 @@ describe('a replacement door never installs what it has not checked', () => {
       const attachmentRow = { id: 'att-1', ownerType: 'item', ownerId: FARSI_ITEM, mime: 'text/plain', name: 'score.txt', createdAt: CLOCK.toISOString(), size: 12 };
       const dupDb = { ...pulledDb, attachments: [attachmentRow, { ...attachmentRow }] };
       publishRemote(remote, remoteStateText(dupDb), await hashState(dupDb), 102);
-      await page.getByRole('button', { name: 'Sync now' }).click();
-      await expect.poll(() => syncMessage(page)).toMatch(/attachments share the id/i);
+      await syncNow(app);
+      expect(await syncMessage(page)).toMatch(/attachments share the id/i);
       expect(JSON.stringify(await persistedDb(app))).toBe(beforeBadPull);
 
       // --- BOTH sides changed: an explicit choice, and both copies kept ----
@@ -482,7 +484,6 @@ describe('a replacement door never installs what it has not checked', () => {
         items: pulledDb.items.map((i) => (i.id === FARSI_ITEM ? { ...i, notes: 'edited on the other device' } : i)),
       };
       publishRemote(remote, remoteStateText(otherEdit), await hashState(otherEdit), 103);
-      await goTo(app, '/settings');
       await page.getByRole('button', { name: 'Sync now' }).click();
       await page.getByRole('button', { name: 'Take the GitHub copy' }).waitFor({ timeout: 20_000 });
       await page.getByRole('button', { name: 'Take the GitHub copy' }).click();
@@ -574,7 +575,7 @@ describe('rolling back to the schema this change replaced', () => {
       // --- 3. Practice recorded AFTER the upgrade -------------------------
       await goTo(fresh, `/items/${FARSI_ITEM}`);
       await fresh.page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(fresh, '/active');
+      await fresh.page.getByRole('button', { name: 'Finish' }).waitFor();
       await fresh.page.getByRole('button', { name: 'Finish' }).click();
       await fresh.page.getByRole('button', { name: 'Stable alone' }).click();
       await fresh.page.getByRole('button', { name: 'Save block' }).click();

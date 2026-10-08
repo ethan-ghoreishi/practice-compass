@@ -2,6 +2,122 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Browser journeys wait on events; CI and the Gate are bounded and run once (2026-10-08)
+
+One technical lane (contract 20261007-…-0e6c, issue #49). Four families had failed
+lanes that never touched them. Each is now held in one shared place and proven by
+a discriminating test; the planner's account was validated, and where it was
+wrong, measured instead.
+
+- **Navigation: the planner's mechanism was refuted; the hazard was the current
+  route.** Measured with `delayPagesMs` in both engines: on a `page.goto` hop React
+  hides the outgoing page behind the Suspense fallback (`display: none`), so the old
+  visible-nav wait already held through a lazy load. The outgoing page stays
+  VISIBLE only in the transition a tap starts. What failed was `goTo` to the route a
+  tap had just opened: in WebKit that is a full document load, which aborted the
+  write the tap issued. The layout journey's CI failure (`webkit@1280px: expected 0
+  to be greater than 0`) reproduced in 4 of 4 runs with slow storage and the old `goTo`.
+  A one-off audit found 44 such call sites (about 100 calls) in 11 journeys. `goTo` now refuses
+  the current route, and returns once `main` is visible and its h1 has been replaced
+  (element or text; a page with no h1 by its text). Two URLs with one heading pass
+  `arrival`, which must be the destination's own: `goTo` refuses one the page being
+  left already shows, before navigating. That holds by construction: an arrival
+  both pages show proves nothing about which one it matched. A real-browser probe
+  did not reproduce an early return (the role locator skips the heading hidden
+  behind the Suspense fallback); the refusal does not depend on that. A read helper that may already be on its page uses `show`. It is opt-in,
+  for a page already settled, and it is not the rejected no-op: `goTo` itself still
+  refuses, and a tap followed by a navigation still waits for the tap's arrival. Rejected:
+  a no-op same-route `goTo` (hides the hazard), and a required arrival on every call
+  (the heading signal held in every case probed).
+- **Persistence: `reload` waits on a barrier, never 400 ms.** An empty readwrite
+  transaction over every store, opened outside the app, completes only after every
+  earlier readwrite transaction (scheduling across connections). Proven in both
+  engines by `delayStorageMs`, which holds the app's own writes open N real ms. It
+  captures `performance.now` before `page.clock` fakes it, and it disables Dexie's
+  explicit `commit()` on held transactions, which otherwise ended the hold. The
+  barrier cannot see a write not yet ISSUED. The effect-claimed `signalledThrough`
+  marker is therefore read through `persistedUntil` until it is exact: the Gate's
+  `{"ctorThrows":true}: expected undefined to be 1`. That one did not reproduce
+  locally under slow storage or 20x CPU; the wait is right regardless. The two local
+  `until` pollers now go through `persistedUntil` and keep their timeouts. A test
+  that writes the store directly while sync is connected first lets the reload's
+  on-open sync finish (`syncNow`), or that sync writes the valid database back
+  over the bytes (seen under slow storage once a racy branch read was ordered).
+- **Waits are events, by construction.** `tests/journey-waits.test.ts` parses every
+  `tests/*.ts` (the journeys and the harness) with TypeScript, so quoted `//`, `)` and regex text
+  cannot hide or end code; a regex scan let both through. Every rule is
+  deny-by-default: any timer reference (page scripts included), any loop that
+  awaits, a state read (`count`, `is*`) asserted at one instant unless the
+  assertion passes only when the thing is absent, the same read outside an
+  assertion, every absence wait, and raw hash `page.goto`. One evaluation decides
+  both directions: the matcher is run on what each read returns when the thing is
+  absent (`isHidden` true). A pattern list missed `isHidden` polls, `[false,
+  false]` and `toBe(undefined)`; a swallowed wait is a timer when the thing never
+  comes (daily-practice's one now fails loudly). The guard holds a FINITE
+  recognition contract, written once in its header: the files it scans, the name
+  spellings it reads (members and keys whose name is static text: escapes
+  cooked, `+` and `${}` folded from literals; timer names and hash URLs by a
+  string's runtime text), the judgements it makes, and an `EXCLUDED` list of
+  classes it does not check (a name piece held in a binding, a computed call
+  outside an assertion, reflection, an aliased `expect`, an imported helper's
+  meaning…), which are unchecked, not proved safe. An unknown name fails closed
+  in an assertion, a poll, a destructuring key and wait options. So does an
+  expected object's `__proto__` key in any spelling: JS makes it the prototype in
+  one spelling and an own key in another, and assigning it as a key dropped its
+  leaf silently. Every cell it leaves unchecked names its excluded class. Its test derives every spelling ×
+  position cell's verdict from that policy alone; breaking a shared reader (member
+  keys, destructuring keys, `+` folding, page-script escapes, option keys) fails
+  its whole column. Why a contract: closing one more spelling per review kept
+  leaving siblings open, and "every spelling" has no end. The stopping rule: a
+  counterexample blocks only if it is in a supported class and gets another
+  verdict, or it is a real journey that is unreliable; an excluded spelling
+  alone is a possible extension.
+  Its ledger says why each exception
+  stands and how many sites it covers. 44 positive reads
+  became `expect.poll` with the same matcher. Two polled negatives that followed a
+  positive arrival became point-in-time reads. Element disappearances became
+  `waitFor({ state: 'detached' })`: the slow-storage run showed a 1 s default poll
+  is a timer, not an event, wherever a write precedes the change. The three polled
+  value changes left are ledgered as disappearances after presence. A sync is
+  awaited to completion (`syncNow`, Sync now enabled again) before its message is
+  read. No wait now allows longer than the harness's existing event waits:
+  `connectSync` already gives the same Sync-now-enabled signal 20 s. The 1 s was a
+  poll default that raced writes, not a chosen bound, and `waitFor` throws when
+  its bound runs out, so no assertion was dropped. A negative claim first waits
+  for a positive "finished" signal (a failed
+  restore's "Import failed:", the tab bar after Save). The one left with no such
+  signal uses the bounded `quietWindow`.
+- **Runner: bounded, aligned, once per ref.** Jobs are bounded at 20 min and the
+  browser install at 10. Node 24 everywhere. CI runs on branch pushes and dispatch
+  only, so the Gate is the one pull-request run. Superseded runs cancel, grouped by
+  workflow (deploy: one at a time). Deploy's check is CI's steps exactly. A
+  dispatch-only drill points the Azure mirror at 10.255.255.1, an address that drops
+  packets so the connection hangs as the dead mirror did.
+- **Mirror failover: apt's own was disproved, so apt never meets a dead mirror.**
+  The first drill (on 6102560) ran with `Acquire::http(s)::Timeout 10` and
+  `Acquire::Retries 3`. apt skipped Azure's InRelease, took it from
+  archive.ubuntu.com, skipped a burst of noble-updates indexes, then printed nothing
+  until the 10-minute bound. The 2026-10-07 incident (Gate run 37683025060
+  attempts 1-2, CI 37683025087 attempt 1, apt defaults) shows the same sequence and
+  the same silence, cancelled by hand at 39 and 55 min. So the timeouts neither
+  caused the hang nor cured it, and they are gone. Before the install, each mirror
+  in the image's mirror+file list must serve its suite's InRelease within 5 s
+  (curl's own bound), or it is left out of the list. If none answers, the list
+  stays and the step bound is the guarantee. `ci-browser-setup.test.ts` runs that
+  step against a hung, a refused, a suite-less and a live local mirror.
+  Rejected: a longer bound or more apt tuning, because the hang has no end to wait
+  for. Known limit: a mirror that is alive but slow passes the probe. On
+  2026-10-01, Azure served 125 MB at 129 kB/s in 17 min, which would now end at
+  the 10-minute bound.
+- **Measured locally** (Mac, 12 cores, Node 24, the Gate's `vitest run
+  --reporter=json`). Before: 145 s in parallel, 723 s single-threaded (a lower
+  bound: that copy had no git checkout, so the 4 rollback journeys failed fast).
+  After: 122-127 s in parallel, 566-569 s single-threaded, 516/516 every time.
+  Also green: 3 shuffle seeds, 12 busy loops of host load, slow storage
+  everywhere (341 s), Chromium at 20x CPU (the 80 tests in tests/), and those
+  80 tests 10 times over. The GitHub step timings and the drill on the fixed head
+  are observed after ship, never recorded here.
+
 ## Setar review and archive lines, visible choices, and Repertoire search typing (2026-10-07)
 
 Five reports, one heavy lane (contract 20261007-…-039e, issue #47).

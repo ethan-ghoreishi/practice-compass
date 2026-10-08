@@ -12,6 +12,7 @@ import {
   publishRemote,
   reload,
   remoteStateText,
+  show,
   syncMessage,
   type PracticeApp,
 } from './practiceBrowser';
@@ -86,7 +87,6 @@ describe('handing a review date back to the app', () => {
 
       await transferButton(page).click();
       await reload(app);
-      await goTo(app, `/items/${FARSI_ITEM}`);
       const after = await facts(app, FARSI_ITEM);
       // THE DATE IS KEPT; only who manages it changed. Nothing else moved.
       expect(after).toEqual({ ...before, reviewMode: 'auto', nextReviewSource: 'auto' });
@@ -100,24 +100,21 @@ describe('handing a review date back to the app', () => {
       await page.getByLabel('Next review date').fill('2027-03-15');
       await page.getByRole('button', { name: 'Save date' }).click();
       await reload(app);
-      await goTo(app, `/items/${FARSI_ITEM}`);
       expect((await facts(app, FARSI_ITEM)).nextReviewSource).toBe('user');
       // An ordinary edit — a title change — must not release that protection.
       await page.getByRole('button', { name: 'Edit', exact: true }).click();
       await page.getByRole('textbox', { name: 'Title' }).fill('آوازِ افشاری — عبارتِ ۴ (renamed)');
       await page.getByRole('button', { name: 'Save changes' }).click();
       await reload(app);
-      await goTo(app, `/items/${FARSI_ITEM}`);
       const afterUnrelated = await facts(app, FARSI_ITEM);
       expect(afterUnrelated.nextReviewDate).toBe('2027-03-15');
       expect(afterUnrelated.nextReviewSource).toBe('user');
       expect(afterUnrelated.reviewMode).toBe('auto');
       // The explicit transfer is still OFFERED on an already-auto item whose
       // date is the owner's.
-      expect(await transferButton(page).count()).toBe(1);
+      await expect.poll(() => transferButton(page).count()).toBe(1);
       await transferButton(page).click();
       await reload(app);
-      await goTo(app, `/items/${FARSI_ITEM}`);
       expect((await facts(app, FARSI_ITEM)).nextReviewDate).toBe('2027-03-15');
       expect((await facts(app, FARSI_ITEM)).nextReviewSource).toBe('auto');
 
@@ -144,12 +141,10 @@ describe('handing a review date back to the app', () => {
       await reload(app);
       expect(await facts(app, CONFLICT)).toEqual(conflictBefore);
       // Resolving it explicitly is what the refusal actually points at.
-      await goTo(app, `/items/${CONFLICT}`);
       await page.getByRole('button', { name: 'Change review date' }).click();
       await page.getByLabel('Next review date').fill('2027-03-01');
       await page.getByRole('button', { name: 'Save date' }).click();
       await reload(app);
-      await goTo(app, `/items/${CONFLICT}`);
       await transferButton(page).click();
       await reload(app);
       const conflictAfter = await facts(app, CONFLICT);
@@ -186,7 +181,6 @@ describe('handing a review date back to the app', () => {
       await page.getByRole('group', { name: 'Reminder mode' }).getByRole('button', { name: 'Manual' }).click();
       await page.getByRole('button', { name: 'Save changes' }).click();
       await reload(app);
-      await goTo(app, `/items/${ROWLESS}`);
       expect((await facts(app, ROWLESS)).reviewMode).toBe('manual');
       await page.getByRole('button', { name: 'Edit', exact: true }).click();
       await page.getByRole('group', { name: 'Reminder mode' }).getByRole('button', { name: 'Auto', exact: true }).click();
@@ -238,7 +232,6 @@ describe('handing a review date back to the app', () => {
       // frozen against every change to it. A status change re-renders this
       // page with a new item object; the date the owner typed is theirs and
       // stands, and saving writes exactly it.
-      await goTo(app, `/items/${ROWLESS}`);
       await page.getByRole('button', { name: 'Change review date' }).click();
       await page.getByLabel('Next review date').fill('2027-07-07');
       await page.getByRole('group', { name: 'Set status' }).getByRole('button', { name: 'Fixing problems' }).click();
@@ -316,7 +309,6 @@ describe('handing a review date back to the app', () => {
           }),
         };
         publishRemote(remote, remoteStateText(cleared), await hashState(cleared), rev);
-        await goTo(app, `/items/${ROWLESS}`);
       };
 
       // (i) UNTOUCHED: the box follows the item, and offers what opening it
@@ -338,7 +330,6 @@ describe('handing a review date back to the app', () => {
       //      published snapshot is a clean pull rather than a both-changed
       //      conflict. Wait for that commit to have actually landed.
       await expect.poll(pushes, { timeout: 30_000 }).toBeGreaterThan(pushesAtConnect);
-      await goTo(app, `/items/${ROWLESS}`);
       await page.getByRole('button', { name: 'Change review date' }).click();
       await page.getByLabel('Next review date').fill('2027-09-09');
       await publishCleared(202);
@@ -365,9 +356,9 @@ describe('after the date changes hands, the shipped rules apply', () => {
     try {
       /** Practise the item once and close with `result`. */
       async function practise(itemId: string, result: string): Promise<void> {
-        await goTo(app, `/items/${itemId}`);
+        await show(app, `/items/${itemId}`);
         await page.getByRole('button', { name: 'Start a block' }).click();
-        await goTo(app, '/active');
+        await app.page.getByRole('button', { name: 'Finish' }).waitFor();
         await page.getByRole('button', { name: 'Finish' }).click();
         if (result === 'none') {
           await page.getByRole('button', { name: 'Save without a result' }).click();
@@ -435,7 +426,6 @@ describe('after the date changes hands, the shipped rules apply', () => {
       await page.getByLabel('Next review date').fill('2027-01-15');
       await page.getByRole('button', { name: 'Save date' }).click();
       await reload(app);
-      await goTo(app, `/items/${AUTO_DUE}`);
       await transferButton(page).click();
       await reload(app);
       await practise(AUTO_DUE, 'Stable alone');
@@ -446,7 +436,7 @@ describe('after the date changes hands, the shipped rules apply', () => {
       // --- A deliberate NO clears the pending intent ----------------------
       await goTo(app, `/items/${FARSI_ITEM}`);
       await page.getByRole('button', { name: 'Start a block' }).click();
-      await goTo(app, '/active');
+      await app.page.getByRole('button', { name: 'Finish' }).waitFor();
       await page.getByRole('button', { name: 'Finish' }).click();
       await page.getByRole('button', { name: 'Same', exact: true }).click();
       await page.getByRole('button', { name: 'Change', exact: true }).click();
@@ -487,7 +477,6 @@ describe('after the date changes hands, the shipped rules apply', () => {
       await reload(app);
       // "Today" is the day it actually is, not the day the page was opened on.
       expect((await facts(app, NODATE)).nextReviewDate).toBe('2027-01-16');
-      await goTo(app, `/items/${NODATE}`);
       expect(await page.locator('main').innerText()).toContain('2027-01-16');
 
       expect(app.pageErrors.map((e) => e.message)).toEqual([]);
