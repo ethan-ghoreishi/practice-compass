@@ -61,8 +61,10 @@ wrong, measured instead.
   classes it does not check (a name piece held in a binding, a computed call
   outside an assertion, reflection, an aliased `expect`, an imported helper's
   meaning…), which are unchecked, not proved safe. An unknown name fails closed
-  in an assertion, a poll, a destructuring key and wait options, and every cell
-  it leaves unchecked names its excluded class. Its test derives every spelling ×
+  in an assertion, a poll, a destructuring key and wait options. So does an
+  expected object's `__proto__` key in any spelling: JS makes it the prototype in
+  one spelling and an own key in another, and assigning it as a key dropped its
+  leaf silently. Every cell it leaves unchecked names its excluded class. Its test derives every spelling ×
   position cell's verdict from that policy alone; breaking a shared reader (member
   keys, destructuring keys, `+` folding, page-script escapes, option keys) fails
   its whole column. Why a contract: closing one more spelling per review kept

@@ -28,7 +28,9 @@ import { describe, expect, it } from 'vitest';
 // through `+`, `${}`, parentheses and `as` from literals alone. A timer name
 // and a hash URL are also recognised as the runtime text of any string
 // expression built that way, and a timer as a page script cooks its own
-// escapes again. A name that is not static text is UNKNOWN. Unknown FAILS
+// escapes again. A name that is not static text is UNKNOWN, and so is an
+// expected object's key whose text is `__proto__`, in every spelling (JS makes
+// it the prototype in one spelling and an own key in another). Unknown FAILS
 // CLOSED in an assertion or a poll (refused), as a destructuring key (a read)
 // and as a key in wait options (a negative). Anywhere else — a member called
 // or named outside an assertion, an assertion reached by an unknown name, a
@@ -457,7 +459,9 @@ function literal(node: ts.Expression | undefined): unknown {
     const o: Record<string, unknown> = {};
     for (const p of e.properties) {
       const key = ts.isPropertyAssignment(p) ? keyOf(p.name) : UNKNOWN;
-      if (key === UNKNOWN) return UNKNOWN;
+      // `__proto__` is the prototype in one spelling and an own key in another, and
+      // `o[key] =` would drop its leaf silently: it is never judged.
+      if (key === UNKNOWN || key === '__proto__') return UNKNOWN;
       o[key] = literal((p as ts.PropertyAssignment).initializer);
     }
     return o;
@@ -1089,6 +1093,11 @@ const OTHER_WAITS = ['waitForElementState', 'waitForURL', 'waitForFunction', 'wa
 const EVENTS = ['waitForEvent', 'waitForRequest', 'waitForResponse', 'waitForLoadState', 'waitForNavigation'];
 const [waitOn, before] = [(n: string) => (n === 'waitFor' ? 'toast' : 'page'), (n: string) => (n === 'waitFor' ? '' : "'x', ")];
 const DESTRUCTURING = [(k: string) => `const { ${k}: v } = box;`, (k: string) => `({ ${k}: v } = box);`, (k: string) => `async function f({ ${k}: v }) {}`, (k: string) => `try {} catch ({ ${k}: v }) {}`, (k: string) => `for (const { ${k}: v } of boxes);`, (k: string) => `for ({ ${k}: v } of boxes);`];
+const PROTO_MATCHERS = ['toEqual', 'toStrictEqual'];
+const PROTO_SUBJECTS = ['q()', 'box.isVisible()'];
+const PROTO_PLACES = [(o: string) => o, (o: string) => `{ b: 'y', c: ${o} }`, (o: string) => `['y', ${o}]`];
+/** Every leaf kind: full, each empty kind, and an unknown one. */
+const PROTO_LEAVES = ["'x'", "''", '0', 'false', 'null', 'undefined', '[]', '{}', 'k'];
 const POLICY: Position[] = [
   // A read: judged at its absent value in an assertion, refused outside one.
   { names: READ_NAMES, as: 'member', code: (s, n) => `expect(await box${s}()).toBe(${presentOf(n)});`, known: ['positive'], unknown: ['positive'] },
@@ -1147,6 +1156,21 @@ const POLICY: Position[] = [
   { names: ['poll'], as: 'member', code: (s) => `await expect${s}(() => q()).toBe(null);`, known: ['negative'], unknown: { unchecked: 'unknown-assertion' } },
   { names: ['a'], as: 'key', code: (s) => `await expect.poll(() => q()).toEqual({ ${s}: 'x' });`, known: [], unknown: ['negative'] },
   { names: ['a'], as: 'key', code: (s) => `await expect.poll(() => q()).toEqual({ ${s}: '' });`, known: ['negative'], unknown: ['negative'] },
+  // `__proto__` as an expected object's key is never judged: whatever its leaf, wherever the
+  // object sits, a poll of a value or of a read fails closed.
+  ...PROTO_MATCHERS.flatMap((matcher) =>
+    PROTO_SUBJECTS.flatMap((subject) =>
+      PROTO_PLACES.flatMap((place) =>
+        PROTO_LEAVES.map((leaf): Position => ({
+          names: ['__proto__'],
+          as: 'key',
+          code: (s) => `await expect.poll(() => ${subject}).${matcher}(${place(`{ a: 'x', ${s}: ${leaf} }`)});`,
+          known: ['negative'],
+          unknown: ['negative'],
+        })),
+      ),
+    ),
+  ),
   // A raw hash navigation: by its method's name and its URL's runtime text.
   { names: ['goto'], as: 'member', code: (s) => `await page${s}(\`\${origin}#/items\`);`, known: ['goto'], unknown: { unchecked: 'computed-call' } },
   { names: ['#/items'], as: 'text', code: (s) => `await page.goto(origin + ${s});`, known: ['goto'], unknown: { unchecked: 'binding-piece' } },
