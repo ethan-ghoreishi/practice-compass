@@ -54,7 +54,10 @@ wrong, measured instead.
   absent (`isHidden` true), through any spelling of the read, `expect` and
   matcher (arguments, computed names, `.call`, `.not`, `Promise.all`, arrays per
   element). A poll is an absence wait when any read in it passes absent or cannot
-  be judged; a pattern list missed `isHidden` polls and `[false, false]`. Its ledger says why each exception
+  be judged, and a value poll when its matcher passes on an empty value; a
+  pattern list missed `isHidden` polls, `[false, false]` and `toBe(undefined)`. A
+  wait whose failure `.catch` swallows is a timer when the thing never comes:
+  daily-practice's one now fails loudly instead. Its ledger says why each exception
   stands and how many sites it covers. 44 positive reads
   became `expect.poll` with the same matcher. Two polled negatives that followed a
   positive arrival became point-in-time reads. Element disappearances became

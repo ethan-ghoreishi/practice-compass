@@ -143,7 +143,7 @@ describe('the daily practice loop, end to end', () => {
       await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Stable alone' }).click();
         await page.getByRole('button', { name: 'Change' }).click();
-        await page.getByRole('group', { name: '' }).first().waitFor().catch(() => {});
+        await page.getByRole('group', { name: '' }).first().waitFor();
         await page.getByRole('button', { name: 'No', exact: true }).first().click();
         await page.getByRole('button', { name: 'Save block' }).click();
       });

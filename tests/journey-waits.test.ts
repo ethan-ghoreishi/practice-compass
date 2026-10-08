@@ -15,7 +15,9 @@ import { describe, expect, it } from 'vitest';
 // is not a bracket. A timer named inside a string or template (a page script)
 // still counts. Six rules, each deny-by-default:
 //   sleep     no reference to `waitForTimeout`, `setTimeout` or `setInterval`
-//             — a call, a `.bind`, an import, a page script;
+//             — a call, a `.bind`, an import, a page script — and no wait
+//             (`waitFor…`, an assertion) whose failure a `.catch` swallows:
+//             when the thing never comes, that is a timer;
 //   poller    no `while`, `do` or `for(;;)`-style loop that awaits —
 //             `persistedUntil` is the one poller;
 //   positive  a rendered-state read with no auto-wait — `count`, `isVisible`,
@@ -36,10 +38,10 @@ import { describe, expect, it } from 'vitest';
 //             for it first. A poll of a read is one when ANY read in it passes
 //             absent, or cannot be judged (by the same evaluation; `[true,
 //             false]` still waits on nothing for its second half). A poll of
-//             anything else is one by its literal: `.not`, `toBe(0)`,
-//             `toBe(null)`, `toEqual([])`, `toBeFalsy()`…. So is a poll with
-//             no matcher, and `waitFor` with `state: 'detached' | 'hidden'` or
-//             a state it cannot read;
+//             a value is one when it has `.not` or its matcher passes on an
+//             empty value (0, false, null, undefined, '', []). So is a poll
+//             with no matcher, and `waitFor` with `state: 'detached' |
+//             'hidden'`, a state it cannot read, or options it cannot read;
 //   goto      no raw `page.goto` to a hash route outside the harness: `goTo`
 //             is the navigation that waits for the destination.
 // `expect`, `expect.soft`, `.poll` and every matcher are matched by name in
@@ -227,6 +229,13 @@ const LEDGER: { file: string; rule: Rule; snippet: string; sites?: number; why: 
     why: "each follows a poll that saw q=pishdaramad in the URL; the poll waits for THAT to go",
   },
   {
+    file: 'repertoire-experience.browser.test.ts',
+    rule: 'negative',
+    snippet: "expect.poll(() => search().inputValue()).toBe('')",
+    sites: 2,
+    why: "each follows a read or poll that saw 'pishdaramad' in the box; the poll waits for THAT to empty",
+  },
+  {
     file: 'review-ownership.browser.test.ts',
     rule: 'negative',
     snippet: '.toBeUndefined()',
@@ -323,6 +332,14 @@ function member(node: ts.Expression): { of: ts.Expression; name: string | typeof
   return undefined;
 }
 const named = (e: ts.Expression, name: string) => member(e)?.name === name;
+/** `Promise.all([…])` — the array it resolves, or undefined. */
+const promiseAll = (e: ts.Expression): ts.Expression | undefined => {
+  const m = ts.isCallExpression(e) ? member(e.expression) : undefined;
+  const of = m && bare(m.of);
+  return m?.name === 'all' && of && ts.isIdentifier(of) && of.text === 'Promise' && (e as ts.CallExpression).arguments.length === 1 ? (e as ts.CallExpression).arguments[0] : undefined;
+};
+/** What a value poll waits for when it passes at once: nothing there yet. */
+const EMPTY: unknown[] = [0, false, null, undefined, '', []];
 
 /** `expect` or `expect.soft`, by any spelling. */
 const isExpectFn = (node: ts.Expression): boolean => {
@@ -462,7 +479,11 @@ export function scan(file: string, raw: string): Site[] {
     const callee = bare(c.expression);
     if (ts.isIdentifier(callee)) return helpers.has(callee.text) ? { absent: helpers.get(callee.text), computed: false } : undefined;
     let m = member(callee);
-    if (m && (m.name === 'call' || m.name === 'apply') && member(m.of)) m = member(m.of);
+    if (m && (m.name === 'call' || m.name === 'apply')) {
+      const target = bare(m.of);
+      if (ts.isIdentifier(target) && helpers.has(target.text)) return { absent: helpers.get(target.text), computed: false };
+      if (member(target)) m = member(target);
+    }
     if (!m) return undefined;
     if (m.name === UNKNOWN) return { absent: UNKNOWN, computed: true };
     return isRead(m.name) ? { absent: READS[m.name], computed: false } : undefined;
@@ -500,7 +521,8 @@ export function scan(file: string, raw: string): Site[] {
         const r = returned(e.arguments[0]);
         return !unjudgeable(absent) && r && Object.is(literal(r), absent) ? absent : UNKNOWN;
       }
-      return m?.name === 'all' && ts.isIdentifier(bare(m.of)) && (bare(m.of) as ts.Identifier).text === 'Promise' && e.arguments.length === 1 ? absentValue(e.arguments[0]) : UNKNOWN;
+      const all = promiseAll(e);
+      return all ? absentValue(all) : UNKNOWN;
     }
     if (ts.isArrayLiteralExpression(e)) return e.elements.map(absentValue);
     if (ts.isPrefixUnaryExpression(e) && e.operator === ts.SyntaxKind.ExclamationToken) {
@@ -517,7 +539,8 @@ export function scan(file: string, raw: string): Site[] {
       const r = returned(e);
       return r && arrayOf(r);
     }
-    if (ts.isCallExpression(e) && named(e.expression, 'all') && e.arguments.length === 1) return arrayOf(e.arguments[0]);
+    const all = promiseAll(e);
+    if (all) return arrayOf(all);
     return undefined;
   };
   /**
@@ -546,6 +569,15 @@ export function scan(file: string, raw: string): Site[] {
     return out;
   };
 
+  /** A `waitFor…` call, or an assertion's matcher: something that waits, then throws. */
+  const isWait = (c: ts.CallExpression): boolean => {
+    const name = member(c.expression)?.name;
+    if (typeof name === 'string' && name.startsWith('waitFor')) return true;
+    let e: ts.Expression = c.expression;
+    while (member(e)) e = member(e)!.of;
+    e = bare(e);
+    return ts.isCallExpression(e) && (isExpect(e) || isPoll(e));
+  };
   for (const call of calls) {
     // goto: a raw hash navigation outside the harness.
     if (file !== HARNESS && named(call.expression, 'goto') && call.arguments.some((a) => a.getText(sf).includes('#'))) at(call, 'goto');
@@ -554,17 +586,16 @@ export function scan(file: string, raw: string): Site[] {
     if (isPoll(call)) {
       const m = matcherOf(call);
       const judged = [...claims(call).values()];
-      const v = literal(m?.args[0]);
-      const negative =
-        !m ||
-        (judged.length > 0
-          ? judged.some((j) => j !== false)
-          : m.not ||
-            ['toBeFalsy', 'toBeNull', 'toBeUndefined'].includes(m.name) ||
-            (['toBe', 'toEqual', 'toStrictEqual'].includes(m.name) && (v === 0 || v === false || v === null || (Array.isArray(v) && v.length === 0))) ||
-            (m.name === 'toHaveLength' && v === 0));
+      const negative = !m || (judged.length > 0 ? judged.some((j) => j !== false) : m.not || EMPTY.some((e) => passes(m, e) === true));
       if (negative) at(m?.call ?? call, 'negative');
     }
+    // negative: a `waitFor` whose options the scan cannot read may be waiting for absence.
+    const options = named(call.expression, 'waitFor') && call.arguments[0] ? bare(call.arguments[0]) : undefined;
+    if (options && (!ts.isObjectLiteralExpression(options) || options.properties.some((p) => ts.isSpreadAssignment(p) || (p.name && ts.isComputedPropertyName(p.name)))))
+      at(call, 'negative');
+    // sleep: a wait whose failure is swallowed waits out its timeout when the thing never comes.
+    const caught = named(call.expression, 'catch') ? bare(member(call.expression)!.of) : undefined;
+    if (caught && ts.isCallExpression(caught) && isWait(caught)) at(call, 'sleep');
   }
 
   // positive / read: a rendered-state read is allowed only inside `expect.poll`,
