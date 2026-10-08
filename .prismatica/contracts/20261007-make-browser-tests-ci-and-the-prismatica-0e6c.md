@@ -5,7 +5,7 @@ title: Make browser tests, CI and the Prismatica Gate fast, deterministic and
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/49
 intent: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 tier: normal
-stage: build
+stage: review
 baseline:
   commit: fc87f8d8d64315d46bd800cffd561c979a8c64e0
   branch: main
