@@ -1,55 +1,29 @@
 ---
 id: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 contractId: 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
-patchId: 9ef50736dbe635d098d3c7216655780f26d5ff81
+patchId: ce4c5031e94ded27c80bb96dd390cc0c422110fd
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: destination-specific-navigation-arrival
-    summary: "[P2] ac-5's shared-heading proof can pass before the destination commits."
-    counterexample: "tests/journey-harness.browser.test.ts:84 passes arrival:
-      'Repertoire' while the outgoing view already has that heading; line 85
-      asserts only the same heading. tests/practiceBrowser.ts:579-584 waits
-      solely for that locator and bypasses the render-change check. A read-only
-      Page-double probe of the actual goTo returned with outgoing Pathways
-      content still present, and the heading assertion would pass. Rework the
-      exact named test 'navigation returns only once the destination page has
-      rendered, in Chromium and WebKit, even when page modules load slowly' to
-      prove a destination-only view state under a pending same-heading
-      navigation in both engines. Complete explicit-arrival sweep: this is the
-      only non-discriminating caller;
-      tests/setar-practice.browser.test.ts:148,160,163 use distinct pathway
-      backlinks, and tests/repertoire-experience.browser.test.ts:481 uses the
-      destination's pressed view. The seven show call sites in daily-practice,
-      lesson-agenda, lessonNotes and review-ownership were checked for their
-      settled-page precondition."
   - family: journey-wait-guard-complete-enforcement
-    summary: "[P2] ac-7 misses existing positive state assertions and can erase
-      forbidden waits inside valid quoted syntax."
-    counterexample: "Swept 135 existence/state call sites. Two positive assertions
-      remain unpolled and unreported:
-      tests/repertoire-experience.browser.test.ts:169 reads
-      freshName.isEnabled() in an array expected to contain true;
-      tests/setar-practice.browser.test.ts:909 reads two isChecked() values in
-      an array expected to be [true,true] immediately after Choose every item
-      without a note. tests/journey-waits.test.ts:124-126 recognises scalar
-      expect(await ...) assertions only. stripComments at line 104 treats quoted
-      'A // B' as a comment; closing at lines 108-119 treats quoted ')' as
-      syntax. Direct scan probes return [] for expect(await page.getByText('A //
-      B').count()).toBe(1), for await page.getByText('A // B').click(); await
-      page.waitForTimeout(300), and for await expect.poll(() =>
-      page.getByText(')').count()).toBe(0). Rework the exact named test 'browser
-      journeys wait on events, never on fixed sleeps, hand-rolled pollers or
-      positive point-in-time reads' with these lexical and compound-assertion
-      classes, then close the whole family. Clean consumers: remaining scalar
-      positive assertions; daily-practice:189,279, repertoire-experience:489 and
-      journey-harness:50 negative polls with prior presence; five ledgered
-      sleeps, the sole persistedUntil loop and the raw-navigation control arm.
-      scanAll and the synthetic rules helper are the only scan consumers; all
-      top-level tests/*.ts and the harness were swept."
-createdAt: 2026-10-08T13:07:39.112Z
-sealedAt: 2026-10-08T13:26:56.905Z
+    summary: "[P2] ac-7 still silently accepts positive state reads and unledgered
+      absence waits in ordinary supported syntax."
+    counterexample: "HEAD's actual scan() returns [] for expect(await
+      box.isVisible({ timeout: 100 })).toBe(true); expect(await
+      box[\"isVisible\"]()).toBe(true); await expect.poll(() =>
+      box.isHidden()).toBe(true); await expect.poll(() =>
+      Promise.all([a.isChecked(), b.isChecked()])).toEqual([false, false]); The
+      first two require positive violations; the latter two require negative
+      violations and ledgered prerequisites. Rework the exact named test
+      'browser journeys wait on events, never on fixed sleeps, hand-rolled
+      pollers or positive point-in-time reads' and the whole
+      supported-read/absence classification family. Do not patch only these
+      examples: make the AST-based classifier robust across supported call
+      syntax, computed access, arguments, inverted visibility and compound
+      expectations. The earlier navigation finding is resolved."
+createdAt: 2026-10-08T14:57:19.803Z
+sealedAt: 2026-10-08T15:13:08.271Z
 ---
 
 # Review: Make browser tests, CI and the Prismatica Gate fast, deterministic and trustworthy
@@ -63,7 +37,7 @@ sealedAt: 2026-10-08T13:26:56.905Z
 - **Contract:** 20261007-make-browser-tests-ci-and-the-prismatica-0e6c
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/49
 - **Risk tier:** normal — a feature or bug — full checks plus a sealed fresh-eyes review
-- **Diff patch-id:** `9ef50736dbe635d098d3c7216655780f26d5ff81`
+- **Diff patch-id:** `ce4c5031e94ded27c80bb96dd390cc0c422110fd`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
 
 ## The plan the owner approved
