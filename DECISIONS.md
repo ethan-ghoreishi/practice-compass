@@ -86,23 +86,35 @@ wrong, measured instead.
   restore's "Import failed:", the tab bar after Save). The one left with no such
   signal uses the bounded `quietWindow`.
 - **Runner: bounded, aligned, once per ref.** Jobs are bounded at 20 min and the
-  browser install at 10. `Acquire::http(s)::Timeout 10` makes apt move through the
-  image's mirror list in seconds rather than two minutes per file (`Acquire::Retries`
-  is a bounded download retry, not a test retry). Node 24 everywhere. CI runs on
-  branch pushes and dispatch only, so the Gate is the one pull-request run.
-  Superseded runs cancel, grouped by workflow (deploy: one at a time). Deploy's check
-  is CI's steps exactly. A dispatch-only drill points the Azure mirror at
-  10.255.255.1, an address that drops packets so the connection hangs as the dead
-  mirror did. Failover is proven on the real image after ship; no container runtime
-  here can show it before.
+  browser install at 10. Node 24 everywhere. CI runs on branch pushes and dispatch
+  only, so the Gate is the one pull-request run. Superseded runs cancel, grouped by
+  workflow (deploy: one at a time). Deploy's check is CI's steps exactly. A
+  dispatch-only drill points the Azure mirror at 10.255.255.1, an address that drops
+  packets so the connection hangs as the dead mirror did.
+- **Mirror failover: apt's own was disproved, so apt never meets a dead mirror.**
+  The first drill (on 6102560) ran with `Acquire::http(s)::Timeout 10` and
+  `Acquire::Retries 3`. apt skipped Azure's InRelease, took it from
+  archive.ubuntu.com, skipped a burst of noble-updates indexes, then printed nothing
+  until the 10-minute bound. The 2026-10-07 incident (Gate run 37683025060
+  attempts 1-2, CI 37683025087 attempt 1, apt defaults) shows the same sequence and
+  the same silence, cancelled by hand at 39 and 55 min. So the timeouts neither
+  caused the hang nor cured it, and they are gone. Before the install, each mirror
+  in the image's mirror+file list must serve its suite's InRelease within 5 s
+  (curl's own bound), or it is left out of the list. If none answers, the list
+  stays and the step bound is the guarantee. `ci-browser-setup.test.ts` runs that
+  step against a hung, a refused, a suite-less and a live local mirror.
+  Rejected: a longer bound or more apt tuning, because the hang has no end to wait
+  for. Known limit: a mirror that is alive but slow passes the probe. On
+  2026-10-01, Azure served 125 MB at 129 kB/s in 17 min, which would now end at
+  the 10-minute bound.
 - **Measured locally** (Mac, 12 cores, Node 24, the Gate's `vitest run
   --reporter=json`). Before: 145 s in parallel, 723 s single-threaded (a lower
   bound: that copy had no git checkout, so the 4 rollback journeys failed fast).
   After: 122-127 s in parallel, 566-569 s single-threaded, 516/516 every time.
   Also green: 3 shuffle seeds, 12 busy loops of host load, slow storage
   everywhere (341 s), Chromium at 20x CPU (the 80 tests in tests/), and those
-  80 tests 10 times over. The GitHub step timings and the mirror drill are
-  observed after ship, never recorded here.
+  80 tests 10 times over. The GitHub step timings and the drill on the fixed head
+  are observed after ship, never recorded here.
 
 ## Setar review and archive lines, visible choices, and Repertoire search typing (2026-10-07)
 

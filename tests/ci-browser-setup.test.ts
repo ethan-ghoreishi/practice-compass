@@ -1,5 +1,10 @@
-import { readdirSync, readFileSync } from 'node:fs'
+import { execFile } from 'node:child_process'
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer as createHttpServer } from 'node:http'
+import { createServer as createNetServer, type AddressInfo, type Server, type Socket } from 'node:net'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { promisify } from 'node:util'
 import { describe, expect, it } from 'vitest'
 
 /**
@@ -228,7 +233,7 @@ export type RunnerAudit = {
     nodeVersion: string | null
     /** The browser-install step's own bound, null if it has none. */
     installTimeout: number | null
-    /** apt failover configured in a step BEFORE the browser install. */
+    /** A step BEFORE the browser install that probes the image's mirror+file list with a bounded fetch. */
     failoverBeforeInstall: boolean
     /** A dispatch-only drill that blackholes the Azure mirror before the install. */
     drill: boolean
@@ -236,6 +241,9 @@ export type RunnerAudit = {
     steps: string[]
   }[]
 }
+
+/** The probe reads the image's own mirror list; an apt timeout alone was disproved by the drill. */
+const MIRROR_PROBE = /mirror\\?\+file:/
 
 export function auditRunner(rawText: string): RunnerAudit {
   const top = children(meaningful(rawText))
@@ -286,7 +294,7 @@ export function auditRunner(rawText: string): RunnerAudit {
       timeoutMinutes: minutes(fields),
       nodeVersion: setupNode ? (scalar(body(child(setupNode, 'with')), 'node-version') ?? null) : null,
       installTimeout: install < 0 ? null : minutes(stepList[install]),
-      failoverBeforeInstall: before.some((t) => /Acquire::https?::Timeout/.test(t)),
+      failoverBeforeInstall: before.some((t) => MIRROR_PROBE.test(t) && /\bcurl\b[^\n]*--max-time \d+/.test(t)),
       drill: before.some(
         (t) =>
           /if:.*github\.event_name == 'workflow_dispatch'.*inputs\.\w+/.test(t) &&
@@ -323,6 +331,8 @@ function boundsProblems(w: RunnerAudit & { name: string }): string[] {
   ])
 }
 
+const PROBE_STEP = `      - run: grep -rhoE 'mirror\\+file:[^ ]+' /etc/apt/sources.list.d/ && curl -fsS --max-time 5 "$url"`
+
 const SUITE_JOB = (extra: { top?: string; job?: string; before?: string; node?: string } = {}) => `
 name: synthetic
 on:
@@ -337,7 +347,7 @@ ${extra.job ?? '    timeout-minutes: 20'}
       - uses: actions/setup-node@v4
         with:
           node-version: ${extra.node ?? '24'}
-${extra.before ?? `      - run: printf 'Acquire::http::Timeout "10";' | sudo tee /etc/apt/apt.conf.d/99-mirror-failover`}
+${extra.before ?? PROBE_STEP}
       - run: npx playwright install --with-deps chromium webkit
         timeout-minutes: 10
       - run: npm test
@@ -358,16 +368,21 @@ describe('the runner around the suite', () => {
     expect(problems(SUITE_JOB({ job: '' }))).toEqual(['synthetic.yml/check: no job timeout-minutes (at most 60)'])
     expect(problems(SUITE_JOB({ job: '    timeout-minutes: 360' }))).toEqual(['synthetic.yml/check: no job timeout-minutes (at most 60)'])
     expect(problems(SUITE_JOB({ before: '' }))).toEqual(['synthetic.yml/check: no apt mirror failover before the browser install'])
+    // apt's own timeouts are not failover: the drill hung behind them exactly as the incident did.
+    expect(
+      problems(SUITE_JOB({ before: `      - run: printf 'Acquire::http::Timeout "10";' | sudo tee /etc/apt/apt.conf.d/99-mirror-failover` })),
+    ).toEqual(['synthetic.yml/check: no apt mirror failover before the browser install'])
+    // A probe with no bound of its own could hang where apt did.
+    expect(problems(SUITE_JOB({ before: PROBE_STEP.replace('--max-time 5 ', '') }))).toEqual([
+      'synthetic.yml/check: no apt mirror failover before the browser install',
+    ])
     expect(
       problems(SUITE_JOB().replace('install --with-deps chromium webkit\n        timeout-minutes: 10', 'install --with-deps chromium webkit')),
     ).toEqual(['synthetic.yml/check: browser install has no timeout-minutes'])
     // Failover configured AFTER the install protects nothing.
     expect(
       problems(
-        SUITE_JOB({ before: '' }).replace(
-          '      - run: npm test',
-          `      - run: printf 'Acquire::http::Timeout "10";' | sudo tee /etc/apt/apt.conf.d/99-mirror-failover\n      - run: npm test`,
-        ),
+        SUITE_JOB({ before: '' }).replace('      - run: npm test', `${PROBE_STEP}\n      - run: npm test`),
       ),
     ).toEqual(['synthetic.yml/check: no apt mirror failover before the browser install'])
     // A drill that runs on every push, or blackholes nothing, is not the drill.
@@ -439,5 +454,109 @@ describe('the runner around the suite', () => {
     const text = readFileSync(join(WORKFLOW_DIR, deploy[0].name), 'utf8')
     expect(proven(auditRunner(text.replace(/node-version: \d+/, 'node-version: 18')))).not.toEqual(proven(ci[0]))
     expect(proven(auditRunner(text.replace('      - run: npm run lint\n', '')))).not.toEqual(proven(ci[0]))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The probe itself, RUN: the one step every suite workflow carries, executed by
+// bash against mirrors on this machine — one that accepts a connection and never
+// answers (the drill's blackhole, and the 2026-10-07 incident), one that refuses,
+// one without the suite, and live ones. Every /etc path is redirected into a
+// scratch root and `sudo` is a shim, so running it here or inside CI changes
+// nothing real.
+// ---------------------------------------------------------------------------
+
+const execFileAsync = promisify(execFile)
+
+describe('the apt mirror probe', () => {
+  it('leaves an unreachable mirror out within its own bound and keeps every other line exactly', async () => {
+    const probes = runners().flatMap((w) => w.suiteJobs.map((j) => j.steps.find((s) => MIRROR_PROBE.test(s))))
+    // One probe, word for word, in every suite workflow, so running it once runs them all.
+    expect(probes.length).toBeGreaterThan(2)
+    expect(new Set(probes).size).toBe(1)
+    const step = probes[0]!.split('\n')
+    const script = step.slice(step.findIndex((l) => /^\s*run: \|$/.test(l)) + 1)
+    const bound = Number(/--max-time (\d+)/.exec(probes[0]!)?.[1])
+    expect(bound).toBeGreaterThan(0)
+
+    const root = mkdtempSync(join(tmpdir(), 'mirror-probe-'))
+    const etc = join(root, 'etc')
+    const list = join(etc, 'apt', 'apt-mirrors.txt')
+    const code = script
+      .map((l) => l.slice(indentOf(script[0])))
+      .join('\n')
+      .replaceAll('/etc/', `${etc}/`)
+    expect(code.replaceAll(`${etc}/`, '')).not.toContain('/etc/')
+    const bin = join(root, 'bin')
+    mkdirSync(bin)
+    writeFileSync(join(bin, 'sudo'), '#!/bin/sh\nexec "$@"\n')
+    chmodSync(join(bin, 'sudo'), 0o755)
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+    const bash = (source: string) => execFileAsync('bash', ['-e', '-c', source], { env })
+    expect((await bash('command -v sudo')).stdout.trim()).toBe(join(bin, 'sudo'))
+
+    const live = createHttpServer((req, res) => {
+      res.statusCode = /^\/(ubuntu|mirror)\/dists\/noble\/InRelease$/.test(req.url ?? '') ? 200 : 404
+      res.end()
+    })
+    const held: Socket[] = []
+    const hung = createNetServer((socket) => void held.push(socket))
+    const refused = createNetServer()
+    const listen = (s: Server) =>
+      new Promise<number>((resolve) => s.listen(0, '127.0.0.1', () => resolve((s.address() as AddressInfo).port)))
+    const [livePort, hungPort, refusedPort] = await Promise.all([listen(live), listen(hung), listen(refused)])
+    await new Promise((resolve) => refused.close(resolve))
+    const at = (port: number, path: string) => `http://127.0.0.1:${port}/${path}/`
+
+    const fixture = (mirrors: string, uris = `mirror+file:${list}`) => {
+      rmSync(etc, { recursive: true, force: true })
+      mkdirSync(join(etc, 'apt', 'sources.list.d'), { recursive: true })
+      writeFileSync(join(etc, 'os-release'), 'NAME="Ubuntu"\nVERSION_CODENAME=noble\n')
+      writeFileSync(list, mirrors)
+      // Two stanzas naming one list, as the image's ubuntu.sources does.
+      for (const suites of ['noble noble-updates', 'noble-security'])
+        writeFileSync(join(etc, 'apt', 'sources.list.d', `${suites.split(' ')[0]}.sources`), `Types: deb\nURIs: ${uris}\nSuites: ${suites}\n`)
+    }
+
+    try {
+      fixture(
+        [
+          "# the image's own comment",
+          `${at(hungPort, 'ubuntu')}\tpriority:1`,
+          `${at(livePort, 'ubuntu')}\tpriority:2`,
+          at(refusedPort, 'ubuntu'),
+          at(livePort, 'missing'),
+          at(livePort, 'mirror'),
+          '',
+        ].join('\n'),
+      )
+      const started = Date.now()
+      const { stdout } = await bash(code)
+      const elapsed = Date.now() - started
+      expect(readFileSync(list, 'utf8')).toBe(
+        ["# the image's own comment", `${at(livePort, 'ubuntu')}\tpriority:2`, at(livePort, 'mirror'), ''].join('\n'),
+      )
+      for (const dead of [at(hungPort, 'ubuntu'), at(refusedPort, 'ubuntu'), at(livePort, 'missing')])
+        expect(stdout).toContain(`::warning::apt mirror ${dead} did not answer within ${bound} s; left out of ${list}`)
+      // The hung mirror really hung (the fixture is the blackhole, not a refusal) and cost
+      // one bounded wait, never two: the ceiling sits just under a second wait, which
+      // leaves bash and the four other fetches seconds of room on a loaded runner.
+      expect(elapsed).toBeGreaterThanOrEqual((bound - 0.5) * 1000)
+      expect(elapsed).toBeLessThan((2 * bound - 0.5) * 1000)
+
+      // When no mirror answers, the list stays as it was: the step bound, not an empty list, is the guarantee.
+      const deadOnly = `${at(refusedPort, 'ubuntu')}\tpriority:1\n`
+      fixture(deadOnly)
+      expect((await bash(code)).stdout).toContain(`::warning::no mirror in ${list} answered; it is left as it was`)
+      expect(readFileSync(list, 'utf8')).toBe(deadOnly)
+
+      // An image without a mirror list is reported, never failed.
+      fixture(`${at(livePort, 'ubuntu')}\n`, 'http://archive.ubuntu.com/ubuntu/')
+      expect((await bash(code)).stdout).toContain('::warning::apt sources list no mirror+file failover on this image')
+    } finally {
+      for (const socket of held) socket.destroy()
+      await Promise.all([live, hung].map((s) => new Promise((resolve) => s.close(resolve))))
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
