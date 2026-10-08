@@ -57,7 +57,13 @@ wrong, measured instead.
   be judged, and a value poll when its matcher passes on an empty value; a
   pattern list missed `isHidden` polls, `[false, false]` and `toBe(undefined)`. A
   wait whose failure `.catch` swallows is a timer when the thing never comes:
-  daily-practice's one now fails loudly instead. Its ledger says why each exception
+  daily-practice's one now fails loudly instead. Recognising one more spelling at a
+  time kept leaving its siblings open, so what the guard cannot reduce counts as
+  unsafe: a helper means its one final `return` (a bare return or a reachable end
+  is a second path), an uncalled or destructured read method is a read, a helper
+  exported by name is judged where it stands, and only plain-text `toMatch`
+  alternatives prove presence (a regex's sense is as invisible as a boolean's).
+  Its ledger says why each exception
   stands and how many sites it covers. 44 positive reads
   became `expect.poll` with the same matcher. Two polled negatives that followed a
   positive arrival became point-in-time reads. Element disappearances became

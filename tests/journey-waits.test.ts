@@ -34,7 +34,7 @@ import { describe, expect, it } from 'vitest';
 //             value (`[await a.count(), url]`);
 //   read      the same read OUTSIDE an assertion — a branch, a variable, a
 //             read method or helper named without a call (passed, aliased,
-//             bound, destructured) — is refused unless ledgered with what it
+//             bound, destructured in a declaration or an `=`) — is refused unless ledgered with what it
 //             was read after. A HELPER is a local function with a read in what
 //             it returns; it means what its ONE return evaluates to, and only
 //             when that return is the body's last statement: a second return,
@@ -70,7 +70,9 @@ import { describe, expect, it } from 'vitest';
 // taken after the element was awaited. Deliberately out of reach: `for…of`/
 // `for…in` loops (walks over a fixed list, as the engine loops are; a timed
 // poller in one still trips `sleep`), a computed call OUTSIDE an assertion
-// (`x[k]()` may be anything; inside one it is refused), an aliased `expect`,
+// (`x[k]()` may be anything; inside one it is refused), a computed member
+// named without a call (`x[k]` is indexing, indistinguishable from a read
+// method), an aliased `expect`,
 // a helper exported to another file in any spelling (`export function`,
 // `export { rows }`, `export default rows`: its read is judged where it
 // stands, as there is no caller here to judge), and Playwright's own
@@ -592,6 +594,12 @@ export function scan(file: string, raw: string): Site[] {
   const isRead = (name: string | typeof UNKNOWN | undefined) => typeof name === 'string' && Object.hasOwn(READS, name);
   /** Read methods named without a call (`Reflect.apply(x.count, …)`, `const { count } = x`). */
   const refs: ts.Node[] = [];
+  /** Is this object literal (or one nested in it) the target of a destructuring `=`? */
+  const assignedTo = (literal: ts.Node): boolean => {
+    for (let n = literal; ts.isObjectLiteralExpression(n) || ts.isArrayLiteralExpression(n) || ts.isPropertyAssignment(n) || ts.isParenthesizedExpression(n); n = n.parent)
+      if (ts.isBinaryExpression(n.parent) && n.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && n.parent.left === n) return true;
+    return false;
+  };
   /** Is this access the callee of a call — directly, or through `.call`/`.apply`, which `readOf` judges as the read? */
   const called = (access: ts.Expression): boolean => {
     let n: ts.Node = access;
@@ -624,10 +632,13 @@ export function scan(file: string, raw: string): Site[] {
     }
     // read: a read method named without being called — passed, aliased, bound, destructured — is a read nobody judges.
     if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && isRead(member(node)!.name) && !called(node)) refs.push(node);
-    if (ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
-      const key = node.propertyName ?? node.name;
-      if ((ts.isIdentifier(key) || ts.isStringLiteralLike(key)) && isRead(key.text)) refs.push(node);
-    }
+    const key =
+      ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)
+        ? (node.propertyName ?? node.name)
+        : (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && assignedTo(node.parent)
+          ? node.name
+          : undefined;
+    if (key && (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) && isRead(key.text)) refs.push(node);
     if (ts.isCallExpression(node)) calls.push(node);
     if (ts.isIdentifier(node)) identifiers.push(node);
     if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
@@ -1096,6 +1107,10 @@ describe('journey waits', () => {
       ["const see = box['isVisible'];", ['read']],
       ['const { isVisible } = box;', ['read']],
       ['const { count: n } = box;', ['read']],
+      ['let see;\n({ isVisible: see } = box);', ['read']],
+      ['({ count } = box);', ['read']],
+      // …but an uncalled COMPUTED member is indexing, indistinguishable from a read method: out of reach.
+      ['expect(await Reflect.apply(box[m], box, [])).toBe(true);', []],
       // A REGEX'S SENSE is as invisible as a boolean's: only alternatives of
       // plain non-empty text prove presence, like `toContain`.
       ['await expect.poll(() => page.url()).toMatch(/^[^?]+$/);', ['negative']],
