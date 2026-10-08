@@ -44,35 +44,31 @@ wrong, measured instead.
   on-open sync finish (`syncNow`), or that sync writes the valid database back
   over the bytes (seen under slow storage once a racy branch read was ordered).
 - **Waits are events, by construction.** `tests/journey-waits.test.ts` parses every
-  test file and the harness with TypeScript, so quoted `//`, `)` and regex text
+  `tests/*.ts` (the journeys and the harness) with TypeScript, so quoted `//`, `)` and regex text
   cannot hide or end code; a regex scan let both through. Every rule is
   deny-by-default: any timer reference (page scripts included), any loop that
   awaits, a state read (`count`, `is*`) asserted at one instant unless the
   assertion passes only when the thing is absent, the same read outside an
   assertion, every absence wait, and raw hash `page.goto`. One evaluation decides
   both directions: the matcher is run on what each read returns when the thing is
-  absent (`isHidden` true), through any spelling of the read, `expect` and
-  matcher (arguments, computed names, `.call`, `.not`, `Promise.all`, arrays per
-  element). A poll is an absence wait when any read in it passes absent or cannot
-  be judged, and a value poll when its matcher passes on an empty value; a
-  pattern list missed `isHidden` polls, `[false, false]` and `toBe(undefined)`. A
-  wait whose failure `.catch` swallows is a timer when the thing never comes:
-  daily-practice's one now fails loudly instead. Recognising one more spelling at a
-  time kept leaving its siblings open, so what the guard cannot reduce counts as
-  unsafe: a helper means its one final `return` (a bare return or a reachable end
-  is a second path), an uncalled or destructured read method is a read, a helper
-  exported by name is judged where it stands, and only plain-text `toMatch`
-  alternatives prove presence (a regex's sense is as invisible as a boolean's).
-  Every name it decides by (a read, a matcher, `state`) goes through one reader,
-  `keyOf`, which folds a static computed key (`['is' + 'Visible']`) and calls one
-  it cannot fold unsafe; each consumer read names its own way, so each spelling
-  opened a sibling. Timer names and goto URLs are judged by a string's runtime
-  text (escapes cooked, pieces folded, a page script's escapes cooked again): raw
-  source text let `'waitFor\u0054imeout'` and an escaped `#` through. Every wait
-  that can ask for absence is read where Playwright's types let it ask (options,
-  `waitForElementState`'s state, `waitForURL`'s matcher, `waitForFunction`'s page
-  function) in any calling form, and unread is negative; a `state:`-key hunt
-  missed options passed as a variable.
+  absent (`isHidden` true). A pattern list missed `isHidden` polls, `[false,
+  false]` and `toBe(undefined)`; a swallowed wait is a timer when the thing never
+  comes (daily-practice's one now fails loudly). The guard holds a FINITE
+  recognition contract, written once in its header: the files it scans, the name
+  spellings it reads (members and keys whose name is static text: escapes
+  cooked, `+` and `${}` folded from literals; timer names and hash URLs by a
+  string's runtime text), the judgements it makes, and an `EXCLUDED` list of
+  classes it does not check (a name piece held in a binding, a computed call
+  outside an assertion, reflection, an aliased `expect`, an imported helper's
+  meaning…), which are unchecked, not proved safe. Within the contract an
+  unknown name or shape fails closed. Its test derives every spelling × position
+  cell's verdict from that policy alone; breaking a shared reader (member
+  keys, destructuring keys, `+` folding, page-script escapes, option keys) fails
+  its whole column. Why a contract: closing one more spelling per review kept
+  leaving siblings open, and "every spelling" has no end. The stopping rule: a
+  counterexample blocks only if it is in a supported class and gets another
+  verdict, or it is a real journey that is unreliable; an excluded spelling
+  alone is a possible extension.
   Its ledger says why each exception
   stands and how many sites it covers. 44 positive reads
   became `expect.poll` with the same matcher. Two polled negatives that followed a
