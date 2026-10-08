@@ -716,6 +716,10 @@ describe('journey waits', () => {
     // way: the claim is checked against what the read returns when the thing
     // is absent. One table, so a run shows every miss at once.
     const H = 'async function hidden(b) {\n  return b.isHidden();\n}\n';
+    const BRANCHY = 'async function state(b, open) {\n  if (open) return b.count();\n  return b.isHidden();\n}\n';
+    const TERNARY = 'const state = (b, open) => (open ? b.count() : b.isHidden());\n';
+    const GUARDED = 'async function rows(b, open) {\n  if (!open) return 0;\n  return b.count();\n}\n';
+    const CYCLE = 'function f(b) {\n  return g(b);\n}\nfunction g(b) {\n  return f(b).catch(() => b.count());\n}\n';
     const spellings: [string, Rule[]][] = [
       // a read with arguments, by computed name, optional chain, `.call`, parenthesised
       ['expect(await box.isVisible({ timeout: 100 })).toBe(true);', ['positive']],
@@ -768,7 +772,6 @@ describe('journey waits', () => {
       // …while a polled PRESENCE, by the same spellings, stays allowed
       ['await expect.poll(() => box.isHidden()).toBe(false);', []],
       ['await expect.poll(() => Promise.all([a.isChecked(), b.isChecked()])).toEqual([true, true]);', []],
-      ['await expect.poll(async () => [await name.inputValue(), await name.isEnabled()]).toEqual(["", true]);', []],
       ['await expect.poll(async () => { await go(); return box.count(); }).toBe(2);', []],
       ['await expect.poll(() => box.count()).toBeGreaterThan(0);', []],
       ['await expect.poll(() => box["isVisible"]({ timeout: 100 })).toBe(true);', []],
@@ -811,6 +814,50 @@ describe('journey waits', () => {
       ["await page.waitForURL(/#\\/items/).catch(() => {});", ['sleep']],
       ['await expect.poll(() => row.count()).toBe(1).catch(() => {});', ['sleep']],
       ['await box.isVisible().catch(() => false);', ['read']],
+      // A HELPER means what its one return means; more than one path, or a
+      // return the scan cannot reduce, means it cannot be judged at any call.
+      [`${BRANCHY}await expect.poll(() => state(box, open)).toBe(true);`, ['negative']],
+      [`${BRANCHY}expect(await state(box, open)).toBe(0);`, ['positive']],
+      [`${TERNARY}await expect.poll(() => state(box, open)).toBe(1);`, ['negative']],
+      [`${TERNARY}expect(await state(box, open)).toBe(0);`, ['positive']],
+      [`${GUARDED}expect(await rows(box, open)).toBe(0);`, ['positive']],
+      [`${CYCLE}expect(await f(box)).toBe(0);`, ['positive']],
+      // …a reference that is not a call is a read nobody judges…
+      [`${H}const see = hidden;`, ['read']],
+      [`${H}await Promise.all([box].map(hidden));`, ['read']],
+      // …and an exported helper's callers are elsewhere, so its read is judged where it stands.
+      ['export async function rows(b) {\n  return b.count();\n}\n', ['read']],
+      // A poll of a VALUE waits for presence only when a closed table proves
+      // it: anything else — an unknown or variable expectation, an empty one
+      // anywhere inside, a boolean whose sense the scan cannot see — is an
+      // absence wait to ledger.
+      ["await expect.poll(() => q()).toEqual(['', '']);", ['negative']],
+      ["await expect.poll(() => q()).toEqual(['a', '']);", ['negative']],
+      ['await expect.poll(() => q()).toEqual({});', ['negative']],
+      ["await expect.poll(() => q()).toEqual({ a: '' });", ['negative']],
+      ['await expect.poll(() => q()).toBe(expected);', ['negative']],
+      ['await expect.poll(() => n()).toBeGreaterThan(m);', ['negative']],
+      ['await expect.poll(() => q()).toMatch(/^$/);', ['negative']],
+      ['await expect.poll(() => q()).toMatch(/a|/);', ['negative']],
+      ["await expect.poll(() => q()).toMatch('x');", ['negative']],
+      ["await expect.poll(() => q()).toContain('');", ['negative']],
+      ['await expect.poll(() => q()).toContain(x);', ['negative']],
+      ['await expect.poll(() => q()).toSatisfy(ok);', ['negative']],
+      ['await expect.poll(() => q()).toBe(true);', ['negative']],
+      ['await expect.poll(() => q()).toBeTruthy();', ['negative']],
+      ["await expect.poll(() => main.innerText().then((t) => !t.includes('x'))).toBe(true);", ['negative']],
+      ['await expect.poll(() => n()).toHaveLength(0);', ['negative']],
+      ['await expect.poll(() => n()).toBeGreaterThanOrEqual(0);', ['negative']],
+      // …a subject mixing a read with a value is judged as neither…
+      ['await expect.poll(async () => [await name.inputValue(), await name.isEnabled()]).toEqual(["", true]);', ['negative']],
+      ['await expect.poll(async () => [await a.count(), q()]).toEqual([1, "x"]);', ['negative']],
+      ['expect([await a.count(), await q()]).toEqual([0, "x"]);', ['positive']],
+      // …while each table entry's provable side stays allowed.
+      ["await expect.poll(() => q()).toEqual(['a', 'b']);", []],
+      ["await expect.poll(() => q()).toEqual({ a: 'x', b: { c: 1 } });", []],
+      ['await expect.poll(() => q()).toMatch(/a+/);', []],
+      ['await expect.poll(() => n()).toHaveLength(2);', []],
+      ['await expect.poll(() => n()).toBeGreaterThanOrEqual(1);', []],
     ];
     expect(spellings.filter(([code, want]) => JSON.stringify(rules(code)) !== JSON.stringify(want)).map(([code, want]) => `${code} → ${JSON.stringify(rules(code))}, want ${JSON.stringify(want)}`)).toEqual([]);
   });
