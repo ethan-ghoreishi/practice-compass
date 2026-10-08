@@ -34,7 +34,8 @@ import { describe, expect, it } from 'vitest';
 //             value (`[await a.count(), url]`);
 //   read      the same read OUTSIDE an assertion — a branch, a variable, a
 //             read method or helper named without a call (passed, aliased,
-//             bound, destructured in a declaration or an `=`) — is refused unless ledgered with what it
+//             bound, destructured in a declaration, parameter, catch, `=` or
+//             `for…of`) — is refused unless ledgered with what it
 //             was read after. A HELPER is a local function with a read in what
 //             it returns; it means what its ONE return evaluates to, and only
 //             when that return is the body's last statement: a second return,
@@ -65,14 +66,21 @@ import { describe, expect, it } from 'vitest';
 //   goto      no raw `page.goto` to a hash route outside the harness: `goTo`
 //             is the navigation that waits for the destination.
 // `expect`, `expect.soft`, `.poll` and every matcher are matched by name in
-// any spelling (`expect['poll']`, `['not']`). Geometry (`boundingBox`) and
+// any spelling (`expect['poll']`, `['not']`). Every NAME — a read, a matcher,
+// a destructured key, `state`, an expected object's key — is read by one
+// function, `keyOf`: its static value however spelled (`'a'`, `` `a` ``, `1`,
+// `['is' + 'A']`, `` [`is${'A'}`] ``); a key it cannot fold may be any name,
+// so it is unsafe wherever a name decides (refused in an assertion, a read
+// when destructured, a negative in waitFor options, unjudged in an expected
+// object). Geometry (`boundingBox`) and
 // list (`all`, `allInnerTexts`) reads are VALUE reads, like `inputValue`:
 // taken after the element was awaited. Deliberately out of reach: `for…of`/
 // `for…in` loops (walks over a fixed list, as the engine loops are; a timed
 // poller in one still trips `sleep`), a computed call OUTSIDE an assertion
 // (`x[k]()` may be anything; inside one it is refused), a computed member
-// named without a call (`x[k]` is indexing, indistinguishable from a read
-// method), an aliased `expect`,
+// named without a call (`x[k]` is indexing, everywhere and indistinguishable
+// from a read method, where destructuring a locator is not), a name passed as
+// an argument (`Reflect.get(x, 'count')`), an aliased `expect`,
 // a helper exported to another file in any spelling (`export function`,
 // `export { rows }`, `export default rows`: its read is judged where it
 // stands, as there is no caller here to judge), and Playwright's own
@@ -403,8 +411,9 @@ function literal(node: ts.Expression | undefined): unknown {
   if (ts.isObjectLiteralExpression(e)) {
     const o: Record<string, unknown> = {};
     for (const p of e.properties) {
-      if (!ts.isPropertyAssignment(p) || !(ts.isIdentifier(p.name) || ts.isStringLiteralLike(p.name))) return UNKNOWN;
-      o[p.name.text] = literal(p.initializer);
+      const key = ts.isPropertyAssignment(p) ? keyOf(p.name) : UNKNOWN;
+      if (key === UNKNOWN) return UNKNOWN;
+      o[key] = literal((p as ts.PropertyAssignment).initializer);
     }
     return o;
   }
@@ -416,14 +425,38 @@ const hasOpaque = (v: unknown): boolean => v === OPAQUE || (Array.isArray(v) && 
 const full = (v: unknown): boolean =>
   typeof v === 'number' ? v > 0 : typeof v === 'string' ? v !== '' : typeof v === 'object' && v !== null && Object.values(v).length > 0 && Object.values(v).every(full);
 
-/** The member an access names — `x.a`, `x?.a`, `x['a']`, `` x[`a`] `` — UNKNOWN for a computed key. */
+/** A computed key's static value — a string, template or number, `+` and `${}` folded as JS does — or UNKNOWN. */
+function constant(node: ts.Expression): string | number | typeof UNKNOWN {
+  const e = bare(node);
+  if (ts.isStringLiteralLike(e)) return e.text;
+  if (ts.isNumericLiteral(e)) return Number(e.text);
+  if (ts.isBinaryExpression(e) && e.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const [a, b] = [constant(e.left), constant(e.right)];
+    return a === UNKNOWN || b === UNKNOWN ? UNKNOWN : (a as string) + (b as string);
+  }
+  if (ts.isTemplateExpression(e)) {
+    let s = e.head.text;
+    for (const span of e.templateSpans) {
+      const v = constant(span.expression);
+      if (v === UNKNOWN) return UNKNOWN;
+      s += String(v) + span.literal.text;
+    }
+    return s;
+  }
+  return UNKNOWN;
+}
+const text = (v: string | number | typeof UNKNOWN) => (v === UNKNOWN ? v : String(v));
+/** THE one reading of a property name — `a`, `'a'`, `1`, `['a']`, `` [`a`] ``, `['is' + 'A']` — UNKNOWN for a key it cannot fold. */
+function keyOf(name: ts.PropertyName): string | typeof UNKNOWN {
+  if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
+  return text(constant(ts.isComputedPropertyName(name) ? name.expression : name));
+}
+
+/** The member an access names — `x.a`, `x?.a`, `x['a']`, `` x[`a`] `` — UNKNOWN for a key `keyOf` cannot fold. */
 function member(node: ts.Expression): { of: ts.Expression; name: string | typeof UNKNOWN } | undefined {
   const e = bare(node);
   if (ts.isPropertyAccessExpression(e)) return { of: e.expression, name: e.name.text };
-  if (ts.isElementAccessExpression(e)) {
-    const key = bare(e.argumentExpression);
-    return { of: e.expression, name: ts.isStringLiteralLike(key) ? key.text : UNKNOWN };
-  }
+  if (ts.isElementAccessExpression(e)) return { of: e.expression, name: text(constant(e.argumentExpression)) };
   return undefined;
 }
 const named = (e: ts.Expression, name: string) => member(e)?.name === name;
@@ -594,10 +627,12 @@ export function scan(file: string, raw: string): Site[] {
   const isRead = (name: string | typeof UNKNOWN | undefined) => typeof name === 'string' && Object.hasOwn(READS, name);
   /** Read methods named without a call (`Reflect.apply(x.count, …)`, `const { count } = x`). */
   const refs: ts.Node[] = [];
-  /** Is this object literal (or one nested in it) the target of a destructuring `=`? */
+  /** Is this object literal (or one nested in it) the target of a destructuring `=` or `for (… of/in …)`? */
   const assignedTo = (literal: ts.Node): boolean => {
-    for (let n = literal; ts.isObjectLiteralExpression(n) || ts.isArrayLiteralExpression(n) || ts.isPropertyAssignment(n) || ts.isParenthesizedExpression(n); n = n.parent)
+    for (let n = literal; ts.isObjectLiteralExpression(n) || ts.isArrayLiteralExpression(n) || ts.isPropertyAssignment(n) || ts.isParenthesizedExpression(n); n = n.parent) {
       if (ts.isBinaryExpression(n.parent) && n.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken && n.parent.left === n) return true;
+      if ((ts.isForOfStatement(n.parent) || ts.isForInStatement(n.parent)) && n.parent.initializer === n) return true;
+    }
     return false;
   };
   /** Is this access the callee of a call — directly, or through `.call`/`.apply`, which `readOf` judges as the read? */
@@ -625,20 +660,21 @@ export function scan(file: string, raw: string): Site[] {
     if ((ts.isWhileStatement(node) || ts.isDoStatement(node) || ts.isForStatement(node)) && hasAwait(node)) at(node, 'poller');
     // negative: a wait for something to be GONE passes at once if it never came —
     // `state: 'detached' | 'hidden'` however spelled, or a `waitFor` state the scan cannot read.
-    if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && (ts.isIdentifier(node.name) || ts.isStringLiteralLike(node.name)) && node.name.text === 'state') {
+    if ((ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && keyOf(node.name) === 'state') {
       const state = ts.isPropertyAssignment(node) ? literal(node.initializer) : UNKNOWN;
       const call = ts.findAncestor(node, ts.isCallExpression);
       if (state === 'detached' || state === 'hidden' || (typeof state !== 'string' && call && named(call.expression, 'waitFor'))) at(call ?? node, 'negative');
     }
     // read: a read method named without being called — passed, aliased, bound, destructured — is a read nobody judges.
     if ((ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) && isRead(member(node)!.name) && !called(node)) refs.push(node);
+    // A destructured key the scan cannot fold may be any method: a read too.
     const key =
       ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)
-        ? (node.propertyName ?? node.name)
+        ? keyOf(node.propertyName ?? (node.name as ts.Identifier))
         : (ts.isPropertyAssignment(node) || ts.isShorthandPropertyAssignment(node)) && assignedTo(node.parent)
-          ? node.name
+          ? keyOf(node.name)
           : undefined;
-    if (key && (ts.isIdentifier(key) || ts.isStringLiteralLike(key)) && isRead(key.text)) refs.push(node);
+    if (key === UNKNOWN || isRead(key)) refs.push(node);
     if (ts.isCallExpression(node)) calls.push(node);
     if (ts.isIdentifier(node)) identifiers.push(node);
     if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isFunctionExpression(node)) {
@@ -686,7 +722,8 @@ export function scan(file: string, raw: string): Site[] {
     while (ts.isParenthesizedExpression(n.parent)) n = n.parent;
     if (ts.isCallExpression(n.parent) && n.parent.expression === n) return false; // `f(…)`
     const via = n.parent;
-    return !(ts.isPropertyAccessExpression(via) && (via.name.text === 'call' || via.name.text === 'apply') && ts.isCallExpression(via.parent) && via.parent.expression === via);
+    const by = (ts.isPropertyAccessExpression(via) || ts.isElementAccessExpression(via)) && via.expression === n ? member(via)!.name : undefined;
+    return !((by === 'call' || by === 'apply') && ts.isCallExpression(via.parent) && via.parent.expression === via);
   };
   const readNodes = (): ts.Node[] => [...calls.filter((c) => readOf(c)), ...identifiers.filter(isHelperRef), ...refs];
   const within = (n: ts.Node, outer: ts.Node) => n.pos >= outer.pos && n.end <= outer.end;
@@ -812,10 +849,13 @@ export function scan(file: string, raw: string): Site[] {
       const m = matcherOf(call);
       if (!waitsForPresence(evaluate(call.arguments[0]), m)) at(m?.call ?? call, 'negative');
     }
-    // negative: a `waitFor` whose options the scan cannot read may be waiting for absence.
-    const options = named(call.expression, 'waitFor') && call.arguments[0] ? bare(call.arguments[0]) : undefined;
-    if (options && (!ts.isObjectLiteralExpression(options) || options.properties.some((p) => ts.isSpreadAssignment(p) || (p.name && ts.isComputedPropertyName(p.name)))))
+    // negative: a `waitFor…` whose options the scan cannot read — `waitFor`'s own a variable, any one's a spread or
+    // a key `keyOf` cannot fold — may be waiting for absence.
+    const name = member(call.expression)?.name;
+    const unread = (a: ts.Expression) => ts.isObjectLiteralExpression(a) && a.properties.some((p) => ts.isSpreadAssignment(p) || (p.name && keyOf(p.name) === UNKNOWN));
+    if (typeof name === 'string' && name.startsWith('waitFor') && call.arguments.some((a) => unread(bare(a))))
       at(call, 'negative');
+    else if (name === 'waitFor' && call.arguments[0] && !ts.isObjectLiteralExpression(bare(call.arguments[0]))) at(call, 'negative');
     // sleep: a wait whose failure is swallowed waits out its timeout when the thing never comes.
     const caught = named(call.expression, 'catch') ? bare(member(call.expression)!.of) : undefined;
     if (caught && ts.isCallExpression(caught) && isWait(caught)) at(call, 'sleep');

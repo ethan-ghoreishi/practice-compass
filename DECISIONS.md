@@ -63,6 +63,9 @@ wrong, measured instead.
   is a second path), an uncalled or destructured read method is a read, a helper
   exported by name is judged where it stands, and only plain-text `toMatch`
   alternatives prove presence (a regex's sense is as invisible as a boolean's).
+  Every name it decides by goes through one reader, `keyOf`, which folds a static
+  computed key (`['is' + 'Visible']`) and calls one it cannot fold unsafe; each
+  consumer read names its own way, so each spelling opened a sibling.
   Its ledger says why each exception
   stands and how many sites it covers. 44 positive reads
   became `expect.poll` with the same matcher. Two polled negatives that followed a
