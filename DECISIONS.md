@@ -47,8 +47,44 @@ banner over all of them; none needed a schema change.
   review. A full close per routine item was rejected as turning one finish
   into several forms.
 
-Proof: `docs/scheduling-evidence.md` §5–6, `docs/setar-practice-reliability.md`
-§1b and §6, and the lane's commit message (each partial fix and its failing check).
+Where each family's proof lives (one named test each; run it with
+`npx vitest run <file> -t "<title>"`), and its limits:
+
+- Plan floors and role shares: ac-1 in `src/domain/plan.test.ts`, on committed
+  synthetic fixtures (Setar, Tar, Guitar, parts, Tar plus one work) swept over
+  every budget, warm-up share and review window, through build, Remove (once
+  and twice) and Swap; numbers in `docs/scheduling-evidence.md` §5. Limit:
+  synthetic libraries — the owner's own is ac-14.
+- Sound: ac-2 (`practiceCue.test.ts`) and ac-3 (`practice-cues.browser.test.ts`),
+  `docs/setar-practice-reliability.md` §1b and §6,
+  `node scripts/check-setar-practice-families.mjs --mutations`. Limit: a fake
+  context proves its lifecycle, never audibility (ac-13).
+- Updates and stamp: ac-8 (fake container), ac-9 and ac-10 (real builds on a
+  local server, both engines), ac-11 (a temp git repo). Limit: no Pages CDN,
+  no installed iPhone (ac-12).
+- Close edits: ac-4 through the store's real `closeSession`; ac-5 in browsers.
+  Routine capture: ac-6 and ac-7. Their readers: `docs/scheduling-evidence.md` §6.
+
+Red on base (ee7a091): ac-1 — "Setar … 12 min … s-shahnaz is a work: expected
+2 to be ≥ 10"; ac-2 and ac-3 — `docs/setar-practice-reliability.md` §1b; ac-9
+— row A times out waiting for the Reload's load, row C reloads the other window.
+
+The named partial fixes, each applied alone to a clean tree at 0b6e065 and run
+against only its acceptance test (restored with `git checkout` after). Every
+one FAILS:
+
+| Partial fix (exact change) | Test | Fails with |
+|---|---|---|
+| Floor on warm-ups only (`buildSessionPlan` passes 2 for every other bucket) | ac-1 | Setar 12 min: "s-l1 is a work: expected 6 ≥ 10" |
+| Instrument-keyed floor (`segmentFloor` only for `setar`) | ac-1 | Guitar 12 min: "g-piece2 is a work: expected 3 ≥ 10" |
+| Overflow still into the cool-down (cool-down capped at 25, in the overflow list) | ac-1 | Setar 120 min: "cool-down: expected 25 ≤ 13" |
+| Renewal only when closed or at a boundary | ac-2 | the 2026-10-14 mutation run (`docs/setar-practice-reliability.md` §6) |
+| workbox-window kept with a reload fallback (`useRegisterSW`, `updateServiceWorker(true)` then `location.reload()` after 1.5 s) | ac-9 | row A, V2 found early: no offer (Chromium, 20 s timeout) |
+| Automatic reload when a route's code is missing (`location.reload()` in `routeCodeMissing`) | ac-8 | "expected [ {offer: true…}, 1 ] to equal [ …, 0 ]" |
+| Offer on a first install (every worker read as newer) | ac-8 | "own first install: expected true to be false" |
+| HEAD-based stamp (`git log -1 HEAD`, no pathspec) | ac-11 | ".prismatica/records/change.md: expected '2020-03-02·8bd935f' to be '2020-03-01·e4d7e81'" |
+| Review computed from the edited item (`computeReviewOutcome` given `applyCloseEdits(item, …)`) | ac-4 | "auto · status suggested · focus set · effort changed · save · edit present" |
+| Routine annotation by item instead of block (a capture applied to every block of its item) | ac-6 | "run-A · worse · observation" — a block outside the run changed |
 
 ## Browser journeys wait on events; CI and the Gate are bounded and run once (2026-10-08)
 
