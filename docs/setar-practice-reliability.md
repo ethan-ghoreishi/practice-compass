@@ -265,6 +265,16 @@ here also caught mutations aimed at them while they were written: removing the
 Restore focus hand-off (ac-13), the term box's focus return (ac-13 companion),
 and the typed premise from the screen (ac-8 companion).
 
+Recorded 2026-10-14 (change d492, after the sound rows moved to a fresh context
+per tap): all 36 caught, every source restored. The first run MISSED two, both
+against the evolved practiceCue companion: a cue queued on a not-running
+context (the old route — a later tap resuming the SAME context — no longer
+exists, so the companion now lets the tap's own pending resume land after a
+boundary), and a Test request playing after a later tap (its old target, the
+gesture counter, became redundant once each tap replaces the context; the
+counter is gone, the mutation now removes the `c === context` guard, and the
+stand-in's close() settles asynchronously as a real one does).
+
 ---
 
 ## 7. What stays OWNER (ac-18, ac-19)
