@@ -12,38 +12,39 @@ import { recoverFromRefusedHydration } from './store/backup';
 // chunks anyway so offline still has everything.
 import Today from './pages/Today';
 /**
- * A route loaded on demand. If its code is gone — an update replaced the
- * build this window started from — the route renders nothing and Layout's
- * update offer stands in its place instead of a broken screen. It never
- * reloads by itself.
+ * A route loaded on demand, named by its path. If an update removed its code
+ * — the app now serves another build than this window started from — the
+ * route renders nothing and Layout's update offer stands in its place instead
+ * of a broken screen; it never reloads by itself. Any other failure is the
+ * page's own and is thrown as itself.
  */
 const NoRoute = () => null;
-function page(load: () => Promise<{ default: React.ComponentType }>) {
+function page(route: string, load: () => Promise<{ default: React.ComponentType }>) {
   return lazy(() =>
-    load().catch(() => {
-      routeCodeMissing();
+    load().catch(async (error: unknown) => {
+      if (!(await routeCodeMissing(route))) throw error;
       return { default: NoRoute };
     }),
   );
 }
-const StartBlock = page(() => import('./pages/StartBlock'));
-const ActiveBlock = page(() => import('./pages/ActiveBlock'));
-const CloseBlock = page(() => import('./pages/CloseBlock'));
-const ItemDetail = page(() => import('./pages/ItemDetail'));
-const NewItem = page(() => import('./pages/NewItem'));
-const Materials = page(() => import('./pages/Materials'));
-const Insights = page(() => import('./pages/Insights'));
-const Repertoire = page(() => import('./pages/Repertoire'));
-const PathwayDetail = page(() => import('./pages/PathwayDetail'));
-const StageDetail = page(() => import('./pages/StageDetail'));
-const Lessons = page(() => import('./pages/Lessons'));
-const RoutineRunner = page(() => import('./pages/RoutineRunner'));
-const RoutineEdit = page(() => import('./pages/RoutineEdit'));
-const SessionPlan = page(() => import('./pages/SessionPlan'));
-const TeacherReport = page(() => import('./pages/TeacherReport'));
-const Settings = page(() => import('./pages/Settings'));
-const More = page(() => import('./pages/More'));
-const MusicTerms = page(() => import('./pages/MusicTerms'));
+const StartBlock = page('/start', () => import('./pages/StartBlock'));
+const ActiveBlock = page('/active', () => import('./pages/ActiveBlock'));
+const CloseBlock = page('/close', () => import('./pages/CloseBlock'));
+const ItemDetail = page('/items/:id', () => import('./pages/ItemDetail'));
+const NewItem = page('/items/new', () => import('./pages/NewItem'));
+const Materials = page('/materials', () => import('./pages/Materials'));
+const Insights = page('/insights', () => import('./pages/Insights'));
+const Repertoire = page('/repertoire', () => import('./pages/Repertoire'));
+const PathwayDetail = page('/pathway/:pathwayId', () => import('./pages/PathwayDetail'));
+const StageDetail = page('/pathway/:pathwayId/:stageId', () => import('./pages/StageDetail'));
+const Lessons = page('/lessons', () => import('./pages/Lessons'));
+const RoutineRunner = page('/routine/:routineId', () => import('./pages/RoutineRunner'));
+const RoutineEdit = page('/routine/:routineId/edit', () => import('./pages/RoutineEdit'));
+const SessionPlan = page('/plan', () => import('./pages/SessionPlan'));
+const TeacherReport = page('/report', () => import('./pages/TeacherReport'));
+const Settings = page('/settings', () => import('./pages/Settings'));
+const More = page('/more', () => import('./pages/More'));
+const MusicTerms = page('/terms', () => import('./pages/MusicTerms'));
 
 /**
  * The one recovery action reachable from a refused COLD-START hydration

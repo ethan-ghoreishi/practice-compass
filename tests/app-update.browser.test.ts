@@ -426,6 +426,58 @@ describe('taking a new version', () => {
           await w.page.getByText(OFFER).waitFor({ timeout: 20_000 });
           expect([w.loads() - loadsBeforeF, w.errors.map((e) => e.message)]).toEqual([0, []]);
           await ctx.close();
+
+          // …and when ANOTHER route's code is gone. An uncontrolled window
+          // fetches its code from the server: it practises once under A (the
+          // practice and close screens' code now loaded), then V2 is served.
+          // More's code is gone — the offer in its place — yet the close
+          // screen still runs, so on /close the offer waits all the same.
+          h.serve(b.A);
+          ctx = await fresh();
+          w = await openWindow(ctx, h);
+          await untilActive(w);
+          expect((await runs(w)).controlled, `${engine} F: uncontrolled`).toBe(false);
+          const loadsBeforeF2 = w.loads();
+          const practiseToClose = async () => {
+            await w.page.getByRole('navigation', { name: /Which instrument/ }).getByRole('button', { name: 'Setar', exact: true }).click();
+            await w.page.getByRole('button', { name: /Start · 10 min/ }).click();
+            await w.page.getByRole('button', { name: 'Finish' }).click();
+            await w.page.getByRole('button', { name: 'Discard without saving' }).waitFor();
+          };
+          await practiseToClose();
+          await w.page.getByRole('button', { name: 'Discard without saving' }).click();
+          await w.page.getByRole('navigation', { name: 'Primary' }).waitFor();
+          h.serve(b.V2);
+          await w.page.getByRole('link', { name: 'More' }).click();
+          await w.page.locator('a.tab.active', { hasText: 'More' }).waitFor();
+          await w.page.getByText(OFFER).waitFor({ timeout: 20_000 });
+          await w.page.getByRole('link', { name: 'Today' }).click();
+          await w.page.locator('a.tab.active', { hasText: 'Today' }).waitFor();
+          await practiseToClose();
+          await quietWindow(w.app, 1_500);
+          expect(await w.page.getByText(OFFER).count(), `${engine} F: another route's code over /close`).toBe(0);
+          await w.page.getByRole('button', { name: 'Discard without saving' }).click();
+          await w.page.getByText(OFFER).waitFor({ timeout: 20_000 });
+          expect([w.loads() - loadsBeforeF2, w.errors.map((e) => e.message)]).toEqual([0, []]);
+          await ctx.close();
+
+          // The close screen's OWN code gone (practice started under A, V2
+          // served before Finish): the offer stands in for it, no page error.
+          h.serve(b.A);
+          ctx = await fresh();
+          w = await openWindow(ctx, h);
+          await untilActive(w);
+          const loadsBeforeF3 = w.loads();
+          await w.page.getByRole('navigation', { name: /Which instrument/ }).getByRole('button', { name: 'Setar', exact: true }).click();
+          await w.page.getByRole('button', { name: /Start · 10 min/ }).click();
+          await w.page.getByRole('button', { name: 'Finish' }).waitFor();
+          h.serve(b.V2);
+          await w.page.getByRole('button', { name: 'Finish' }).click();
+          await w.page.getByText(OFFER).waitFor({ timeout: 20_000 });
+          await quietWindow(w.app, 1_500);
+          expect(await w.page.getByRole('button', { name: 'Discard without saving' }).count(), `${engine} F: close code gone`).toBe(0);
+          expect([w.loads() - loadsBeforeF3, w.errors.map((e) => e.message)]).toEqual([0, []]);
+          await ctx.close();
         } finally {
           await h.close();
         }

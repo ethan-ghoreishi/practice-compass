@@ -31,7 +31,10 @@ banner over all of them; none needed a schema change.
   and reloaded other windows. `appUpdate.ts` registers once per page, offers
   only when this window runs older code (an uncontrolled page checks whether a
   worker precaches its own entry chunk), and reloads only the tapping window,
-  once. A missing route's code shows the offer, never an automatic reload.
+  once. A route whose code an update removed (its import failed AND the app
+  now serves another entry) shows the offer in its place, never an automatic
+  reload; any other import failure is the page's own error and surfaces as
+  itself. On /close the offer waits unless the close screen's own code is gone.
   The stamp is the last commit that changed a build input
   (`scripts/app-version.mjs`), so records-only pushes publish byte-identical
   files and no offer. Rejected: keeping workbox-window with a reload fallback;

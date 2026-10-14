@@ -5,10 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 // install, wait, activate (by this window's tap, another window's, or as a
 // first install), get superseded, and a route's code goes missing. `fetch`
 // answers with the server's current sw.js, which precaches that build's entry
-// chunk — the identity an uncontrolled page checks.
+// chunk — the identity an uncontrolled page checks — and its index.html, which
+// names that entry: the evidence that a route's failed code was an update's.
 // ---------------------------------------------------------------------------
 
 type Build = string;
+const indexHtml = (b: Build) => `<!doctype html><script type="module" crossorigin src="/assets/index-${b}.js"></script>`;
 const swText = (b: Build) => `define(["./workbox"],function(s){s.precacheAndRoute([{url:"index.html",revision:"${b}"},{url:"assets/index-${b}.js",revision:null}])});`;
 
 class FakeWorker extends EventTarget {
@@ -35,6 +37,8 @@ class FakeWorker extends EventTarget {
 class World {
   server: Build;
   registerFails = false;
+  offline = false;
+  fetched = 0;
   reloads = 0;
   listeners = 0;
   intervals = 0;
@@ -121,7 +125,11 @@ async function openPage(world: World, opts: { controller?: FakeWorker | null; pr
     Object.assign(doc, { visibilityState: 'visible', querySelector: () => ({ getAttribute: () => `/assets/index-${world.page}.js` }) }),
   );
   vi.stubGlobal('location', { href: 'https://app.test/#/', reload: () => (world.reloads += 1) });
-  vi.stubGlobal('fetch', async () => ({ text: async () => swText(world.server) }));
+  vi.stubGlobal('fetch', async (url: string) => {
+    world.fetched += 1;
+    if (world.offline) throw new TypeError('Failed to fetch');
+    return { ok: true, text: async () => (String(url).endsWith('sw.js') ? swText(world.server) : indexHtml(world.server)) };
+  });
   vi.stubGlobal('setInterval', () => (world.intervals += 1));
   const m = await import('./appUpdate');
   m.startAppUpdates({ production: opts.production ?? true });
@@ -147,6 +155,9 @@ describe('the update controller', () => {
       const world = new World('A');
       const page = await openPage(world, { production: false });
       expect([world.container.registered, world.listeners, world.intervals, page.offer()]).toEqual([0, 0, 0, false]);
+      // A route that fails to load in development is its own error, never an update.
+      world.server = 'V2';
+      expect([await page.m.routeCodeMissing('/more'), page.m.readAppUpdate(), world.fetched]).toEqual([false, { offer: false, missingRoutes: [] }, 0]);
       const bare = await openPage(new World('A'), { noServiceWorker: true });
       expect(bare.offer()).toBe(false);
       const refusing = new World('A');
@@ -268,17 +279,34 @@ describe('the update controller', () => {
         expect([v2.posted, world.reloads]).toEqual([[], 1]);
       }
 
-      // --- A ROUTE WHOSE CODE IS GONE: the offer, never a reload by itself ---
+      // --- A ROUTE WHOSE CODE IS GONE: only an update's removal is the offer,
+      // never a reload by itself, and never over an unsaved close for another route's code
       for (const controlled of [true, false]) {
         const world = new World('A');
         const a = new FakeWorker('A', world);
         world.installed(a);
         const page = await openPage(world, { controller: controlled ? a : null });
+        const now = () => page.m.readAppUpdate();
         expect(page.offer()).toBe(false);
-        page.m.routeCodeMissing();
-        expect([page.m.readAppUpdate(), world.reloads]).toEqual([{ offer: true, missingRoute: true }, 0]);
-        // A missing route shows the offer in its place, /close included.
-        expect(page.m.offerShownOn(page.m.readAppUpdate(), '/close')).toBe(true);
+        // The app still serves this page's build: the failure is the page's own.
+        expect(await page.m.routeCodeMissing('/more')).toBe(false);
+        // Unreachable: nothing proves an update either.
+        world.server = 'V2';
+        world.offline = true;
+        expect(await page.m.routeCodeMissing('/more')).toBe(false);
+        expect([now(), world.reloads]).toEqual([{ offer: false, missingRoutes: [] }, 0]);
+        // Another build is served: More's code was removed by an update.
+        world.offline = false;
+        expect(await page.m.routeCodeMissing('/more')).toBe(true);
+        expect([now(), world.reloads]).toEqual([{ offer: true, missingRoutes: ['/more'] }, 0]);
+        expect(page.m.offerShownOn(now(), '/more'), 'in place of the missing route').toBe(true);
+        // The close screen's code still loaded: the offer waits until Save or Discard.
+        expect(page.m.offerShownOn(now(), '/close'), "another route's code over /close").toBe(false);
+        expect(page.m.offerShownOn(now(), '/'), 'after Save or Discard').toBe(true);
+        // The close screen's OWN code gone: the offer stands in for it.
+        expect(await page.m.routeCodeMissing('/close')).toBe(true);
+        expect(page.m.offerShownOn(now(), '/close'), "the close screen's own code").toBe(true);
+        expect(world.reloads).toBe(0);
         await tap(page, taps);
         expect(world.reloads).toBe(1);
       }
