@@ -162,7 +162,9 @@ stated in the summary — which therefore appears only when every segment that
 may take minutes is at 25.
 
 Remove re-spreads under the same rules; Swap offers only material whose floor
-fits the slot. The floor is fixed on each segment when it is planned
+fits the slot — in a warm-up or cool-down, the role's share, never the minutes a
+rounding pass lifted above it (a whole work cools down only on a share of 10).
+The floor is fixed on each segment when it is planned
 (`floorMinutes`); a running plan persisted before floors existed has none and
 still runs. A plan of drills alone keeps exactly the minutes it had wherever no
 warm-up or cool-down absorbed overflow and nothing reached 25

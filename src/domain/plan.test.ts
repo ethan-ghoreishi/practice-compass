@@ -766,7 +766,15 @@ function fixtures(): Fixture[] {
     items: setar.items.filter((i) => !['s-l1', 's-l2', 's-new'].includes(i.id)),
     preparationDates: new Map(),
   };
-  return [setar, setarReviews, tar, guitar, parts];
+  // The drill library with one settled work beside it: once two Removes leave
+  // a drill cool-down rounded up to 10 on a share of 9, that work fits the
+  // slot's minutes but not the role's share.
+  const tarWork: Fixture = {
+    ...tar,
+    name: 'Tar drills and one settled work',
+    items: [...tar.items, fixtureItem(T, 't-work', { itemType: 'gusheh', persian: { dastgahAvaz: 'ماهور', gusheh: 'درآمد' }, status: 'maintenance', difficulty: 2, timesPractised: 15, importance: 2 })],
+  };
+  return [setar, setarReviews, tar, guitar, parts, tarWork];
 }
 
 const BUDGETS = [5, 10, 12, 15, 20, 25, 30, 45, 60, 90, 120];
@@ -912,8 +920,12 @@ function coolShare(B: number, share: number, buckets: string[]): number {
 }
 const render = (plan: SessionPlan) => plan.segments.map((x) => `${x.itemId}:${x.bucket}:${x.minutes}`).join(' ');
 
-/** Every rule a seated plan must keep, whichever door (build, Remove) produced it. */
-function expectFloorsAndShares(plan: SessionPlan, f: Fixture, B: number, share: number, max: number, label: string) {
+/**
+ * Every rule a seated plan must keep, whichever door (build, Remove, Swap)
+ * produced it. A swap keeps the slot's minutes, so a swapped plan is held to
+ * the floors and role shares but not re-judged against the review ceiling.
+ */
+function expectFloorsAndShares(plan: SessionPlan, f: Fixture, B: number, share: number, max: number, label: string, swapped = false) {
   const items = new Map(f.items.map((i) => [i.id, i]));
   const segs = plan.segments;
   const buckets = segs.map((x) => x.bucket);
@@ -938,7 +950,7 @@ function expectFloorsAndShares(plan: SessionPlan, f: Fixture, B: number, share: 
   }
   const work = segs.filter((x) => x.bucket === 'deep' || x.bucket === 'lesson');
   // The review ceiling holds while deep or lesson work could take the minutes.
-  for (const r of segs.filter((x) => x.bucket === 'review')) {
+  for (const r of swapped ? [] : segs.filter((x) => x.bucket === 'review')) {
     const ceiling = Math.max(max, expectWork(items.get(r.itemId)!) ? 10 : MIN_SEGMENT_MINUTES);
     if (r.minutes > ceiling) expect(work.every((x) => x.minutes === MAX_SEGMENT_MINUTES), `${label} review over its ceiling`).toBe(true);
   }
@@ -982,29 +994,39 @@ describe('whole works keep the standard block', () => {
             for (const seg of plan.segments) {
               expect(seg.floorMinutes, `${label} ${seg.itemId} floor`).toBe(expectWork(items.get(seg.itemId)!) ? 10 : MIN_SEGMENT_MINUTES);
             }
-            // REMOVE re-allocates under the same rules.
+            // SWAP offers only material whose floor fits the slot — and, in a
+            // warm-up or cool-down, the role's own share, not its rounded
+            // minutes — whether the plan is fresh or already trimmed by Remove.
+            const expectSwaps = (p: SessionPlan, at: string) =>
+              p.segments.forEach((seg, i) => {
+                const swapped = swapSegment(p, i, args);
+                expect(swapped.segments[i].minutes, `${at} swap ${i}`).toBe(seg.minutes);
+                expectFloorsAndShares(swapped, f, B, share, window[1], `${at} swap ${i}`, true);
+              });
+            expectSwaps(plan, label);
+            // REMOVE re-allocates under the same rules, twice over.
+            const remove = (p: SessionPlan, i: number) => redistributePlan({ ...p, segments: p.segments.filter((__, j) => j !== i) }, args.params);
             if (plan.segments.length > 1) {
               plan.segments.forEach((_, i) => {
-                const removed = redistributePlan({ ...plan, segments: plan.segments.filter((__, j) => j !== i) }, args.params);
+                const removed = remove(plan, i);
                 expect(removed.segments.length, `${label} remove ${i}`).toBe(plan.segments.length - 1);
                 expectFloorsAndShares(removed, f, B, share, window[1], `${label} remove ${i}`);
+                expectSwaps(removed, `${label} remove ${i}`);
+                removed.segments.forEach((__, k) => {
+                  if (removed.segments.length < 2) return;
+                  const twice = remove(removed, k);
+                  expectFloorsAndShares(twice, f, B, share, window[1], `${label} remove ${i} then ${k}`);
+                  expectSwaps(twice, `${label} remove ${i} then ${k}`);
+                });
               });
             }
-            // SWAP offers only material whose floor fits the slot.
-            plan.segments.forEach((seg, i) => {
-              const swapped = swapSegment(plan, i, args).segments[i];
-              expect(swapped.minutes, `${label} swap ${i}`).toBe(seg.minutes);
-              if (plan.segments.length > 1) {
-                expect(expectWork(items.get(swapped.itemId)!) ? 10 : MIN_SEGMENT_MINUTES, `${label} swap ${i}`).toBeLessThanOrEqual(seg.minutes);
-              }
-            });
 
             // DRILL-ONLY: where the base plan's warm-up and cool-down stayed
             // within their shares (nothing above the warm-up's share or the
             // cool-down's floored split — the review clamp used to push its
             // excess there) and no segment reached 25, the minutes are
             // exactly the base allocator's.
-            if (f.instrumentId === 'tar') {
+            if (f.name === 'Tar drills only') {
               const base = BASE_TAR[`${B}|${share}|${window.join('-')}`];
               const segs = base.split(' ').map((x) => x.split(':'));
               const buckets = segs.map((x) => x[1]);
@@ -1033,6 +1055,15 @@ describe('whole works keep the standard block', () => {
     // A work warms up once the share is a standard block, and cools down
     // only on its own weighted split — never on leftovers.
     expect(render(buildSessionPlan(sweepArgs(reviewDay, 90, 0.12, [3, 7])))).toMatch(/^s-shahnaz:warmup:11 .* s-daramad:cooldown:10$/);
+
+    // The reviewer's case: two Removes leave the drill cool-down at 10 minutes
+    // on a share of 9; Swap may not hand that role the settled work.
+    const tarWork = fixtures()[5];
+    const twArgs = sweepArgs(tarWork, 45, 0.15, [3, 7]);
+    const drop1 = (p: SessionPlan) => redistributePlan({ ...p, segments: p.segments.filter((_, j) => j !== 1) }, twArgs.params);
+    const trimmed = drop1(drop1(buildSessionPlan(twArgs)));
+    expect([render(trimmed), coolShare(45, 0.15, trimmed.segments.map((x) => x.bucket))]).toEqual(['t-scale:warmup:7 t-frag:deep:25 t-tremolo:cooldown:10', 9]);
+    expect(swapSegment(trimmed, 2, twArgs).segments[2].itemId).not.toBe('t-work');
 
     // A RUNNING PLAN persisted before floors existed still re-spreads and starts.
     const [setar] = fixtures();

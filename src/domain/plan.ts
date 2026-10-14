@@ -767,7 +767,8 @@ export function redistributePlan(plan: SessionPlan, params?: SchedulingParams): 
 
 /**
  * Swap segment `index` for the next-best alternative, keeping its minutes and
- * its role — offered only material whose floor fits those minutes. Uses the SAME eligibility policy, candidate pool and warm-up
+ * its role — offered only material whose floor fits those minutes and, in a
+ * warm-up or cool-down, that role's share. Uses the SAME eligibility policy, candidate pool and warm-up
  * exclusions as the build — a swap that could reach material the build
  * excluded is a second, hidden policy, and it used to hand back an item
  * already practised today (or a due/lesson-committed item as a "warm-up")
@@ -811,11 +812,21 @@ export function swapSegment(
       .map((r) => [r.practiceItemId, r.dueDate] as const),
   );
 
+  // Only material whose floor fits the slot: a two-minute warm-up is never
+  // handed a whole work. An optional role is judged by its SHARE, as the build
+  // and the allocator judge it — never by minutes rounding lifted above it.
+  // A one-segment plan has no floors.
+  const params = args.params ?? DEFAULT_SCHEDULING_PARAMS;
+  const others = plan.segments.filter((_, i) => i !== index).map((s) => s.bucket);
+  const room =
+    target.bucket === 'warmup'
+      ? Math.min(target.minutes, warmupShareMinutes(plan.budgetMinutes, params))
+      : target.bucket === 'cooldown'
+        ? Math.min(target.minutes, cooldownShareMinutes(plan.budgetMinutes, params, others))
+        : target.minutes;
   const eligible = (s: ItemScore): boolean => {
     if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
-    // Only material whose floor fits the slot: a two-minute warm-up is never
-    // handed a whole work. A one-segment plan has no floors.
-    if (plan.segments.length > 1 && segmentFloor(s.item) > target.minutes) return false;
+    if (plan.segments.length > 1 && segmentFloor(s.item) > room) return false;
     switch (target.bucket) {
       case 'warmup':
         // Same exclusions as the build's own warm-up pool: a due review or a
