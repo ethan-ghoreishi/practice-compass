@@ -22,8 +22,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-06T21:38:41.323Z
-        commit: 660b35f0cc1491fcabdb880e99ec92408da587e9
+        at: 2026-10-14T17:51:49.165Z
+        commit: 16eb41e0ae281eef563d1f8f34457c685659df04
     - actor: The musician
       action: Saves it wherever they keep backups — NAS, iCloud, anywhere.
       shows: Settings shows the last export from this device and the latest change
@@ -31,8 +31,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-06T21:38:41.323Z
-        commit: 660b35f0cc1491fcabdb880e99ec92408da587e9
+        at: 2026-10-14T17:51:49.165Z
+        commit: 16eb41e0ae281eef563d1f8f34457c685659df04
     - actor: The musician
       action: Taps 'Import backup' on any device and picks a file.
       shows: A confirmation naming the device the backup came from — and an explicit
@@ -40,8 +40,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-06T21:38:41.323Z
-        commit: 660b35f0cc1491fcabdb880e99ec92408da587e9
+        at: 2026-10-14T17:51:49.165Z
+        commit: 16eb41e0ae281eef563d1f8f34457c685659df04
     - actor: Practice Compass
       action: Decodes every attachment before touching anything.
       shows: A corrupt file aborts the whole import with a clear message and nothing
@@ -52,8 +52,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-06T21:38:41.323Z
-        commit: 660b35f0cc1491fcabdb880e99ec92408da587e9
+        at: 2026-10-14T17:51:49.165Z
+        commit: 16eb41e0ae281eef563d1f8f34457c685659df04
     - actor: Practice Compass
       action: Leaves existing files alone when the file has no attachments section at
         all.
@@ -62,8 +62,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-06T21:38:41.323Z
-        commit: 660b35f0cc1491fcabdb880e99ec92408da587e9
+        at: 2026-10-14T17:51:49.165Z
+        commit: 16eb41e0ae281eef563d1f8f34457c685659df04
   endsWith: There is an independent full copy of everything, and restoring it is a
     single, clearly-confirmed step.
   variations:
