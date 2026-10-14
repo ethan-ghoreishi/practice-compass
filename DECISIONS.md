@@ -68,6 +68,8 @@ Where each family's proof lives (one named test each; run it with
 Red on base (ee7a091): ac-1 — "Setar … 12 min … s-shahnaz is a work: expected
 2 to be ≥ 10"; ac-2 and ac-3 — `docs/setar-practice-reliability.md` §1b; ac-9
 — row A times out waiting for the Reload's load, row C reloads the other window.
+The base cannot run the others: ac-4–8, ac-10 and ac-11 drive what it does not
+have (`itemEdits`, `captureRoutineResults`, `appUpdate.ts`, the stamp module).
 
 The named partial fixes, each applied alone to a clean tree at 0b6e065 and run
 against only its acceptance test (restored with `git checkout` after). Every
