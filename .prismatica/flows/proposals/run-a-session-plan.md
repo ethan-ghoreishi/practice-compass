@@ -94,6 +94,7 @@ truth:
   involves:
     - The musician
     - The plan builder
-    - The recommendation engine---
+    - The recommendation engine
+---
 
 Update proposed by change 20261014-give-works-real-plan-time-make-sound-and-d492; mechanics unchanged.

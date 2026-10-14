@@ -120,6 +120,7 @@ truth:
   involves:
     - The musician
     - The recommendation engine
-    - The spaced-repetition scheduler---
+    - The spaced-repetition scheduler
+---
 
 Update proposed by change 20261014-give-works-real-plan-time-make-sound-and-d492; mechanics unchanged.

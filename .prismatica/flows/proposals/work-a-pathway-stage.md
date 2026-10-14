@@ -109,6 +109,7 @@ truth:
       run, never one per segment repeat.
   involves:
     - The musician
-    - The pathway catalogue---
+    - The pathway catalogue
+---
 
 Update proposed by change 20261014-give-works-real-plan-time-make-sound-and-d492; mechanics unchanged.

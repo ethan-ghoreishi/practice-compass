@@ -66,6 +66,7 @@ truth:
       musician's choice.
     - Every core flow works with no network.
   involves:
-    - The musician---
+    - The musician
+---
 
 Update proposed by change 20261014-give-works-real-plan-time-make-sound-and-d492; mechanics unchanged.
