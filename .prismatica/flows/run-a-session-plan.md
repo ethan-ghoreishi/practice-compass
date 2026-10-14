@@ -15,24 +15,28 @@ truth:
   steps:
     - actor: Practice Compass
       action: Builds a plan from the same priority numbers the recommendation uses,
-        laid out as warm-up, class work, review, focus and cool-down segments.
+        laid out as warm-up, class work, review, focus and cool-down segments; a
+        whole work (gusheh, piece, anything with dastgāh/form/composer) gets at
+        least the 10-minute standard block beside other work, drills at least 2,
+        and a segment is seated only while every seated segment can still reach
+        its floor.
       shows: "The plan preview: each segment with its minutes, bucket, item and a
-        one-sentence reason, and a total that always equals the chosen budget."
+        one-sentence reason. The total equals the chosen budget unless every
+        segment that may take minutes is at its 25-minute ceiling; the warm-up
+        and cool-down never exceed their shares or take leftover minutes."
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-06T21:40:23.595Z
-        commit: 25355bf37aeed52d4b648092bd9a3686e7d78d6e
+        method: inferred
+        at: 2026-10-14T12:00:00.000Z
     - actor: The musician
       action: Swaps, removes or regenerates segments until the shape looks right.
-      shows: The remaining minutes are redistributed immediately so the total still
-        equals the budget.
+      shows: A removal re-spreads the minutes under the same floors and shares; a swap
+        offers only material whose floor fits the slot.
       changes: Only a local copy of the plan — nothing is saved yet.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-06T21:40:23.595Z
-        commit: 25355bf37aeed52d4b648092bd9a3686e7d78d6e
+        method: inferred
+        at: 2026-10-14T12:00:00.000Z
     - actor: The musician
       action: Taps 'Start plan'.
       shows: "The runner: the whole list with the current segment highlighted."
@@ -136,10 +140,10 @@ mechanics:
       steps:
         - 4
 approval:
-  hash: 320d7c620942ce36a5864d5164593de288a9db7489abc20fda3e2e29fa34cec3
-  at: 2026-08-31T22:05:33.129Z
+  hash: a8a7fc54ecce8312867d5235737937a1f5c6b4aee12a9a685b7c71326dae50b6
+  at: 2026-10-14T17:50:32.261Z
   by: owner
-  signature: fmZRiSSm6WxSdD0a3a5jEuFR5MJIP6qnIoLwuOCtT6UBmPXY00+xxd/oPUDXwgmRpL6sWbSNWg/FQ3I//W+sCw==
+  signature: 1NZWf6uoYA1AJAd+ki5NO+wKp6CAIk5ll9llWZrQfLM2H4iTeCekPCx+2dZ2kYNNCd9BMxJYLEegB1iM55yqDA==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -148,7 +152,7 @@ approval:
 
 # Run a time-budgeted session
 
-_Works now · approved 2026-08-31T22:05:33.129Z by owner (signed)_
+_Works now · approved 2026-10-14T17:50:32.261Z by owner (signed)_
 
 ## Goal
 
@@ -164,11 +168,11 @@ _nothing extra required_
 
 ## Steps
 
-1. **Practice Compass** Builds a plan from the same priority numbers the recommendation uses, laid out as warm-up, class work, review, focus and cool-down segments.
-   - Shows: The plan preview: each segment with its minutes, bucket, item and a one-sentence reason, and a total that always equals the chosen budget.
+1. **Practice Compass** Builds a plan from the same priority numbers the recommendation uses, laid out as warm-up, class work, review, focus and cool-down segments; a whole work (gusheh, piece, anything with dastgāh/form/composer) gets at least the 10-minute standard block beside other work, drills at least 2, and a segment is seated only while every seated segment can still reach its floor.
+   - Shows: The plan preview: each segment with its minutes, bucket, item and a one-sentence reason. The total equals the chosen budget unless every segment that may take minutes is at its 25-minute ceiling; the warm-up and cool-down never exceed their shares or take leftover minutes.
 
 2. **The musician** Swaps, removes or regenerates segments until the shape looks right.
-   - Shows: The remaining minutes are redistributed immediately so the total still equals the budget.
+   - Shows: A removal re-spreads the minutes under the same floors and shares; a swap offers only material whose floor fits the slot.
    - Changes: Only a local copy of the plan — nothing is saved yet.
 
 3. **The musician** Taps 'Start plan'.
@@ -208,3 +212,4 @@ The available time was spent on real, logged practice in a sensible order — an
 - The musician
 - The plan builder
 - The recommendation engine
+

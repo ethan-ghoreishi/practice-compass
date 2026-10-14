@@ -35,26 +35,31 @@ truth:
         at: 2026-10-06T21:39:14.578Z
         commit: b8c76fe14e12a11ab83b73e3480c9f275f9b4053
     - actor: Practice Compass
-      action: Checks for a new build every hour and whenever the app is brought back
-        to the foreground.
-      shows: A calm 'A new version is ready.' banner with a Reload button — never an
-        automatic reload in the middle of a session.
-      changes: Nothing until the musician chooses to reload.
+      action: Registers its worker once per page and checks for a new build every
+        hour, whenever the app returns to the foreground and on reconnect.
+      shows: A calm 'A new version is ready.' banner with a Reload button only when
+        this window runs older code than the newest build found — never for the
+        first install of the build it already runs, never an automatic reload,
+        and not while a close is unsaved (it appears right after Save or
+        Discard). A route whose code an update removed shows the banner in its
+        place.
+      changes: Nothing until the musician chooses to reload. A push that changes no
+        file the build reads publishes byte-identical files, so no banner
+        appears.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-06T21:39:14.578Z
-        commit: b8c76fe14e12a11ab83b73e3480c9f275f9b4053
+        method: inferred
+        at: 2026-10-14T12:00:00.000Z
     - actor: The musician
       action: Taps Reload when it suits them.
-      shows: The app restarts on the new version; Settings shows the build it is
-        running.
+      shows: This window — only this one — restarts once on the newest build found;
+        Settings shows that build's stamp (the last commit that changed what
+        ships). Other open windows keep their offer until their own tap.
       changes: Nothing in the practice data — an update replaces code, never data.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-06T21:39:14.578Z
-        commit: b8c76fe14e12a11ab83b73e3480c9f275f9b4053
+        method: inferred
+        at: 2026-10-14T12:00:00.000Z
   endsWith: Both devices run the current version, neither needed reinstalling, and
     neither needs a network to practise.
   variations:
@@ -86,10 +91,10 @@ mechanics:
   entities: []
   tests: []
 approval:
-  hash: 6bc9b34fdedf4f7c76dad9cf707b9d8ed31664754db174dd1b4b5479eb4b10f3
-  at: 2026-08-28T13:30:17.892Z
-  by: Ethan
-  signature: laDU0XCP8OPZTT+OFrKepVKZFnRiWVK92IOV4xZm2A4VgWU4uvz+Ok2kMtJEyDYOjZCS8iW0g33xxJfYTYGACw==
+  hash: 7a858934f7458dcbd4ffae16c4650740661a980dbd01c19aa26b800cebdbeddb
+  at: 2026-10-14T17:50:32.228Z
+  by: owner
+  signature: U6jBMN+ZUiqEXtOkwtbWFvvdwGLAQB/EVeLBf0lTl239Q0wjyWm7Dl9zNyMz5gykhzWH10V0vqTVE+9etpNtBQ==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -98,7 +103,7 @@ approval:
 
 # Install the app and keep it current
 
-_Works now · approved 2026-08-28T13:30:17.892Z by Ethan (signed)_
+_Works now · approved 2026-10-14T17:50:32.228Z by owner (signed)_
 
 ## Goal
 
@@ -122,12 +127,12 @@ _nothing extra required_
    - Shows: Everything works — recommendations, blocks, reviews, notes.
    - Changes: Nothing is special-cased for being offline; only syncing and opening NAS files need a network.
 
-3. **Practice Compass** Checks for a new build every hour and whenever the app is brought back to the foreground.
-   - Shows: A calm 'A new version is ready.' banner with a Reload button — never an automatic reload in the middle of a session.
-   - Changes: Nothing until the musician chooses to reload.
+3. **Practice Compass** Registers its worker once per page and checks for a new build every hour, whenever the app returns to the foreground and on reconnect.
+   - Shows: A calm 'A new version is ready.' banner with a Reload button only when this window runs older code than the newest build found — never for the first install of the build it already runs, never an automatic reload, and not while a close is unsaved (it appears right after Save or Discard). A route whose code an update removed shows the banner in its place.
+   - Changes: Nothing until the musician chooses to reload. A push that changes no file the build reads publishes byte-identical files, so no banner appears.
 
 4. **The musician** Taps Reload when it suits them.
-   - Shows: The app restarts on the new version; Settings shows the build it is running.
+   - Shows: This window — only this one — restarts once on the newest build found; Settings shows that build's stamp (the last commit that changed what ships). Other open windows keep their offer until their own tap.
    - Changes: Nothing in the practice data — an update replaces code, never data.
 
 ## Ends with
@@ -148,3 +153,4 @@ Both devices run the current version, neither needed reinstalling, and neither n
 ## Involves
 
 - The musician
+

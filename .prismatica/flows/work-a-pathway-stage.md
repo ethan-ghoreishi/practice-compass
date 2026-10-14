@@ -85,13 +85,16 @@ truth:
       differs: A stage routine runs as a segmented warm-up countdown, started by the
         card's own tap (a bare routine link asks for Start rather than starting
         itself). A segment bound to a real item creates an honest PracticeBlock
-        when the run finishes (result stays 'not_logged', so no review completes
-        and no spaced-repetition state advances — the practice itself IS
-        recorded); a segment with no bound item is pure warm-up and logs nothing
-        at all. While the run is genuinely active and its screen is visible, the
-        app keeps the display awake, and arriving at a new segment is visibly
-        announced — once, and staying perceptible for a few seconds, never a
-        single-render flash.
+        when the run finishes (result 'not_logged', so no review completes and
+        no spaced-repetition state advances — the practice itself IS recorded);
+        a segment with no bound item is pure warm-up and logs nothing at all.
+        Routine complete then optionally records, per recorded item, one of the
+        six results and one line, written onto that run's own blocks — real
+        evidence for history and results, never a review, date, status or
+        minutes. While the run is genuinely active and its screen is visible,
+        the app keeps the display awake, and arriving at a new segment is
+        visibly announced — once, and staying perceptible for a few seconds,
+        never a single-render flash.
       status: works
     - name: Off-catalogue items
       differs: Anything quick-added inside the stage appears in the same list and in
@@ -165,10 +168,10 @@ mechanics:
       steps:
         - 4
 approval:
-  hash: 84b15e294bd734716277e0b702c8e58fbc766cac7eda55173a8602afe776a596
-  at: 2026-10-06T21:38:16.228Z
+  hash: c5c9b29a884edb845999d8299cbcc8e6879587c05f3b8e82ec0fc0ce53d2d970
+  at: 2026-10-14T17:50:32.273Z
   by: owner
-  signature: YYTcyQGQT9es8CDiBvobw7o4RcqrWZNPBvXs2EtVr/1rbZXxVSmx8IeurwCLg1x8tZJ4rmZW5lcsZvo9DeiPBA==
+  signature: qOyE11XDzITz0GRBwrpw0bMSXBRZaB36h5+pm47XFrQDF/fdrovC8l6uGxaCI3j6nZJAA5FBef1uYKFr7zcxDg==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -177,7 +180,7 @@ approval:
 
 # Work through a pathway stage
 
-_Works now · approved 2026-10-06T21:38:16.228Z by owner (signed)_
+_Works now · approved 2026-10-14T17:50:32.273Z by owner (signed)_
 
 ## Goal
 
@@ -218,7 +221,7 @@ The next piece of the route is a real practice item — taken once — with real
 ## Variations
 
 - **Teacher jumps around** — A pinned current stage always beats 'first incomplete stage', because teacher-led work does not go in order. _(Works now)_
-- **Guided routine** — A stage routine runs as a segmented warm-up countdown, started by the card's own tap (a bare routine link asks for Start rather than starting itself). A segment bound to a real item creates an honest PracticeBlock when the run finishes (result stays 'not_logged', so no review completes and no spaced-repetition state advances — the practice itself IS recorded); a segment with no bound item is pure warm-up and logs nothing at all. While the run is genuinely active and its screen is visible, the app keeps the display awake, and arriving at a new segment is visibly announced — once, and staying perceptible for a few seconds, never a single-render flash. _(Works now)_
+- **Guided routine** — A stage routine runs as a segmented warm-up countdown, started by the card's own tap (a bare routine link asks for Start rather than starting itself). A segment bound to a real item creates an honest PracticeBlock when the run finishes (result 'not_logged', so no review completes and no spaced-repetition state advances — the practice itself IS recorded); a segment with no bound item is pure warm-up and logs nothing at all. Routine complete then optionally records, per recorded item, one of the six results and one line, written onto that run's own blocks — real evidence for history and results, never a review, date, status or minutes. While the run is genuinely active and its screen is visible, the app keeps the display awake, and arriving at a new segment is visibly announced — once, and staying perceptible for a few seconds, never a single-render flash. _(Works now)_
 - **Off-catalogue items** — Anything quick-added inside the stage appears in the same list and in recommendations. _(Works now)_
 - **A default pathway this install lacks** — Before step 1, Repertoire → Pathways offers each shipped default pathway this install does not have — one newly shipped since the database was made, such as the Khonyagar Tar course, or one the owner deleted — as its own 'Add default pathway: <name>' button beside 'New pathway', only when this device has that pathway's instrument and only within the current instrument filter. Tapping one adds exactly that pathway with its seeded stages and any seeded routine whose id is not already held; nothing that exists is changed, nothing is added without that tap, and the button then disappears. _(Works now)_
 
@@ -233,3 +236,4 @@ The next piece of the route is a real practice item — taken once — with real
 
 - The musician
 - The pathway catalogue
+

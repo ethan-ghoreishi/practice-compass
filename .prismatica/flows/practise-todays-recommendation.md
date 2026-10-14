@@ -38,30 +38,28 @@ truth:
       shows: "The active block screen: item title, mode and focus chips, a running
         ring timer."
       changes: A practice block is opened in memory with mode, focus and a 10-minute
-        target derived from the item. The same tap readies this page’s practice
-        sound (one sound context for the page, readied only by a tap).
+        target derived from the item. The same tap closes the page's sound
+        context and creates and resumes a fresh one, so a context that died
+        while the app sat idle never outlives this tap.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-06T21:39:51.362Z
-        commit: e99a73606a47b5892b3b038fa782a76efcb5ab1e
+        method: inferred
+        at: 2026-10-14T12:00:00.000Z
     - actor: The musician
       action: Practises, optionally opening 'About this piece' or jotting a passing
         note; pauses and resumes as needed.
-      shows: The elapsed clock, and the item's notes and current problem on request.
-        While the block is genuinely running and its screen is visible, the app
-        asks the device to keep the display awake (best-effort;
-        feature-detected; never affects elapsed time) so the clock stays
-        readable without touching anything; pausing, finishing, discarding or
-        navigating away releases it, and the phone sleeps normally again. Resume
-        is a tap too and readies the sound again; if sound is paused or off on
-        this page, a note says so and offers 'Turn on sound'.
+      shows: The elapsed clock, and the item's notes on request. While the block is
+        genuinely running and its screen is visible, the app asks the device to
+        keep the display awake (best-effort; feature-detected; never affects
+        elapsed time); pausing, finishing, discarding or navigating away
+        releases it. Resume is a tap too and readies a fresh sound context
+        again; if sound is paused or off on this page, a note says so and offers
+        'Turn on sound'.
       changes: Elapsed seconds accumulate only while the timer runs.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-06T21:39:51.362Z
-        commit: e99a73606a47b5892b3b038fa782a76efcb5ab1e
+        method: inferred
+        at: 2026-10-14T12:00:00.000Z
     - actor: The musician
       action: Taps 'Finish'.
       shows: The close screen, with the minutes already filled in.
@@ -73,15 +71,17 @@ truth:
         commit: e99a73606a47b5892b3b038fa782a76efcb5ab1e
     - actor: The musician
       action: Picks one of the six results, optionally adds an observation, a next
-        action, a body note or a teacher question, and accepts or declines the
-        suggested status and review date.
+        action or a teacher question, and optionally revises the item behind one
+        collapsed 'Status · Primary focus · Current effort' line (Change) — an
+        engine-suggested status shows there pre-selected as the pending change.
       shows: A preview of the next review date with the plain reason behind it, and a
-        'Why this date?' link.
+        'Why this date?' link; the date is decided from the item as practised,
+        so revising the item never moves it.
+      changes: Nothing until Save; untouched fields are never written.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-06T21:39:51.362Z
-        commit: e99a73606a47b5892b3b038fa782a76efcb5ab1e
+        method: inferred
+        at: 2026-10-14T12:00:00.000Z
     - actor: The musician
       action: Taps 'Save block'.
       shows: Back to Today (or to the running plan), with the item's stats and status
@@ -190,10 +190,10 @@ mechanics:
       steps:
         - 4
 approval:
-  hash: d3e532e945017f1152753db1f09264e46f1594ba2369bd8141b0c51c593084f0
-  at: 2026-10-06T21:38:16.212Z
+  hash: 0f29a0f3566877c91c8628a651298fbf4a36d21606dad57c1b3650a3f2848166
+  at: 2026-10-14T17:50:32.248Z
   by: owner
-  signature: DN8DYlhdSdkwY/j9RlTZ60QOZ68ptkbF6bIohua/yAgks6gnVnI8aHCgRbSzzvOrz1YLJ2ot7RAAS6zvX2yZDA==
+  signature: bmvEbC2+1dTUCHRm0Lf/RLFEoGKFDn5ttIgQq0YFiCvePI/MDYuj+kCkjTbK7eaExmD3j417mEjOEgP1bWRFDQ==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -202,7 +202,7 @@ approval:
 
 # Practise what the app suggests
 
-_Works now · approved 2026-10-06T21:38:16.212Z by owner (signed)_
+_Works now · approved 2026-10-14T17:50:32.248Z by owner (signed)_
 
 ## Goal
 
@@ -227,18 +227,19 @@ _nothing extra required_
 
 3. **The musician** Taps 'Start · 10 min'.
    - Shows: The active block screen: item title, mode and focus chips, a running ring timer.
-   - Changes: A practice block is opened in memory with mode, focus and a 10-minute target derived from the item. The same tap readies this page’s practice sound (one sound context for the page, readied only by a tap).
+   - Changes: A practice block is opened in memory with mode, focus and a 10-minute target derived from the item. The same tap closes the page's sound context and creates and resumes a fresh one, so a context that died while the app sat idle never outlives this tap.
 
 4. **The musician** Practises, optionally opening 'About this piece' or jotting a passing note; pauses and resumes as needed.
-   - Shows: The elapsed clock, and the item's notes and current problem on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time) so the clock stays readable without touching anything; pausing, finishing, discarding or navigating away releases it, and the phone sleeps normally again. Resume is a tap too and readies the sound again; if sound is paused or off on this page, a note says so and offers 'Turn on sound'.
+   - Shows: The elapsed clock, and the item's notes on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time); pausing, finishing, discarding or navigating away releases it. Resume is a tap too and readies a fresh sound context again; if sound is paused or off on this page, a note says so and offers 'Turn on sound'.
    - Changes: Elapsed seconds accumulate only while the timer runs.
 
 5. **The musician** Taps 'Finish'.
    - Shows: The close screen, with the minutes already filled in.
    - Changes: The clock is frozen first, so reflection time is not counted as practice.
 
-6. **The musician** Picks one of the six results, optionally adds an observation, a next action, a body note or a teacher question, and accepts or declines the suggested status and review date.
-   - Shows: A preview of the next review date with the plain reason behind it, and a 'Why this date?' link.
+6. **The musician** Picks one of the six results, optionally adds an observation, a next action or a teacher question, and optionally revises the item behind one collapsed 'Status · Primary focus · Current effort' line (Change) — an engine-suggested status shows there pre-selected as the pending change.
+   - Shows: A preview of the next review date with the plain reason behind it, and a 'Why this date?' link; the date is decided from the item as practised, so revising the item never moves it.
+   - Changes: Nothing until Save; untouched fields are never written.
 
 7. **The musician** Taps 'Save block'.
    - Shows: Back to Today (or to the running plan), with the item's stats and status updated.
@@ -268,3 +269,4 @@ The session is recorded honestly: one block, one result, one next action — and
 - The musician
 - The recommendation engine
 - The spaced-repetition scheduler
+
