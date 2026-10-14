@@ -62,14 +62,13 @@ function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'thro
       return Promise.resolve();
     }
     createOscillator() {
-      const ctx = this;
       const node = {
         frequency: { value: 0 },
         onended: null as null | (() => void),
         connect: (to: { kind?: string }) => (log.push({ e: 'connect', from: 'osc', to: to.kind ?? 'gain' }), to),
         disconnect: () => log.push({ e: 'disconnect', node: 'osc' }),
         // A frozen context schedules and is never heard: `silent` records that.
-        start: (t: number) => log.push({ e: 'start', t, id: ctx.id, silent: !!ctx.dead }),
+        start: (t: number) => log.push({ e: 'start', t, id: this.id, silent: !!this.dead }),
         stop: (t: number) => log.push({ e: 'stop', t }),
         kind: 'osc',
       };
