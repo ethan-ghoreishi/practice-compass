@@ -1,9 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { aggregateItemMinutes, locateClock, nextSignal, runElapsedSeconds, segmentBoundaries, segmentsForRun, type RunSegment } from '../domain';
+import {
+  aggregateItemMinutes,
+  locateClock,
+  nextSignal,
+  RESULT_LABELS,
+  runElapsedSeconds,
+  segmentBoundaries,
+  segmentsForRun,
+  type BlockResult,
+  type ID,
+  type RunSegment,
+} from '../domain';
 import { useStore } from '../store/useStore';
 import { getItem } from '../store/lookups';
 import { formatClock } from '../components/format';
+import { OptionPills, SaveStatus, useAcknowledgedSaves } from '../components/ui';
 import ItemNotes from '../components/ItemNotes';
 import { CheckIcon, PauseIcon, PlayIcon } from '../components/icons';
 import { useScreenAwake } from '../components/useScreenAwake';
@@ -46,7 +58,7 @@ export default function RoutineRunner() {
   // Snapshot of what was actually recorded, frozen at the moment of finishing
   // — the finished screen must show exactly what was saved, never a value
   // recomputed later against a clock that has since stopped advancing.
-  const [result, setResult] = useState<{ segs: RunSegment[]; elapsedSeconds: number } | null>(null);
+  const [result, setResult] = useState<{ segs: RunSegment[]; elapsedSeconds: number; blockIds: ID[] } | null>(null);
   const [, setTick] = useState(0);
 
   const isMine = !!routineId && activeRoutine?.routineId === routineId;
@@ -133,8 +145,8 @@ export default function RoutineRunner() {
 
   function finish() {
     if (!isMine || result) return;
-    setResult({ segs, elapsedSeconds });
-    finishRoutine();
+    // The minutes are saved HERE, before Routine complete offers any capture.
+    setResult({ segs, elapsedSeconds, blockIds: finishRoutine() });
   }
 
   // Natural completion: the wall clock alone decides once E reaches the run's
@@ -195,6 +207,7 @@ export default function RoutineRunner() {
         ) : (
           <p className="page-sub">Nicely done. Short and steady is the whole game.</p>
         )}
+        {recorded.size > 0 && <RoutineCapture blockIds={result.blockIds} />}
         <button className="btn btn-primary btn-lg" onClick={() => navigate(backTo)}>
           {stage ? `Back to ${stage.code}` : 'Back'}
         </button>
@@ -337,6 +350,71 @@ export default function RoutineRunner() {
           <CheckIcon width={16} height={16} /> Finish &amp; save
         </button>
         <span className="tiny faint">Records what you've practised so far — never a discard</span>
+      </div>
+    </div>
+  );
+}
+
+const CAPTURE_RESULTS: BlockResult[] = ['worse', 'same', 'slightly_better', 'stable_alone', 'stable_in_context', 'performable'];
+
+/**
+ * The lighter variant of a close, after the clock has stopped: for each item
+ * this run recorded, optionally one of the six results and one line, written
+ * onto the run's OWN blocks. Nothing is required — the minutes are already
+ * saved, and leaving forgoes only the capture. It never schedules a review,
+ * moves a date or changes a status.
+ */
+function RoutineCapture({ blockIds }: { blockIds: ID[] }) {
+  const db = useStore((s) => s.db);
+  const recordRoutineCapture = useStore((s) => s.recordRoutineCapture);
+  const blocks = blockIds.map((id) => db.blocks.find((b) => b.id === id)).filter((b) => b !== undefined);
+  const [draft, setDraft] = useState<Record<ID, { result: BlockResult; observation: string }>>({});
+  const ack = useAcknowledgedSaves();
+  const KEY = 'capture';
+  const entry = (id: ID) => draft[id] ?? { result: 'not_logged' as BlockResult, observation: '' };
+  const save = () =>
+    ack.run(KEY, JSON.stringify(draft), () =>
+      recordRoutineCapture(
+        blockIds,
+        Object.entries(draft).map(([blockId, v]) => ({ blockId, result: v.result, observation: v.observation })),
+      ),
+    );
+  if (blocks.length === 0) return null;
+  return (
+    <div className="card stack" style={{ textAlign: 'start' }}>
+      <div className="section-label">What did each show? (optional)</div>
+      {blocks.map((b) => {
+        const v = entry(b.id);
+        const title = getItem(db, b.practiceItemId)?.title ?? 'Item';
+        const set = (patch: Partial<{ result: BlockResult; observation: string }>) =>
+          setDraft((d) => ({ ...d, [b.id]: { ...(d[b.id] ?? { result: 'not_logged', observation: '' }), ...patch } }));
+        return (
+          <div key={b.id} className="stack-sm" role="group" aria-label={title}>
+            <div className="small" dir="auto">
+              {title}
+            </div>
+            <OptionPills
+              ariaLabel={`Result for ${title}`}
+              value={v.result}
+              onChange={(r) => set({ result: r })}
+              options={CAPTURE_RESULTS.map((r) => ({ value: r, label: RESULT_LABELS[r] }))}
+            />
+            <input
+              className="input"
+              dir="auto"
+              aria-label={`Observation for ${title}`}
+              placeholder="One thing you noticed"
+              value={v.observation}
+              onChange={(e) => set({ observation: e.target.value })}
+            />
+          </div>
+        );
+      })}
+      <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+        <button type="button" className="btn btn-sm" onClick={save}>
+          Save what they showed
+        </button>
+        <SaveStatus ack={ack.states[KEY]} current={JSON.stringify(draft)} onRetry={save} />
       </div>
     </div>
   );

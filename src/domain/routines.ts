@@ -1,7 +1,9 @@
 import { applyBlockStats } from './blocks';
 import { defaultModeForStatus, focusForItem } from './defaults';
 import { createBlock } from './factories';
+import { RESULT_LABELS } from './labels';
 import type {
+  BlockResult,
   ID,
   ISODateTime,
   Pathway,
@@ -311,6 +313,79 @@ export function applyRoutineRun(
     );
   }
   return { blocks, items: outItems };
+}
+
+// --- What a finished run's items showed -----------------------------------
+
+/** One recorded item's capture on Routine complete: a result and/or one line. */
+export interface RoutineCapture {
+  blockId: ID;
+  /** One of the six results, or `not_logged` for none. */
+  result: BlockResult;
+  observation?: string;
+}
+
+/**
+ * Annotate the blocks a routine run just created with what each item showed —
+ * the lighter variant of a close, after the clock has stopped. ONLY those
+ * blocks (`runBlockIds`, as `finishRoutine` returned them) may change: a
+ * capture naming any other block, or a value that is not a result, refuses
+ * the whole capture naming the block, and nothing is written.
+ *
+ * A result is real evidence for every reader of results (history, the
+ * three-same hint, Insights, the teacher report). It never reaches a review:
+ * dates, open reviews, SM-2 state, status, minutes and counters stay exactly
+ * as the run left them. `lastResult` follows only while the block is the
+ * item's latest logged one. An unchanged capture returns the SAME arrays, so
+ * repeating it writes nothing.
+ */
+export function captureRoutineResults(
+  db: { blocks: PracticeBlock[]; items: PracticeItem[] },
+  runBlockIds: ID[],
+  captures: RoutineCapture[],
+  now: Date,
+): { blocks: PracticeBlock[]; items: PracticeItem[] } | { refused: string } {
+  const mine = new Set(runBlockIds);
+  for (const c of captures) {
+    if (!mine.has(c.blockId) || !db.blocks.some((b) => b.id === c.blockId)) {
+      return { refused: `Block ${c.blockId} is not one this routine run recorded.` };
+    }
+    if (!Object.prototype.hasOwnProperty.call(RESULT_LABELS, c.result)) {
+      return { refused: `Block ${c.blockId}: "${String(c.result)}" is not a result.` };
+    }
+    if (c.observation !== undefined && typeof c.observation !== 'string') {
+      return { refused: `Block ${c.blockId}: the observation is not text.` };
+    }
+  }
+  const byBlock = new Map(captures.map((c) => [c.blockId, c]));
+  const changed = new Set<ID>();
+  const blocks = db.blocks.map((b) => {
+    const c = byBlock.get(b.id);
+    if (!c) return b;
+    const observation = c.observation?.trim() || undefined;
+    if (b.result === c.result && b.observation === observation) return b;
+    changed.add(b.practiceItemId);
+    const next: PracticeBlock = { ...b, result: c.result, updatedAt: nowISO(now) };
+    if (observation) next.observation = observation;
+    else delete next.observation;
+    return next;
+  });
+  if (changed.size === 0) return { blocks: db.blocks, items: db.items };
+
+  const latestLogged = (list: PracticeBlock[], itemId: ID) =>
+    list
+      .filter((b) => b.practiceItemId === itemId && b.result !== 'not_logged')
+      .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.createdAt.localeCompare(a.createdAt))[0];
+  const items = db.items.map((item) => {
+    if (!changed.has(item.id)) return item;
+    const before = latestLogged(db.blocks, item.id);
+    const after = latestLogged(blocks, item.id);
+    // Only when a captured block is (or was) the item's latest logged one.
+    const touches = [before, after].some((b) => b && mine.has(b.id) && byBlock.has(b.id));
+    if (!touches || !after || after.result === item.lastResult) return item;
+    return { ...item, lastResult: after.result, updatedAt: nowISO(now) };
+  });
+  return { blocks, items };
 }
 
 // --- The binding invariant: a bound itemId never dangles ---------------------

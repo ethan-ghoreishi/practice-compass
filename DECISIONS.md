@@ -2,6 +2,92 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Works get real plan time; sound and updates recover; practice revises the item (2026-10-14)
+
+One lane (contract 20261014-…-d492, issue #51). Five owner reports met in the
+practise → close loop, the plan that feeds it, the routine beside it and the
+banner over all of them; none needed a schema change.
+
+- **Plan floor, not an instrument rule.** `allocateMinutes` floored every
+  segment at 2 minutes whatever the material, pinned the warm-up at
+  `round(B × 0.12)` and let review overflow land in the cool-down, so Setar's
+  familiar gushehs got 2-minute warm-ups and 11–25-minute cool-downs. Owner
+  decision: a whole work (`isWork`) gets at least the existing 10-minute
+  standard block in a multi-segment plan, on every instrument; drills keep 2;
+  fewer, longer segments; no new setting. The optional roles never exceed
+  their share and never carry overflow, which goes to deep and lesson work
+  first. Rejected: a floor on warm-ups only, a Setar-keyed floor, leaving the
+  overflow path (each fails `plan.test.ts`). Drill-only plans keep the old
+  allocator's literal minutes wherever no role absorbed overflow.
+- **Sound: a fresh context at every readying tap.** Reverses the 2026-10-05
+  "one page-lifetime context". A context can report `running` and be silent,
+  or stay `suspended`/`interrupted` past resume(), after a long idle; reusing it
+  kept the cue silent until the app was reopened. Every Start, Resume, Test
+  sound and Turn on sound now closes the page's context and creates and resumes
+  a new one inside the tap. Rejected: renewing only when `closed`, or at a
+  boundary (outside any gesture).
+- **Updates: the app owns its registration.** workbox-window's banner offered
+  an update with nothing waiting on an uncontrolled page (Reload did nothing)
+  and reloaded other windows. `appUpdate.ts` registers once per page, offers
+  only when this window runs older code (an uncontrolled page checks whether a
+  worker precaches its own entry chunk), and reloads only the tapping window,
+  once. A route whose code an update removed (its import failed AND the app
+  now serves another entry) shows the offer in its place, never an automatic
+  reload; any other import failure is the page's own error and surfaces as
+  itself. On /close the offer waits unless the close screen's own code is gone.
+  The stamp is the last commit that changed a build input
+  (`scripts/app-version.mjs`), so records-only pushes publish byte-identical
+  files and no offer. Rejected: keeping workbox-window with a reload fallback;
+  a HEAD stamp.
+- **Close revises Status, Primary focus, Current effort** behind one collapsed
+  line, by key presence in the block's one write; the review is decided from
+  the item as practised. Personal priority stays on the item page (owner).
+- **Routine complete captures** a result and one line per recorded item onto
+  that run's own blocks, after the minutes are saved; it never reaches a
+  review. A full close per routine item was rejected as turning one finish
+  into several forms.
+
+Where each family's proof lives (one named test each; run it with
+`npx vitest run <file> -t "<title>"`), and its limits:
+
+- Plan floors and role shares: ac-1 in `src/domain/plan.test.ts`, on committed
+  synthetic fixtures (Setar, Tar, Guitar, parts, Tar plus one work) swept over
+  every budget, warm-up share and review window, through build, Remove (once
+  and twice) and Swap; numbers in `docs/scheduling-evidence.md` §5. Limit:
+  synthetic libraries — the owner's own is ac-14.
+- Sound: ac-2 (`practiceCue.test.ts`) and ac-3 (`practice-cues.browser.test.ts`),
+  `docs/setar-practice-reliability.md` §1b and §6,
+  `node scripts/check-setar-practice-families.mjs --mutations`. Limit: a fake
+  context proves its lifecycle, never audibility (ac-13).
+- Updates and stamp: ac-8 (fake container), ac-9 and ac-10 (real builds on a
+  local server, both engines), ac-11 (a temp git repo). Limit: no Pages CDN,
+  no installed iPhone (ac-12).
+- Close edits: ac-4 through the store's real `closeSession`; ac-5 in browsers.
+  Routine capture: ac-6 and ac-7. Their readers: `docs/scheduling-evidence.md` §6.
+
+Red on base (ee7a091): ac-1 — "Setar … 12 min … s-shahnaz is a work: expected
+2 to be ≥ 10"; ac-2 and ac-3 — `docs/setar-practice-reliability.md` §1b; ac-9
+— row A times out waiting for the Reload's load, row C reloads the other window.
+The base cannot run the others: ac-4–8, ac-10 and ac-11 drive what it does not
+have (`itemEdits`, `captureRoutineResults`, `appUpdate.ts`, the stamp module).
+
+The named partial fixes, each applied alone to a clean tree at 0b6e065 and run
+against only its acceptance test (restored with `git checkout` after). Every
+one FAILS:
+
+| Partial fix (exact change) | Test | Fails with |
+|---|---|---|
+| Floor on warm-ups only (`buildSessionPlan` passes 2 for every other bucket) | ac-1 | Setar 12 min: "s-l1 is a work: expected 6 ≥ 10" |
+| Instrument-keyed floor (`segmentFloor` only for `setar`) | ac-1 | Guitar 12 min: "g-piece2 is a work: expected 3 ≥ 10" |
+| Overflow still into the cool-down (cool-down capped at 25, in the overflow list) | ac-1 | Setar 120 min: "cool-down: expected 25 ≤ 13" |
+| Renewal only when closed or at a boundary | ac-2 | the 2026-10-14 mutation run (`docs/setar-practice-reliability.md` §6) |
+| workbox-window kept with a reload fallback (`useRegisterSW`, `updateServiceWorker(true)` then `location.reload()` after 1.5 s) | ac-9 | row A, V2 found early: no offer (Chromium, 20 s timeout) |
+| Automatic reload when a route's code is missing (`location.reload()` in `routeCodeMissing`) | ac-8 | "expected [ {offer: true…}, 1 ] to equal [ …, 0 ]" |
+| Offer on a first install (every worker read as newer) | ac-8 | "own first install: expected true to be false" |
+| HEAD-based stamp (`git log -1 HEAD`, no pathspec) | ac-11 | ".prismatica/records/change.md: expected '2020-03-02·8bd935f' to be '2020-03-01·e4d7e81'" |
+| Review computed from the edited item (`computeReviewOutcome` given `applyCloseEdits(item, …)`) | ac-4 | "auto · status suggested · focus set · effort changed · save · edit present" |
+| Routine annotation by item instead of block (a capture applied to every block of its item) | ac-6 | "run-A · worse · observation" — a block outside the run changed |
+
 ## Browser journeys wait on events; CI and the Gate are bounded and run once (2026-10-08)
 
 One technical lane (contract 20261007-…-0e6c, issue #49). Four families had failed

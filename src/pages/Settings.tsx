@@ -704,8 +704,8 @@ const PARAM_ROWS: {
   { key: 'sm2SlipResetDays', label: 'Relearn gap after a slip (days)', hint: 'When something slips, it returns this soon to relearn.' },
   { key: 'warmupShare', label: 'Warm-up share of a plan (%)', hint: 'Share of a Session Plan’s minutes set aside for warm-up.', unit: 'percent' },
   { key: 'deepWorkShare', label: 'Deep-work share of a plan (%)', hint: 'Share of a Session Plan’s minutes set aside for the focus block.', unit: 'percent' },
-  { key: 'reviewSlotMinMinutes', label: 'Shortest review slot (min)', hint: 'A review segment in the Session Plan never gets less than this.' },
-  { key: 'reviewSlotMaxMinutes', label: 'Longest review slot (min)', hint: 'A review segment in the Session Plan never gets more than this.' },
+  { key: 'reviewSlotMinMinutes', label: 'Shortest review slot (min)', hint: 'A review segment in the Session Plan never gets less than this; a whole work’s review gets at least 10.' },
+  { key: 'reviewSlotMaxMinutes', label: 'Longest review slot (min)', hint: 'A review segment in the Session Plan gets no more than this while other planned work can use the minutes; a whole work’s review gets at least 10.' },
 ];
 
 function SchedulingSection() {

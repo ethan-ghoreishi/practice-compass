@@ -4,7 +4,7 @@ import { hasUnfinishedPractice } from '../domain';
 import { useStore } from '../store/useStore';
 import { useSyncStatus } from '../store/githubSync';
 import { useViewportGuard } from './useViewportGuard';
-import { useRegisterSW } from 'virtual:pwa-register/react';
+import { offerShownOn, reloadToUpdate, useAppUpdate } from './appUpdate';
 import {
   CompassIcon,
   ItemsIcon,
@@ -90,7 +90,7 @@ export default function Layout() {
 
       <main className="main" ref={mainRef}>
         <div className={`main-inner${pageWidthClass(location.pathname)}`}>
-          <UpdateBanner />
+          <LayoutUpdateBanner pathname={location.pathname} />
           <SyncNotice pathname={location.pathname} />
           <Outlet />
         </div>
@@ -120,29 +120,23 @@ function pageWidthClass(pathname: string): string {
 }
 
 /**
- * Honest PWA updates: the service worker is registered in prompt mode, a new
- * build shows this banner, and one tap reloads into it — no reinstalling.
- * Updates are also checked hourly and whenever the app becomes visible
- * (installed iOS apps otherwise only check on cold launch).
+ * Honest PWA updates: a new build shows this banner, and one tap reloads THIS
+ * window into it — no reinstalling (src/components/appUpdate.ts decides when).
+ * It waits while a close is unsaved, and stands in for a route whose code an
+ * update removed.
  */
-function UpdateBanner() {
-  const {
-    needRefresh: [needRefresh],
-    updateServiceWorker,
-  } = useRegisterSW({
-    onRegisteredSW(_url, registration) {
-      if (!registration) return;
-      setInterval(() => void registration.update(), 60 * 60 * 1000);
-      document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible') void registration.update();
-      });
-    },
-  });
-  if (!needRefresh) return null;
+function LayoutUpdateBanner({ pathname }: { pathname: string }) {
+  return offerShownOn(useAppUpdate(), pathname) ? <UpdateBanner /> : null;
+}
+
+/** "A new version is ready." with its Reload — wherever the offer is shown. */
+export function UpdateBanner() {
+  const { offer } = useAppUpdate();
+  if (!offer) return null;
   return (
     <div className="card card-accent row between small" style={{ marginBottom: 'var(--space-4)' }}>
       <span>A new version is ready.</span>
-      <button className="btn btn-primary btn-sm" style={{ flex: 'none' }} onClick={() => void updateServiceWorker(true)}>
+      <button className="btn btn-primary btn-sm" style={{ flex: 'none' }} onClick={reloadToUpdate}>
         Reload
       </button>
     </div>

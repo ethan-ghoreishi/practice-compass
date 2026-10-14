@@ -1,20 +1,8 @@
 /// <reference types="vitest/config" />
-import { execSync } from 'node:child_process';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
-
-// Human-readable build stamp shown in Settings and used to confirm which
-// version an installed PWA is actually running.
-function buildVersion(): string {
-  let sha = 'dev';
-  try {
-    sha = execSync('git rev-parse --short HEAD').toString().trim();
-  } catch {
-    /* no git in some environments */
-  }
-  return `${new Date().toISOString().slice(0, 10)}·${sha}`;
-}
+import { appVersion } from './scripts/app-version.mjs';
 
 // Served from GitHub Pages at /practice-compass/ (deploy.yml). Override with
 // PC_BASE=/ if it ever moves to its own host.
@@ -58,14 +46,18 @@ function cspPlugin() {
 export default defineConfig(({ command, isPreview }) => ({
   // `vite preview` serves the PRODUCTION build — it must use the prod base.
   base: command === 'build' || isPreview ? prodBase : '/',
+  // The build stamp Settings names: the last commit that changed what ships
+  // (scripts/app-version.mjs), so an unchanged app rebuilds byte for byte.
   define: {
-    __APP_VERSION__: JSON.stringify(buildVersion()),
+    __APP_VERSION__: JSON.stringify(appVersion()),
   },
   plugins: [
     react(),
     cspPlugin(),
     VitePWA({
       registerType: 'prompt',
+      // The app registers its own worker, once per page (src/components/appUpdate.ts).
+      injectRegister: false,
       includeAssets: ['icon.svg', 'apple-touch-icon.png'],
       manifest: {
         name: 'Practice Compass',

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   aggregateItemMinutes,
   applyRoutineRun,
+  captureRoutineResults,
   detachIncompatibleRoutinesForPathway,
   detachRoutinesFromPathway,
   detachRoutinesFromStage,
@@ -22,10 +23,13 @@ import {
   type RunSegment,
 } from './routines';
 import { createItem } from './factories';
-import { isSaturated } from './scoring';
+import { isSaturated, lastResultsAllSame, recentResults } from './scoring';
+import { generateInsights } from './insights';
+import { buildReportData } from './report';
+import { emptyDB } from './seed';
 import { seedPathways } from './pathwaySeed';
 import { STRAND_TO_FOCUS } from './labels';
-import type { Pathway, PathwayRoutine, PathwayStage, PracticeItem, RoutineSegment } from './types';
+import type { BlockResult, Pathway, PathwayRoutine, PathwayStage, PracticeBlock, PracticeItem, RoutineSegment } from './types';
 // The single-active-clock guard is store-level (start/resume actions, and the
 // persisted-hydration merge) rather than a pure domain function — there is no
 // allowed store test file for this contract, and this invariant is the
@@ -770,5 +774,115 @@ describe('a target too short to seat every segment', () => {
     expect(fitRoutineToMinutes([], 30)).toEqual([]);
     expect(fitRoutineToMinutes(SYLLABUS, 0)).toEqual([]);
     expect(fitRoutineToMinutes(SYLLABUS, Number.NaN)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Routine complete: what each recorded item showed, written onto THIS run's
+// own blocks and nowhere else — real evidence for every result reader, never
+// a review, a date or SM-2 state.
+// ---------------------------------------------------------------------------
+
+describe('routine capture', () => {
+  it("routine capture annotates only its own run's blocks and never moves a review or schedule", () => {
+    const T0 = new Date('2026-10-14T08:00:00.000Z');
+    const RUN_AT = new Date('2026-10-14T09:00:00.000Z');
+    const LATER = '2026-10-14T10:00:00.000Z';
+    const block = (id: string, itemId: string, startedAt: string, result: BlockResult = 'not_logged'): PracticeBlock => ({
+      id,
+      practiceItemId: itemId,
+      instrumentId: 'inst',
+      startedAt,
+      durationMinutes: 5,
+      mode: 'learn',
+      focus: 'other',
+      result,
+      createdReview: false,
+      createdAt: startedAt,
+      updatedAt: startedAt,
+    });
+    const item = (id: string, over: Partial<PracticeItem> = {}): PracticeItem => ({
+      ...createItem({ instrumentId: 'inst', title: id, itemType: 'gusheh', status: 'usable' }, T0),
+      id,
+      timesPractised: 6,
+      totalMinutes: 60,
+      lastResult: 'same',
+      nextReviewDate: '2026-10-13',
+      nextReviewSource: 'auto',
+      srReps: 2,
+      srEase: 2.4,
+      srIntervalDays: 4,
+      srLastProgressDay: '2026-10-09',
+      ...over,
+    });
+    // Item A: two earlier "same" results. Item C: a LATER logged block than the run.
+    const items = [item('A'), item('C', { lastResult: 'slightly_better' })];
+    const blocks = [
+      block('a-1', 'A', '2026-10-12T08:00:00.000Z', 'same'),
+      block('a-2', 'A', '2026-10-13T08:00:00.000Z', 'same'),
+      block('a-other-run', 'A', '2026-10-13T09:00:00.000Z'), // another, older run
+      block('run-A', 'A', RUN_AT.toISOString()),
+      block('run-C', 'C', RUN_AT.toISOString()),
+      block('c-later', 'C', LATER, 'slightly_better'),
+    ];
+    const db = { blocks, items };
+    const RUN = ['run-A', 'run-C'];
+    const SIX: BlockResult[] = ['worse', 'same', 'slightly_better', 'stable_alone', 'stable_in_context', 'performable'];
+    const FROZEN = ['nextReviewDate', 'nextReviewSource', 'srReps', 'srEase', 'srIntervalDays', 'srLastProgressDay', 'status', 'timesPractised', 'totalMinutes', 'lastPractisedAt', 'reviewMode'] as const;
+
+    for (const target of ['run-A', 'run-C', 'a-other-run', 'a-1', 'unknown']) {
+      for (const result of [...SIX, 'not_logged', 'excellent'] as BlockResult[]) {
+        for (const observation of ['  Ornaments held at speed  ', '']) {
+          const label = `${target} · ${result} · ${observation ? 'observation' : 'empty'}`;
+          const out = captureRoutineResults(db, RUN, [{ blockId: target, result, observation }], RUN_AT);
+          if (!RUN.includes(target)) {
+            expect(out, label).toEqual({ refused: `Block ${target} is not one this routine run recorded.` });
+            continue;
+          }
+          if (result === ('excellent' as BlockResult)) {
+            expect(out, label).toEqual({ refused: `Block ${target}: "excellent" is not a result.` });
+            continue;
+          }
+          if ('refused' in out) throw new Error(`${label}: ${out.refused}`);
+          // Only the named block changed; every other block is the same object.
+          out.blocks.forEach((b, i) => {
+            if (b.id === target) {
+              expect(b.result, label).toBe(result);
+              expect(b.observation, label).toBe(observation ? 'Ornaments held at speed' : undefined);
+              expect([b.durationMinutes, b.startedAt, b.mode, b.focus], label).toEqual([5, RUN_AT.toISOString(), 'learn', 'other']);
+            } else expect(b, label).toBe(blocks[i]);
+          });
+          const changedItem = target === 'run-A' ? 'A' : 'C';
+          for (const it of out.items) {
+            const was = items.find((x) => x.id === it.id)!;
+            // Schedule, SM-2 state, status, minutes and counters never move.
+            for (const k of FROZEN) expect(it[k], `${label} ${it.id}.${k}`).toEqual(was[k]);
+            // lastResult follows only the item's latest LOGGED block.
+            if (it.id === changedItem && it.id === 'A' && result !== 'not_logged') expect(it.lastResult, label).toBe(result);
+            else expect(it.lastResult, label).toBe(was.lastResult);
+          }
+          // Repeating the same capture writes nothing.
+          const again = captureRoutineResults(out, RUN, [{ blockId: target, result, observation }], RUN_AT);
+          expect('refused' in again ? again : [again.blocks === out.blocks, again.items === out.items], label).toEqual([true, true]);
+        }
+      }
+    }
+    // Nothing captured is nothing written.
+    const none = captureRoutineResults(db, RUN, [{ blockId: 'run-A', result: 'not_logged', observation: '' }], RUN_AT);
+    expect('refused' in none ? none : none.blocks).toBe(blocks);
+
+    // The existing readers see a captured result as real evidence.
+    const captured = captureRoutineResults(db, RUN, [{ blockId: 'run-A', result: 'same', observation: 'Same again' }], RUN_AT);
+    if ('refused' in captured) throw new Error(captured.refused);
+    const aBlocks = captured.blocks.filter((b) => b.practiceItemId === 'A');
+    expect(recentResults(aBlocks)).toEqual(['same', 'same', 'same']);
+    expect(lastResultsAllSame(aBlocks)).toBe(true);
+    const full = { ...emptyDB(), instruments: [{ id: 'inst', name: 'Setar', family: 'Persian', active: true, createdAt: T0.toISOString(), updatedAt: T0.toISOString() }] };
+    expect(generateInsights({ ...full, ...captured }, RUN_AT).map((i) => i.id)).toContain('same-A');
+    const better = captureRoutineResults(db, RUN, [{ blockId: 'run-A', result: 'performable' }], RUN_AT);
+    if ('refused' in better) throw new Error(better.refused);
+    expect(generateInsights({ ...full, ...better }, RUN_AT).find((i) => i.id === 'improved')?.body).toContain('"A" reached "Performable"');
+    const report = buildReportData({ ...full, ...better }, { instrumentId: 'inst', from: '2026-10-14', to: '2026-10-14', now: RUN_AT });
+    expect(report.periodResults.find((r) => r.item.id === 'A')).toMatchObject({ best: 'performable', last: 'performable' });
   });
 });

@@ -13,14 +13,20 @@ import {
   RESULT_LABELS,
   REVIEW_TYPE_LABELS,
   suggestStatusAfterBlock,
+  FOCUS_LABELS,
   ITEM_STATUS_LABELS,
+  ITEM_STATUS_ORDER,
+  RATING_LABELS,
   type BlockResult,
+  type CloseItemEdits,
+  type FocusArea,
   type ItemStatus,
+  type Rating,
   type ReviewType,
 } from '../domain';
 import { sessionElapsedSeconds, useStore } from '../store/useStore';
 import { getItem, instrumentName, itemBlocks } from '../store/lookups';
-import { Field, OptionPills } from '../components/ui';
+import { Field, OptionPills, RatingInput } from '../components/ui';
 import { CheckIcon, PlayIcon } from '../components/icons';
 import { closeOverrideDate, reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
 import { useDecisionNow } from '../components/useDecisionNow';
@@ -77,7 +83,13 @@ export default function CloseBlock() {
   // override so there is still exactly ONE review value on this screen (below).
   const [override, setOverride] = useState<{ dueDate?: string; reviewType?: ReviewType } | null>(null);
   const [showReviewControls, setShowReviewControls] = useState(false);
-  const [acceptStatus, setAcceptStatus] = useState(true);
+  // The item as this practice left it: Status, Primary focus and Current
+  // effort, each `null` while untouched — an untouched field is never written.
+  // Focus '' is a deliberate None.
+  const [statusPick, setStatusPick] = useState<ItemStatus | null>(null);
+  const [focusPick, setFocusPick] = useState<FocusArea | '' | null>(null);
+  const [effortPick, setEffortPick] = useState<Rating | null>(null);
+  const [showItemControls, setShowItemControls] = useState(false);
   const [becomeTeacherQ, setBecomeTeacherQ] = useState(false);
   // A NEW question every time: it becomes its own agenda entry rather than
   // overwriting whatever the item already carried, and raising one never
@@ -189,6 +201,19 @@ export default function CloseBlock() {
     );
   }
 
+  // What the line shows: the owner's pick, else the engine's pending
+  // suggestion, else the item as it stands.
+  const shownStatus: ItemStatus = statusPick ?? statusSuggestion.suggestedStatus ?? item.status;
+  const shownFocus: FocusArea | '' = focusPick ?? item.primaryFocus ?? '';
+  const shownEffort: Rating = effortPick ?? item.difficulty;
+  const itemLine = [
+    `Status ${shownStatus === item.status ? ITEM_STATUS_LABELS[item.status] : `${ITEM_STATUS_LABELS[item.status]} → ${ITEM_STATUS_LABELS[shownStatus]}`}${
+      statusPick === null && statusSuggestion.suggestedStatus ? ' (suggested)' : ''
+    }`,
+    `Focus ${shownFocus ? FOCUS_LABELS[shownFocus] : 'none'}`,
+    `Effort ${shownEffort} of 5`,
+  ].join(' · ');
+
   /**
    * Saving with a result answers the review question; saving WITHOUT one
    * answers nothing about it, so the schedule must not move. Stated in one
@@ -213,15 +238,20 @@ export default function CloseBlock() {
 
     const finalResult: BlockResult = withoutResult ? 'not_logged' : (result ?? 'not_logged');
     const answer: ReviewAnswer = withoutResult || !result ? 'unanswered' : comeBack && review ? 'scheduled' : 'declined';
-    const newStatus: ItemStatus | undefined =
-      !withoutResult && acceptStatus && statusSuggestion.suggestedStatus ? statusSuggestion.suggestedStatus : undefined;
+    // Only what the owner touched; the engine's suggestion travels separately
+    // and the store applies it only with a result.
+    const itemEdits: CloseItemEdits = {};
+    if (statusPick !== null) itemEdits.status = statusPick;
+    if (focusPick !== null) itemEdits.primaryFocus = focusPick === '' ? null : focusPick;
+    if (effortPick !== null) itemEdits.difficulty = effortPick;
 
     closeSession({
       result: finalResult,
       durationMinutes: duration,
       observation: observation.trim() || undefined,
       nextAction: nextAction.trim() || undefined,
-      newStatus,
+      newStatus: statusSuggestion.suggestedStatus,
+      itemEdits,
       answer,
       // ONLY a date the owner actually typed — never the date the screen is
       // merely SHOWING, which for an early session is the item's existing one.
@@ -341,16 +371,58 @@ export default function CloseBlock() {
         />
       </Field>
 
-      {statusSuggestion.suggestedStatus && (
-        <div className="card card-quiet">
-          <div className="row between">
-            <div className="small">
-              Suggest moving to <strong>{ITEM_STATUS_LABELS[statusSuggestion.suggestedStatus]}</strong>.
-            </div>
-            <YesNo label="Accept the suggested status" value={acceptStatus} onChange={setAcceptStatus} yes="Accept" no="Keep" />
+      {/* The item as this practice left it — Status, Primary focus and
+          Current effort — collapsed to ONE line with the controls a tap
+          behind it. An engine-suggested status is the pending change,
+          pre-selected; tapping the current status keeps it. Personal
+          priority is a planning decision and stays on the item page. */}
+      <div className="card card-quiet stack-sm">
+        <div className="row between">
+          <div className="small" style={{ minWidth: 0 }}>
+            {itemLine}
           </div>
+          <button
+            type="button"
+            className="btn btn-sm"
+            style={{ flex: 'none' }}
+            aria-expanded={showItemControls}
+            aria-label={showItemControls ? 'Done with status, focus and effort' : 'Change status, focus and effort'}
+            onClick={() => setShowItemControls((o) => !o)}
+          >
+            {showItemControls ? 'Done' : 'Change'}
+          </button>
         </div>
-      )}
+        {showItemControls && (
+          <>
+            <Field label="Status">
+              <OptionPills
+                ariaLabel="Status after this block"
+                value={shownStatus}
+                onChange={setStatusPick}
+                options={ITEM_STATUS_ORDER.map((v) => ({ value: v, label: ITEM_STATUS_LABELS[v] }))}
+              />
+            </Field>
+            <Field label="Primary focus">
+              <select
+                className="select"
+                aria-label="Primary focus"
+                value={shownFocus}
+                onChange={(e) => setFocusPick(e.target.value as FocusArea | '')}
+              >
+                <option value="">None</option>
+                {(Object.keys(FOCUS_LABELS) as FocusArea[]).map((f) => (
+                  <option key={f} value={f}>
+                    {FOCUS_LABELS[f]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label={RATING_LABELS.difficulty}>
+              <RatingInput name={RATING_LABELS.difficulty} value={shownEffort} onChange={setEffortPick} />
+            </Field>
+          </>
+        )}
+      </div>
 
       {/* The scheduling decision, collapsed to ONE honest line: the date and
           type that will actually be saved, with the controls a tap behind it.

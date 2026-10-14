@@ -67,7 +67,7 @@ describe('the daily practice loop, end to end', () => {
       let savedDate = '';
       await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Stable alone' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
+        await page.getByRole('button', { name: 'Change', exact: true }).click();
         savedDate = await page.getByLabel('Next review date').inputValue();
         expect(savedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
         expect(savedDate > isoOf(CLOCK)).toBe(true);
@@ -90,7 +90,7 @@ describe('the daily practice loop, end to end', () => {
       // --- 4. A SECOND successful close the same day does NOT advance again -
       await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Performable' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
+        await page.getByRole('button', { name: 'Change', exact: true }).click();
         expect(await page.getByLabel('Next review date').inputValue()).toBe(savedDate);
         await page.getByRole('button', { name: 'Save block' }).click();
       });
@@ -100,7 +100,7 @@ describe('the daily practice loop, end to end', () => {
       // --- 5. `same` keeps it too; only `worse` brings it forward ----------
       await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Same' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
+        await page.getByRole('button', { name: 'Change', exact: true }).click();
         expect(await page.getByLabel('Next review date').inputValue()).toBe(savedDate);
         await page.getByRole('button', { name: 'Save block' }).click();
       });
@@ -110,7 +110,7 @@ describe('the daily practice loop, end to end', () => {
       let repairedDate = '';
       await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Worse' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
+        await page.getByRole('button', { name: 'Change', exact: true }).click();
         repairedDate = await page.getByLabel('Next review date').inputValue();
         expect(repairedDate < savedDate).toBe(true);
         await page.getByRole('button', { name: 'Save block' }).click();
@@ -122,7 +122,7 @@ describe('the daily practice loop, end to end', () => {
       const chosen = '2027-05-09';
       await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Slightly better' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
+        await page.getByRole('button', { name: 'Change', exact: true }).click();
         await page.getByLabel('Next review date').fill(chosen);
         await page.getByRole('button', { name: 'Save block' }).click();
       });
@@ -132,7 +132,7 @@ describe('the daily practice loop, end to end', () => {
       // …and once it is the owner's, successful practice leaves it alone.
       await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Stable in context' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
+        await page.getByRole('button', { name: 'Change', exact: true }).click();
         expect(await page.getByLabel('Next review date').inputValue()).toBe(chosen);
         await page.getByRole('button', { name: 'Save block' }).click();
       });
@@ -142,7 +142,7 @@ describe('the daily practice loop, end to end', () => {
       // --- 7. Explicit No, then Schedule again from the item ---------------
       await practise(app, ITEM, async () => {
         await page.getByRole('button', { name: 'Stable alone' }).click();
-        await page.getByRole('button', { name: 'Change' }).click();
+        await page.getByRole('button', { name: 'Change', exact: true }).click();
         await page.getByRole('group', { name: '' }).first().waitFor();
         await page.getByRole('button', { name: 'No', exact: true }).first().click();
         await page.getByRole('button', { name: 'Save block' }).click();
@@ -181,7 +181,7 @@ describe('the daily practice loop, end to end', () => {
       const draft = 'the riz evened out after slowing right down';
       await page.getByPlaceholder('What did you notice?').fill(draft);
       await page.getByRole('button', { name: 'Worse' }).click();
-      await page.getByRole('button', { name: 'Change' }).click();
+      await page.getByRole('button', { name: 'Change', exact: true }).click();
       const beforeMidnight = await page.getByLabel('Next review date').inputValue();
 
       await page.clock.setFixedTime(new Date('2027-01-16T00:30:00'));
@@ -267,7 +267,7 @@ describe('the daily practice loop, end to end', () => {
       const raceDraft = 'the vibrato settled once the wrist relaxed';
       await page.getByPlaceholder('What did you notice?').fill(raceDraft);
       await page.getByRole('button', { name: 'Worse' }).click();
-      await page.getByRole('button', { name: 'Change' }).click();
+      await page.getByRole('button', { name: 'Change', exact: true }).click();
       const previewedBeforeRace = await page.getByLabel('Next review date').inputValue();
 
       await page.clock.setFixedTime(new Date('2027-01-16T00:05:00'));

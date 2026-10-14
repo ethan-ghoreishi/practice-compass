@@ -267,6 +267,9 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "" },
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "tiny faint" },
   { file: "pages/RoutineRunner.tsx", tagName: "span", classValue: "" },
+  // Routine complete's capture: each recorded item's own title heads its
+  // result pills and one-line observation (2026-10-14).
+  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "small" },
   { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },

@@ -1,0 +1,118 @@
+{
+  "contractId": "20261014-give-works-real-plan-time-make-sound-and-d492",
+  "event": "check_run",
+  "at": "2026-10-14T11:27:28.266Z",
+  "pass": true,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "detail": "npx vitest run --reporter=json"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "no separate journey command is configured — browser tests may be included in another configured runner, which is not inferred here"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "32 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "11 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "all required docs were updated"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "instruction-budget",
+      "status": "pass",
+      "detail": "prismatica-instructions/2: claude 32745 of 32768 bytes (CLAUDE.md 865 B, AGENTS.md 31880 B); codex 31880 of 32768 bytes (AGENTS.md 31880 B)"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "flow report covers what this change touches"
+    },
+    {
+      "name": "implementation",
+      "status": "pass",
+      "detail": "attribution, not proof: prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified"
+    }
+  ],
+  "changedFiles": [
+    "AGENTS.md",
+    "DECISIONS.md",
+    "docs/scheduling-evidence.md",
+    "docs/setar-practice-reliability.md",
+    "scripts/app-version.mjs",
+    "scripts/check-setar-practice-families.mjs",
+    "src/App.tsx",
+    "src/components/Layout.tsx",
+    "src/components/appUpdate.test.ts",
+    "src/components/appUpdate.ts",
+    "src/components/direction.test.ts",
+    "src/components/practiceCue.test.ts",
+    "src/components/practiceCue.ts",
+    "src/domain/blocks.test.ts",
+    "src/domain/blocks.ts",
+    "src/domain/plan.test.ts",
+    "src/domain/plan.ts",
+    "src/domain/routines.test.ts",
+    "src/domain/routines.ts",
+    "src/main.tsx",
+    "src/pages/CloseBlock.tsx",
+    "src/pages/RoutineRunner.tsx",
+    "src/pages/Settings.tsx",
+    "src/store/useStore.ts",
+    "src/vite-env.d.ts",
+    "tests/app-update.browser.test.ts",
+    "tests/app-version.test.ts",
+    "tests/daily-practice.browser.test.ts",
+    "tests/post-practice.browser.test.ts",
+    "tests/practice-cues.browser.test.ts",
+    "tsconfig.node.json",
+    "vite.config.ts"
+  ],
+  "prismaticaVersion": "0.10.0"
+}

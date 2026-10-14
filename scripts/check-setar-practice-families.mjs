@@ -46,7 +46,7 @@ export const ACCEPTANCE = [
   ['ac-11', 'setar setup review is usable through controls and survives interruption', 'tests/setar-practice.browser.test.ts'],
   ['ac-12', 'musical term suggestions can be found and selected while typing in both engines', 'tests/musical-term-suggestions.browser.test.ts'],
   ['ac-13', 'portable term and recovery controls preserve direction focus and scroll ownership', 'tests/setar-practice.browser.test.ts'],
-  ['ac-14', 'practice sound reuses one gesture primed context across all start and resume doors', 'tests/practice-cues.browser.test.ts'],
+  ['ac-14', 'practice sound returns at the next tap after the context dies through every start and resume door', 'tests/practice-cues.browser.test.ts'],
   ['ac-15', 'practice cues preserve wall clock boundaries and every recorded minute', 'tests/practice-cues.browser.test.ts'],
   ['ac-16', 'pathway removal and restoration visibly retain the existing owned item', 'tests/setar-practice.browser.test.ts'],
   ['ac-17', 'setar practice family proof rejects targeted partial fixes before review', 'tests/setar-practice-proof.test.ts'],
@@ -58,7 +58,7 @@ export const COMPANIONS = [
   ['ac-6', 'archive associations unlink and relink through every reader and survive a reload', 'tests/setar-practice.browser.test.ts'],
   ['ac-8', 'archive metadata controls send the typed premise and re-preview a stale choice', 'tests/setar-practice.browser.test.ts'],
   ['ac-13', 'term suggestion controls keep direction focus and scroll on new and edit forms', 'tests/musical-term-suggestions.browser.test.ts'],
-  ['ac-14', 'practice sound keeps one context primed only by taps and never queues a cue', 'src/components/practiceCue.test.ts'],
+  ['ac-14', "every readying tap replaces the page's sound context and a boundary never revives a dead one", 'src/components/practiceCue.test.ts'],
   ['ac-15', 'a boundary claim is granted once and only for the still-running clock', 'src/components/practiceCue.test.ts'],
 ];
 
@@ -197,21 +197,29 @@ export const MUTATIONS = [
     file: 'src/store/useStore.ts',
     find: '        primePracticeSound(); // Resume is a tap too — on the practice screen and on Close\n',
     replace: '',
-    test: 'practice sound reuses one gesture primed context across all start and resume doors',
+    test: 'practice sound returns at the next tap after the context dies through every start and resume door',
   },
   {
     name: 'a context created per boundary',
     file: 'src/components/practiceCue.ts',
     find: '  const c = context;\n  if (!c || c.state !== \'running\') return;\n  try {\n    const t0 = c.currentTime;',
     replace: '  const Ctx = audioCtor();\n  if (!Ctx) return;\n  const c = new Ctx();\n  try {\n    const t0 = c.currentTime;',
-    test: 'practice sound reuses one gesture primed context across all start and resume doors',
+    test: 'practice sound returns at the next tap after the context dies through every start and resume door',
   },
   {
     name: 'no resume or state gate in the prime',
     file: 'src/components/practiceCue.ts',
-    find: "    if (context.state !== 'running') {\n      // INVOKED now, inside the gesture; its promise is only observed.\n      resumed = Promise.resolve(context.resume()).then(update, update);\n    }",
+    find: '    resumed = Promise.resolve(c.resume()).then(update, update);',
     replace: '',
-    test: 'practice sound reuses one gesture primed context across all start and resume doors',
+    test: 'practice sound returns at the next tap after the context dies through every start and resume door',
+  },
+  {
+    name: 'renewal only when closed or at a boundary (a dead context reused)',
+    file: 'src/components/practiceCue.ts',
+    find: "  const old = context;\n  context = null;\n  if (old && old.state !== 'closed') {",
+    replace:
+      "  const old = context && context.state === 'closed' ? context : null;\n  if (old) context = null;\n  if (context) { if (context.state !== 'running') resumed = Promise.resolve(context.resume()).then(update, update); update(); return resumed; }\n  if (old && old.state !== 'closed') {",
+    test: "every readying tap replaces the page's sound context and a boundary never revives a dead one",
   },
   {
     name: 'an unconditional marker claim (effect replay cues twice)',
@@ -226,7 +234,7 @@ export const MUTATIONS = [
     find: "  const c = context;\n  if (!c || c.state !== 'running') return;\n  try {\n    const t0 = c.currentTime;",
     replace:
       "  const c = context;\n  if (!c) return;\n  if (c.state !== 'running') { c.addEventListener?.('statechange', () => c.state === 'running' && playPracticeCue()); return; }\n  try {\n    const t0 = c.currentTime;",
-    test: 'practice sound keeps one context primed only by taps and never queues a cue',
+    test: "every readying tap replaces the page's sound context and a boundary never revives a dead one",
   },
   {
     name: 'routine Start moved back into an effect',
@@ -234,7 +242,7 @@ export const MUTATIONS = [
     find: '  const begin = () => {\n    if (routine && routineId) startRoutineRun(routineId, shortOnTime, segmentsForRun(routine.segments, shortOnTime));\n  };',
     replace:
       '  const begin = () => {\n    if (routine && routineId) startRoutineRun(routineId, shortOnTime, segmentsForRun(routine.segments, shortOnTime));\n  };\n  useEffect(() => {\n    if (routine && routineId && !active && !activeRoutine && !result) begin();\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, [routine, routineId]);',
-    test: 'practice sound reuses one gesture primed context across all start and resume doors',
+    test: 'practice sound returns at the next tap after the context dies through every start and resume door',
   },
   {
     name: 'term suggestions back to a datalist only',
@@ -261,9 +269,9 @@ export const MUTATIONS = [
   {
     name: 'a Test sound request that plays after a later tap',
     file: 'src/components/practiceCue.ts',
-    find: "    if (mine === gesture && c === context && c.state === 'running') playPracticeCue();",
-    replace: "    if (c === context && c.state === 'running') playPracticeCue();",
-    test: 'practice sound keeps one context primed only by taps and never queues a cue',
+    find: "    if (c === context && c.state === 'running') playPracticeCue();",
+    replace: "    if (c.state === 'running') playPracticeCue();",
+    test: "every readying tap replaces the page's sound context and a boundary never revives a dead one",
   },
   {
     name: 'a setup choice re-premised from the live plan',

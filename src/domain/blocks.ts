@@ -1,4 +1,4 @@
-import type { ISODate, ISODateTime, ItemStatus, PracticeBlock, PracticeItem } from './types';
+import type { BlockResult, FocusArea, ISODate, ISODateTime, ItemStatus, PracticeBlock, PracticeItem, Rating } from './types';
 import { isSaturated } from './scoring';
 import { nowISO } from './util';
 
@@ -42,6 +42,41 @@ export function applyBlockStats(
     nextReviewDate: nextReviewDate === undefined ? item.nextReviewDate : (nextReviewDate ?? undefined),
     updatedAt: nowISO(now),
   };
+}
+
+/**
+ * What the owner revised on the item at close — the three fields most likely
+ * to change because of the practice that just happened. By KEY PRESENCE: an
+ * absent key is untouched and never written; `primaryFocus: null` is a
+ * deliberate clear to None.
+ */
+export interface CloseItemEdits {
+  status?: ItemStatus;
+  primaryFocus?: FocusArea | null;
+  difficulty?: Rating;
+}
+
+/**
+ * Apply the close screen's item edits onto the item `applyBlockStats` just
+ * refreshed. An explicit status wins; the engine's suggested status applies
+ * only to a close that recorded a result — "Save without a result" keeps the
+ * owner's own edits and drops the suggestion. Nothing else on the item moves:
+ * the review decision was already taken from the item AS PRACTISED.
+ */
+export function applyCloseEdits(
+  item: PracticeItem,
+  opts: { edits?: CloseItemEdits; suggestedStatus?: ItemStatus; result: BlockResult },
+): PracticeItem {
+  const { edits = {}, suggestedStatus, result } = opts;
+  const status = 'status' in edits ? edits.status : result === 'not_logged' ? undefined : suggestedStatus;
+  const next = { ...item };
+  if (status !== undefined) next.status = status;
+  if ('primaryFocus' in edits) {
+    if (edits.primaryFocus === null || edits.primaryFocus === undefined) delete next.primaryFocus;
+    else next.primaryFocus = edits.primaryFocus;
+  }
+  if ('difficulty' in edits && edits.difficulty !== undefined) next.difficulty = edits.difficulty;
+  return next;
 }
 
 /**

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import Layout from './components/Layout';
+import Layout, { UpdateBanner } from './components/Layout';
+import { routeCodeMissing } from './components/appUpdate';
 import { CompassIcon, UploadIcon } from './components/icons';
 import { hasUnfinishedPractice, deferredSyncRetry } from './domain';
 import { useStore, useHydrationStatus } from './store/useStore';
@@ -10,24 +11,40 @@ import { recoverFromRefusedHydration } from './store/backup';
 // route loads on demand — smaller initial JS, and the PWA precaches all
 // chunks anyway so offline still has everything.
 import Today from './pages/Today';
-const StartBlock = lazy(() => import('./pages/StartBlock'));
-const ActiveBlock = lazy(() => import('./pages/ActiveBlock'));
-const CloseBlock = lazy(() => import('./pages/CloseBlock'));
-const ItemDetail = lazy(() => import('./pages/ItemDetail'));
-const NewItem = lazy(() => import('./pages/NewItem'));
-const Materials = lazy(() => import('./pages/Materials'));
-const Insights = lazy(() => import('./pages/Insights'));
-const Repertoire = lazy(() => import('./pages/Repertoire'));
-const PathwayDetail = lazy(() => import('./pages/PathwayDetail'));
-const StageDetail = lazy(() => import('./pages/StageDetail'));
-const Lessons = lazy(() => import('./pages/Lessons'));
-const RoutineRunner = lazy(() => import('./pages/RoutineRunner'));
-const RoutineEdit = lazy(() => import('./pages/RoutineEdit'));
-const SessionPlan = lazy(() => import('./pages/SessionPlan'));
-const TeacherReport = lazy(() => import('./pages/TeacherReport'));
-const Settings = lazy(() => import('./pages/Settings'));
-const More = lazy(() => import('./pages/More'));
-const MusicTerms = lazy(() => import('./pages/MusicTerms'));
+/**
+ * A route loaded on demand, named by its path. If an update removed its code
+ * — the app now serves another build than this window started from — the
+ * route renders nothing and Layout's update offer stands in its place instead
+ * of a broken screen; it never reloads by itself. Any other failure is the
+ * page's own and is thrown as itself.
+ */
+const NoRoute = () => null;
+function page(route: string, load: () => Promise<{ default: React.ComponentType }>) {
+  return lazy(() =>
+    load().catch(async (error: unknown) => {
+      if (!(await routeCodeMissing(route))) throw error;
+      return { default: NoRoute };
+    }),
+  );
+}
+const StartBlock = page('/start', () => import('./pages/StartBlock'));
+const ActiveBlock = page('/active', () => import('./pages/ActiveBlock'));
+const CloseBlock = page('/close', () => import('./pages/CloseBlock'));
+const ItemDetail = page('/items/:id', () => import('./pages/ItemDetail'));
+const NewItem = page('/items/new', () => import('./pages/NewItem'));
+const Materials = page('/materials', () => import('./pages/Materials'));
+const Insights = page('/insights', () => import('./pages/Insights'));
+const Repertoire = page('/repertoire', () => import('./pages/Repertoire'));
+const PathwayDetail = page('/pathway/:pathwayId', () => import('./pages/PathwayDetail'));
+const StageDetail = page('/pathway/:pathwayId/:stageId', () => import('./pages/StageDetail'));
+const Lessons = page('/lessons', () => import('./pages/Lessons'));
+const RoutineRunner = page('/routine/:routineId', () => import('./pages/RoutineRunner'));
+const RoutineEdit = page('/routine/:routineId/edit', () => import('./pages/RoutineEdit'));
+const SessionPlan = page('/plan', () => import('./pages/SessionPlan'));
+const TeacherReport = page('/report', () => import('./pages/TeacherReport'));
+const Settings = page('/settings', () => import('./pages/Settings'));
+const More = page('/more', () => import('./pages/More'));
+const MusicTerms = page('/terms', () => import('./pages/MusicTerms'));
 
 /**
  * The one recovery action reachable from a refused COLD-START hydration
@@ -188,6 +205,8 @@ export default function App() {
               <p className="tiny faint" style={{ margin: 0 }}>{hydrationStatus.message}</p>
             )}
             {!hydrationStatus.tooNew && <ColdStartRecovery />}
+            {/* "Update the app" is answerable here too. */}
+            <UpdateBanner />
           </div>
         </div>
       );
