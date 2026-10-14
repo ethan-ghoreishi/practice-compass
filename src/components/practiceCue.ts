@@ -35,9 +35,6 @@ type Ctor = new () => AudioContext;
 let context: AudioContext | null = null;
 let refused = false;
 let state: PracticeSoundState = 'off';
-// Bumped by every tap that readies the sound: a Test sound request whose
-// resume lands after a LATER tap is an old request, and plays nothing.
-let gesture = 0;
 const listeners = new Set<() => void>();
 
 function audioCtor(): Ctor | undefined {
@@ -71,7 +68,6 @@ function update(): void {
  * Returns the one resume this tap asked for (it settles, never rejects), if any.
  */
 export function primePracticeSound(): Promise<void> | undefined {
-  gesture += 1;
   let resumed: Promise<void> | undefined;
   const Ctx = audioCtor();
   if (!Ctx) {
@@ -154,7 +150,6 @@ export function playPracticeCue(): void {
  */
 export function testPracticeSound(): void {
   const resumed = primePracticeSound();
-  const mine = gesture;
   const c = context;
   if (!c) return;
   if (c.state === 'running') {
@@ -162,10 +157,12 @@ export function testPracticeSound(): void {
     return;
   }
   // The resume this very tap asked for (never a second one): play when, and
-  // only if, it lands while this is still the latest tap. A resume that throws,
-  // rejects or never settles plays nothing, and an older tap's never plays late.
+  // only if, it lands while this tap's context is still the page's — every
+  // later tap replaces it, and a closing context can still report `running`
+  // until its close settles. A resume that throws, rejects or never settles
+  // plays nothing, and an older tap's never plays late.
   resumed?.then(() => {
-    if (mine === gesture && c === context && c.state === 'running') playPracticeCue();
+    if (c === context && c.state === 'running') playPracticeCue();
   });
 }
 

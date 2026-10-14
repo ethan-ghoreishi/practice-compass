@@ -269,8 +269,8 @@ export const MUTATIONS = [
   {
     name: 'a Test sound request that plays after a later tap',
     file: 'src/components/practiceCue.ts',
-    find: "    if (mine === gesture && c === context && c.state === 'running') playPracticeCue();",
-    replace: "    if (c === context && c.state === 'running') playPracticeCue();",
+    find: "    if (c === context && c.state === 'running') playPracticeCue();",
+    replace: "    if (c.state === 'running') playPracticeCue();",
     test: "every readying tap replaces the page's sound context and a boundary never revives a dead one",
   },
   {

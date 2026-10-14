@@ -46,8 +46,14 @@ function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'thro
     }
     close() {
       log.push({ e: 'close', id: this.id });
-      this.setState('closed');
-      return Promise.resolve();
+      // A real close() settles later: until then the context still reports
+      // whatever state it had, `running` included.
+      return new Promise<void>((done) =>
+        setTimeout(() => {
+          this.setState('closed');
+          done();
+        }, 0),
+      );
     }
     resume() {
       log.push({ e: 'resume', id: this.id });
@@ -239,6 +245,18 @@ describe('the practice sound module', () => {
     await flush();
     expect(log.filter((x) => x.e === 'start')).toHaveLength(2);
 
+    // --- A BOUNDARY ON A CONTEXT NOT YET RUNNING is not queued -------------
+    // The tap's resume is still pending when the boundary passes; it lands
+    // afterwards and the engine runs — the passed boundary stays passed.
+    log = [];
+    m = await load(log, { resume: 'manual' });
+    m.primePracticeSound();
+    m.playPracticeCue();
+    contextsIn(log)[0].setState('running');
+    log.filter((x) => x.e === 'pending').forEach((x) => (x.done as () => void)());
+    await flush();
+    expect(log.filter((x) => x.e === 'start')).toEqual([]);
+
     // --- PENDING REQUESTS never sound late ---------------------------------
     // Three Test taps whose resume has not settled: each its own fresh context
     // and its own one resume. When the old promises finally settle after a
@@ -249,14 +267,17 @@ describe('the practice sound module', () => {
     m.testPracticeSound();
     m.testPracticeSound();
     expect(log.filter((x) => x.e === 'resume')).toHaveLength(3);
-    expect(contextsIn(log).filter((c) => c.state !== 'closed')).toHaveLength(1);
     const settle = () => log.filter((x) => x.e === 'pending').forEach((x) => (x.done as () => void)());
-    for (const c of contextsIn(log)) if (c.state !== 'closed') c.setState('running');
+    // Every context — the two still closing included — reports running when
+    // the old requests land.
+    for (const c of contextsIn(log)) c.setState('running');
     m.primePracticeSound(); // a later tap supersedes every pending Test request
     settle();
     await flush();
     expect(log.filter((x) => x.e === 'start')).toEqual([]);
     expect(log.filter((x) => x.e === 'vibrate')).toEqual([]);
+    // Once the closes settle, only the latest tap's context is live.
+    expect(contextsIn(log).filter((c) => c.state !== 'closed').map((c) => c.id)).toEqual([4]);
     // The LATEST tap's own request does play when its resume lands.
     log = [];
     m = await load(log, { resume: 'manual' });
