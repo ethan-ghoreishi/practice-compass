@@ -1,71 +1,12 @@
 ---
 id: 20261014-give-works-real-plan-time-make-sound-and-d492
 contractId: 20261014-give-works-real-plan-time-make-sound-and-d492
-patchId: e5f917691d59e814f595efe04e3f73dc715614b8
+patchId: 995cbd90e022364fb531812f5a736347112b3f92
 reviewer: claude
 state: sealed
-verdict: request_changes
-findings:
-  - family: The update offer waits while a close is unsaved (/close); on /close it
-      shows only when the close screen's own code is missing
-    summary: "offerShownOn (src/components/appUpdate.ts) unhides the banner on
-      /close whenever missingRoute is set, and routeCodeMissing() / page()
-      (src/App.tsx) record no route identity, so a missing chunk for ANY route
-      shows 'A new version is ready.' with Reload over an unsaved close,
-      contradicting the contract and offerShownOn's own doc ('unless the close
-      screen's own code is the route that is missing'). Instances: offerShownOn,
-      routeCodeMissing, page(). The unit test 'the update offer follows the live
-      registration and only the tapping window reloads' asserts '/close
-      included', locking in the page-wide behaviour; row F of 'a published
-      update installs on the first reload in both engines without loops or
-      surprise reloads' covers only a waiting worker. Checked clean:
-      LayoutUpdateBanner (sole caller), the refused-hydration UpdateBanner."
-    counterexample: "Window W has loaded ActiveBlock and CloseBlock. Another window
-      taps Reload (V2 activates, A chunks purged), or W is uncontrolled and the
-      server serves V2. In W open More -> its chunk 404s -> missingRoute=true.
-      Today -> Start -> Finish -> /close renders from the cached module and
-      offerShownOn(state,'/close') is true: the banner and Reload sit over the
-      unsaved close, and Reload drops the chosen result, observation and next
-      action."
-  - family: Before first review the approved proof route's named partial fixes are
-      shown failing their acceptance, and subtle work says where its family
-      proof lives
-    summary: "Of the ten partial fixes the contract requires shown failing, only
-      'renewal only when closed or at a boundary' is recorded. Unrecorded: floor
-      on warm-ups only, instrument-keyed floor, overflow still into the
-      cool-down, workbox-window kept with a reload fallback, automatic reload
-      when a route's code is missing, offer on a first install, HEAD-based
-      stamp, review computed from the edited item, routine annotation by item
-      instead of block. DECISIONS.md points at a lane commit message containing
-      this proof, but no such recorded proof exists. Subtle work also needs
-      clear family-proof pointers."
-    counterexample: The lane commits, ledger and recorded check evidence contain no
-      run for the nine named partial fixes, while DECISIONS.md points to proof
-      in a commit message that does not exist.
-  - family: Only a route whose code an update removed becomes the update offer, and
-      the controller is inert outside a production build
-    summary: page() in src/App.tsx catches every rejection of lazy route imports,
-      including genuine page-load bugs and development errors, and calls
-      routeCodeMissing(). routeCodeMissing has no production guard. A real page
-      bug can therefore become 'A new version is ready.' and reload back into
-      the same failure, while development journeys may lose the original page
-      error.
-    counterexample: "A page module throws while loading: instead of surfacing that
-      error, the app records a missing route and shows the update offer. In
-      production Reload lands on the same faulty build and can repeat the
-      offer."
-  - family: A whole work fills an optional role (warm-up, cool-down) only when that
-      role's share is at least 10
-    summary: swapSegment checks a candidate work's floor against the slot's current
-      rounded minutes, not the optional role's underlying share. A cool-down
-      with a share of 9 can be rounded to 10 and then accept a whole work. The
-      swap proof checks minutes but not the role-share rule.
-    counterexample: At a 38-minute budget, after removing two works, a settled drill
-      cool-down can have a share of 9 but be rounded to 10. Swap then accepts a
-      gusheh because its 10-minute floor fits the displayed 10, even though the
-      cool-down share is below 10.
-createdAt: 2026-10-14T11:42:50.268Z
-sealedAt: 2026-10-14T13:40:32.128Z
+verdict: approve
+createdAt: 2026-10-14T14:49:23.548Z
+sealedAt: 2026-10-14T15:09:15.465Z
 ---
 
 # Review: Give works real plan time, make sound and updates recover, and capture item changes after practice
@@ -79,284 +20,8 @@ sealedAt: 2026-10-14T13:40:32.128Z
 - **Contract:** 20261014-give-works-real-plan-time-make-sound-and-d492
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/51
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `e5f917691d59e814f595efe04e3f73dc715614b8`
+- **Diff patch-id:** `995cbd90e022364fb531812f5a736347112b3f92`
 - **Computed by:** prismatica 0.10.0 · build sha256:95c0f07703a730a1 · installed package, not registry-verified
-
-## The plan the owner approved
-
-Verbatim. `assumptions` and `possibleConflicts` are the Planner's advisory
-reading — check them against the diff rather than accepting them.
-
-````yaml
-# Approved intent: Give works real plan time, make sound and updates recover, and capture item changes after practice
-
-The owner imported this plan and confirmed the change. Its approved meaning is
-recorded here verbatim; the transport snapshot is deliberately omitted.
-
-- **Kind:** existing-flow
-- **Risk tier:** heavy
-- **Builder:** claude
-
-## What the owner asked for
-
-This is the wording the owner and the planning agent settled on together, taken
-from the plan itself — not a description reconstructed afterwards.
-
-> Plan one coherent Practice Compass lane for these observed problems, starting from the current code and product flows rather than assuming the solution:
-> 
-> - Setar/Tar session plans sometimes give practice items only ~2–3 minutes. For Persian repertoire this can be too short to practise meaningfully, especially Setar. Reassess the planning/allocation logic for Setar and Tar while preserving sensible use of the total session time and avoiding arbitrary rules.
-> - Practice sound on Mac is unreliable: sometimes it works, sometimes it stops working until the app is closed and reopened. Find the real failure family rather than patching one trigger.
-> - On Mac, “A new version is ready” can return repeatedly even after pressing Reload several times (not sure if this issue happens on the iphone version). Diagnose the update/service-worker lifecycle and make updating reliable without creating reload loops or stale-version states.
-> - After practising an item, the Save/Close block flow may be the natural moment to revise item state such as Status (and assess whether Primary focus, Personal priority / Current effort belong there too). Design the smallest useful post-practice editing experience rather than simply copying the repertoire edit form.
-> - Routine plans currently finish without an equivalent chance to capture what the routine items showed. Assess whether routine items should support the same “A few seconds to capture what happened” concept, a lighter variant, or no extra step if that would harm the routine flow.
-> 
-> Prefer one coherent lane if these issues can be solved together cleanly; split only for a real technical or governance reason. Preserve the core Practice Compass principles: quick start/close, local-first behaviour, deterministic planning, no fake practice history, no unnecessary friction, and no change to unrelated product behaviour.
-> 
-> Agreed while planning:
-> - Builder: Claude.
-> - Plan floor: a whole work (gusheh, piece, anything with dastgāh/form/composer) never gets less than the app's existing 10-min standard block in a multi-item plan. Drills, technique and passages keep the 2-min floor. Fewer, longer segments; warm-up/cool-down never take a work below 10 or soak up leftovers. Same rule for Guitar pieces. No new setting.
-> - Close screen: “Status + Primary focus + Current effort. These are the fields most likely to change as a direct result of the practice that just happened. Keep them in an optimal way that Close remains fast. Leave Personal priority to the full item edit screen, since that is a broader planning decision rather than an immediate practice outcome.”
-> - Sound clue: “Not sure if it is due to the following but out of the above options, this might be the only one (if this is the reason): the app sat idle for a long time between blocks.”
-
-## Why
-
-One lane: the five reports meet in the practise→close loop, the plan that feeds it, the routine that parallels it and the banner over all of them. They share useStore.ts, CloseBlock/RoutineRunner, practiceCue.ts, Layout.tsx and five AGENTS.md rules with 9 bytes of headroom, so separate lanes would collide on the same files and budget; none needs a schema change or a new Flow, so there is no technical or governance reason to split. Each fix sits at the layer the evidence names: the plan allocator (material-blind floors, optional roles absorbing overflow), the sound context lifecycle (a dead context is never replaced), the update controller and build stamp (workbox-window heuristics, per-commit stamps), and two capture surfaces that reuse existing writes (closeSession's status path, the routine's own blocks). Routine capture is the assessed lighter variant: it happens after the clock stops, so it cannot harm the routine, and a full close per item would turn one finish into several forms.
-
-## Today
-
-1. Plans: allocateMinutes floors every segment at 2 min whatever the material. The warm-up is pinned at round(B×0.12) (2 min at 15–20, 3 at 25) and the cool-down's low weight leaves it 2–6 min, so the familiar gushehs and pieces Setar fills those roles with get 2–3 minutes (docs/scheduling-evidence.md's own 20-minute example warms up on a darāmad for 2). Review minutes above reviewSlotMax overflow into the cool-down: a synthetic Setar library with many due reviews plans 20 min as warm-up 2 / review 7 / cool-down 11 and 40 min as 5/7/7/21. The segment count comes from a budget table alone; Remove re-spreads the same way.
-2. Sound: practiceCue.ts keeps one page-lifetime AudioContext. A tap resumes it only when its state is not 'running' and replaces it only when 'closed', so a context left 'running' but silent, or 'suspended'/'interrupted' in a way resume() cannot clear (the owner's clue: long idle between blocks), is reused by every later Start and the cue stays silent until the app is reopened. The tests' stand-in only models a resume() that works.
-3. Updates: Layout's UpdateBanner uses vite-plugin-pwa's useRegisterSW (workbox-window). Reproduced by the planner on a production build in Playwright Chromium and WebKit: on an uncontrolled page (first launch after install, or after a hard reload) an update shows the banner with no waiting worker and Reload does nothing however often it is tapped; with two windows open, Reload in one silently reloads the other. Controlled single-window updates, and a newer waiting worker superseding an older one, do work. Separately, vite.config.ts stamps HEAD's SHA and the build date into the entry chunk, so every push to main publishes a new service worker, including the records-only 'approve pending Atlas records' pushes that follow most merges (deploy history: a second deploy 6–60 minutes after merges), and the banner returns with nothing new behind it.
-4. Close: status changes only by accepting suggestStatusAfterBlock's suggestion (three cases); Primary focus and Current effort are editable only on the item page.
-5. Routines: finishRoutine writes one not_logged block per bound item and Routine complete lists minutes only; what the items showed cannot be recorded.
-
-## Instead
-
-1. Plans (plan.ts; build, Remove and Swap share one allocator). Floors: in a multi-segment plan a segment on a whole work (isWork: a top-level gusheh, full piece or item with Persian identity) gets at least DEFAULT_DURATION_MINUTES (the 10-minute standard block), and no review clamp, Swap or Remove takes it below that; other material keeps MIN_SEGMENT_MINUTES (2); a one-segment plan still takes the whole budget (≤25). Seating: a segment is seated only while every seated segment can still reach its floor; optional roles go first, then the lowest-priority work; the anchor always stays. Optional roles never exceed their share: the warm-up's is its pinned round(B×warmupShare); the cool-down's is its weighted split of the minutes after the warm-up plus at most one rounding minute, computed with it seated. A work fills an optional role only when that share is at least 10; otherwise the role goes to suitable non-work material or is omitted. Overflow: minutes beyond floors and shares go to deep and lesson work first, then to reviews (each up to 25); as today, the review-slot ceiling holds while deep or lesson work can take the minutes; neither review clamping nor capped work ever feeds a warm-up or cool-down; anything left is the existing honest remainder, which therefore still only appears when every seated segment is at 25. Swap offers only candidates whose floor fits the slot; Remove re-allocates under the same rules; the floor is fixed on the segment when planned (an optional field: a running plan persisted before the change has none and still runs). Same rule on every instrument; drill-only plans keep today's minutes exactly wherever no warm-up or cool-down used to absorb overflow and no segment reached 25. docs/scheduling-evidence.md §5 publishes the floor, the optional-role and overflow rules and regenerated representative outputs; Settings' review-slot hints say the ceiling holds while other planned work can use the minutes and that a whole work's review gets at least 10.
-2. Sound (practiceCue.ts): every readying tap (Start, Resume on Active, Close and Routine, Test practice sound, Turn on sound) closes the page's current context and creates and resumes a fresh one synchronously inside that tap, so a dead context never outlives the next tap. At most one live context; a boundary still plays only on the current running context after a granted claim and never creates, resumes or replays; an older tap's pending Test never plays. The previous lane's sound browser test and its unit companion evolve into this lane's two sound acceptances (renamed, not duplicated); scripts/check-setar-practice-families.mjs (acceptance rows, mutation owners, and the anchor of every mutation whose code this lane edits in practiceCue.ts, useStore.ts and RoutineRunner.tsx) and docs/setar-practice-reliability.md move with them, so tests/setar-practice-proof.test.ts still finds every mutation exactly once with an owner. The stand-in also models a context that starts suspended inside a tap, so dropping the in-tap resume() still fails. New code never duplicates a mutation's find text (for example the store's `set({ db: outcome.db });` / `return null;` anchor).
-3. Updates: one app-owned controller replaces useRegisterSW, started with the page rather than with Layout (one registration, one set of listeners and one hourly, foreground and reconnect check per page; injectRegister false; generateSW prompt mode and its SKIP_WAITING handler kept). It is inert outside a production build and absorbs a failed registration calmly, so dev-server journeys see no registration and no page error. Whenever this window runs older code than the newest build the device has found (a waiting worker; a newer worker active since this page loaded, never the first install of this page's own build; or a route whose code an update removed) it shows the existing 'A new version is ready.' with Reload; a missing route shows it in place of the route instead of breaking. Only a Reload tap reloads, only its own window, exactly once, landing on that newest build: SKIP_WAITING first when a worker waits, then reload once the new worker controls or activates; directly otherwise; repeated taps never stack. Nothing else reloads a window: not another window's update, not a missing route. The offer waits while a close is unsaved (/close) and appears right after Save or Discard; it also shows on the refused-hydration screen that asks for an update. The build stamp becomes the date and SHA of the last commit that changed a file the production build reads (src/, public/, index.html, vite.config.ts and the stamp module, tsconfig*.json, package*.json; one list, exported by the stamp module; HEAD when history is shallow; an explicit override wins, for tests and owner checks). With a deterministic build from those inputs, records-, docs- and tests-only pushes publish byte-identical files and so no offer; Settings still names the stamp.
-4. Close (CloseBlock, closeSession): one collapsed line under the minutes shows Status · Primary focus · Current effort with Change; an engine-suggested status shows there as the pending change, pre-selected as today. Expanded, it reuses ItemDetail's status pills, ItemForm's focus select (including None) and the effort RatingInput. Edits are saved in the block's single write by key presence (untouched fields are not written; clearing focus is a write). The review decision and its preview use the item as practised, so the date shown is the date saved; the block's own mode and focus are never rewritten. Save and Save without a result keep explicit edits (the engine's suggestion only with a result); Discard writes nothing. Personal priority stays on the item page.
-5. Routines: Routine complete optionally records, per recorded item, one of the six results and a one-line observation, written onto that run's own blocks (ids returned by the finish that created them) with acknowledged persistence. lastResult follows only while that block is the item's latest logged one; no review, SM-2 state, date, status or minutes change; nothing is required, and Back leaves the minutes saved. Captured results are real evidence for every result reader (item history, lastResult, the close screen's three-same hint and its suppression of the status suggestion, Insights' repeated and improved cards, the teacher report, class-question context) and never reach the review decision; docs/scheduling-evidence.md §6's routine row says so.
-6. AGENTS.md rules change in place (sound context, routine not_logged, plan floor, close edits, update reload and build stamp); CLAUDE.md+AGENTS.md stay ≤32,768 bytes (9 bytes of headroom at base: condense, never drop an anchored prohibition). DECISIONS.md gets a dated entry; docs/setar-practice-reliability.md's sound rows follow the new invariant.
-
-Proof route: Node, `npx vitest run src/domain/plan.test.ts src/domain/blocks.test.ts src/domain/routines.test.ts src/components/practiceCue.test.ts src/components/appUpdate.test.ts tests/app-version.test.ts`, on committed synthetic fixtures with fixed clocks; browsers, `npx vitest run tests/practice-cues.browser.test.ts tests/post-practice.browser.test.ts tests/app-update.browser.test.ts`, in Chromium and WebKit. Limits: fake audio proves context lifecycle, not audibility; a local service worker proves the lifecycle, not GitHub Pages' CDN; both remain OWNER. Before first review, show each family test red on the base commit wherever the base can run it, and show these partial fixes failing their acceptance: a floor on warm-ups only, an instrument-keyed floor, overflow still into the cool-down, renewal only when closed or at a boundary, workbox-window kept with a reload fallback, an automatic reload when a route's code is missing, an offer on a first install, a HEAD-based stamp, a review computed from the edited item, and routine annotation by item instead of block. Stop when every acceptance passes, npm test, lint, typecheck, build and secrets pass, and the three OWNER checks are handed back; rework fixes the named failing row and its family, not wholesale reruns.
-
-## Advisory — the planning agent's reading, not established fact
-
-The two lists below are the planning agent's interpretation. Deterministic code
-checked that this plan is complete, in scope, correctly bound, and correctly
-tiered; it did not and cannot check whether this reading of the app is right.
-Verify them against the code.
-
-**Assumptions**
-
-- The Mac sound failure is a dead AudioContext surviving into later blocks; long idle between blocks is the owner's only clue, and no automation can prove audibility.
-- The owner's Mac app may be Safari's Add to Dock or a Chrome-installed app; both engines reproduced the update failures identically, and the fixes are engine-agnostic.
-- isWork is the app's existing definition of a musical work, so Tar course drills and passages keep the 2-minute floor while gushehs and pieces on every instrument get 10.
-- Routine capture lives on the Routine complete screen only; leaving or reloading that screen forgoes the capture, never the minutes already saved.
-- The first update onto this lane's build is still offered by the old banner each device is running; where that page is uncontrolled its Reload may do nothing (the defect fixed here), and closing and reopening the app once installs it. Every later update goes through the new controller.
-- 'Newest' means the newest build this device has found (checked hourly, on return to the foreground and on reconnect); a Reload tap never waits on the network.
-
-**Possible conflicts**
-
-- Reverses part of DECISIONS.md 2026-10-05 ('one page-lifetime context'); the owner's report is the new evidence. That lane's family script and proof test pin the sound tests' titles and quote practiceCue.ts code, so they move together (see desired 2).
-- AGENTS.md has 9 bytes of headroom and five rules change; condensing must not drop a prohibition tests/agent-context.test.ts anchors.
-- Plans change on every instrument with works (Guitar pieces too): fewer, longer segments, and Setar warm-ups mostly disappear below about 80 minutes (at the default 12% share) unless a familiar drill exists.
-- Flow text goes stale and is reconciled after building, with no new Flow: practise-todays-recommendation steps 3–6, run-a-session-plan steps 1–2, work-a-pathway-stage's routine finish, install-the-app-and-keep-it-current steps 3–4.
-
-## The complete approved plan
-
-```json
-{
-  "format": "prismatica/start@1",
-  "request": "Plan one coherent Practice Compass lane for these observed problems, starting from the current code and product flows rather than assuming the solution:\n\n- Setar/Tar session plans sometimes give practice items only ~2–3 minutes. For Persian repertoire this can be too short to practise meaningfully, especially Setar. Reassess the planning/allocation logic for Setar and Tar while preserving sensible use of the total session time and avoiding arbitrary rules.\n- Practice sound on Mac is unreliable: sometimes it works, sometimes it stops working until the app is closed and reopened. Find the real failure family rather than patching one trigger.\n- On Mac, “A new version is ready” can return repeatedly even after pressing Reload several times (not sure if this issue happens on the iphone version). Diagnose the update/service-worker lifecycle and make updating reliable without creating reload loops or stale-version states.\n- After practising an item, the Save/Close block flow may be the natural moment to revise item state such as Status (and assess whether Primary focus, Personal priority / Current effort belong there too). Design the smallest useful post-practice editing experience rather than simply copying the repertoire edit form.\n- Routine plans currently finish without an equivalent chance to capture what the routine items showed. Assess whether routine items should support the same “A few seconds to capture what happened” concept, a lighter variant, or no extra step if that would harm the routine flow.\n\nPrefer one coherent lane if these issues can be solved together cleanly; split only for a real technical or governance reason. Preserve the core Practice Compass principles: quick start/close, local-first behaviour, deterministic planning, no fake practice history, no unnecessary friction, and no change to unrelated product behaviour.\n\nAgreed while planning:\n- Builder: Claude.\n- Plan floor: a whole work (gusheh, piece, anything with dastgāh/form/composer) never gets less than the app's existing 10-min standard block in a multi-item plan. Drills, technique and passages keep the 2-min floor. Fewer, longer segments; warm-up/cool-down never take a work below 10 or soak up leftovers. Same rule for Guitar pieces. No new setting.\n- Close screen: “Status + Primary focus + Current effort. These are the fields most likely to change as a direct result of the practice that just happened. Keep them in an optimal way that Close remains fast. Leave Personal priority to the full item edit screen, since that is a broader planning decision rather than an immediate practice outcome.”\n- Sound clue: “Not sure if it is due to the following but out of the above options, this might be the only one (if this is the reason): the app sat idle for a long time between blocks.”",
-  "builder": "claude",
-  "summary": "Give works real plan time, make sound and updates recover, and capture item changes after practice",
-  "rationale": "One lane: the five reports meet in the practise→close loop, the plan that feeds it, the routine that parallels it and the banner over all of them. They share useStore.ts, CloseBlock/RoutineRunner, practiceCue.ts, Layout.tsx and five AGENTS.md rules with 9 bytes of headroom, so separate lanes would collide on the same files and budget; none needs a schema change or a new Flow, so there is no technical or governance reason to split. Each fix sits at the layer the evidence names: the plan allocator (material-blind floors, optional roles absorbing overflow), the sound context lifecycle (a dead context is never replaced), the update controller and build stamp (workbox-window heuristics, per-commit stamps), and two capture surfaces that reuse existing writes (closeSession's status path, the routine's own blocks). Routine capture is the assessed lighter variant: it happens after the clock stops, so it cannot harm the routine, and a full close per item would turn one finish into several forms.",
-  "kind": "existing-flow",
-  "flowId": "practise-todays-recommendation",
-  "currentBehaviour": "1. Plans: allocateMinutes floors every segment at 2 min whatever the material. The warm-up is pinned at round(B×0.12) (2 min at 15–20, 3 at 25) and the cool-down's low weight leaves it 2–6 min, so the familiar gushehs and pieces Setar fills those roles with get 2–3 minutes (docs/scheduling-evidence.md's own 20-minute example warms up on a darāmad for 2). Review minutes above reviewSlotMax overflow into the cool-down: a synthetic Setar library with many due reviews plans 20 min as warm-up 2 / review 7 / cool-down 11 and 40 min as 5/7/7/21. The segment count comes from a budget table alone; Remove re-spreads the same way.\n2. Sound: practiceCue.ts keeps one page-lifetime AudioContext. A tap resumes it only when its state is not 'running' and replaces it only when 'closed', so a context left 'running' but silent, or 'suspended'/'interrupted' in a way resume() cannot clear (the owner's clue: long idle between blocks), is reused by every later Start and the cue stays silent until the app is reopened. The tests' stand-in only models a resume() that works.\n3. Updates: Layout's UpdateBanner uses vite-plugin-pwa's useRegisterSW (workbox-window). Reproduced by the planner on a production build in Playwright Chromium and WebKit: on an uncontrolled page (first launch after install, or after a hard reload) an update shows the banner with no waiting worker and Reload does nothing however often it is tapped; with two windows open, Reload in one silently reloads the other. Controlled single-window updates, and a newer waiting worker superseding an older one, do work. Separately, vite.config.ts stamps HEAD's SHA and the build date into the entry chunk, so every push to main publishes a new service worker, including the records-only 'approve pending Atlas records' pushes that follow most merges (deploy history: a second deploy 6–60 minutes after merges), and the banner returns with nothing new behind it.\n4. Close: status changes only by accepting suggestStatusAfterBlock's suggestion (three cases); Primary focus and Current effort are editable only on the item page.\n5. Routines: finishRoutine writes one not_logged block per bound item and Routine complete lists minutes only; what the items showed cannot be recorded.",
-  "desiredBehaviour": "1. Plans (plan.ts; build, Remove and Swap share one allocator). Floors: in a multi-segment plan a segment on a whole work (isWork: a top-level gusheh, full piece or item with Persian identity) gets at least DEFAULT_DURATION_MINUTES (the 10-minute standard block), and no review clamp, Swap or Remove takes it below that; other material keeps MIN_SEGMENT_MINUTES (2); a one-segment plan still takes the whole budget (≤25). Seating: a segment is seated only while every seated segment can still reach its floor; optional roles go first, then the lowest-priority work; the anchor always stays. Optional roles never exceed their share: the warm-up's is its pinned round(B×warmupShare); the cool-down's is its weighted split of the minutes after the warm-up plus at most one rounding minute, computed with it seated. A work fills an optional role only when that share is at least 10; otherwise the role goes to suitable non-work material or is omitted. Overflow: minutes beyond floors and shares go to deep and lesson work first, then to reviews (each up to 25); as today, the review-slot ceiling holds while deep or lesson work can take the minutes; neither review clamping nor capped work ever feeds a warm-up or cool-down; anything left is the existing honest remainder, which therefore still only appears when every seated segment is at 25. Swap offers only candidates whose floor fits the slot; Remove re-allocates under the same rules; the floor is fixed on the segment when planned (an optional field: a running plan persisted before the change has none and still runs). Same rule on every instrument; drill-only plans keep today's minutes exactly wherever no warm-up or cool-down used to absorb overflow and no segment reached 25. docs/scheduling-evidence.md §5 publishes the floor, the optional-role and overflow rules and regenerated representative outputs; Settings' review-slot hints say the ceiling holds while other planned work can use the minutes and that a whole work's review gets at least 10.\n2. Sound (practiceCue.ts): every readying tap (Start, Resume on Active, Close and Routine, Test practice sound, Turn on sound) closes the page's current context and creates and resumes a fresh one synchronously inside that tap, so a dead context never outlives the next tap. At most one live context; a boundary still plays only on the current running context after a granted claim and never creates, resumes or replays; an older tap's pending Test never plays. The previous lane's sound browser test and its unit companion evolve into this lane's two sound acceptances (renamed, not duplicated); scripts/check-setar-practice-families.mjs (acceptance rows, mutation owners, and the anchor of every mutation whose code this lane edits in practiceCue.ts, useStore.ts and RoutineRunner.tsx) and docs/setar-practice-reliability.md move with them, so tests/setar-practice-proof.test.ts still finds every mutation exactly once with an owner. The stand-in also models a context that starts suspended inside a tap, so dropping the in-tap resume() still fails. New code never duplicates a mutation's find text (for example the store's `set({ db: outcome.db });` / `return null;` anchor).\n3. Updates: one app-owned controller replaces useRegisterSW, started with the page rather than with Layout (one registration, one set of listeners and one hourly, foreground and reconnect check per page; injectRegister false; generateSW prompt mode and its SKIP_WAITING handler kept). It is inert outside a production build and absorbs a failed registration calmly, so dev-server journeys see no registration and no page error. Whenever this window runs older code than the newest build the device has found (a waiting worker; a newer worker active since this page loaded, never the first install of this page's own build; or a route whose code an update removed) it shows the existing 'A new version is ready.' with Reload; a missing route shows it in place of the route instead of breaking. Only a Reload tap reloads, only its own window, exactly once, landing on that newest build: SKIP_WAITING first when a worker waits, then reload once the new worker controls or activates; directly otherwise; repeated taps never stack. Nothing else reloads a window: not another window's update, not a missing route. The offer waits while a close is unsaved (/close) and appears right after Save or Discard; it also shows on the refused-hydration screen that asks for an update. The build stamp becomes the date and SHA of the last commit that changed a file the production build reads (src/, public/, index.html, vite.config.ts and the stamp module, tsconfig*.json, package*.json; one list, exported by the stamp module; HEAD when history is shallow; an explicit override wins, for tests and owner checks). With a deterministic build from those inputs, records-, docs- and tests-only pushes publish byte-identical files and so no offer; Settings still names the stamp.\n4. Close (CloseBlock, closeSession): one collapsed line under the minutes shows Status · Primary focus · Current effort with Change; an engine-suggested status shows there as the pending change, pre-selected as today. Expanded, it reuses ItemDetail's status pills, ItemForm's focus select (including None) and the effort RatingInput. Edits are saved in the block's single write by key presence (untouched fields are not written; clearing focus is a write). The review decision and its preview use the item as practised, so the date shown is the date saved; the block's own mode and focus are never rewritten. Save and Save without a result keep explicit edits (the engine's suggestion only with a result); Discard writes nothing. Personal priority stays on the item page.\n5. Routines: Routine complete optionally records, per recorded item, one of the six results and a one-line observation, written onto that run's own blocks (ids returned by the finish that created them) with acknowledged persistence. lastResult follows only while that block is the item's latest logged one; no review, SM-2 state, date, status or minutes change; nothing is required, and Back leaves the minutes saved. Captured results are real evidence for every result reader (item history, lastResult, the close screen's three-same hint and its suppression of the status suggestion, Insights' repeated and improved cards, the teacher report, class-question context) and never reach the review decision; docs/scheduling-evidence.md §6's routine row says so.\n6. AGENTS.md rules change in place (sound context, routine not_logged, plan floor, close edits, update reload and build stamp); CLAUDE.md+AGENTS.md stay ≤32,768 bytes (9 bytes of headroom at base: condense, never drop an anchored prohibition). DECISIONS.md gets a dated entry; docs/setar-practice-reliability.md's sound rows follow the new invariant.\n\nProof route: Node, `npx vitest run src/domain/plan.test.ts src/domain/blocks.test.ts src/domain/routines.test.ts src/components/practiceCue.test.ts src/components/appUpdate.test.ts tests/app-version.test.ts`, on committed synthetic fixtures with fixed clocks; browsers, `npx vitest run tests/practice-cues.browser.test.ts tests/post-practice.browser.test.ts tests/app-update.browser.test.ts`, in Chromium and WebKit. Limits: fake audio proves context lifecycle, not audibility; a local service worker proves the lifecycle, not GitHub Pages' CDN; both remain OWNER. Before first review, show each family test red on the base commit wherever the base can run it, and show these partial fixes failing their acceptance: a floor on warm-ups only, an instrument-keyed floor, overflow still into the cool-down, renewal only when closed or at a boundary, workbox-window kept with a reload fallback, an automatic reload when a route's code is missing, an offer on a first install, a HEAD-based stamp, a review computed from the edited item, and routine annotation by item instead of block. Stop when every acceptance passes, npm test, lint, typecheck, build and secrets pass, and the three OWNER checks are handed back; rework fixes the named failing row and its family, not wholesale reruns.",
-  "mustNotChange": [
-    "One item · one mode · one focus · one result · one next action; closing stays under 60 seconds, a result is its only requirement, and every new control defaults to unchanged.",
-    "Only closing a block completes a review or advances SM-2; Save without a result never moves the schedule; a routine never completes a review, advances SM-2 or changes a date.",
-    "The review date shown before saving is exactly the date saved; the priority formula, scheduling params and their bounds are unchanged.",
-    "Plans stay deterministic, validated to 5–120 minutes, never over budget, never surfacing resting material and never stored in PracticeDB, sync or backups; the practised-today pool, reasons and core marking keep their meaning.",
-    "Sound is created or resumed only inside an explicit tap, plays only on a granted claim, and is never queued or replayed; the ring and overtime stay the guaranteed signal; no recorded minute, marker or wake lock depends on sound.",
-    "An update replaces code, never data; nothing reloads a window except the musician's Reload tap in that window; reinstalling is never the path; offline practice, the CSP and network endpoints are unchanged.",
-    "No saved-shape change: PracticeDB, PracticeItem, PracticeBlock, Review, SCHEMA_VERSION 16, validateDB, migrations, sync and backup formats are untouched.",
-    "Direction-aware text, aria-pressed-with-class, contrast, one-scroller and journey-wait rules hold for every new control and test."
-  ],
-  "assumptions": [
-    "The Mac sound failure is a dead AudioContext surviving into later blocks; long idle between blocks is the owner's only clue, and no automation can prove audibility.",
-    "The owner's Mac app may be Safari's Add to Dock or a Chrome-installed app; both engines reproduced the update failures identically, and the fixes are engine-agnostic.",
-    "isWork is the app's existing definition of a musical work, so Tar course drills and passages keep the 2-minute floor while gushehs and pieces on every instrument get 10.",
-    "Routine capture lives on the Routine complete screen only; leaving or reloading that screen forgoes the capture, never the minutes already saved.",
-    "The first update onto this lane's build is still offered by the old banner each device is running; where that page is uncontrolled its Reload may do nothing (the defect fixed here), and closing and reopening the app once installs it. Every later update goes through the new controller.",
-    "'Newest' means the newest build this device has found (checked hourly, on return to the foreground and on reconnect); a Reload tap never waits on the network."
-  ],
-  "possibleConflicts": [
-    "Reverses part of DECISIONS.md 2026-10-05 ('one page-lifetime context'); the owner's report is the new evidence. That lane's family script and proof test pin the sound tests' titles and quote practiceCue.ts code, so they move together (see desired 2).",
-    "AGENTS.md has 9 bytes of headroom and five rules change; condensing must not drop a prohibition tests/agent-context.test.ts anchors.",
-    "Plans change on every instrument with works (Guitar pieces too): fewer, longer segments, and Setar warm-ups mostly disappear below about 80 minutes (at the default 12% share) unless a familiar drill exists.",
-    "Flow text goes stale and is reconciled after building, with no new Flow: practise-todays-recommendation steps 3–6, run-a-session-plan steps 1–2, work-a-pathway-stage's routine finish, install-the-app-and-keep-it-current steps 3–4."
-  ],
-  "scope": {
-    "allow": [
-      "AGENTS.md",
-      "DECISIONS.md",
-      "README.md",
-      "docs/scheduling-evidence.md",
-      "docs/setar-practice-reliability.md",
-      "vite.config.ts",
-      "tsconfig.node.json",
-      "scripts/app-version.mjs",
-      "src/main.tsx",
-      "src/App.tsx",
-      "src/vite-env.d.ts",
-      "src/domain/plan.ts",
-      "src/domain/plan.test.ts",
-      "src/domain/blocks.ts",
-      "src/domain/blocks.test.ts",
-      "src/domain/routines.ts",
-      "src/domain/routines.test.ts",
-      "src/domain/index.ts",
-      "src/store/useStore.ts",
-      "src/pages/CloseBlock.tsx",
-      "src/pages/RoutineRunner.tsx",
-      "src/pages/SessionPlan.tsx",
-      "src/pages/ActiveBlock.tsx",
-      "src/pages/Settings.tsx",
-      "src/components/practiceCue.ts",
-      "src/components/practiceCue.test.ts",
-      "scripts/check-setar-practice-families.mjs",
-      "src/components/appUpdate.ts",
-      "src/components/appUpdate.test.ts",
-      "src/components/Layout.tsx",
-      "src/components/ui.tsx",
-      "src/components/direction.test.ts",
-      "src/components/pressedState.test.ts",
-      "src/styles/global.css",
-      "tests/practice-cues.browser.test.ts",
-      "tests/post-practice.browser.test.ts",
-      "tests/app-update.browser.test.ts",
-      "tests/app-version.test.ts",
-      "tests/practiceBrowser.ts",
-      "tests/daily-practice.browser.test.ts",
-      "tests/practice-information.browser.test.ts",
-      "tests/practice-information-layout.browser.test.ts",
-      "tests/review-ownership.browser.test.ts"
-    ],
-    "forbid": [
-      ".github/**",
-      "public/**",
-      "package.json",
-      "package-lock.json",
-      "src/domain/types.ts",
-      "src/domain/io.ts",
-      "src/domain/migrations.ts",
-      "src/domain/scheduling.ts",
-      "src/domain/scoring.ts",
-      "src/domain/practiceSignal.ts",
-      "tests/journey-waits.test.ts",
-      "tests/agent-context.test.ts",
-      "tests/ci-browser-setup.test.ts",
-      "tests/setar-practice-proof.test.ts"
-    ]
-  },
-  "exclusions": [
-    "Cue timing while the window is hidden or occluded (browser timer throttling): a separate family the owner did not report; no audio pre-scheduling, notifications or push.",
-    "Personal priority at close; status, focus or effort editing at routine finish; a full close per routine item.",
-    "Any new setting, scheduling param or bound, or a change to any knob's default or bounds.",
-    "Deploy workflow, CDN caching, service-worker strategy (stays generateSW in prompt mode) and dependency changes.",
-    "How a running plan advances, skips or revalidates, StartBlock defaults, and recommendations."
-  ],
-  "acceptance": [
-    {
-      "description": "src/domain/plan.test.ts, independently derived expectations on committed synthetic fixtures (Setar works with many due reviews and class commitments, Tar drills, Guitar pieces plus drills, parts) × budgets 5, 10, 12, 15, 20, 25, 30, 45, 60, 90, 120 × warmupShare 0.10/0.15 × review windows: no work segment under 10 in a multi-segment plan and none under 2; total ≤ budget and equal to it unless every segment is at 25; the anchor always seated; warm-up and cool-down never above their defined shares, holding a work only when that share is at least 10, and never carrying overflow; overflow reaches deep and lesson work before reviews, and the review ceiling holds while deep or lesson work can take the minutes; Remove and Swap obey the same floors; a persisted run without floors still starts; drill-only fixtures in which no warm-up or cool-down absorbed overflow and no segment reaches 25 equal the base allocator's literal outputs, captured before the change; repeated builds deep-equal. Red on base for the Setar fixtures (2-minute warm-up, 11–21-minute cool-down).",
-      "test": "planned whole works keep the standard block and the plan adapts its segment count"
-    },
-    {
-      "description": "src/components/practiceCue.test.ts: each dead state (running with a frozen clock, interrupted that resume() cannot clear, suspended after a resolved resume, closed by the browser) plus the existing throw, reject, hang and constructor faults × each readying entry (start, resume, Test, Turn on sound): the next tap closes the old context and creates and resumes exactly one new one; one live context; a boundary then plays once on it; boundaries never create, resume or replay; an older Test request never plays. This is the evolved unit companion of the 2026-10-05 sound acceptance. Red on base: the frozen running context is reused and stays silent.",
-      "test": "every readying tap replaces the page's sound context and a boundary never revives a dead one"
-    },
-    {
-      "description": "tests/practice-cues.browser.test.ts, Chromium and WebKit, through mounted screens with CUE_PORTS extended by the dead states: after the context dies, the next tap through every door (Today Start, StartBlock, stage ▶, routine card Start and duration, plan Begin, Active Resume, Close Back, Routine Resume, Turn on sound, Settings Test) creates and resumes a fresh context inside that click on the tapped route, closes the old one, and the next boundary cues exactly once; recorded minutes and markers are unchanged. This is the 2026-10-05 one-context journey, renamed and evolved to one live context rather than deleted.",
-      "test": "practice sound returns at the next tap after the context dies through every start and resume door"
-    },
-    {
-      "description": "Node (closeSession with mocked idb as practiceCue.test.ts already does, or the pure helper it delegates to): edit present vs absent × status (suggested, other, unchanged) × primary focus (set, cleared, unchanged) × effort (changed, unchanged) × Save, Save without a result, Discard × auto, interval and manual review modes: only chosen fields change, in the block's single write; the saved review date and type equal planNextReview on the pre-edit item; the block's mode and focus are untouched; Save without a result keeps explicit edits and drops the engine suggestion; Discard writes nothing; importance, notes, review fields and SR state change only as the review decision says.",
-      "test": "closing a block saves only the item edits the owner chose and decides the review from the item as practised"
-    },
-    {
-      "description": "tests/post-practice.browser.test.ts, Chromium and WebKit at 390x844: Start, Finish, then the close screen shows the collapsed item line with current values; Change, pick status, focus and effort, Save; after reload the item page shows them and the saved review date equals the line shown before saving; an untouched close leaves those item fields equal; Save without a result and Discard behave as the domain acceptance says; direction and pressed-state ledgers cover the new controls.",
-      "test": "close screen revises status focus and effort in one tap and saves them with the block"
-    },
-    {
-      "description": "src/domain/routines.test.ts: this run's blocks vs another run's or older blocks vs unknown ids × each result vs not_logged vs an invalid value × observation present or empty × an item with a later logged block: only this run's blocks change; an invalid value is refused naming the block; lastResult moves only when the block is the item's latest logged one; nextReviewDate, open reviews, SR fields, srLastProgressDay, status, minutes and counters are unchanged; repeating the same capture is a no-op; the existing pure result readers (recentResults, lastResultsAllSame, the Insights cards, the report) see the captured result.",
-      "test": "routine capture annotates only its own run's blocks and never moves a review or schedule"
-    },
-    {
-      "description": "tests/post-practice.browser.test.ts, Chromium and WebKit: run a routine with two bound items and an unbound segment, Finish & save, and the blocks are persisted as not_logged before any capture; record a result for one item and a note for the other; after reload the item history shows them and due reviews are still due; skipping the capture leaves not_logged; reloading on Routine complete keeps the minutes.",
-      "test": "routine complete captures what each item showed without delaying the save"
-    },
-    {
-      "description": "src/components/appUpdate.test.ts with fake container, registration and workers: controlled vs uncontrolled page × first install of this page's build vs update found at registration vs later × waiting vs activated without waiting vs superseded by a newer waiting worker vs activated by another window vs a route whose code is gone × one vs repeated taps × /close vs another route: the offer appears exactly when this window runs older code (never for the first install) and clears once the newest build lands; one tap gives exactly one reload, after the new worker controls or activates, or directly when nothing waits; nothing reloads without a tap in that window; on /close the offer waits until the close is saved or discarded; remounting adds no registration, listener or timer; outside a production build nothing registers and nothing throws.",
-      "test": "the update offer follows the live registration and only the tapping window reloads"
-    },
-    {
-      "description": "tests/app-update.browser.test.ts, Chromium and WebKit, on real production builds made by the test into temp dirs outside the repo (dist/ untouched): A and V2 from the repository with different stamps through the explicit override, each served from its own directory so A-only chunks are gone once V2 is served, plus V3, a sw.js byte-variant of V2; local server, no network. Rows: (A) a fresh page installs A with no offer, then is offered V2 while uncontrolled, found early and late; (B) a controlled page; (C) two windows: one tap reloads only that window, while the other shows the offer, and navigating it to a route whose A chunk is gone shows the offer in place with no page error, its own tap landing on V2 at that route; (D) V3 superseding a waiting V2; (E) no offer reappears across foreground checks while the same build is served; (F) on /close the offer waits until Save or Discard. Every tap reloads exactly once onto the newest found build; nothing reloads without a tap. Red on base for A and C, as the planner reproduced. Waits follow tests/journey-waits.test.ts.",
-      "test": "a published update installs on the first reload in both engines without loops or surprise reloads"
-    },
-    {
-      "description": "tests/app-update.browser.test.ts, sharing those builds: B, built from a temp tree holding only the inputs the stamp module lists (node_modules linked) with A's stamp, equals A byte for byte across every file, sw.js and its precache manifest included, so the build is deterministic and reads nothing else; V2's different stamp changes sw.js. In Chromium and WebKit a page on A that is served B finds no update and shows no offer across foreground checks. With the stamp test, this proves a records-, docs- or tests-only push publishes nothing a browser sees as new.",
-      "test": "an unchanged app rebuilds byte for byte and offers no update"
-    },
-    {
-      "description": "tests/app-version.test.ts in a temp git repo, driven by the stamp module's own input list: commits touching .prismatica/, docs/, tests/, other scripts or any *.md leave the stamp unchanged; a commit touching each listed input (src/, public/, index.html, vite.config.ts, the stamp module, tsconfig*.json, package.json, package-lock.json) changes it; the date is the commit's, not the build clock's; shallow history falls back to HEAD; an explicit override wins.",
-      "test": "the build stamp names the last commit that changed what ships"
-    },
-    {
-      "description": "OWNER, before approving (deploy.yml publishes only main; there is no branch preview), on the Mac through `npm run preview` at http://localhost:4173/practice-compass/ (a secure context, docs/nas-topology.md), following the procedure the builder hands over, which uses the stamp override in place of a code change: open the lane build in two windows; publish a rebuild with a new stamp: both show 'A new version is ready.', one Reload tap lands that window on the new build (Settings names it), and the other reloads only on its own tap; publish an unchanged rebuild: no offer appears. The iPhone's update path is observed after ship, not here.",
-      "test": "manual:OWNER"
-    },
-    {
-      "description": "OWNER, before approving: on the Mac through the same localhost preview, leave the app idle between blocks for a long while (or let the display sleep), then tap Start: the target cue is heard without closing the app. On the iPhone through the NAS HTTPS mirror (docs/nas-topology.md), Start a block and hear its cue; if no mirror serves, the iPhone half is environment-blocked rather than failed and is observed after ship. Audibility is the owner's.",
-      "test": "manual:OWNER"
-    },
-    {
-      "description": "OWNER, before approving, on the localhost preview holding a full backup exported from the production app and imported there, with sync never connected so no test practice reaches real history: 20-, 30- and 45-minute Setar plans give no piece or gusheh less than 10 minutes and still read as a sensible session; closing a block with a status, focus and effort change, and capturing a routine's results, each take well under a minute.",
-      "test": "manual:OWNER"
-    }
-  ],
-  "risk": {
-    "touchesAuth": false,
-    "touchesPayments": false,
-    "touchesSavedData": true,
-    "copyOnly": false,
-    "rationale": "Writes saved practice data without changing its shape: item status, primary focus and effort at close; results and observations on a routine's own blocks. Adds an optional floor field to persisted running-plan segments, and changes the code path that reloads pages on update. No schema bump, no migration, no sync or backup format change."
-  },
-  "delta": {
-    "today": "Close changes Status only by accepting one of three suggestions, the practice sound can die for good after a long idle, and around this flow plans give works 2–3-minute slots, routine finishes record no result, and the update banner sticks or reloads windows nobody tapped.",
-    "instead": "Close revises Status, Primary focus and Current effort behind one collapsed line, every Start or Resume tap readies fresh sound, plans give every whole work at least the standard 10-minute block, Routine complete can record what each item showed, and one Reload tap lands the newest build in the window that asked.",
-    "keep": [
-      "One item, one mode, one focus, one result, one next action; closing stays under a minute.",
-      "Only closing a block completes a review; the date shown is the date saved.",
-      "Recorded minutes never depend on sound, the wake lock or updates."
-    ],
-    "assumptions": [],
-    "showMe": "Run the Node route and the three browser journeys named in the plan in Chromium and WebKit: the 20-minute Setar fixture loses its 2-minute warm-up, a dead context recovers at the next Start, the uncontrolled-page update lands on one tap while an unchanged rebuild offers nothing, and close and routine captures persist through reload. Then the three OWNER checks."
-  },
-  "desiredRules": [],
-  "docsDelta": [
-    "AGENTS.md",
-    "DECISIONS.md",
-    "docs/scheduling-evidence.md",
-    "docs/setar-practice-reliability.md"
-  ]
-}
-```
-````
 
 ## The Delta this change was framed from
 
@@ -388,40 +53,717 @@ Run the Node route and the three browser journeys named in the plan in Chromium 
 
 
 
-## Files in this diff
+## Re-review after a rejection — scoped to the rework
 
-- AGENTS.md
-- DECISIONS.md
-- docs/scheduling-evidence.md
-- docs/setar-practice-reliability.md
-- scripts/app-version.mjs
-- scripts/check-setar-practice-families.mjs
-- src/App.tsx
-- src/components/Layout.tsx
-- src/components/appUpdate.test.ts
-- src/components/appUpdate.ts
-- src/components/direction.test.ts
-- src/components/practiceCue.test.ts
-- src/components/practiceCue.ts
-- src/domain/blocks.test.ts
-- src/domain/blocks.ts
-- src/domain/plan.test.ts
-- src/domain/plan.ts
-- src/domain/routines.test.ts
-- src/domain/routines.ts
-- src/main.tsx
-- src/pages/CloseBlock.tsx
-- src/pages/RoutineRunner.tsx
-- src/pages/Settings.tsx
-- src/store/useStore.ts
-- src/vite-env.d.ts
-- tests/app-update.browser.test.ts
-- tests/app-version.test.ts
-- tests/daily-practice.browser.test.ts
-- tests/post-practice.browser.test.ts
-- tests/practice-cues.browser.test.ts
-- tsconfig.node.json
-- vite.config.ts
+The last review of this contract asked for changes. This is NOT the whole plan
+restated: it is what changed since the previously reviewed head, the findings
+that review recorded, and the paths the rework touched — read any file you need
+from the lane. The same Check already bound to this head is not to be rerun
+wholesale.
+
+Verify each prior finding's FAMILY across every consumer in the repository, not
+only the lines this rework changed: a family is closed when no instance of its
+invariant survives anywhere, and a fix that reached one consumer while a sibling
+still breaks it is not closed.
+
+**Approved intent:** `.prismatica/intents/20261014-give-works-real-plan-time-make-sound-and-d492.md`
+
+**Findings from the previous review:**
+
+- **The update offer waits while a close is unsaved (/close); on /close it shows only when the close screen's own code is missing** — offerShownOn (src/components/appUpdate.ts) unhides the banner on /close whenever missingRoute is set, and routeCodeMissing() / page() (src/App.tsx) record no route identity, so a missing chunk for ANY route shows 'A new version is ready.' with Reload over an unsaved close, contradicting the contract and offerShownOn's own doc ('unless the close screen's own code is the route that is missing'). Instances: offerShownOn, routeCodeMissing, page(). The unit test 'the update offer follows the live registration and only the tapping window reloads' asserts '/close included', locking in the page-wide behaviour; row F of 'a published update installs on the first reload in both engines without loops or surprise reloads' covers only a waiting worker. Checked clean: LayoutUpdateBanner (sole caller), the refused-hydration UpdateBanner.
+  _counterexample:_ Window W has loaded ActiveBlock and CloseBlock. Another window taps Reload (V2 activates, A chunks purged), or W is uncontrolled and the server serves V2. In W open More -> its chunk 404s -> missingRoute=true. Today -> Start -> Finish -> /close renders from the cached module and offerShownOn(state,'/close') is true: the banner and Reload sit over the unsaved close, and Reload drops the chosen result, observation and next action.
+- **Before first review the approved proof route's named partial fixes are shown failing their acceptance, and subtle work says where its family proof lives** — Of the ten partial fixes the contract requires shown failing, only 'renewal only when closed or at a boundary' is recorded. Unrecorded: floor on warm-ups only, instrument-keyed floor, overflow still into the cool-down, workbox-window kept with a reload fallback, automatic reload when a route's code is missing, offer on a first install, HEAD-based stamp, review computed from the edited item, routine annotation by item instead of block. DECISIONS.md points at a lane commit message containing this proof, but no such recorded proof exists. Subtle work also needs clear family-proof pointers.
+  _counterexample:_ The lane commits, ledger and recorded check evidence contain no run for the nine named partial fixes, while DECISIONS.md points to proof in a commit message that does not exist.
+- **Only a route whose code an update removed becomes the update offer, and the controller is inert outside a production build** — page() in src/App.tsx catches every rejection of lazy route imports, including genuine page-load bugs and development errors, and calls routeCodeMissing(). routeCodeMissing has no production guard. A real page bug can therefore become 'A new version is ready.' and reload back into the same failure, while development journeys may lose the original page error.
+  _counterexample:_ A page module throws while loading: instead of surfacing that error, the app records a missing route and shows the update offer. In production Reload lands on the same faulty build and can repeat the offer.
+- **A whole work fills an optional role (warm-up, cool-down) only when that role's share is at least 10** — swapSegment checks a candidate work's floor against the slot's current rounded minutes, not the optional role's underlying share. A cool-down with a share of 9 can be rounded to 10 and then accept a whole work. The swap proof checks minutes but not the role-share rule.
+  _counterexample:_ At a 38-minute budget, after removing two works, a settled drill cool-down can have a share of 9 but be rounded to 10. Swap then accepts a gusheh because its 10-minute floor fits the displayed 10, even though the cool-down share is below 10.
+
+**What changed since the previously reviewed head:**
+
+```diff
+diff --git a/DECISIONS.md b/DECISIONS.md
+index 9ac4c83119bc4c43725e0c755639c4a41b3913ac..9fb6263bf62cf56fb509c274fa4c138de01b7e63 100644
+--- a/DECISIONS.md
++++ b/DECISIONS.md
+@@ -31,7 +31,10 @@ banner over all of them; none needed a schema change.
+   and reloaded other windows. `appUpdate.ts` registers once per page, offers
+   only when this window runs older code (an uncontrolled page checks whether a
+   worker precaches its own entry chunk), and reloads only the tapping window,
+-  once. A missing route's code shows the offer, never an automatic reload.
++  once. A route whose code an update removed (its import failed AND the app
++  now serves another entry) shows the offer in its place, never an automatic
++  reload; any other import failure is the page's own error and surfaces as
++  itself. On /close the offer waits unless the close screen's own code is gone.
+   The stamp is the last commit that changed a build input
+   (`scripts/app-version.mjs`), so records-only pushes publish byte-identical
+   files and no offer. Rejected: keeping workbox-window with a reload fallback;
+@@ -44,8 +47,46 @@ banner over all of them; none needed a schema change.
+   review. A full close per routine item was rejected as turning one finish
+   into several forms.
+ 
+-Proof: `docs/scheduling-evidence.md` §5–6, `docs/setar-practice-reliability.md`
+-§1b and §6, and the lane's commit message (each partial fix and its failing check).
++Where each family's proof lives (one named test each; run it with
++`npx vitest run <file> -t "<title>"`), and its limits:
++
++- Plan floors and role shares: ac-1 in `src/domain/plan.test.ts`, on committed
++  synthetic fixtures (Setar, Tar, Guitar, parts, Tar plus one work) swept over
++  every budget, warm-up share and review window, through build, Remove (once
++  and twice) and Swap; numbers in `docs/scheduling-evidence.md` §5. Limit:
++  synthetic libraries — the owner's own is ac-14.
++- Sound: ac-2 (`practiceCue.test.ts`) and ac-3 (`practice-cues.browser.test.ts`),
++  `docs/setar-practice-reliability.md` §1b and §6,
++  `node scripts/check-setar-practice-families.mjs --mutations`. Limit: a fake
++  context proves its lifecycle, never audibility (ac-13).
++- Updates and stamp: ac-8 (fake container), ac-9 and ac-10 (real builds on a
++  local server, both engines), ac-11 (a temp git repo). Limit: no Pages CDN,
++  no installed iPhone (ac-12).
++- Close edits: ac-4 through the store's real `closeSession`; ac-5 in browsers.
++  Routine capture: ac-6 and ac-7. Their readers: `docs/scheduling-evidence.md` §6.
++
++Red on base (ee7a091): ac-1 — "Setar … 12 min … s-shahnaz is a work: expected
++2 to be ≥ 10"; ac-2 and ac-3 — `docs/setar-practice-reliability.md` §1b; ac-9
++— row A times out waiting for the Reload's load, row C reloads the other window.
++The base cannot run the others: ac-4–8, ac-10 and ac-11 drive what it does not
++have (`itemEdits`, `captureRoutineResults`, `appUpdate.ts`, the stamp module).
++
++The named partial fixes, each applied alone to a clean tree at 0b6e065 and run
++against only its acceptance test (restored with `git checkout` after). Every
++one FAILS:
++
++| Partial fix (exact change) | Test | Fails with |
++|---|---|---|
++| Floor on warm-ups only (`buildSessionPlan` passes 2 for every other bucket) | ac-1 | Setar 12 min: "s-l1 is a work: expected 6 ≥ 10" |
++| Instrument-keyed floor (`segmentFloor` only for `setar`) | ac-1 | Guitar 12 min: "g-piece2 is a work: expected 3 ≥ 10" |
++| Overflow still into the cool-down (cool-down capped at 25, in the overflow list) | ac-1 | Setar 120 min: "cool-down: expected 25 ≤ 13" |
++| Renewal only when closed or at a boundary | ac-2 | the 2026-10-14 mutation run (`docs/setar-practice-reliability.md` §6) |
++| workbox-window kept with a reload fallback (`useRegisterSW`, `updateServiceWorker(true)` then `location.reload()` after 1.5 s) | ac-9 | row A, V2 found early: no offer (Chromium, 20 s timeout) |
++| Automatic reload when a route's code is missing (`location.reload()` in `routeCodeMissing`) | ac-8 | "expected [ {offer: true…}, 1 ] to equal [ …, 0 ]" |
++| Offer on a first install (every worker read as newer) | ac-8 | "own first install: expected true to be false" |
++| HEAD-based stamp (`git log -1 HEAD`, no pathspec) | ac-11 | ".prismatica/records/change.md: expected '2020-03-02·8bd935f' to be '2020-03-01·e4d7e81'" |
++| Review computed from the edited item (`computeReviewOutcome` given `applyCloseEdits(item, …)`) | ac-4 | "auto · status suggested · focus set · effort changed · save · edit present" |
++| Routine annotation by item instead of block (a capture applied to every block of its item) | ac-6 | "run-A · worse · observation" — a block outside the run changed |
+ 
+ ## Browser journeys wait on events; CI and the Gate are bounded and run once (2026-10-08)
+ 
+diff --git a/docs/scheduling-evidence.md b/docs/scheduling-evidence.md
+index 0f8684374b7059731300e91d579d56147ec5c561..9748b0f635cc413374c8b03968b4844c870b0a98 100644
+--- a/docs/scheduling-evidence.md
++++ b/docs/scheduling-evidence.md
+@@ -162,7 +162,9 @@ stated in the summary — which therefore appears only when every segment that
+ may take minutes is at 25.
+ 
+ Remove re-spreads under the same rules; Swap offers only material whose floor
+-fits the slot. The floor is fixed on each segment when it is planned
++fits the slot — in a warm-up or cool-down, the role's share, never the minutes a
++rounding pass lifted above it (a whole work cools down only on a share of 10).
++The floor is fixed on each segment when it is planned
+ (`floorMinutes`); a running plan persisted before floors existed has none and
+ still runs. A plan of drills alone keeps exactly the minutes it had wherever no
+ warm-up or cool-down absorbed overflow and nothing reached 25
+diff --git a/src/App.tsx b/src/App.tsx
+index d6fe1f198d90b2f73d98c20c88b00c023051e324..f59e582c5a82c3b746445d05f97304898267d789 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -12,38 +12,39 @@ import { recoverFromRefusedHydration } from './store/backup';
+ // chunks anyway so offline still has everything.
+ import Today from './pages/Today';
+ /**
+- * A route loaded on demand. If its code is gone — an update replaced the
+- * build this window started from — the route renders nothing and Layout's
+- * update offer stands in its place instead of a broken screen. It never
+- * reloads by itself.
++ * A route loaded on demand, named by its path. If an update removed its code
++ * — the app now serves another build than this window started from — the
++ * route renders nothing and Layout's update offer stands in its place instead
++ * of a broken screen; it never reloads by itself. Any other failure is the
++ * page's own and is thrown as itself.
+  */
+ const NoRoute = () => null;
+-function page(load: () => Promise<{ default: React.ComponentType }>) {
++function page(route: string, load: () => Promise<{ default: React.ComponentType }>) {
+   return lazy(() =>
+-    load().catch(() => {
+-      routeCodeMissing();
++    load().catch(async (error: unknown) => {
++      if (!(await routeCodeMissing(route))) throw error;
+       return { default: NoRoute };
+     }),
+   );
+ }
+-const StartBlock = page(() => import('./pages/StartBlock'));
+-const ActiveBlock = page(() => import('./pages/ActiveBlock'));
+-const CloseBlock = page(() => import('./pages/CloseBlock'));
+-const ItemDetail = page(() => import('./pages/ItemDetail'));
+-const NewItem = page(() => import('./pages/NewItem'));
+-const Materials = page(() => import('./pages/Materials'));
+-const Insights = page(() => import('./pages/Insights'));
+-const Repertoire = page(() => import('./pages/Repertoire'));
+-const PathwayDetail = page(() => import('./pages/PathwayDetail'));
+-const StageDetail = page(() => import('./pages/StageDetail'));
+-const Lessons = page(() => import('./pages/Lessons'));
+-const RoutineRunner = page(() => import('./pages/RoutineRunner'));
+-const RoutineEdit = page(() => import('./pages/RoutineEdit'));
+-const SessionPlan = page(() => import('./pages/SessionPlan'));
+-const TeacherReport = page(() => import('./pages/TeacherReport'));
+-const Settings = page(() => import('./pages/Settings'));
+-const More = page(() => import('./pages/More'));
+-const MusicTerms = page(() => import('./pages/MusicTerms'));
++const StartBlock = page('/start', () => import('./pages/StartBlock'));
++const ActiveBlock = page('/active', () => import('./pages/ActiveBlock'));
++const CloseBlock = page('/close', () => import('./pages/CloseBlock'));
++const ItemDetail = page('/items/:id', () => import('./pages/ItemDetail'));
++const NewItem = page('/items/new', () => import('./pages/NewItem'));
++const Materials = page('/materials', () => import('./pages/Materials'));
++const Insights = page('/insights', () => import('./pages/Insights'));
++const Repertoire = page('/repertoire', () => import('./pages/Repertoire'));
++const PathwayDetail = page('/pathway/:pathwayId', () => import('./pages/PathwayDetail'));
++const StageDetail = page('/pathway/:pathwayId/:stageId', () => import('./pages/StageDetail'));
++const Lessons = page('/lessons', () => import('./pages/Lessons'));
++const RoutineRunner = page('/routine/:routineId', () => import('./pages/RoutineRunner'));
++const RoutineEdit = page('/routine/:routineId/edit', () => import('./pages/RoutineEdit'));
++const SessionPlan = page('/plan', () => import('./pages/SessionPlan'));
++const TeacherReport = page('/report', () => import('./pages/TeacherReport'));
++const Settings = page('/settings', () => import('./pages/Settings'));
++const More = page('/more', () => import('./pages/More'));
++const MusicTerms = page('/terms', () => import('./pages/MusicTerms'));
+ 
+ /**
+  * The one recovery action reachable from a refused COLD-START hydration
+diff --git a/src/components/appUpdate.test.ts b/src/components/appUpdate.test.ts
+index 570d7a55759f8cc3887d25ae7281fa74d55248f9..ae0d9a5f178e5670303e707373b1d6ac9d5a81d1 100644
+--- a/src/components/appUpdate.test.ts
++++ b/src/components/appUpdate.test.ts
+@@ -5,10 +5,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
+ // install, wait, activate (by this window's tap, another window's, or as a
+ // first install), get superseded, and a route's code goes missing. `fetch`
+ // answers with the server's current sw.js, which precaches that build's entry
+-// chunk — the identity an uncontrolled page checks.
++// chunk — the identity an uncontrolled page checks — and its index.html, which
++// names that entry: the evidence that a route's failed code was an update's.
+ // ---------------------------------------------------------------------------
+ 
+ type Build = string;
++const indexHtml = (b: Build) => `<!doctype html><script type="module" crossorigin src="/assets/index-${b}.js"></script>`;
+ const swText = (b: Build) => `define(["./workbox"],function(s){s.precacheAndRoute([{url:"index.html",revision:"${b}"},{url:"assets/index-${b}.js",revision:null}])});`;
+ 
+ class FakeWorker extends EventTarget {
+@@ -35,6 +37,8 @@ class FakeWorker extends EventTarget {
+ class World {
+   server: Build;
+   registerFails = false;
++  offline = false;
++  fetched = 0;
+   reloads = 0;
+   listeners = 0;
+   intervals = 0;
+@@ -121,7 +125,11 @@ async function openPage(world: World, opts: { controller?: FakeWorker | null; pr
+     Object.assign(doc, { visibilityState: 'visible', querySelector: () => ({ getAttribute: () => `/assets/index-${world.page}.js` }) }),
+   );
+   vi.stubGlobal('location', { href: 'https://app.test/#/', reload: () => (world.reloads += 1) });
+-  vi.stubGlobal('fetch', async () => ({ text: async () => swText(world.server) }));
++  vi.stubGlobal('fetch', async (url: string) => {
++    world.fetched += 1;
++    if (world.offline) throw new TypeError('Failed to fetch');
++    return { ok: true, text: async () => (String(url).endsWith('sw.js') ? swText(world.server) : indexHtml(world.server)) };
++  });
+   vi.stubGlobal('setInterval', () => (world.intervals += 1));
+   const m = await import('./appUpdate');
+   m.startAppUpdates({ production: opts.production ?? true });
+@@ -147,6 +155,9 @@ describe('the update controller', () => {
+       const world = new World('A');
+       const page = await openPage(world, { production: false });
+       expect([world.container.registered, world.listeners, world.intervals, page.offer()]).toEqual([0, 0, 0, false]);
++      // A route that fails to load in development is its own error, never an update.
++      world.server = 'V2';
++      expect([await page.m.routeCodeMissing('/more'), page.m.readAppUpdate(), world.fetched]).toEqual([false, { offer: false, missingRoutes: [] }, 0]);
+       const bare = await openPage(new World('A'), { noServiceWorker: true });
+       expect(bare.offer()).toBe(false);
+       const refusing = new World('A');
+@@ -268,17 +279,34 @@ describe('the update controller', () => {
+         expect([v2.posted, world.reloads]).toEqual([[], 1]);
+       }
+ 
+-      // --- A ROUTE WHOSE CODE IS GONE: the offer, never a reload by itself ---
++      // --- A ROUTE WHOSE CODE IS GONE: only an update's removal is the offer,
++      // never a reload by itself, and never over an unsaved close for another route's code
+       for (const controlled of [true, false]) {
+         const world = new World('A');
+         const a = new FakeWorker('A', world);
+         world.installed(a);
+         const page = await openPage(world, { controller: controlled ? a : null });
++        const now = () => page.m.readAppUpdate();
+         expect(page.offer()).toBe(false);
+-        page.m.routeCodeMissing();
+-        expect([page.m.readAppUpdate(), world.reloads]).toEqual([{ offer: true, missingRoute: true }, 0]);
+-        // A missing route shows the offer in its place, /close included.
+-        expect(page.m.offerShownOn(page.m.readAppUpdate(), '/close')).toBe(true);
++        // The app still serves this page's build: the failure is the page's own.
++        expect(await page.m.routeCodeMissing('/more')).toBe(false);
++        // Unreachable: nothing proves an update either.
++        world.server = 'V2';
++        world.offline = true;
++        expect(await page.m.routeCodeMissing('/more')).toBe(false);
++        expect([now(), world.reloads]).toEqual([{ offer: false, missingRoutes: [] }, 0]);
++        // Another build is served: More's code was removed by an update.
++        world.offline = false;
++        expect(await page.m.routeCodeMissing('/more')).toBe(true);
++        expect([now(), world.reloads]).toEqual([{ offer: true, missingRoutes: ['/more'] }, 0]);
++        expect(page.m.offerShownOn(now(), '/more'), 'in place of the missing route').toBe(true);
++        // The close screen's code still loaded: the offer waits until Save or Discard.
++        expect(page.m.offerShownOn(now(), '/close'), "another route's code over /close").toBe(false);
++        expect(page.m.offerShownOn(now(), '/'), 'after Save or Discard').toBe(true);
++        // The close screen's OWN code gone: the offer stands in for it.
++        expect(await page.m.routeCodeMissing('/close')).toBe(true);
++        expect(page.m.offerShownOn(now(), '/close'), "the close screen's own code").toBe(true);
++        expect(world.reloads).toBe(0);
+         await tap(page, taps);
+         expect(world.reloads).toBe(1);
+       }
+diff --git a/src/components/appUpdate.ts b/src/components/appUpdate.ts
+index 0e7503148fe032b9c9da48402786c1e60317e340..227d2d131cd1691cad0c7dbab1a8aeac89d4c73d 100644
+--- a/src/components/appUpdate.ts
++++ b/src/components/appUpdate.ts
+@@ -10,7 +10,10 @@ import { useSyncExternalStore } from 'react';
+ //   • a worker waiting to take over, or one activated since this page loaded,
+ //     that is not this page's own build — never the first install of the
+ //     build this page is already running;
+-//   • a route whose code an update removed (`routeCodeMissing`).
++//   • a route whose code an update removed (`routeCodeMissing`): its import
++//     failed AND the app now serves a build whose entry is not this page's.
++//     Any other failure — the page's own bug, the dev server, the network —
++//     is not an update and surfaces as itself.
+ // Only the Reload tap reloads, only its own window, exactly once: a waiting
+ // worker is told to SKIP_WAITING first, and the reload follows once it
+ // controls or activates; otherwise the reload is direct. Nothing else ever
+@@ -29,14 +32,14 @@ import { useSyncExternalStore } from 'react';
+ export interface UpdateState {
+   /** This window runs older code than the newest build found. */
+   offer: boolean;
+-  /** A route's code is gone: the offer stands in for that route. */
+-  missingRoute: boolean;
++  /** Routes whose code an update removed: the offer stands in for each. */
++  missingRoutes: readonly string[];
+ }
+ 
+ type Identity = 'mine' | 'newer' | 'pending';
+ 
+ const HOURLY_MS = 60 * 60 * 1000;
+-const INITIAL: UpdateState = { offer: false, missingRoute: false };
++const INITIAL: UpdateState = { offer: false, missingRoutes: [] };
+ 
+ let state: UpdateState = INITIAL;
+ const listeners = new Set<() => void>();
+@@ -49,14 +52,13 @@ const identities = new WeakMap<ServiceWorker, Identity>();
+ 
+ function publish(next: Partial<UpdateState>): void {
+   const merged = { ...state, ...next };
+-  if (merged.offer === state.offer && merged.missingRoute === state.missingRoute) return;
++  if (merged.offer === state.offer && merged.missingRoutes === state.missingRoutes) return;
+   state = merged;
+   for (const fn of listeners) fn();
+ }
+ 
+-/** This page's entry script, relative to the app's base — the name a worker precaches it under. */
+-function pageEntry(base: string): string | null {
+-  const src = document.querySelector('script[type="module"][src]')?.getAttribute('src');
++/** An entry script's name relative to the app's base — the name a worker precaches it under. */
++function entryName(src: string | null | undefined, base: string): string | null {
+   if (!src) return null;
+   const path = new URL(src, location.href).pathname;
+   const basePath = new URL(base, location.href).pathname;
+@@ -67,7 +69,7 @@ function evaluate(): void {
+   const reg = registration;
+   if (!reg) return;
+   const newest = reg.waiting ?? reg.active;
+-  publish({ offer: state.missingRoute || (!!newest && identities.get(newest) === 'newer') });
++  publish({ offer: state.missingRoutes.length > 0 || (!!newest && identities.get(newest) === 'newer') });
+ }
+ 
+ function identify(worker: ServiceWorker): void {
+@@ -129,7 +131,7 @@ export function startAppUpdates(options: { production?: boolean } = {}): void {
+   if (typeof navigator === 'undefined' || !navigator.serviceWorker) return;
+   started = true;
+   const base = import.meta.env.BASE_URL;
+-  entry = pageEntry(base);
++  entry = entryName(document.querySelector('script[type="module"][src]')?.getAttribute('src'), base);
+   loadController = navigator.serviceWorker.controller;
+   try {
+     navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).then(wire, () => undefined);
+@@ -162,18 +164,36 @@ export function reloadToUpdate(): void {
+   waiting.postMessage({ type: 'SKIP_WAITING' });
+ }
+ 
+-/** A route's code failed to load: an update removed it. Offer the update in its place — never reload. */
+-export function routeCodeMissing(): void {
+-  publish({ missingRoute: true, offer: true });
++/**
++ * `route`'s code failed to load. True — and the update offered in its place,
++ * never a reload — only when an update removed it: this production page's
++ * controller runs, and the app now serves an entry that is not this page's
++ * (a controlled page asks its worker's precache, an uncontrolled one the
++ * network). False otherwise, so the caller rethrows the original error.
++ * Never throws.
++ */
++export async function routeCodeMissing(route: string): Promise<boolean> {
++  if (!started || !entry) return false;
++  const base = import.meta.env.BASE_URL;
++  let served: string | null = null;
++  try {
++    const r = await fetch(`${base}index.html`, { cache: 'no-store' });
++    if (r.ok) served = entryName(/<script\b[^>]*\btype="module"[^>]*\bsrc="([^"]+)"/.exec(await r.text())?.[1], base);
++  } catch {
++    // Unreachable: nothing proves an update.
++  }
++  if (served === null || served === entry) return false;
++  if (!state.missingRoutes.includes(route)) publish({ missingRoutes: [...state.missingRoutes, route], offer: true });
++  return true;
+ }
+ 
+ /**
+  * Whether the banner shows on this route. It waits while a close is unsaved
+  * (/close) and appears the moment Save or Discard leaves it — unless the close
+- * screen's own code is the route that is missing.
++ * screen's own code is missing, when the offer stands in for it.
+  */
+ export function offerShownOn(s: UpdateState, pathname: string): boolean {
+-  return s.offer && (pathname !== '/close' || s.missingRoute);
++  return s.offer && (pathname !== '/close' || s.missingRoutes.includes('/close'));
+ }
+ 
+ function subscribe(fn: () => void): () => void {
+diff --git a/src/domain/plan.test.ts b/src/domain/plan.test.ts
+index 187614bacc85eeb7863a726b00e41db341406210..a797aff5d57af4f80dd933395761fb5e386afa4e 100644
+--- a/src/domain/plan.test.ts
++++ b/src/domain/plan.test.ts
+@@ -766,7 +766,15 @@ function fixtures(): Fixture[] {
+     items: setar.items.filter((i) => !['s-l1', 's-l2', 's-new'].includes(i.id)),
+     preparationDates: new Map(),
+   };
+-  return [setar, setarReviews, tar, guitar, parts];
++  // The drill library with one settled work beside it: once two Removes leave
++  // a drill cool-down rounded up to 10 on a share of 9, that work fits the
++  // slot's minutes but not the role's share.
++  const tarWork: Fixture = {
++    ...tar,
++    name: 'Tar drills and one settled work',
++    items: [...tar.items, fixtureItem(T, 't-work', { itemType: 'gusheh', persian: { dastgahAvaz: 'ماهور', gusheh: 'درآمد' }, status: 'maintenance', difficulty: 2, timesPractised: 15, importance: 2 })],
++  };
++  return [setar, setarReviews, tar, guitar, parts, tarWork];
+ }
+ 
+ const BUDGETS = [5, 10, 12, 15, 20, 25, 30, 45, 60, 90, 120];
+@@ -912,8 +920,12 @@ function coolShare(B: number, share: number, buckets: string[]): number {
+ }
+ const render = (plan: SessionPlan) => plan.segments.map((x) => `${x.itemId}:${x.bucket}:${x.minutes}`).join(' ');
+ 
+-/** Every rule a seated plan must keep, whichever door (build, Remove) produced it. */
+-function expectFloorsAndShares(plan: SessionPlan, f: Fixture, B: number, share: number, max: number, label: string) {
++/**
++ * Every rule a seated plan must keep, whichever door (build, Remove, Swap)
++ * produced it. A swap keeps the slot's minutes, so a swapped plan is held to
++ * the floors and role shares but not re-judged against the review ceiling.
++ */
++function expectFloorsAndShares(plan: SessionPlan, f: Fixture, B: number, share: number, max: number, label: string, swapped = false) {
+   const items = new Map(f.items.map((i) => [i.id, i]));
+   const segs = plan.segments;
+   const buckets = segs.map((x) => x.bucket);
+@@ -938,7 +950,7 @@ function expectFloorsAndShares(plan: SessionPlan, f: Fixture, B: number, share:
+   }
+   const work = segs.filter((x) => x.bucket === 'deep' || x.bucket === 'lesson');
+   // The review ceiling holds while deep or lesson work could take the minutes.
+-  for (const r of segs.filter((x) => x.bucket === 'review')) {
++  for (const r of swapped ? [] : segs.filter((x) => x.bucket === 'review')) {
+     const ceiling = Math.max(max, expectWork(items.get(r.itemId)!) ? 10 : MIN_SEGMENT_MINUTES);
+     if (r.minutes > ceiling) expect(work.every((x) => x.minutes === MAX_SEGMENT_MINUTES), `${label} review over its ceiling`).toBe(true);
+   }
+@@ -982,29 +994,39 @@ describe('whole works keep the standard block', () => {
+             for (const seg of plan.segments) {
+               expect(seg.floorMinutes, `${label} ${seg.itemId} floor`).toBe(expectWork(items.get(seg.itemId)!) ? 10 : MIN_SEGMENT_MINUTES);
+             }
+-            // REMOVE re-allocates under the same rules.
++            // SWAP offers only material whose floor fits the slot — and, in a
++            // warm-up or cool-down, the role's own share, not its rounded
++            // minutes — whether the plan is fresh or already trimmed by Remove.
++            const expectSwaps = (p: SessionPlan, at: string) =>
++              p.segments.forEach((seg, i) => {
++                const swapped = swapSegment(p, i, args);
++                expect(swapped.segments[i].minutes, `${at} swap ${i}`).toBe(seg.minutes);
++                expectFloorsAndShares(swapped, f, B, share, window[1], `${at} swap ${i}`, true);
++              });
++            expectSwaps(plan, label);
++            // REMOVE re-allocates under the same rules, twice over.
++            const remove = (p: SessionPlan, i: number) => redistributePlan({ ...p, segments: p.segments.filter((__, j) => j !== i) }, args.params);
+             if (plan.segments.length > 1) {
+               plan.segments.forEach((_, i) => {
+-                const removed = redistributePlan({ ...plan, segments: plan.segments.filter((__, j) => j !== i) }, args.params);
++                const removed = remove(plan, i);
+                 expect(removed.segments.length, `${label} remove ${i}`).toBe(plan.segments.length - 1);
+                 expectFloorsAndShares(removed, f, B, share, window[1], `${label} remove ${i}`);
++                expectSwaps(removed, `${label} remove ${i}`);
++                removed.segments.forEach((__, k) => {
++                  if (removed.segments.length < 2) return;
++                  const twice = remove(removed, k);
++                  expectFloorsAndShares(twice, f, B, share, window[1], `${label} remove ${i} then ${k}`);
++                  expectSwaps(twice, `${label} remove ${i} then ${k}`);
++                });
+               });
+             }
+-            // SWAP offers only material whose floor fits the slot.
+-            plan.segments.forEach((seg, i) => {
+-              const swapped = swapSegment(plan, i, args).segments[i];
+-              expect(swapped.minutes, `${label} swap ${i}`).toBe(seg.minutes);
+-              if (plan.segments.length > 1) {
+-                expect(expectWork(items.get(swapped.itemId)!) ? 10 : MIN_SEGMENT_MINUTES, `${label} swap ${i}`).toBeLessThanOrEqual(seg.minutes);
+-              }
+-            });
+ 
+             // DRILL-ONLY: where the base plan's warm-up and cool-down stayed
+             // within their shares (nothing above the warm-up's share or the
+             // cool-down's floored split — the review clamp used to push its
+             // excess there) and no segment reached 25, the minutes are
+             // exactly the base allocator's.
+-            if (f.instrumentId === 'tar') {
++            if (f.name === 'Tar drills only') {
+               const base = BASE_TAR[`${B}|${share}|${window.join('-')}`];
+               const segs = base.split(' ').map((x) => x.split(':'));
+               const buckets = segs.map((x) => x[1]);
+@@ -1034,6 +1056,15 @@ describe('whole works keep the standard block', () => {
+     // only on its own weighted split — never on leftovers.
+     expect(render(buildSessionPlan(sweepArgs(reviewDay, 90, 0.12, [3, 7])))).toMatch(/^s-shahnaz:warmup:11 .* s-daramad:cooldown:10$/);
+ 
++    // The reviewer's case: two Removes leave the drill cool-down at 10 minutes
++    // on a share of 9; Swap may not hand that role the settled work.
++    const tarWork = fixtures()[5];
++    const twArgs = sweepArgs(tarWork, 45, 0.15, [3, 7]);
++    const drop1 = (p: SessionPlan) => redistributePlan({ ...p, segments: p.segments.filter((_, j) => j !== 1) }, twArgs.params);
++    const trimmed = drop1(drop1(buildSessionPlan(twArgs)));
++    expect([render(trimmed), coolShare(45, 0.15, trimmed.segments.map((x) => x.bucket))]).toEqual(['t-scale:warmup:7 t-frag:deep:25 t-tremolo:cooldown:10', 9]);
++    expect(swapSegment(trimmed, 2, twArgs).segments[2].itemId).not.toBe('t-work');
++
+     // A RUNNING PLAN persisted before floors existed still re-spreads and starts.
+     const [setar] = fixtures();
+     const built = buildSessionPlan(sweepArgs(setar, 45, 0.12, [3, 7]));
+diff --git a/src/domain/plan.ts b/src/domain/plan.ts
+index f10cdbeba7675f21306cb1a549455b0811c02784..79743019a0f0f2a54110bb225062178aef9992e7 100644
+--- a/src/domain/plan.ts
++++ b/src/domain/plan.ts
+@@ -767,7 +767,8 @@ export function redistributePlan(plan: SessionPlan, params?: SchedulingParams):
+ 
+ /**
+  * Swap segment `index` for the next-best alternative, keeping its minutes and
+- * its role — offered only material whose floor fits those minutes. Uses the SAME eligibility policy, candidate pool and warm-up
++ * its role — offered only material whose floor fits those minutes and, in a
++ * warm-up or cool-down, that role's share. Uses the SAME eligibility policy, candidate pool and warm-up
+  * exclusions as the build — a swap that could reach material the build
+  * excluded is a second, hidden policy, and it used to hand back an item
+  * already practised today (or a due/lesson-committed item as a "warm-up")
+@@ -811,11 +812,21 @@ export function swapSegment(
+       .map((r) => [r.practiceItemId, r.dueDate] as const),
+   );
+ 
++  // Only material whose floor fits the slot: a two-minute warm-up is never
++  // handed a whole work. An optional role is judged by its SHARE, as the build
++  // and the allocator judge it — never by minutes rounding lifted above it.
++  // A one-segment plan has no floors.
++  const params = args.params ?? DEFAULT_SCHEDULING_PARAMS;
++  const others = plan.segments.filter((_, i) => i !== index).map((s) => s.bucket);
++  const room =
++    target.bucket === 'warmup'
++      ? Math.min(target.minutes, warmupShareMinutes(plan.budgetMinutes, params))
++      : target.bucket === 'cooldown'
++        ? Math.min(target.minutes, cooldownShareMinutes(plan.budgetMinutes, params, others))
++        : target.minutes;
+   const eligible = (s: ItemScore): boolean => {
+     if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
+-    // Only material whose floor fits the slot: a two-minute warm-up is never
+-    // handed a whole work. A one-segment plan has no floors.
+-    if (plan.segments.length > 1 && segmentFloor(s.item) > target.minutes) return false;
++    if (plan.segments.length > 1 && segmentFloor(s.item) > room) return false;
+     switch (target.bucket) {
+       case 'warmup':
+         // Same exclusions as the build's own warm-up pool: a due review or a
+diff --git a/tests/app-update.browser.test.ts b/tests/app-update.browser.test.ts
+index a03b8e26b696a763c8f31c201b5eb634c937ab70..8cf54e3e65a756b01fcaa5a8412fcf08312a7254 100644
+--- a/tests/app-update.browser.test.ts
++++ b/tests/app-update.browser.test.ts
+@@ -426,6 +426,58 @@ describe('taking a new version', () => {
+           await w.page.getByText(OFFER).waitFor({ timeout: 20_000 });
+           expect([w.loads() - loadsBeforeF, w.errors.map((e) => e.message)]).toEqual([0, []]);
+           await ctx.close();
++
++          // …and when ANOTHER route's code is gone. An uncontrolled window
++          // fetches its code from the server: it practises once under A (the
++          // practice and close screens' code now loaded), then V2 is served.
++          // More's code is gone — the offer in its place — yet the close
++          // screen still runs, so on /close the offer waits all the same.
++          h.serve(b.A);
++          ctx = await fresh();
++          w = await openWindow(ctx, h);
++          await untilActive(w);
++          expect((await runs(w)).controlled, `${engine} F: uncontrolled`).toBe(false);
++          const loadsBeforeF2 = w.loads();
++          const practiseToClose = async () => {
++            await w.page.getByRole('navigation', { name: /Which instrument/ }).getByRole('button', { name: 'Setar', exact: true }).click();
++            await w.page.getByRole('button', { name: /Start · 10 min/ }).click();
++            await w.page.getByRole('button', { name: 'Finish' }).click();
++            await w.page.getByRole('button', { name: 'Discard without saving' }).waitFor();
++          };
++          await practiseToClose();
++          await w.page.getByRole('button', { name: 'Discard without saving' }).click();
++          await w.page.getByRole('navigation', { name: 'Primary' }).waitFor();
++          h.serve(b.V2);
++          await w.page.getByRole('link', { name: 'More' }).click();
++          await w.page.locator('a.tab.active', { hasText: 'More' }).waitFor();
++          await w.page.getByText(OFFER).waitFor({ timeout: 20_000 });
++          await w.page.getByRole('link', { name: 'Today' }).click();
++          await w.page.locator('a.tab.active', { hasText: 'Today' }).waitFor();
++          await practiseToClose();
++          await quietWindow(w.app, 1_500);
++          expect(await w.page.getByText(OFFER).count(), `${engine} F: another route's code over /close`).toBe(0);
++          await w.page.getByRole('button', { name: 'Discard without saving' }).click();
++          await w.page.getByText(OFFER).waitFor({ timeout: 20_000 });
++          expect([w.loads() - loadsBeforeF2, w.errors.map((e) => e.message)]).toEqual([0, []]);
++          await ctx.close();
++
++          // The close screen's OWN code gone (practice started under A, V2
++          // served before Finish): the offer stands in for it, no page error.
++          h.serve(b.A);
++          ctx = await fresh();
++          w = await openWindow(ctx, h);
++          await untilActive(w);
++          const loadsBeforeF3 = w.loads();
++          await w.page.getByRole('navigation', { name: /Which instrument/ }).getByRole('button', { name: 'Setar', exact: true }).click();
++          await w.page.getByRole('button', { name: /Start · 10 min/ }).click();
++          await w.page.getByRole('button', { name: 'Finish' }).waitFor();
++          h.serve(b.V2);
++          await w.page.getByRole('button', { name: 'Finish' }).click();
++          await w.page.getByText(OFFER).waitFor({ timeout: 20_000 });
++          await quietWindow(w.app, 1_500);
++          expect(await w.page.getByRole('button', { name: 'Discard without saving' }).count(), `${engine} F: close code gone`).toBe(0);
++          expect([w.loads() - loadsBeforeF3, w.errors.map((e) => e.message)]).toEqual([0, []]);
++          await ctx.close();
+         } finally {
+           await h.close();
+         }
+```
+
+**Paths the rework touched:**
+
+- `DECISIONS.md`
+- `docs/scheduling-evidence.md`
+- `src/App.tsx`
+- `src/components/appUpdate.test.ts`
+- `src/components/appUpdate.ts`
+- `src/domain/plan.test.ts`
+- `src/domain/plan.ts`
+- `tests/app-update.browser.test.ts`
+
+**The builder's rework commit messages — claims to verify against the diff, never evidence:**
+
+```
+6da9a1a Swap judges an optional role by its share, not its rounded minutes
+
+Finding (sealed review): "A whole work fills an optional role (warm-up,
+cool-down) only when that role's share is at least 10". swapSegment checked a
+candidate's floor against the slot's minutes, which the allocator may lift one
+rounding minute above the cool-down's share.
+
+Instances found: swapSegment (fixed: a warm-up or cool-down candidate's floor
+must fit min(minutes, the role's share), computed by the same
+warmupShareMinutes / cooldownShareMinutes the build and allocator use).
+Consumers checked clean: buildSessionPlan's warm-up pool (pinned share) and
+cool-down pool (cooldownShareMinutes with it seated), allocateMinutes' seating
+(fits() drops a role whose share is under its floor), redistributePlan (the
+same allocator), SessionPlan.tsx (passes the build's clamped params to build,
+Remove and Swap alike).
+
+Proof: ac-1's named test "planned whole works keep the standard block and the
+plan adapts its segment count" (src/domain/plan.test.ts) now holds every
+swapped plan — fresh, after one Remove and after two — to the same floors and
+role shares as a built one, over a new fixture (Tar drills plus one settled
+work), and pins the reviewer's literal case: 45 min, share 0.15, two Removes
+leave the drill cool-down at 10 on a share of 9; Swap may not seat the work.
+Red on the previous head ("cool-down on a work: expected 9 to be >= 10").
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+0b6e065 Only an update's removal is a missing route, and it knows which route
+
+Findings (sealed review):
+- "The update offer waits while a close is unsaved (/close); on /close it
+  shows only when the close screen's own code is missing"
+- "Only a route whose code an update removed becomes the update offer, and the
+  controller is inert outside a production build"
+
+Instances found and fixed:
+- offerShownOn (src/components/appUpdate.ts): showed on /close whenever ANY
+  route was missing; now only when '/close' is among the missing routes.
+- routeCodeMissing: recorded no route and needed no evidence; now takes the
+  route, returns whether an update removed it — the controller runs (so never
+  outside a production build) AND the app now serves an index.html whose entry
+  is not this page's (a controlled page reads its worker's precache, an
+  uncontrolled one the network) — and never throws. Unreachable or same
+  entry: false.
+- page() (src/App.tsx): names each route; rethrows the original error unless
+  routeCodeMissing proves an update, so a page's own bug or a dev error
+  surfaces as itself instead of becoming "A new version is ready.".
+Consumers checked clean: LayoutUpdateBanner (sole offerShownOn caller), the
+refused-hydration UpdateBanner (reads `offer` only), evaluate() (offer while
+any route is missing), reloadToUpdate (unchanged).
+
+Proof:
+- ac-8 "the update offer follows the live registration and only the tapping
+  window reloads" (src/components/appUpdate.test.ts): the "/close included"
+  assertion is replaced — another route's missing code keeps /close clear, the
+  close screen's own shows the offer; same build served, or unreachable, is
+  not an update; outside production nothing is fetched or recorded. Red with
+  the old page-wide rule ("another route's code over /close") and with the
+  evidence check dropped.
+- ac-9 "a published update installs on the first reload in both engines
+  without loops or surprise reloads" (tests/app-update.browser.test.ts), row
+ 
+… (truncated)
+
+1c6a472 Record each named partial fix failing its acceptance, and where each family's proof lives
+
+Finding (sealed review): "Before first review the approved proof route's named
+partial fixes are shown failing their acceptance, and subtle work says where
+its family proof lives".
+
+DECISIONS.md's 2026-10-14 entry pointed at a commit message that held no such
+proof. It now records, for every partial fix the approved proof route names,
+the exact change, the one named acceptance test it was run against and the
+assertion that failed — each applied alone to a clean tree at 0b6e065 and
+restored with git checkout:
+
+- a floor on warm-ups only, an instrument-keyed floor, overflow still into the
+  cool-down: ac-1 (plan.test.ts) fails on each;
+- renewal only when closed or at a boundary: ac-2, already in the recorded
+  mutation run (docs/setar-practice-reliability.md §6);
+- workbox-window kept with a reload fallback: ac-9 fails at row A, V2 found
+  early (no offer), in Chromium;
+- an automatic reload on a missing route, an offer on a first install: ac-8;
+- a HEAD-based stamp: ac-11;
+- a review computed from the edited item: ac-4 (the store's real closeSession);
+- routine annotation by item instead of block: ac-6.
+
+It also records red on base for ac-1 (base plan.ts: a 2-minute warm-up on a
+Setar gusheh at 12 min), alongside the existing ac-2/ac-3 and ac-9 records, and
+names each family's one proof route with its limits (synthetic libraries, fake
+audio, local service worker, temp git repo; the OWNER checks cover the rest).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+e0a8666 Refile the Flow Report after the review rework
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+c87bda7 DECISIONS: say why the base cannot run the remaining acceptances
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ## Check against the contract
 

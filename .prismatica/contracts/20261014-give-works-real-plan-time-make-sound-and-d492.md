@@ -5,7 +5,7 @@ title: Give works real plan time, make sound and updates recover, and capture
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/51
 intent: 20261014-give-works-real-plan-time-make-sound-and-d492
 tier: heavy
-stage: prove
+stage: review
 baseline:
   commit: ee7a091db4fb297fd1955e8e0ad9bc72578f4bf7
   branch: main
