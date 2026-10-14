@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
-import Layout from './components/Layout';
+import Layout, { UpdateBanner } from './components/Layout';
+import { routeCodeMissing } from './components/appUpdate';
 import { CompassIcon, UploadIcon } from './components/icons';
 import { hasUnfinishedPractice, deferredSyncRetry } from './domain';
 import { useStore, useHydrationStatus } from './store/useStore';
@@ -10,24 +11,39 @@ import { recoverFromRefusedHydration } from './store/backup';
 // route loads on demand — smaller initial JS, and the PWA precaches all
 // chunks anyway so offline still has everything.
 import Today from './pages/Today';
-const StartBlock = lazy(() => import('./pages/StartBlock'));
-const ActiveBlock = lazy(() => import('./pages/ActiveBlock'));
-const CloseBlock = lazy(() => import('./pages/CloseBlock'));
-const ItemDetail = lazy(() => import('./pages/ItemDetail'));
-const NewItem = lazy(() => import('./pages/NewItem'));
-const Materials = lazy(() => import('./pages/Materials'));
-const Insights = lazy(() => import('./pages/Insights'));
-const Repertoire = lazy(() => import('./pages/Repertoire'));
-const PathwayDetail = lazy(() => import('./pages/PathwayDetail'));
-const StageDetail = lazy(() => import('./pages/StageDetail'));
-const Lessons = lazy(() => import('./pages/Lessons'));
-const RoutineRunner = lazy(() => import('./pages/RoutineRunner'));
-const RoutineEdit = lazy(() => import('./pages/RoutineEdit'));
-const SessionPlan = lazy(() => import('./pages/SessionPlan'));
-const TeacherReport = lazy(() => import('./pages/TeacherReport'));
-const Settings = lazy(() => import('./pages/Settings'));
-const More = lazy(() => import('./pages/More'));
-const MusicTerms = lazy(() => import('./pages/MusicTerms'));
+/**
+ * A route loaded on demand. If its code is gone — an update replaced the
+ * build this window started from — the route renders nothing and Layout's
+ * update offer stands in its place instead of a broken screen. It never
+ * reloads by itself.
+ */
+const NoRoute = () => null;
+function page(load: () => Promise<{ default: React.ComponentType }>) {
+  return lazy(() =>
+    load().catch(() => {
+      routeCodeMissing();
+      return { default: NoRoute };
+    }),
+  );
+}
+const StartBlock = page(() => import('./pages/StartBlock'));
+const ActiveBlock = page(() => import('./pages/ActiveBlock'));
+const CloseBlock = page(() => import('./pages/CloseBlock'));
+const ItemDetail = page(() => import('./pages/ItemDetail'));
+const NewItem = page(() => import('./pages/NewItem'));
+const Materials = page(() => import('./pages/Materials'));
+const Insights = page(() => import('./pages/Insights'));
+const Repertoire = page(() => import('./pages/Repertoire'));
+const PathwayDetail = page(() => import('./pages/PathwayDetail'));
+const StageDetail = page(() => import('./pages/StageDetail'));
+const Lessons = page(() => import('./pages/Lessons'));
+const RoutineRunner = page(() => import('./pages/RoutineRunner'));
+const RoutineEdit = page(() => import('./pages/RoutineEdit'));
+const SessionPlan = page(() => import('./pages/SessionPlan'));
+const TeacherReport = page(() => import('./pages/TeacherReport'));
+const Settings = page(() => import('./pages/Settings'));
+const More = page(() => import('./pages/More'));
+const MusicTerms = page(() => import('./pages/MusicTerms'));
 
 /**
  * The one recovery action reachable from a refused COLD-START hydration
@@ -188,6 +204,8 @@ export default function App() {
               <p className="tiny faint" style={{ margin: 0 }}>{hydrationStatus.message}</p>
             )}
             {!hydrationStatus.tooNew && <ColdStartRecovery />}
+            {/* "Update the app" is answerable here too. */}
+            <UpdateBanner />
           </div>
         </div>
       );

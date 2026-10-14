@@ -36,6 +36,23 @@ exactly this rule, any hardware output, mute switch, routing or interruption.
 
 ---
 
+### 1b. The dead context (2026-10-14, base ee7a091)
+
+The owner's Mac report: the sound works, then stops until the app is closed
+and reopened — "the app sat idle for a long time between blocks". The base
+kept ONE page-lifetime context: a tap resumed it only when its `state` was not
+`running`, and replaced it only when it was `closed`. A context left `running`
+but silent, or `suspended`/`interrupted` in a way resume() cannot clear, was
+therefore reused by every later Start, and every later cue went to it. The
+family is a context whose reported state no longer says whether it can sound,
+and the fix is at the tap, not the trigger: every readying tap closes the
+page's context and creates and resumes a fresh one inside that tap. The unit
+companion kills a context into each dead state and taps through each readying
+entry (red on base: `frozen · start` reuses context 1 and creates nothing);
+the journey does the same through every door (red on base: `ActiveBlock
+Resume (interrupted): no fresh context`). Audibility after a real idle stays
+the owner's check.
+
 ## 2. Future intake: the same generic steps for every class
 
 The owner's ongoing route is declaration, never code: `--attention` (read-only,
@@ -105,7 +122,7 @@ The owner's confirmed answers for that corpus are
 | A choice carries its typed premise and exact proposal; a moved premise is refused, said, re-previewed | `archiveValueDecision(s)` (UI) | `decisionMatchesSuggestion`, `commitArchiveImport` stale path, ArchiveRefresh notice | ac-8 (+ browser companion) |
 | One kind policy; organisation is a selected review | `classifyPiece` (import seeding and the review) | `itemForPiece`, `persianFromPiece`, `planSetarSetup`, `applySetarSetup` premise check, `commitSetarSetup`, SetarSetupReview (no unseen row joins) | ac-9, ac-10, ac-11 |
 | Terms are found while typing on every engine | `MusicalTermField` (typed text or a tapped term) | ItemForm new + edit; `searchAliasTable`/`searchMatch` | ac-12, ac-13 companion |
-| Sound is readied only inside a gesture, on ONE page-lifetime context; a boundary sounds only on a granted claim | `primePracticeSound` (store start/resume actions, Test sound, Turn on sound) | `startSession`, `resumeSession`, `startRoutineRun`, `resumeRoutineRun`; routine cards' click handlers and the bare-URL Start; ActiveBlock + RoutineRunner via `claimSessionSignal`/`claimRoutineSignal`; `playPracticeCue` | ac-14, ac-15 |
+| Sound is readied only inside a gesture; every readying tap closes the page's context and creates and resumes a fresh one, so at most one is live and a dead one never outlives the next tap; a boundary sounds only on a granted claim, on the current context, never creating, resuming or replaying | `primePracticeSound` (store start/resume actions, Test sound, Turn on sound) | `startSession`, `resumeSession`, `startRoutineRun`, `resumeRoutineRun`; routine cards' click handlers and the bare-URL Start; ActiveBlock + RoutineRunner via `claimSessionSignal`/`claimRoutineSignal`; `playPracticeCue` | ac-14, ac-15 |
 | Removal from a pathway keeps the item; restoring answers with the same id | `removeFromPathway`, restore | StageDetail notice after Add, row menu, ItemDetail, progress/next/Today/plan/routine readers | ac-16 |
 | Focus never falls to the page; an authored value is never fused into generated copy | the controls themselves | Restore (summary keeps focus), term choose/Clear (box keeps focus), "hidden on {title}" isolate, Settings reset row reflow | ac-13 |
 
@@ -136,8 +153,11 @@ The owner's confirmed answers for that corpus are
   atomically idempotently and without collateral changes`; controls: `setar
   setup review is usable through controls and survives interruption`.
 - **Cue doors:** Today, Start, StageDetail, PathwayDetail, RoutineDuration,
-  RoutineRunner bare URL, Session Plan, Resume on Active and on Close × running /
-  suspended / interrupted / throwing / hanging contexts.
+  RoutineRunner bare URL, Session Plan, Resume on Active and on Close, Turn on
+  sound, Settings Test × a context that died while the app sat idle (`running`
+  but silent, `interrupted` or `suspended` past resume(), closed by the browser)
+  × one that starts suspended even inside the tap × throwing / hanging contexts
+  (2026-10-14).
 - **Layout:** Chromium and WebKit × light and dark × normal and 150% text ×
   390×844 (and 1280 where the journey says).
 
@@ -163,7 +183,7 @@ the Node rows only). One row alone: `npx vitest run <file> -t "<title>"`.
 | ac-11 | tests/setar-practice.browser.test.ts | setar setup review is usable through controls and survives interruption |
 | ac-12 | tests/musical-term-suggestions.browser.test.ts | musical term suggestions can be found and selected while typing in both engines |
 | ac-13 | tests/setar-practice.browser.test.ts | portable term and recovery controls preserve direction focus and scroll ownership |
-| ac-14 | tests/practice-cues.browser.test.ts | practice sound reuses one gesture primed context across all start and resume doors |
+| ac-14 | tests/practice-cues.browser.test.ts | practice sound returns at the next tap after the context dies through every start and resume door |
 | ac-15 | tests/practice-cues.browser.test.ts | practice cues preserve wall clock boundaries and every recorded minute |
 | ac-16 | tests/setar-practice.browser.test.ts | pathway removal and restoration visibly retain the existing owned item |
 | ac-17 | tests/setar-practice-proof.test.ts | setar practice family proof rejects targeted partial fixes before review |
@@ -174,8 +194,8 @@ Companions (each leans on, never replaces, its acceptance): io
 reload` (ac-6) and `archive metadata controls send the typed premise and
 re-preview a stale choice` (ac-8); musical-term-suggestions `term suggestion
 controls keep direction focus and scroll on new and edit forms` (ac-13);
-practiceCue `practice sound keeps one context primed only by taps and never
-queues a cue` (ac-14) and `a boundary claim is granted once and only for the
+practiceCue `every readying tap replaces the page's sound context and a
+boundary never revives a dead one` (ac-14) and `a boundary claim is granted once and only for the
 still-running clock` (ac-15).
 
 Fixtures are committed and synthetic (`tests/fixtures/setar-practice-*.json`);
@@ -215,7 +235,8 @@ having touched nothing.
 | the selected-patch guard bypassed | `src/domain/setarSetup.ts` | ac-10 | failed (caught) |
 | an omitted gesture door (Resume does not ready the sound) | `src/store/useStore.ts` | ac-14 | failed (caught) |
 | a context created per boundary | `src/components/practiceCue.ts` | ac-14 | failed (caught) |
-| no resume or state gate in the prime | `src/components/practiceCue.ts` | ac-14 | failed (caught) |
+| no resume or state gate in the prime (no in-tap resume()) | `src/components/practiceCue.ts` | ac-14 | failed (caught) |
+| renewal only when closed or at a boundary (a dead context reused) | `src/components/practiceCue.ts` | ac-14 practiceCue companion | failed (caught) |
 | an unconditional marker claim (effect replay cues twice) | `src/store/useStore.ts` | ac-15 | failed (caught) |
 | a delayed cue queued for a context that is not running | `src/components/practiceCue.ts` | ac-14 practiceCue companion | failed (caught) |
 | routine Start moved back into an effect | `src/pages/RoutineRunner.tsx` | ac-14 | failed (caught) |

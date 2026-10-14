@@ -163,22 +163,21 @@ describe('warm-up is a role ordinary familiar material fills', () => {
       expect(plan.segments.every((s) => s.minutes <= MAX_SEGMENT_MINUTES), label).toBe(true);
       expect(new Set(plan.segments.map((s) => s.itemId)).size, label).toBe(plan.segments.length);
 
-      if (budgetMinutes < 12) {
-        // No warm-up, no cool-down: one useful main focus.
+      if (budgetMinutes < 12 || Math.round(budgetMinutes * share) < MIN_SEGMENT_MINUTES) {
+        // No warm-up: under 12 minutes the session is one useful main focus,
+        // and a share that rounds below the shortest segment worth starting
+        // (12 × 0.12 rounds to 1) is no warm-up — never one stretched past
+        // its share.
         expect(warmups, label).toHaveLength(0);
-        expect(plan.segments, label).toHaveLength(1);
+        if (budgetMinutes < 12) expect(plan.segments, label).toHaveLength(1);
       } else {
         expect(warmups, label).toHaveLength(1);
         // It is FIRST, it is a familiar candidate, and its bounded share is
         // real minutes rather than a weight nobody can check.
         expect(plan.segments[0].bucket, label).toBe('warmup');
         expect(['radif', 'tech'], label).toContain(plan.segments[0].itemId);
-        // The configured share, floored at the shortest segment worth
-        // starting — at 12 minutes 12 × 0.12 rounds to 1, and a one-minute
-        // block is not a warm-up.
-        expect(plan.segments[0].minutes, label).toBe(
-          Math.max(MIN_SEGMENT_MINUTES, Math.round(budgetMinutes * share)),
-        );
+        // Exactly the configured share — never more.
+        expect(plan.segments[0].minutes, label).toBe(Math.round(budgetMinutes * share));
         // Useful main work survives it.
         const main = total - plan.segments[0].minutes;
         expect(main, label).toBeGreaterThanOrEqual(5);
@@ -423,9 +422,12 @@ describe('allocateMinutes', () => {
       ]) {
         const alloc = allocateMinutes([...buckets], budget);
         const label = `${budget} · ${buckets.join('/')}`;
+        const seated = alloc.filter((m) => m > 0);
+        expect(alloc, label).toHaveLength(buckets.length);
         expect(sum(alloc), label).toBeLessThanOrEqual(budget);
-        expect(alloc.every((m) => m >= MIN_SEGMENT_MINUTES), label).toBe(true);
-        expect(alloc.every((m) => m <= MAX_SEGMENT_MINUTES), label).toBe(true);
+        expect(seated.length, label).toBeGreaterThan(0);
+        expect(seated.every((m) => m >= MIN_SEGMENT_MINUTES), label).toBe(true);
+        expect(seated.every((m) => m <= MAX_SEGMENT_MINUTES), label).toBe(true);
       }
     }
   });
@@ -433,9 +435,9 @@ describe('allocateMinutes', () => {
   it('pins the warm-up to its configured share', () => {
     for (const budget of [12, 15, 20, 45, 60]) {
       const alloc = allocateMinutes(['warmup', 'deep', 'review'], budget);
-      expect(alloc[0], `budget ${budget}`).toBe(
-        Math.max(MIN_SEGMENT_MINUTES, Math.round(budget * DEFAULT_SCHEDULING_PARAMS.warmupShare)),
-      );
+      const share = Math.round(budget * DEFAULT_SCHEDULING_PARAMS.warmupShare);
+      // Exactly its share — or, when that rounds below a drill's floor, not seated.
+      expect(alloc[0], `budget ${budget}`).toBe(share >= MIN_SEGMENT_MINUTES ? share : 0);
     }
     const wide = allocateMinutes(['warmup', 'deep'], 60, { ...DEFAULT_SCHEDULING_PARAMS, warmupShare: 0.15 });
     expect(wide[0]).toBe(9);
@@ -636,5 +638,414 @@ describe('a plan’s shape is as honest as its minutes', () => {
     const exclude = new Set([...plan.segments.map((s) => s.itemId), ...args.items.map((i) => i.id)]);
     const unchanged = swapSegment(plan, 0, { ...args, excludeIds: exclude });
     expect(unchanged.segments[0]).toEqual(plan.segments[0]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Whole works keep the standard block (2026-10-14). Committed synthetic
+// fixtures — one per instrument shape the owner plays — swept across every
+// budget, warm-up share and review window the knobs allow.
+// ---------------------------------------------------------------------------
+
+type Fixture = { name: string; instrumentId: string; items: PracticeItem[]; reviews: Review[]; preparationDates: Map<ID, ISODate> };
+
+function fixtureItem(instrumentId: string, id: string, o: Partial<PracticeItem>): PracticeItem {
+  const base = createItem({ instrumentId, title: id, itemType: o.itemType ?? 'other', status: o.status ?? 'usable' }, NOW);
+  return { ...base, id, importance: 3, difficulty: 3, ...o };
+}
+const shur = (gusheh: string) => ({ dastgahAvaz: 'شور', gusheh });
+
+function fixtures(): Fixture[] {
+  const due = (itemId: ID, back: number) => createReview({ practiceItemId: itemId, dueDate: day(-back), reviewType: 'retention' }, NOW);
+  const withDue = (f: Omit<Fixture, 'reviews'>, ids: [ID, number][]): Fixture => ({
+    ...f,
+    items: f.items.map((i) => {
+      const hit = ids.find(([id]) => id === i.id);
+      return hit ? { ...i, nextReviewDate: day(-hit[1]) } : i;
+    }),
+    reviews: ids.map(([id, back]) => ({ ...due(id, back), id: `rev-${id}` })),
+  });
+  const S = 'setar';
+  const setar = withDue(
+    {
+      name: 'Setar works, many due reviews and class commitments',
+      instrumentId: S,
+      items: [
+        fixtureItem(S, 's-daramad', { itemType: 'gusheh', persian: shur('درآمد'), status: 'integrated', difficulty: 2, timesPractised: 14, importance: 2 }),
+        fixtureItem(S, 's-salmak', { itemType: 'gusheh', persian: shur('سلمک'), status: 'performable', difficulty: 2, timesPractised: 20, importance: 2 }),
+        fixtureItem(S, 's-shahnaz', { itemType: 'gusheh', persian: shur('شهناز'), status: 'maintenance', difficulty: 3, timesPractised: 9, importance: 2 }),
+        fixtureItem(S, 's-r1', { itemType: 'gusheh', persian: shur('رضوی'), status: 'usable', importance: 4, timesPractised: 4 }),
+        fixtureItem(S, 's-r2', { itemType: 'gusheh', persian: shur('قرچه'), status: 'usable', importance: 4, timesPractised: 4 }),
+        fixtureItem(S, 's-r3', { itemType: 'gusheh', persian: shur('حسینی'), status: 'fragile', importance: 3, timesPractised: 3 }),
+        fixtureItem(S, 's-r4', { itemType: 'gusheh', persian: shur('ملا نازی'), status: 'usable', importance: 3, timesPractised: 5 }),
+        fixtureItem(S, 's-r5', { itemType: 'full_piece', persian: { dastgahAvaz: 'شور', form: 'چهارمضراب' }, status: 'usable', importance: 3, timesPractised: 6 }),
+        fixtureItem(S, 's-l1', { itemType: 'gusheh', persian: shur('بیات کرد'), status: 'fragile', importance: 4 }),
+        fixtureItem(S, 's-l2', { itemType: 'full_piece', persian: { dastgahAvaz: 'شور', form: 'رنگ' }, status: 'repairing', importance: 4 }),
+        fixtureItem(S, 's-new', { itemType: 'gusheh', persian: shur('شهناز کرشمه'), status: 'new', importance: 5, difficulty: 4 }),
+      ],
+      preparationDates: new Map([
+        ['s-l1', day(1)],
+        ['s-l2', day(3)],
+      ]),
+    },
+    [
+      ['s-r1', 6],
+      ['s-r2', 4],
+      ['s-r3', 3],
+      ['s-r4', 2],
+      ['s-r5', 1],
+    ],
+  );
+  const T = 'tar';
+  const tar = withDue(
+    {
+      name: 'Tar drills only',
+      instrumentId: T,
+      items: [
+        fixtureItem(T, 't-scale', { itemType: 'technique', status: 'integrated', difficulty: 2, timesPractised: 20, importance: 2 }),
+        fixtureItem(T, 't-tremolo', { itemType: 'technique', status: 'maintenance', difficulty: 2, timesPractised: 15, importance: 2 }),
+        fixtureItem(T, 't-d1', { itemType: 'exercise', status: 'usable', importance: 4, timesPractised: 4 }),
+        fixtureItem(T, 't-d2', { itemType: 'exercise', status: 'usable', importance: 3, timesPractised: 4 }),
+        fixtureItem(T, 't-new1', { itemType: 'exercise', status: 'new', importance: 4, difficulty: 4 }),
+        fixtureItem(T, 't-new2', { itemType: 'technique', status: 'new', importance: 3, difficulty: 4 }),
+        fixtureItem(T, 't-frag', { itemType: 'technique', status: 'fragile', importance: 4 }),
+        fixtureItem(T, 't-l1', { itemType: 'exercise', status: 'repairing', importance: 3 }),
+      ],
+      preparationDates: new Map([['t-l1', day(2)]]),
+    },
+    [
+      ['t-d1', 3],
+      ['t-d2', 1],
+    ],
+  );
+  const G = 'guitar';
+  const guitar = withDue(
+    {
+      name: 'Guitar pieces plus drills',
+      instrumentId: G,
+      items: [
+        fixtureItem(G, 'g-piece1', { itemType: 'full_piece', status: 'performable', difficulty: 2, timesPractised: 12, importance: 2 }),
+        fixtureItem(G, 'g-piece2', { itemType: 'full_piece', status: 'fragile', importance: 4, timesPractised: 5 }),
+        fixtureItem(G, 'g-piece3', { itemType: 'full_piece', status: 'new', importance: 5, difficulty: 4 }),
+        fixtureItem(G, 'g-scale', { itemType: 'technique', status: 'usable', difficulty: 2, timesPractised: 8, importance: 2 }),
+        fixtureItem(G, 'g-arpeggio', { itemType: 'technique', status: 'usable', importance: 3, timesPractised: 4 }),
+        fixtureItem(G, 'g-etude', { itemType: 'exercise', status: 'new', importance: 3, difficulty: 3 }),
+      ],
+      preparationDates: new Map(),
+    },
+    [
+      ['g-piece2', 2],
+      ['g-arpeggio', 1],
+    ],
+  );
+  const P = 'parts';
+  const parts = withDue(
+    {
+      name: 'A piece practised as parts',
+      instrumentId: P,
+      items: [
+        fixtureItem(P, 'p-piece', { itemType: 'full_piece', status: 'repairing', importance: 3 }),
+        fixtureItem(P, 'p-a', { itemType: 'section', parentItemId: 'p-piece', status: 'usable', importance: 4, timesPractised: 4 }),
+        fixtureItem(P, 'p-b', { itemType: 'section', parentItemId: 'p-piece', status: 'fragile', importance: 4 }),
+        fixtureItem(P, 'p-c', { itemType: 'section', parentItemId: 'p-piece', status: 'integrated', difficulty: 2, timesPractised: 9, importance: 2 }),
+        fixtureItem(P, 'p-other', { itemType: 'gusheh', persian: shur('گریلی'), status: 'usable', importance: 3 }),
+      ],
+      preparationDates: new Map(),
+    },
+    [
+      ['p-a', 2],
+      ['p-b', 1],
+    ],
+  );
+  // The same library on a day with no class commitment and nothing new: every
+  // middle slot is a due review, so the review ceiling's overflow has to go
+  // somewhere — on base, into the cool-down.
+  const setarReviews: Fixture = {
+    ...setar,
+    name: 'Setar works, every middle slot a due review',
+    items: setar.items.filter((i) => !['s-l1', 's-l2', 's-new'].includes(i.id)),
+    preparationDates: new Map(),
+  };
+  return [setar, setarReviews, tar, guitar, parts];
+}
+
+const BUDGETS = [5, 10, 12, 15, 20, 25, 30, 45, 60, 90, 120];
+const SHARES = [0.1, 0.12, 0.15];
+const WINDOWS: [number, number][] = [
+  [3, 7],
+  [2, 5],
+  [5, 12],
+];
+
+function sweepArgs(f: Fixture, budgetMinutes: number, warmupShare: number, [min, max]: [number, number]): BuildPlanArgs {
+  return {
+    instrumentId: f.instrumentId,
+    budgetMinutes,
+    now: NOW,
+    items: f.items,
+    blocks: [],
+    reviews: f.reviews,
+    preparationDates: f.preparationDates,
+    params: { ...DEFAULT_SCHEDULING_PARAMS, warmupShare, reviewSlotMinMinutes: min, reviewSlotMaxMinutes: max },
+  };
+}
+
+/**
+ * The base allocator's literal output (commit ee7a091, before this change) for
+ * the drill-only Tar fixture, `budget|warmupShare|reviewMin-reviewMax` →
+ * `item:bucket:minutes …`. Captured by running the old `buildSessionPlan`
+ * over `fixtures()`; never recomputed here.
+ */
+const BASE_TAR: Record<string, string> = {
+  '5|0.1|3-7': 't-l1:lesson:5',
+  '5|0.1|2-5': 't-l1:lesson:5',
+  '5|0.1|5-12': 't-l1:lesson:5',
+  '5|0.12|3-7': 't-l1:lesson:5',
+  '5|0.12|2-5': 't-l1:lesson:5',
+  '5|0.12|5-12': 't-l1:lesson:5',
+  '5|0.15|3-7': 't-l1:lesson:5',
+  '5|0.15|2-5': 't-l1:lesson:5',
+  '5|0.15|5-12': 't-l1:lesson:5',
+  '10|0.1|3-7': 't-l1:lesson:10',
+  '10|0.1|2-5': 't-l1:lesson:10',
+  '10|0.1|5-12': 't-l1:lesson:10',
+  '10|0.12|3-7': 't-l1:lesson:10',
+  '10|0.12|2-5': 't-l1:lesson:10',
+  '10|0.12|5-12': 't-l1:lesson:10',
+  '10|0.15|3-7': 't-l1:lesson:10',
+  '10|0.15|2-5': 't-l1:lesson:10',
+  '10|0.15|5-12': 't-l1:lesson:10',
+  '12|0.1|3-7': 't-scale:warmup:2 t-l1:lesson:10',
+  '12|0.1|2-5': 't-scale:warmup:2 t-l1:lesson:10',
+  '12|0.1|5-12': 't-scale:warmup:2 t-l1:lesson:10',
+  '12|0.12|3-7': 't-scale:warmup:2 t-l1:lesson:10',
+  '12|0.12|2-5': 't-scale:warmup:2 t-l1:lesson:10',
+  '12|0.12|5-12': 't-scale:warmup:2 t-l1:lesson:10',
+  '12|0.15|3-7': 't-scale:warmup:2 t-l1:lesson:10',
+  '12|0.15|2-5': 't-scale:warmup:2 t-l1:lesson:10',
+  '12|0.15|5-12': 't-scale:warmup:2 t-l1:lesson:10',
+  '15|0.1|3-7': 't-scale:warmup:2 t-l1:lesson:13',
+  '15|0.1|2-5': 't-scale:warmup:2 t-l1:lesson:13',
+  '15|0.1|5-12': 't-scale:warmup:2 t-l1:lesson:13',
+  '15|0.12|3-7': 't-scale:warmup:2 t-l1:lesson:13',
+  '15|0.12|2-5': 't-scale:warmup:2 t-l1:lesson:13',
+  '15|0.12|5-12': 't-scale:warmup:2 t-l1:lesson:13',
+  '15|0.15|3-7': 't-scale:warmup:2 t-l1:lesson:13',
+  '15|0.15|2-5': 't-scale:warmup:2 t-l1:lesson:13',
+  '15|0.15|5-12': 't-scale:warmup:2 t-l1:lesson:13',
+  '20|0.1|3-7': 't-scale:warmup:2 t-l1:lesson:12 t-tremolo:cooldown:6',
+  '20|0.1|2-5': 't-scale:warmup:2 t-l1:lesson:12 t-tremolo:cooldown:6',
+  '20|0.1|5-12': 't-scale:warmup:2 t-l1:lesson:12 t-tremolo:cooldown:6',
+  '20|0.12|3-7': 't-scale:warmup:2 t-l1:lesson:12 t-tremolo:cooldown:6',
+  '20|0.12|2-5': 't-scale:warmup:2 t-l1:lesson:12 t-tremolo:cooldown:6',
+  '20|0.12|5-12': 't-scale:warmup:2 t-l1:lesson:12 t-tremolo:cooldown:6',
+  '20|0.15|3-7': 't-scale:warmup:3 t-l1:lesson:12 t-tremolo:cooldown:5',
+  '20|0.15|2-5': 't-scale:warmup:3 t-l1:lesson:12 t-tremolo:cooldown:5',
+  '20|0.15|5-12': 't-scale:warmup:3 t-l1:lesson:12 t-tremolo:cooldown:5',
+  '25|0.1|3-7': 't-scale:warmup:3 t-l1:lesson:15 t-tremolo:cooldown:7',
+  '25|0.1|2-5': 't-scale:warmup:3 t-l1:lesson:15 t-tremolo:cooldown:7',
+  '25|0.1|5-12': 't-scale:warmup:3 t-l1:lesson:15 t-tremolo:cooldown:7',
+  '25|0.12|3-7': 't-scale:warmup:3 t-l1:lesson:15 t-tremolo:cooldown:7',
+  '25|0.12|2-5': 't-scale:warmup:3 t-l1:lesson:15 t-tremolo:cooldown:7',
+  '25|0.12|5-12': 't-scale:warmup:3 t-l1:lesson:15 t-tremolo:cooldown:7',
+  '25|0.15|3-7': 't-scale:warmup:4 t-l1:lesson:14 t-tremolo:cooldown:7',
+  '25|0.15|2-5': 't-scale:warmup:4 t-l1:lesson:14 t-tremolo:cooldown:7',
+  '25|0.15|5-12': 't-scale:warmup:4 t-l1:lesson:14 t-tremolo:cooldown:7',
+  '30|0.1|3-7': 't-scale:warmup:3 t-l1:lesson:14 t-d1:review:7 t-tremolo:cooldown:6',
+  '30|0.1|2-5': 't-scale:warmup:3 t-l1:lesson:15 t-d1:review:5 t-tremolo:cooldown:7',
+  '30|0.1|5-12': 't-scale:warmup:3 t-l1:lesson:13 t-d1:review:8 t-tremolo:cooldown:6',
+  '30|0.12|3-7': 't-scale:warmup:4 t-l1:lesson:13 t-d1:review:7 t-tremolo:cooldown:6',
+  '30|0.12|2-5': 't-scale:warmup:4 t-l1:lesson:14 t-d1:review:5 t-tremolo:cooldown:7',
+  '30|0.12|5-12': 't-scale:warmup:4 t-l1:lesson:12 t-d1:review:8 t-tremolo:cooldown:6',
+  '30|0.15|3-7': 't-scale:warmup:5 t-l1:lesson:13 t-d1:review:7 t-tremolo:cooldown:5',
+  '30|0.15|2-5': 't-scale:warmup:5 t-l1:lesson:14 t-d1:review:5 t-tremolo:cooldown:6',
+  '30|0.15|5-12': 't-scale:warmup:5 t-l1:lesson:12 t-d1:review:8 t-tremolo:cooldown:5',
+  '45|0.1|3-7': 't-scale:warmup:5 t-l1:lesson:11 t-d1:review:7 t-frag:deep:17 t-tremolo:cooldown:5',
+  '45|0.1|2-5': 't-scale:warmup:5 t-l1:lesson:12 t-d1:review:5 t-frag:deep:18 t-tremolo:cooldown:5',
+  '45|0.1|5-12': 't-scale:warmup:5 t-l1:lesson:11 t-d1:review:7 t-frag:deep:17 t-tremolo:cooldown:5',
+  '45|0.12|3-7': 't-scale:warmup:5 t-l1:lesson:11 t-d1:review:7 t-frag:deep:17 t-tremolo:cooldown:5',
+  '45|0.12|2-5': 't-scale:warmup:5 t-l1:lesson:12 t-d1:review:5 t-frag:deep:18 t-tremolo:cooldown:5',
+  '45|0.12|5-12': 't-scale:warmup:5 t-l1:lesson:11 t-d1:review:7 t-frag:deep:17 t-tremolo:cooldown:5',
+  '45|0.15|3-7': 't-scale:warmup:7 t-l1:lesson:10 t-d1:review:7 t-frag:deep:16 t-tremolo:cooldown:5',
+  '45|0.15|2-5': 't-scale:warmup:7 t-l1:lesson:11 t-d1:review:5 t-frag:deep:17 t-tremolo:cooldown:5',
+  '45|0.15|5-12': 't-scale:warmup:7 t-l1:lesson:10 t-d1:review:7 t-frag:deep:16 t-tremolo:cooldown:5',
+  '60|0.1|3-7': 't-scale:warmup:6 t-l1:lesson:13 t-d1:review:7 t-frag:deep:21 t-d2:review:7 t-tremolo:cooldown:6',
+  '60|0.1|2-5': 't-scale:warmup:6 t-l1:lesson:15 t-d1:review:5 t-frag:deep:21 t-d2:review:5 t-tremolo:cooldown:8',
+  '60|0.1|5-12': 't-scale:warmup:6 t-l1:lesson:13 t-d1:review:8 t-frag:deep:19 t-d2:review:8 t-tremolo:cooldown:6',
+  '60|0.12|3-7': 't-scale:warmup:7 t-l1:lesson:13 t-d1:review:7 t-frag:deep:20 t-d2:review:7 t-tremolo:cooldown:6',
+  '60|0.12|2-5': 't-scale:warmup:7 t-l1:lesson:15 t-d1:review:5 t-frag:deep:20 t-d2:review:5 t-tremolo:cooldown:8',
+  '60|0.12|5-12': 't-scale:warmup:7 t-l1:lesson:13 t-d1:review:8 t-frag:deep:18 t-d2:review:8 t-tremolo:cooldown:6',
+  '60|0.15|3-7': 't-scale:warmup:9 t-l1:lesson:12 t-d1:review:7 t-frag:deep:20 t-d2:review:7 t-tremolo:cooldown:5',
+  '60|0.15|2-5': 't-scale:warmup:9 t-l1:lesson:14 t-d1:review:5 t-frag:deep:20 t-d2:review:5 t-tremolo:cooldown:7',
+  '60|0.15|5-12': 't-scale:warmup:9 t-l1:lesson:12 t-d1:review:8 t-frag:deep:18 t-d2:review:8 t-tremolo:cooldown:5',
+  '90|0.1|3-7': 't-scale:warmup:9 t-l1:lesson:14 t-d1:review:7 t-frag:deep:23 t-d2:review:7 t-new1:deep:23 t-tremolo:cooldown:7',
+  '90|0.1|2-5': 't-scale:warmup:9 t-l1:lesson:16 t-d1:review:5 t-frag:deep:23 t-d2:review:5 t-new1:deep:23 t-tremolo:cooldown:9',
+  '90|0.1|5-12': 't-scale:warmup:9 t-l1:lesson:14 t-d1:review:9 t-frag:deep:21 t-d2:review:9 t-new1:deep:21 t-tremolo:cooldown:7',
+  '90|0.12|3-7': 't-scale:warmup:11 t-l1:lesson:15 t-d1:review:7 t-frag:deep:22 t-d2:review:7 t-new1:deep:22 t-tremolo:cooldown:6',
+  '90|0.12|2-5': 't-scale:warmup:11 t-l1:lesson:16 t-d1:review:5 t-frag:deep:23 t-d2:review:5 t-new1:deep:22 t-tremolo:cooldown:8',
+  '90|0.12|5-12': 't-scale:warmup:11 t-l1:lesson:14 t-d1:review:10 t-frag:deep:20 t-d2:review:9 t-new1:deep:20 t-tremolo:cooldown:6',
+  '90|0.15|3-7': 't-scale:warmup:14 t-l1:lesson:14 t-d1:review:7 t-frag:deep:22 t-d2:review:7 t-new1:deep:20 t-tremolo:cooldown:6',
+  '90|0.15|2-5': 't-scale:warmup:14 t-l1:lesson:16 t-d1:review:5 t-frag:deep:22 t-d2:review:5 t-new1:deep:22 t-tremolo:cooldown:6',
+  '90|0.15|5-12': 't-scale:warmup:14 t-l1:lesson:14 t-d1:review:8 t-frag:deep:20 t-d2:review:8 t-new1:deep:20 t-tremolo:cooldown:6',
+  '120|0.1|3-7': 't-scale:warmup:12 t-l1:lesson:25 t-d1:review:7 t-frag:deep:25 t-d2:review:7 t-new1:deep:25 t-tremolo:cooldown:19',
+  '120|0.1|2-5': 't-scale:warmup:12 t-l1:lesson:25 t-d1:review:5 t-frag:deep:25 t-d2:review:5 t-new1:deep:25 t-tremolo:cooldown:23',
+  '120|0.1|5-12': 't-scale:warmup:12 t-l1:lesson:22 t-d1:review:12 t-frag:deep:25 t-d2:review:12 t-new1:deep:25 t-tremolo:cooldown:12',
+  '120|0.12|3-7': 't-scale:warmup:14 t-l1:lesson:25 t-d1:review:7 t-frag:deep:25 t-d2:review:7 t-new1:deep:25 t-tremolo:cooldown:17',
+  '120|0.12|2-5': 't-scale:warmup:14 t-l1:lesson:25 t-d1:review:5 t-frag:deep:25 t-d2:review:5 t-new1:deep:25 t-tremolo:cooldown:21',
+  '120|0.12|5-12': 't-scale:warmup:14 t-l1:lesson:22 t-d1:review:12 t-frag:deep:25 t-d2:review:12 t-new1:deep:25 t-tremolo:cooldown:10',
+  '120|0.15|3-7': 't-scale:warmup:18 t-l1:lesson:25 t-d1:review:7 t-frag:deep:25 t-d2:review:7 t-new1:deep:25 t-tremolo:cooldown:13',
+  '120|0.15|2-5': 't-scale:warmup:18 t-l1:lesson:25 t-d1:review:5 t-frag:deep:25 t-d2:review:5 t-new1:deep:25 t-tremolo:cooldown:17',
+  '120|0.15|5-12': 't-scale:warmup:18 t-l1:lesson:19 t-d1:review:12 t-frag:deep:25 t-d2:review:12 t-new1:deep:25 t-tremolo:cooldown:9',
+};
+
+/** A whole work, derived here rather than imported: a top-level gusheh or full piece, or anything with Persian identity. */
+const expectWork = (i: PracticeItem) =>
+  !i.parentItemId && (i.itemType === 'gusheh' || i.itemType === 'full_piece' || !!i.persian?.dastgahAvaz || !!i.persian?.form || !!i.persian?.gusheh);
+/** The published bucket weights (docs/scheduling-evidence.md §5), at the default deep-work share. */
+const WEIGHT: Record<string, number> = { deep: 2.6, lesson: 1.8, review: 1.2, cooldown: 0.9 };
+const warmShare = (B: number, share: number) => Math.round(B * share);
+/** The cool-down's weighted split of the minutes after the warm-up, among the segments seated with it. */
+function coolShare(B: number, share: number, buckets: string[]): number {
+  const pool = B - (buckets.includes('warmup') ? warmShare(B, share) : 0);
+  const rest = buckets.filter((b) => b !== 'warmup');
+  return Math.floor((pool * WEIGHT.cooldown) / sum(rest.map((b) => WEIGHT[b])));
+}
+const render = (plan: SessionPlan) => plan.segments.map((x) => `${x.itemId}:${x.bucket}:${x.minutes}`).join(' ');
+
+/** Every rule a seated plan must keep, whichever door (build, Remove) produced it. */
+function expectFloorsAndShares(plan: SessionPlan, f: Fixture, B: number, share: number, max: number, label: string) {
+  const items = new Map(f.items.map((i) => [i.id, i]));
+  const segs = plan.segments;
+  const buckets = segs.map((x) => x.bucket);
+  const total = sum(segs.map((x) => x.minutes));
+  expect(total, label).toBeLessThanOrEqual(B);
+  for (const seg of segs) {
+    const work = expectWork(items.get(seg.itemId)!);
+    expect(seg.minutes, `${label} ${seg.itemId}`).toBeGreaterThanOrEqual(MIN_SEGMENT_MINUTES);
+    expect(seg.minutes, `${label} ${seg.itemId}`).toBeLessThanOrEqual(MAX_SEGMENT_MINUTES);
+    // A whole work never gets less than the standard 10-minute block beside other work.
+    if (segs.length > 1 && work) expect(seg.minutes, `${label} ${seg.itemId} is a work`).toBeGreaterThanOrEqual(10);
+    if (segs.length > 1 && seg.bucket === 'warmup') {
+      // Exactly its pinned share, and a work only when that share is a standard block.
+      expect(seg.minutes, `${label} warm-up`).toBe(warmShare(B, share));
+      if (work) expect(warmShare(B, share), `${label} warm-up on a work`).toBeGreaterThanOrEqual(10);
+    }
+    if (segs.length > 1 && seg.bucket === 'cooldown') {
+      const c = coolShare(B, share, buckets);
+      expect(seg.minutes, `${label} cool-down`).toBeLessThanOrEqual(c + 1);
+      if (work) expect(c, `${label} cool-down on a work`).toBeGreaterThanOrEqual(10);
+    }
+  }
+  const work = segs.filter((x) => x.bucket === 'deep' || x.bucket === 'lesson');
+  // The review ceiling holds while deep or lesson work could take the minutes.
+  for (const r of segs.filter((x) => x.bucket === 'review')) {
+    const ceiling = Math.max(max, expectWork(items.get(r.itemId)!) ? 10 : MIN_SEGMENT_MINUTES);
+    if (r.minutes > ceiling) expect(work.every((x) => x.minutes === MAX_SEGMENT_MINUTES), `${label} review over its ceiling`).toBe(true);
+  }
+  // An honest remainder only once everything that may take overflow is full.
+  if (total < B) {
+    expect(segs.filter((x) => x.bucket !== 'warmup' && x.bucket !== 'cooldown').every((x) => x.minutes === MAX_SEGMENT_MINUTES), `${label} remainder`).toBe(true);
+  }
+}
+
+describe('whole works keep the standard block', () => {
+  it('planned whole works keep the standard block and the plan adapts its segment count', () => {
+    // The minutes first, across the whole sweep — the rules the owner set.
+    for (const f of fixtures()) {
+      for (const B of BUDGETS) {
+        for (const share of SHARES) {
+          for (const window of WINDOWS) {
+            const label = `${f.name} · ${B} min · share ${share} · reviews ${window.join('–')}`;
+            expectFloorsAndShares(buildSessionPlan(sweepArgs(f, B, share, window)), f, B, share, window[1], label);
+          }
+        }
+      }
+    }
+    let drillOnlyCompared = 0;
+    for (const f of fixtures()) {
+      for (const B of BUDGETS) {
+        for (const share of SHARES) {
+          for (const window of WINDOWS) {
+            const label = `${f.name} · ${B} min · share ${share} · reviews ${window.join('–')}`;
+            const args = sweepArgs(f, B, share, window);
+            const plan = buildSessionPlan(args);
+            // Deterministic: the same inputs give the same plan, field for field.
+            expect(buildSessionPlan(args), label).toEqual(plan);
+            expect(plan.segments.length, label).toBeGreaterThan(0);
+            expectFloorsAndShares(plan, f, B, share, window[1], label);
+            const items = new Map(f.items.map((i) => [i.id, i]));
+            // The anchor — the most useful work, which a five-minute plan is — always stays.
+            const anchor = buildSessionPlan({ ...args, budgetMinutes: 5 }).segments[0].itemId;
+            expect(plan.segments.map((x) => x.itemId), label).toContain(anchor);
+
+            // The floor is fixed on each segment when it is planned.
+            for (const seg of plan.segments) {
+              expect(seg.floorMinutes, `${label} ${seg.itemId} floor`).toBe(expectWork(items.get(seg.itemId)!) ? 10 : MIN_SEGMENT_MINUTES);
+            }
+            // REMOVE re-allocates under the same rules.
+            if (plan.segments.length > 1) {
+              plan.segments.forEach((_, i) => {
+                const removed = redistributePlan({ ...plan, segments: plan.segments.filter((__, j) => j !== i) }, args.params);
+                expect(removed.segments.length, `${label} remove ${i}`).toBe(plan.segments.length - 1);
+                expectFloorsAndShares(removed, f, B, share, window[1], `${label} remove ${i}`);
+              });
+            }
+            // SWAP offers only material whose floor fits the slot.
+            plan.segments.forEach((seg, i) => {
+              const swapped = swapSegment(plan, i, args).segments[i];
+              expect(swapped.minutes, `${label} swap ${i}`).toBe(seg.minutes);
+              if (plan.segments.length > 1) {
+                expect(expectWork(items.get(swapped.itemId)!) ? 10 : MIN_SEGMENT_MINUTES, `${label} swap ${i}`).toBeLessThanOrEqual(seg.minutes);
+              }
+            });
+
+            // DRILL-ONLY: where the base plan's warm-up and cool-down stayed
+            // within their shares (nothing above the warm-up's share or the
+            // cool-down's floored split — the review clamp used to push its
+            // excess there) and no segment reached 25, the minutes are
+            // exactly the base allocator's.
+            if (f.instrumentId === 'tar') {
+              const base = BASE_TAR[`${B}|${share}|${window.join('-')}`];
+              const segs = base.split(' ').map((x) => x.split(':'));
+              const buckets = segs.map((x) => x[1]);
+              const minutes = (b: string) => Number(segs.find((x) => x[1] === b)![2]);
+              const absorbed =
+                (buckets.includes('warmup') && minutes('warmup') > warmShare(B, share)) ||
+                (buckets.includes('cooldown') && minutes('cooldown') > coolShare(B, share, buckets));
+              if (!absorbed && segs.every((x) => Number(x[2]) < MAX_SEGMENT_MINUTES)) {
+                expect(render(plan), label).toBe(base);
+                drillOnlyCompared += 1;
+              }
+            }
+          }
+        }
+      }
+    }
+    // The comparison is real, not vacuous.
+    expect(drillOnlyCompared).toBe(70);
+
+    // The Setar day the owner reported: base gave a 2-minute warm-up on a
+    // gusheh and an 11-minute cool-down holding the review ceiling's overflow.
+    // Now two whole works, ten minutes each — fewer, longer segments.
+    const [, reviewDay] = fixtures();
+    expect(render(buildSessionPlan(sweepArgs(reviewDay, 20, 0.12, [3, 7])))).toBe('s-r1:review:10 s-r2:review:10');
+    expect(render(buildSessionPlan(sweepArgs(reviewDay, 45, 0.12, [3, 7])))).toBe('s-r1:review:12 s-r2:review:11 s-r3:review:11 s-r5:review:11');
+    // A work warms up once the share is a standard block, and cools down
+    // only on its own weighted split — never on leftovers.
+    expect(render(buildSessionPlan(sweepArgs(reviewDay, 90, 0.12, [3, 7])))).toMatch(/^s-shahnaz:warmup:11 .* s-daramad:cooldown:10$/);
+
+    // A RUNNING PLAN persisted before floors existed still re-spreads and starts.
+    const [setar] = fixtures();
+    const built = buildSessionPlan(sweepArgs(setar, 45, 0.12, [3, 7]));
+    const legacy: SessionPlan = { ...built, segments: built.segments.map(({ floorMinutes: _f, ...seg }) => (void _f, seg)) };
+    expect(sum(redistributePlan(legacy).segments.map((x) => x.minutes))).toBeLessThanOrEqual(45);
+    const run: PlanRun = {
+      instrumentId: legacy.instrumentId,
+      budgetMinutes: legacy.budgetMinutes,
+      startedAt: NOW.toISOString(),
+      pointer: 0,
+      segments: legacy.segments.map((seg) => ({ ...seg, status: 'pending' })),
+    };
+    expect(planSegmentStartable(run, setar.items)).toMatchObject({ ok: true });
   });
 });

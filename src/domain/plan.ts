@@ -17,7 +17,8 @@ import {
   type ItemScore,
 } from './scoring';
 import { dueReviews } from './selectors';
-import { defaultModeForStatus, focusForItem } from './defaults';
+import { DEFAULT_DURATION_MINUTES, defaultModeForStatus, focusForItem } from './defaults';
+import { isWork } from './repertoire';
 import { toISODate, todayISODate } from './util';
 
 // ---------------------------------------------------------------------------
@@ -62,6 +63,13 @@ export interface PlanSegment {
   mode: BlockMode;
   focus: FocusArea;
   reason: string;
+  /**
+   * The fewest minutes this segment's material is worth in a multi-segment
+   * plan, fixed when it was planned (`segmentFloor`). Optional: a running
+   * plan persisted before floors existed has none, reads as
+   * MIN_SEGMENT_MINUTES, and still runs.
+   */
+  floorMinutes?: number;
 }
 
 export interface SessionPlan {
@@ -86,8 +94,14 @@ export interface BuildPlanArgs {
   params?: SchedulingParams;
 }
 
-/** Shortest segment worth starting. */
+/** Shortest segment worth starting: a drill, a technique, a passage or a part. */
 export const MIN_SEGMENT_MINUTES = 2;
+/**
+ * Shortest segment a whole WORK (`isWork`: a top-level gusheh, a full piece,
+ * anything with dastgāh/form/composer) gets in a multi-segment plan — the
+ * app's own standard block, never a second number. Same on every instrument.
+ */
+export const WORK_SEGMENT_MINUTES = DEFAULT_DURATION_MINUTES;
 /** Longest single block the planner will ever propose. */
 export const MAX_SEGMENT_MINUTES = 25;
 /** Under this, the session is ONE useful main focus and nothing else. */
@@ -183,6 +197,11 @@ interface Candidate {
   score: ItemScore;
   bucket: PlanBucket;
   reason: string;
+}
+
+/** The floor a segment on this item gets in a multi-segment plan. */
+export function segmentFloor(item: PracticeItem): number {
+  return isWork(item) ? WORK_SEGMENT_MINUTES : MIN_SEGMENT_MINUTES;
 }
 
 function focusFor(item: PracticeItem): FocusArea {
@@ -372,14 +391,22 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
 
   if (B >= SHORT_SESSION_MINUTES) {
     // ---- 2. warm-up: optional, real minutes, never at the cost of the work --
-    const warmupMinutes = Math.max(MIN_SEGMENT_MINUTES, Math.round(B * params.warmupShare));
-    if (B - warmupMinutes >= MAIN_WORK_FLOOR_MINUTES) {
+    // Its minutes are its pinned share and nothing more, so a role whose share
+    // is under a material's floor is filled by material that fits it — a
+    // whole work warms up only when the share is a standard block — or not at
+    // all.
+    const warmupMinutes = warmupShareMinutes(B, params);
+    if (warmupMinutes >= MIN_SEGMENT_MINUTES && B - warmupMinutes >= MAIN_WORK_FLOOR_MINUTES) {
       // A warm-up never consumes work that is WANTED for itself: an item
       // whose review is due deserves the retrieval slot, and one committed to
       // a class deserves real practice. Spending either as the warm-up would
       // quietly drop the need that made it urgent.
       const warmupPool = pool.filter(
-        (s) => isWarmupSuitable(s.item) && !dueById.has(s.item.id) && s.parts.lesson === 0,
+        (s) =>
+          isWarmupSuitable(s.item) &&
+          !dueById.has(s.item.id) &&
+          s.parts.lesson === 0 &&
+          segmentFloor(s.item) <= warmupMinutes,
       );
       add(pick(warmupPool, false), 'warmup', { repeat: isRepeatPool });
     }
@@ -395,10 +422,22 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
     }
 
     // ---- 4. cool-down: optional familiar work, never a slot to fill ---------
+    // Its share is its weighted split with it seated; only material whose
+    // floor that share reaches may take the role.
     if (wantCooldown && selected.length < target) {
-      add(pick(pool.filter((s) => COOLDOWN_STATUSES.has(s.item.status)), false), 'cooldown', {
-        repeat: isRepeatPool,
-      });
+      const share = cooldownShareMinutes(
+        B,
+        params,
+        selected.map((c) => c.bucket),
+      );
+      add(
+        pick(
+          pool.filter((s) => COOLDOWN_STATUSES.has(s.item.status) && segmentFloor(s.item) <= share),
+          false,
+        ),
+        'cooldown',
+        { repeat: isRepeatPool },
+      );
     }
   }
 
@@ -415,8 +454,17 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
     })
     .map(({ c }) => c);
 
-  const minutes = allocateMinutes(ordered.map((c) => c.bucket), B, params);
-  const kept = ordered.slice(0, minutes.length);
+  // Seating and minutes in one step: a segment stays only while every seated
+  // segment can still reach its floor, and the anchor always stays.
+  const minutes = allocateMinutes(
+    ordered.map((c) => c.bucket),
+    B,
+    params,
+    ordered.map((c) => segmentFloor(c.score.item)),
+    ordered.indexOf(anchor),
+  );
+  const kept = ordered.filter((_, i) => minutes[i] > 0);
+  const keptMinutes = minutes.filter((m) => m > 0);
 
   const coreIds = new Set<string>([anchor.score.item.id]);
   const warmupSeg = kept.find((c) => c.bucket === 'warmup');
@@ -427,12 +475,13 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
   const segments: PlanSegment[] = kept.map((c, i) => ({
     itemId: c.score.item.id,
     title: c.score.item.title,
-    minutes: minutes[i],
+    minutes: keptMinutes[i],
     bucket: c.bucket,
     core: coreIds.has(c.score.item.id),
     mode: defaultModeForStatus(c.score.item.status),
     focus: focusFor(c.score.item),
     reason: c.reason,
+    floorMinutes: segmentFloor(c.score.item),
   }));
 
   // "Skipping X" is decided from what was ACTUALLY left out. Deriving it
@@ -470,159 +519,190 @@ function segmentTarget(B: number): number {
   return 7;
 }
 
+/** The warm-up's minutes: its pinned share of the budget, and never more. */
+export function warmupShareMinutes(budget: number, params: SchedulingParams): number {
+  return Math.min(MAX_SEGMENT_MINUTES, Math.round(budget * clampSchedulingParams(params).warmupShare));
+}
+
 /**
- * Apportion whole minutes across the given buckets, never exceeding `budget`
- * and normally using all of it. Every segment gets at least
- * MIN_SEGMENT_MINUTES and at most MAX_SEGMENT_MINUTES.
- *
- * That ceiling is what makes an honest remainder possible: two items and two
- * hours is not a reason to propose a sixty-minute block on each. When the
- * ceiling binds, the leftover minutes are simply not allocated, and the
- * summary says so — inventing filler or stretching work beyond a sensible
- * allocation would be a worse answer than a short plan.
- *
- * Deterministic largest-remainder split by bucket weight, a priority-ordered
- * ±1 fix, then review segments are clamped into
- * `[reviewSlotMinMinutes, reviewSlotMaxMinutes]`.
+ * The cool-down's share: its weighted split of the minutes after the warm-up,
+ * computed with it seated beside `others` (every other segment's bucket).
+ * The allocator may add one rounding minute to it, never more.
  */
-export function allocateMinutes(buckets: PlanBucket[], budget: number, params?: SchedulingParams): number[] {
-  const B = Math.max(MIN_SEGMENT_MINUTES, Math.round(budget));
-  let list = buckets.slice();
-  if (list.length === 0) return [];
-
-  // Too many segments to give each ≥ MIN_SEGMENT_MINUTES? Drop lowest-priority.
-  const maxSegments = Math.max(1, Math.floor(B / MIN_SEGMENT_MINUTES));
-  if (list.length > maxSegments) {
-    const keepOrder = list
-      .map((bucket, i) => ({ bucket, i }))
-      .sort((a, b) => BUCKET_PRIORITY.indexOf(a.bucket) - BUCKET_PRIORITY.indexOf(b.bucket) || a.i - b.i)
-      .slice(0, maxSegments)
-      .map((x) => x.i)
-      .sort((a, b) => a - b);
-    list = keepOrder.map((i) => buckets[i]);
-  }
-
-  if (list.length === 1) return [Math.min(B, MAX_SEGMENT_MINUTES)];
-
+export function cooldownShareMinutes(budget: number, params: SchedulingParams, others: PlanBucket[]): number {
   const p = clampSchedulingParams(params);
-  const alloc: number[] = new Array(list.length).fill(0);
+  const pool = budget - (others.includes('warmup') ? warmupShareMinutes(budget, p) : 0);
+  const rest = [...others.filter((b) => b !== 'warmup' && b !== 'cooldown'), 'cooldown' as const];
+  const sumW = rest.reduce((a, b) => a + weightFor(b, p), 0);
+  return Math.floor((pool * weightFor('cooldown', p)) / sumW);
+}
 
-  // The warm-up's share is a REAL ALLOCATION TARGET, not a weight nudge: it is
-  // pinned to `round(B × warmupShare)` and then left alone. Bounded by
-  // feasibility — never below the floor, never above the ceiling, and never so
-  // large that another segment cannot reach the floor. Everything else splits
-  // what remains, so the published share is the number the owner actually
-  // sees on the screen rather than an input to a weighting they cannot check.
-  const warmupIdx = list.indexOf('warmup');
-  const rest = list.map((_, i) => i).filter((i) => i !== warmupIdx);
-  let pool = B;
-  if (warmupIdx >= 0) {
-    const headroom = B - rest.length * MIN_SEGMENT_MINUTES;
-    const target = Math.round(B * p.warmupShare);
-    alloc[warmupIdx] = Math.max(
-      MIN_SEGMENT_MINUTES,
-      Math.min(target, MAX_SEGMENT_MINUTES, Math.max(MIN_SEGMENT_MINUTES, headroom)),
-    );
-    pool = B - alloc[warmupIdx];
+/**
+ * Seat segments and apportion whole minutes, never exceeding `budget`.
+ * Returns minutes ALIGNED with `buckets`: a segment the budget cannot seat
+ * gets 0, every seated one at least its floor.
+ *
+ * SEATING. A segment stays only while every seated segment can still reach
+ * its floor (`floors`, default MIN_SEGMENT_MINUTES; a whole work's is the
+ * standard block): the optional roles go first — cool-down, then warm-up —
+ * then the lowest-priority work (the last), never `anchor` (default: the
+ * first that is not an optional role). One seated segment takes the whole
+ * budget up to MAX_SEGMENT_MINUTES, floors aside.
+ *
+ * OPTIONAL ROLES NEVER CARRY OVERFLOW. The warm-up gets exactly its pinned
+ * share, `round(B × warmupShare)`; the cool-down its weighted split of what
+ * follows plus at most one rounding minute. A role whose share is below its
+ * floor is not seated at all.
+ *
+ * EVERYTHING ELSE splits the rest by bucket weight, then: one rounding pass
+ * in priority order; review segments clamped into
+ * `[reviewSlotMinMinutes, reviewSlotMaxMinutes]` (never below their floor),
+ * their excess going to deep and lesson work; overflow to deep and lesson
+ * work, each up to MAX_SEGMENT_MINUTES, and only once all of them are full,
+ * to reviews. Anything still left is an honest remainder: an unspent minute
+ * beats stretching two items across two hours.
+ */
+export function allocateMinutes(
+  buckets: PlanBucket[],
+  budget: number,
+  params?: SchedulingParams,
+  floors?: number[],
+  anchor?: number,
+): number[] {
+  const B = Math.max(MIN_SEGMENT_MINUTES, Math.round(budget));
+  const p = clampSchedulingParams(params);
+  const n = buckets.length;
+  const alloc: number[] = new Array(n).fill(0);
+  if (n === 0) return alloc;
+  const floorOf = (i: number) => Math.max(MIN_SEGMENT_MINUTES, floors?.[i] ?? MIN_SEGMENT_MINUTES);
+  const optional = (i: number) => buckets[i] === 'warmup' || buckets[i] === 'cooldown';
+  const protectedIdx = anchor !== undefined && anchor >= 0 && anchor < n ? anchor : buckets.findIndex((_, i) => !optional(i));
+
+  // ---- seating ----------------------------------------------------------------
+  const seated = new Set(buckets.map((_, i) => i));
+  const fits = (): boolean => {
+    if (seated.size <= 1) return true;
+    const list = [...seated];
+    const wu = list.find((i) => buckets[i] === 'warmup');
+    const wuMinutes = wu === undefined ? 0 : warmupShareMinutes(B, p);
+    if (wu !== undefined && wuMinutes < floorOf(wu)) return false;
+    const cd = list.find((i) => buckets[i] === 'cooldown');
+    if (cd !== undefined) {
+      const share = cooldownShareMinutes(B, p, list.filter((i) => i !== cd).map((i) => buckets[i]));
+      if (share < floorOf(cd)) return false;
+    }
+    return wuMinutes + list.filter((i) => i !== wu).reduce((a, i) => a + floorOf(i), 0) <= B;
+  };
+  while (!fits()) {
+    const list = [...seated];
+    const drop =
+      list.find((i) => buckets[i] === 'cooldown') ??
+      list.find((i) => buckets[i] === 'warmup') ??
+      list.filter((i) => i !== protectedIdx).at(-1);
+    if (drop === undefined) break;
+    seated.delete(drop);
+  }
+  const live = [...seated];
+  if (live.length === 1) {
+    alloc[live[0]] = Math.min(B, MAX_SEGMENT_MINUTES);
+    return alloc;
   }
 
-  const weights = rest.map((i) => weightFor(list[i], p));
+  // ---- optional roles: their share, never more --------------------------------
+  const warmupIdx = live.find((i) => buckets[i] === 'warmup');
+  if (warmupIdx !== undefined) alloc[warmupIdx] = warmupShareMinutes(B, p);
+  const rest = live.filter((i) => i !== warmupIdx);
+  const pool = B - (warmupIdx === undefined ? 0 : alloc[warmupIdx]);
+
+  const weights = rest.map((i) => weightFor(buckets[i], p));
   const sumW = weights.reduce((a, w) => a + w, 0) || 1;
+  const cap = new Map<number, number>();
   rest.forEach((i, k) => {
-    alloc[i] = Math.min(
-      MAX_SEGMENT_MINUTES,
-      Math.max(MIN_SEGMENT_MINUTES, Math.floor((pool * weights[k]) / sumW)),
-    );
+    const raw = Math.floor((pool * weights[k]) / sumW);
+    cap.set(i, buckets[i] === 'cooldown' ? Math.min(MAX_SEGMENT_MINUTES, Math.max(floorOf(i), raw + 1)) : MAX_SEGMENT_MINUTES);
+    alloc[i] = Math.min(cap.get(i)!, Math.max(floorOf(i), raw));
   });
 
   let total = alloc.reduce((a, m) => a + m, 0);
   const byPriority = rest
-    .map((i) => ({ b: list[i], i }))
+    .map((i) => ({ b: buckets[i], i }))
     .sort((a, z) => BUCKET_PRIORITY.indexOf(a.b) - BUCKET_PRIORITY.indexOf(z.b) || a.i - z.i)
     .map((x) => x.i);
+  const work = byPriority.filter((i) => buckets[i] === 'deep' || buckets[i] === 'lesson');
+  const reviews = byPriority.filter((i) => buckets[i] === 'review');
 
-  // Hand out the shortfall to the highest-priority segments that still have
-  // room under the ceiling. When none has room, the remainder stays unspent —
-  // an honest short plan beats stretching two items across two hours.
-  let guard = 0;
-  while (total < B && guard++ < 10000) {
-    let changed = false;
-    for (const i of byPriority) {
-      if (total >= B) break;
-      if (alloc[i] < MAX_SEGMENT_MINUTES) {
-        alloc[i] += 1;
-        total += 1;
-        changed = true;
+  /** Hand `amount` minutes round-robin to `to`, each up to its cap; returns what nobody could take. */
+  const give = (to: number[], amount: number, room: (i: number) => number = (i) => cap.get(i)!): number => {
+    let left = amount;
+    for (let changed = true; left > 0 && changed; ) {
+      changed = false;
+      for (const j of to) {
+        if (left <= 0) break;
+        if (alloc[j] < room(j)) {
+          alloc[j] += 1;
+          left -= 1;
+          changed = true;
+        }
       }
     }
-    if (!changed) break;
-  }
-  // Trim any overflow from the lowest-priority segments that stay at the floor.
+    return left;
+  };
+
+  // Floors can push the split over the budget: trim the lowest-priority
+  // segments back towards their floors (seating guarantees the floors fit).
   const lowestFirst = byPriority.slice().reverse();
-  guard = 0;
-  while (total > B && guard++ < 10000) {
-    let changed = false;
+  for (let changed = true; total > B && changed; ) {
+    changed = false;
     for (const i of lowestFirst) {
       if (total <= B) break;
-      if (alloc[i] > MIN_SEGMENT_MINUTES) {
+      if (alloc[i] > floorOf(i)) {
         alloc[i] -= 1;
         total -= 1;
         changed = true;
       }
     }
-    if (!changed) break;
   }
-
-  // Keep review segments within the configured slot window — a retrieval check
-  // should not quietly take half the session. Minutes move only among the
-  // non-warm-up segments, so the warm-up's pinned share survives this step.
-  const reviewIdx = rest.filter((i) => list[i] === 'review');
-  if (reviewIdx.length > 0) {
-    const others = byPriority.filter((i) => list[i] !== 'review');
-    const othersLowestFirst = others.slice().reverse();
-    for (const i of reviewIdx) {
-      const original = alloc[i];
-      const desired = Math.min(Math.max(original, p.reviewSlotMinMinutes), p.reviewSlotMaxMinutes);
-      const diff = original - desired;
-      if (diff > 0 && others.length > 0) {
-        let give = diff;
-        let g = 0;
-        while (give > 0 && g++ < 10000) {
-          let changed = false;
-          for (const j of others) {
-            if (give <= 0) break;
-            if (alloc[j] < MAX_SEGMENT_MINUTES) {
-              alloc[j] += 1;
-              give -= 1;
-              changed = true;
-            }
-          }
-          if (!changed) break;
-        }
-        // Only give away what someone could actually take: the rest stays on
-        // the review rather than vanishing from the budget.
-        alloc[i] = original - (diff - give);
-      } else if (diff < 0) {
-        const need = -diff;
-        let taken = 0;
-        let g = 0;
-        while (taken < need && g++ < 10000) {
-          let changed = false;
-          for (const j of othersLowestFirst) {
-            if (taken >= need) break;
-            if (alloc[j] > MIN_SEGMENT_MINUTES) {
-              alloc[j] -= 1;
-              taken += 1;
-              changed = true;
-            }
-          }
-          if (!changed) break;
-        }
-        alloc[i] = Math.min(MAX_SEGMENT_MINUTES, original + taken);
-      }
+  // ONE rounding pass, in priority order: the split's own remainder.
+  for (const i of byPriority) {
+    if (total >= B) break;
+    if (alloc[i] < cap.get(i)!) {
+      alloc[i] += 1;
+      total += 1;
     }
   }
 
+  // Keep review segments within the configured slot window — a retrieval check
+  // should not quietly take half the session — but never below a floor: a
+  // whole work's review is still a standard block. Excess goes only to deep
+  // and lesson work; what they cannot take stays on the review.
+  const othersLowestFirst = byPriority.filter((i) => buckets[i] !== 'review').reverse();
+  for (const i of reviews) {
+    const original = alloc[i];
+    const desired = Math.max(floorOf(i), Math.min(Math.max(original, p.reviewSlotMinMinutes), p.reviewSlotMaxMinutes));
+    if (original > desired) {
+      alloc[i] = desired + give(work, original - desired);
+    } else if (original < desired) {
+      let taken = 0;
+      for (let changed = true; taken < desired - original && changed; ) {
+        changed = false;
+        for (const j of othersLowestFirst) {
+          if (taken >= desired - original) break;
+          if (alloc[j] > floorOf(j)) {
+            alloc[j] -= 1;
+            taken += 1;
+            changed = true;
+          }
+        }
+      }
+      alloc[i] = original + taken;
+    }
+  }
+
+  // Overflow: deep and lesson work first, reviews only once that is full.
+  // Never a warm-up or a cool-down.
+  total = alloc.reduce((a, m) => a + m, 0);
+  total = B - give(work, B - total);
+  give(reviews, B - total);
   return alloc;
 }
 
@@ -673,17 +753,21 @@ export function redistributePlan(plan: SessionPlan, params?: SchedulingParams): 
   if (plan.segments.length === 0) {
     return { ...plan, summary: buildSummary([], plan.budgetMinutes, []) };
   }
-  const minutes = allocateMinutes(plan.segments.map((s) => s.bucket), plan.budgetMinutes, params);
-  // allocateMinutes may drop segments if there are too many for the budget;
-  // keep only the ones it kept, in order.
-  const kept = plan.segments.slice(0, minutes.length);
-  const segments = kept.map((s, i) => ({ ...s, minutes: minutes[i] }));
+  // The SAME allocator and floors as the build: a removal frees minutes, so
+  // nothing normally drops — a segment it cannot seat is left out, in order.
+  const minutes = allocateMinutes(
+    plan.segments.map((s) => s.bucket),
+    plan.budgetMinutes,
+    params,
+    plan.segments.map((s) => s.floorMinutes ?? MIN_SEGMENT_MINUTES),
+  );
+  const segments = plan.segments.map((s, i) => ({ ...s, minutes: minutes[i] })).filter((s) => s.minutes > 0);
   return { ...plan, segments, summary: buildSummary(segments, plan.budgetMinutes, []) };
 }
 
 /**
  * Swap segment `index` for the next-best alternative, keeping its minutes and
- * its role. Uses the SAME eligibility policy, candidate pool and warm-up
+ * its role — offered only material whose floor fits those minutes. Uses the SAME eligibility policy, candidate pool and warm-up
  * exclusions as the build — a swap that could reach material the build
  * excluded is a second, hidden policy, and it used to hand back an item
  * already practised today (or a due/lesson-committed item as a "warm-up")
@@ -729,6 +813,9 @@ export function swapSegment(
 
   const eligible = (s: ItemScore): boolean => {
     if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
+    // Only material whose floor fits the slot: a two-minute warm-up is never
+    // handed a whole work. A one-segment plan has no floors.
+    if (plan.segments.length > 1 && segmentFloor(s.item) > target.minutes) return false;
     switch (target.bucket) {
       case 'warmup':
         // Same exclusions as the build's own warm-up pool: a due review or a
@@ -758,6 +845,7 @@ export function swapSegment(
     mode: defaultModeForStatus(pick.item.status),
     focus: focusFor(pick.item),
     reason: planSegmentReason(target.bucket, pick, { dueDate: dueById.get(pick.item.id), repeat: isRepeatPool }),
+    floorMinutes: segmentFloor(pick.item),
   };
   const segments = plan.segments.map((s, i) => (i === index ? replacement : s));
   return { ...plan, segments, summary: buildSummary(segments, plan.budgetMinutes, []) };

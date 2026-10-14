@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { applyBlockStats, lastNextAction, latestObservation } from './blocks';
+import { describe, expect, it, vi } from 'vitest';
+import { applyBlockStats, lastNextAction, latestObservation, type CloseItemEdits } from './blocks';
 import { createBlock, createItem } from './factories';
 import { addDays, toISODate } from './util';
-import type { BlockResult } from './types';
+import type { BlockResult, PracticeItem } from './types';
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 
@@ -149,5 +149,164 @@ describe('lastNextAction · the decision from last time', () => {
 
   it('trims the stored text so stray whitespace never renders as content', () => {
     expect(lastNextAction([withNextAction('  Keep the riz even  ', 1)])).toBe('Keep the riz even');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Closing a block can revise the item: Status, Primary focus and Current
+// effort, by key presence, in the block's one write — and the review is
+// decided from the item AS PRACTISED, so the date shown is the date saved.
+// Driven through the store's real `closeSession` (IndexedDB mocked away, as
+// practiceCue.test.ts does), against expectations derived here.
+// ---------------------------------------------------------------------------
+
+describe('closing a block with item edits', () => {
+  it('closing a block saves only the item edits the owner chose and decides the review from the item as practised', async () => {
+    vi.resetModules();
+    vi.doMock('../store/idb', async (importOriginal) => ({
+      ...(await importOriginal<typeof import('../store/idb')>()),
+      idbStorage: { getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined },
+    }));
+    const { useStore } = await import('../store/useStore');
+    const { emptyDB } = await import('./seed');
+    const { planNextReview, suggestStatusAfterBlock, clampSchedulingParams } = await import('./scheduling');
+    const AT = new Date('2026-06-18T09:30:00.000Z');
+    const RESULT: BlockResult = 'stable_in_context';
+    const MODES: { name: string; over: Partial<PracticeItem> }[] = [
+      { name: 'auto', over: {} },
+      { name: 'interval', over: { reviewMode: 'interval', reviewIntervalDays: 5 } },
+      { name: 'manual', over: { reviewMode: 'manual', nextReviewDate: '2026-07-02', nextReviewSource: 'user' } },
+    ];
+    const item = (over: Partial<PracticeItem>): PracticeItem => ({
+      ...createItem({ instrumentId: 'i', title: 'Gusheh', status: 'usable', itemType: 'gusheh', primaryFocus: 'tone', importance: 4, difficulty: 3, notes: 'Working notes' }, EARLIER),
+      id: 'item',
+      timesPractised: 4,
+      srReps: 2,
+      srEase: 2.5,
+      srIntervalDays: 6,
+      ...over,
+    });
+    const seed = (practised: PracticeItem) => {
+      const db = emptyDB();
+      useStore.setState({
+        db: {
+          ...db,
+          instruments: [{ id: 'i', name: 'Setar', family: 'Persian', active: true, createdAt: EARLIER.toISOString(), updatedAt: EARLIER.toISOString() }],
+          items: [practised],
+          reviews: [{ id: 'open', practiceItemId: 'item', dueDate: '2026-06-17', reviewType: 'retention', createdAt: EARLIER.toISOString(), updatedAt: EARLIER.toISOString() }],
+        },
+        active: { itemId: 'item', instrumentId: 'i', mode: 'learn', focus: 'rhythm', targetMinutes: 10, startedAt: '2026-06-18T09:00:00.000Z', accumulatedSeconds: 600, running: false },
+        activePlan: null,
+        activeRoutine: null,
+      });
+    };
+    const withoutIds = <T extends { id: string }>(rows: T[]) => rows.map(({ id: _id, ...rest }) => (void _id, rest));
+
+    let cases = 0;
+    for (const mode of MODES) {
+      const practised = item(mode.over);
+      const params = clampSchedulingParams(undefined);
+      const suggested = suggestStatusAfterBlock({ item: practised, result: RESULT, last3AllSame: false }).suggestedStatus;
+      expect(suggested, mode.name).toBe('integrated');
+      // What the close screen previewed: the plan for the item as practised.
+      const shown = planNextReview({ item: practised, result: RESULT, now: AT, params });
+      const answerFor = (withResult: boolean) => (withResult ? (shown ? 'scheduled' : 'declined') : 'unanswered') as 'scheduled' | 'declined' | 'unanswered';
+
+      // The same close with no edits at all: everything an edit must NOT move.
+      const baseline: Record<string, ReturnType<typeof useStore.getState>['db']> = {};
+      for (const withResult of [true, false]) {
+        seed(practised);
+        useStore.getState().closeSession({
+          result: withResult ? RESULT : 'not_logged',
+          durationMinutes: 10,
+          answer: answerFor(withResult),
+          reviewType: shown?.reviewType ?? 'retention',
+          now: AT,
+        });
+        baseline[String(withResult)] = useStore.getState().db;
+      }
+
+      for (const status of ['suggested', 'other', 'unchanged'] as const) {
+        for (const focus of ['set', 'cleared', 'unchanged'] as const) {
+          for (const effort of ['changed', 'unchanged'] as const) {
+            for (const action of ['save', 'without', 'discard'] as const) {
+              for (const present of [true, false]) {
+                const untouched = status === 'suggested' && focus === 'unchanged' && effort === 'unchanged';
+                if (!present && !untouched) continue; // an absent edit is only possible when nothing was touched
+                const label = `${mode.name} · status ${status} · focus ${focus} · effort ${effort} · ${action} · edit ${present ? 'present' : 'absent'}`;
+                const edits: CloseItemEdits = {};
+                if (status === 'other') edits.status = 'maintenance';
+                if (status === 'unchanged') edits.status = 'usable'; // the owner keeps it, declining the suggestion
+                if (focus === 'set') edits.primaryFocus = 'memory';
+                if (focus === 'cleared') edits.primaryFocus = null;
+                if (effort === 'changed') edits.difficulty = 5;
+
+                seed(practised);
+                const before = useStore.getState().db;
+                let writes = 0;
+                const stop = useStore.subscribe((s, prev) => {
+                  if (s.db !== prev.db) writes += 1;
+                });
+                if (action === 'discard') {
+                  useStore.getState().cancelSession();
+                } else {
+                  const withResult = action === 'save';
+                  useStore.getState().closeSession({
+                    result: withResult ? RESULT : 'not_logged',
+                    durationMinutes: 10,
+                    answer: answerFor(withResult),
+                    reviewType: shown?.reviewType ?? 'retention',
+                    newStatus: suggested, // offered pre-selected; the store applies it only with a result
+                    itemEdits: present ? edits : undefined,
+                    now: AT,
+                  });
+                }
+                stop();
+                cases += 1;
+                const after = useStore.getState().db;
+                expect(useStore.getState().active, label).toBeNull();
+                if (action === 'discard') {
+                  // Discard writes nothing at all.
+                  expect(writes, label).toBe(0);
+                  expect(after, label).toBe(before);
+                  continue;
+                }
+                // ONE write: the block, the item and its reviews together.
+                expect(writes, label).toBe(1);
+                const base = baseline[String(action === 'save')];
+                const saved = after.items[0];
+                const expected = { ...base.items[0] };
+                // Only what the owner chose moves — and the engine's
+                // suggestion only with a result.
+                expected.status =
+                  status === 'other' ? 'maintenance' : status === 'unchanged' ? 'usable' : action === 'save' ? 'integrated' : 'usable';
+                if (focus === 'set') expected.primaryFocus = 'memory';
+                if (focus === 'cleared') delete expected.primaryFocus;
+                if (effort === 'changed') expected.difficulty = 5;
+                expect(saved, label).toEqual(expected);
+                // Importance, notes, review fields and SR state: exactly as the review decision left them.
+                for (const k of ['importance', 'notes', 'nextReviewDate', 'nextReviewSource', 'reviewMode', 'reviewIntervalDays', 'srReps', 'srEase', 'srIntervalDays', 'srLastProgressDay', 'lastResult'] as const) {
+                  expect(saved[k], `${label} ${k}`).toEqual(base.items[0][k]);
+                }
+                // The review is the one shown before saving — from the item as practised.
+                expect(withoutIds(after.reviews), label).toEqual(withoutIds(base.reviews));
+                if (action === 'save' && shown) {
+                  expect(saved.nextReviewDate, label).toBe(shown.dueDate);
+                  const created = after.reviews.find((r) => r.id !== 'open');
+                  if (created) expect([created.dueDate, created.reviewType], label).toEqual([shown.dueDate, shown.reviewType]);
+                }
+                if (action === 'without') expect(saved.nextReviewDate, label).toBe(practised.nextReviewDate);
+                // The block keeps its own mode and focus; edits never rewrite it.
+                const block = after.blocks.at(-1)!;
+                expect([block.mode, block.focus], label).toEqual(['learn', 'rhythm']);
+                expect(withoutIds(after.blocks), label).toEqual(withoutIds(base.blocks));
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(cases).toBe(3 * (3 * 3 * 2 * 3 + 3));
+    vi.doUnmock('../store/idb');
   });
 });

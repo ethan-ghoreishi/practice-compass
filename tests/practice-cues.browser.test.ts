@@ -20,13 +20,18 @@ import {
 //
 // The audio, vibration and wake-lock ports are replaced before any app script
 // runs by an instrumented stand-in that records, in order, every constructor,
-// `resume()`, node, connection and schedule — and whether each happened inside
-// a click dispatch (`window.event`) under the browser's own transient user
-// activation (`navigator.userActivation`). The stand-in models the one policy
-// that matters here: a context constructed or resumed OUTSIDE a gesture stays
-// `suspended`, as iOS Safari's autoplay rule does. Its fault flags model a
-// constructor that throws, a resume() that throws, rejects or never settles,
-// a context that will not run, and a browser with no Web Audio.
+// `resume()`, `close()`, node, connection and schedule — and whether each
+// happened inside a click dispatch (`window.event`) under the browser's own
+// transient user activation (`navigator.userActivation`). The stand-in models
+// the policy that matters here: a context constructed or resumed OUTSIDE a
+// gesture stays `suspended`, as iOS Safari's autoplay rule does, and with
+// `startSuspended` one constructed INSIDE a gesture starts suspended too, so
+// only an in-tap resume() runs it. A context can be killed into the dead states
+// a real one reaches after a long idle — still `running` but silent (`frozen`),
+// `interrupted` or `suspended` in a way resume() cannot clear, or closed by
+// the browser. Its fault flags model a constructor that throws, a resume()
+// that throws, rejects or never settles, a context that will not run, and a
+// browser with no Web Audio.
 //
 // What this proves: which context the app creates, when, from which tap,
 // whether it resumes it, what it schedules, and how many times — mechanics,
@@ -42,7 +47,7 @@ const T = CLOCK.toISOString();
 export const CUE_PORTS = `(() => {
   const trace = [];
   const contexts = [];
-  const flags = { ctorThrows: false, resumeThrows: false, resumeRejects: false, resumeHangs: false, staySuspended: false };
+  const flags = { ctorThrows: false, resumeThrows: false, resumeRejects: false, resumeHangs: false, staySuspended: false, startSuspended: false };
   const cue = { trace, contexts, flags };
   Object.defineProperty(window, '__cue', { value: cue });
   // A GESTURE is a trusted input event being dispatched right now — WebKit's
@@ -73,7 +78,7 @@ export const CUE_PORTS = `(() => {
       this.frequency = { set value(v) { trace.push({ e: 'frequency', v }); }, get value() { return 0; } };
       this.onended = null;
     }
-    start(t) { trace.push({ e: 'start', ctx: this.ctx.id, t, state: this.ctx.state }); }
+    start(t) { trace.push({ e: 'start', ctx: this.ctx.id, t, state: this.ctx.state, silent: !!this.ctx.dead }); }
     stop(t) {
       trace.push({ e: 'stop', ctx: this.ctx.id, t });
       // A running engine reaches the end of what it scheduled; a suspended one does not.
@@ -86,8 +91,8 @@ export const CUE_PORTS = `(() => {
   class FakeAudioContext {
     constructor() {
       if (flags.ctorThrows) { trace.push({ e: 'ctor-throw', during: during(), route: where() }); throw new Error('audio unavailable'); }
-      this.id = ++ids; this.nodes = 0; this.listeners = [];
-      this.state = activated() && !flags.staySuspended ? 'running' : 'suspended';
+      this.id = ++ids; this.nodes = 0; this.listeners = []; this.dead = null;
+      this.state = activated() && !flags.staySuspended && !flags.startSuspended ? 'running' : 'suspended';
       this.destination = { kind: 'destination' };
       this.onstatechange = null;
       contexts.push(this);
@@ -109,10 +114,16 @@ export const CUE_PORTS = `(() => {
       if (flags.resumeRejects) return Promise.reject(new Error('resume rejected'));
       if (flags.resumeHangs) return new Promise(() => {});
       if (this.state === 'closed') return Promise.reject(new Error('closed'));
-      if (activated() && !flags.staySuspended) this.setState('running');
+      // A dead context's resume() resolves and changes nothing.
+      if (activated() && !flags.staySuspended && !this.dead) this.setState('running');
       return Promise.resolve();
     }
     suspend() { this.setState('suspended'); return Promise.resolve(); }
+    kill(mode) {
+      trace.push({ e: 'kill', ctx: this.id, mode });
+      this.dead = mode;
+      if (mode !== 'frozen') this.setState(mode);
+    }
     close() { trace.push({ e: 'close', ctx: this.id }); this.setState('closed'); return Promise.resolve(); }
     createOscillator() { return new Osc(this); }
     createGain() { return new Gain(this); }
@@ -190,6 +201,22 @@ const trace = (app: PracticeApp): Promise<TraceEvent[]> =>
   app.page.evaluate(() => (window as unknown as { __cue: { trace: TraceEvent[] } }).__cue.trace.slice());
 const contexts = (app: PracticeApp): Promise<number> =>
   app.page.evaluate(() => (window as unknown as { __cue: { contexts: unknown[] } }).__cue.contexts.length);
+/** The contexts that are not closed: there is never more than one. */
+const liveContexts = (app: PracticeApp): Promise<{ id: number; state: string; dead: string | null }[]> =>
+  app.page.evaluate(() =>
+    (window as unknown as { __cue: { contexts: { id: number; state: string; dead: string | null }[] } }).__cue.contexts
+      .filter((c) => c.state !== 'closed')
+      .map((c) => ({ id: c.id, state: c.state, dead: c.dead })),
+  );
+const DEAD_STATES = ['frozen', 'interrupted', 'suspended', 'closed'] as const;
+type DeadState = (typeof DEAD_STATES)[number];
+/** The app sat idle and the page's context died: kill the live one, if any. */
+const killLive = (app: PracticeApp, mode: DeadState) =>
+  app.page.evaluate((m) => {
+    for (const c of (window as unknown as { __cue: { contexts: { state: string; kill(mode: string): void }[] } }).__cue.contexts) {
+      if (c.state !== 'closed') c.kill(m);
+    }
+  }, mode);
 const setFlags = (app: PracticeApp, flags: Record<string, boolean>) =>
   app.page.evaluate((f) => Object.assign((window as unknown as { __cue: { flags: object } }).__cue.flags, f), flags);
 /** A phone call, another app's audio: the page's context is suspended again. */
@@ -213,26 +240,39 @@ async function seeded(engine: Engine): Promise<PracticeApp> {
 }
 
 /**
- * Tap a door and prove it READIED the sound itself: the constructor or the
- * resume() ran inside that click's own dispatch, under its activation, on the
- * route the tap was made on (before any navigation), and the page still holds
- * exactly one context. The context is interrupted first so every door, not
- * just the first, has to do the readying.
+ * Tap a door after the page's context has DIED, and prove the tap replaced it:
+ * the old context closed, a fresh one constructed AND resumed inside that
+ * click's own dispatch, under its activation, on the route the tap was made on
+ * (before any navigation) — and that fresh one is the page's only live
+ * context, running and alive, so the next boundary sounds. Doors rotate
+ * through every dead state, and half of them get contexts that start
+ * suspended even inside the tap, so only the in-tap resume() can run them.
  */
+let doorCount = 0;
 async function primedBy(app: PracticeApp, door: string, tap: () => Promise<void>): Promise<TraceEvent[]> {
-  await interrupt(app);
+  const n = doorCount++;
+  const dead = DEAD_STATES[n % DEAD_STATES.length];
+  await setFlags(app, { startSuspended: n % 2 === 0 });
+  const [old] = await liveContexts(app);
+  await killLive(app, dead);
   const route = await app.page.evaluate(() => location.hash);
   const from = (await trace(app)).length;
   await tap();
   const events = await since(app, from);
-  const primed = events.filter((x) => x.e === 'ctor' || x.e === 'resume');
-  expect(primed.length, `${door}: no context readied`).toBeGreaterThan(0);
-  for (const p of primed) {
-    expect(p.during, `${door}: readied outside the tap`).toBe('click');
-    expect(p.activated, `${door}: readied without activation`).toBe(true);
-    expect(p.route, `${door}: readied after navigating`).toBe(route);
+  const label = `${door} (${dead})`;
+  const fresh = events.filter((x) => x.e === 'ctor');
+  expect(fresh.length, `${label}: no fresh context`).toBe(1);
+  const id = fresh[0].ctx;
+  const readied = events.filter((x) => (x.e === 'ctor' || x.e === 'resume') && x.ctx === id);
+  expect(readied.map((x) => x.e), `${label}: not created and resumed`).toEqual(['ctor', 'resume']);
+  for (const p of readied) {
+    expect(p.during, `${label}: readied outside the tap`).toBe('click');
+    expect(p.activated, `${label}: readied without activation`).toBe(true);
+    expect(p.route, `${label}: readied after navigating`).toBe(route);
   }
-  expect(await contexts(app), `${door}: contexts stacked`).toBe(1);
+  if (old && dead !== 'closed') expect(events.filter((x) => x.e === 'close').map((x) => x.ctx), `${label}: old context left open`).toEqual([old.id]);
+  expect(await liveContexts(app), `${label}: one live context`).toEqual([{ id, state: 'running', dead: null }]);
+  await setFlags(app, { startSuspended: false });
   return events;
 }
 
@@ -269,15 +309,16 @@ const markerLanded = (app: PracticeApp, clock: 'active' | 'activeRoutine', throu
   );
 
 describe('the practice sound, through every door', () => {
-  it('practice sound reuses one gesture primed context across all start and resume doors', async () => {
+  it('practice sound returns at the next tap after the context dies through every start and resume door', async () => {
     for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      doorCount = 0;
       const app = await seeded(engine);
       const { page } = app;
       try {
         // --- BLOCK STARTS --------------------------------------------------
         // Today: the recommendation.
         const first = await primedBy(app, 'Today recommendation', () => page.getByRole('button', { name: /Start · 10 min/ }).click());
-        expect(first.find((x) => x.e === 'ctor')).toMatchObject({ during: 'click', route: '#/', state: 'running' });
+        expect(first.find((x) => x.e === 'ctor')).toMatchObject({ during: 'click', route: '#/' });
         await page.getByRole('button', { name: 'Finish' }).waitFor();
         // ActiveBlock Resume.
         await page.getByRole('button', { name: 'Pause' }).click();
@@ -375,9 +416,12 @@ describe('the practice sound, through every door', () => {
         await page.getByRole('button', { name: 'Finish' }).waitFor();
         expect((await persisted(app)).active!.startedAt).toBe(running);
         expect((await persisted(app)).activeRoutine).toBeNull();
-        expect(await contexts(app)).toBe(1);
+        expect(await liveContexts(app)).toHaveLength(1);
 
-        // --- LATER BOUNDARIES REUSE THE SAME CONTEXT -----------------------
+        // --- AFTER A DEATH, THE NEXT TAP'S FRESH CONTEXT SOUNDS THE BOUNDARY
+        await page.getByRole('button', { name: 'Pause' }).click();
+        const revived = await primedBy(app, 'Resume before the boundary', () => page.getByRole('button', { name: 'Resume' }).click());
+        const fresh = revived.find((x) => x.e === 'ctor')!.ctx;
         const boundaryFrom = (await trace(app)).length;
         await page.clock.fastForward(598_000);
         await page.clock.runFor(4_000);
@@ -386,12 +430,12 @@ describe('the practice sound, through every door', () => {
         const cue = await since(app, boundaryFrom);
         expect(count(cue, 'ctor')).toBe(0);
         expect(count(cue, 'resume')).toBe(0);
-        // Two bounded pulses on the page's one context: 880 Hz, gain 0.2
-        // decaying to silence over 0.3 s, starting 0.45 s apart, each
-        // oscillator → gain → destination, each let go once it has played.
-        expect(cue.filter((x) => x.e === 'start').map((x) => [x.ctx, x.t, x.state])).toEqual([
-          [1, 10, 'running'],
-          [1, 10.45, 'running'],
+        // ONE cue — two bounded pulses on the fresh context, never the dead
+        // one: 880 Hz, gain 0.2 decaying to silence over 0.3 s, starting 0.45 s
+        // apart, each oscillator → gain → destination, each let go once played.
+        expect(cue.filter((x) => x.e === 'start').map((x) => [x.ctx, x.t, x.state, x.silent])).toEqual([
+          [fresh, 10, 'running', false],
+          [fresh, 10.45, 'running', false],
         ]);
         expect(cue.filter((x) => x.e === 'stop').map((x) => x.t)).toEqual([10.3, 10.75]);
         expect(cue.filter((x) => x.e === 'frequency').map((x) => x.v)).toEqual([880, 880]);
@@ -462,7 +506,7 @@ describe('the practice sound, through every door', () => {
             const turnOn = page.getByRole('button', { name: 'Turn on sound' });
             if (await turnOn.count()) await turnOn.click();
           }
-          expect(await contexts(app), label).toBeLessThanOrEqual(1);
+          expect((await liveContexts(app)).length, label).toBeLessThanOrEqual(1);
           // The clock runs; a boundary is still marked by the ring and the
           // marker; no tone is attempted on a context that is not running,
           // and none is queued for later.

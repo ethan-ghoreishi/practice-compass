@@ -6,7 +6,9 @@ import { primePracticeSound } from '../components/practiceCue';
 import {
   acknowledgeThrough,
   applyBlockStats,
+  applyCloseEdits,
   applyRoutineRun,
+  captureRoutineResults,
   catalogForStage,
   completeOpenReviewsFor,
   computeReviewOutcome,
@@ -112,6 +114,8 @@ import {
   type Instrument,
   type AttachmentMeta,
   type ISODate,
+  type CloseItemEdits,
+  type RoutineCapture,
   type ItemStatus,
   type LessonFileKind,
   type LessonRecording,
@@ -255,7 +259,14 @@ export interface CloseSessionInput {
   durationMinutes: number;
   observation?: string;
   nextAction?: string;
+  /** The engine's suggested status, offered pre-selected: applied only when a result was recorded. */
   newStatus?: ItemStatus;
+  /**
+   * What the owner revised on the item at close (status, primary focus,
+   * effort), by key presence — absent keys are never written. Applied in this
+   * close's one write, AFTER the review was decided from the item as practised.
+   */
+  itemEdits?: CloseItemEdits;
   /**
    * What the close screen answered about the next review. 'unanswered' (no
    * result chosen) must leave the item's date AND its open review row exactly
@@ -609,7 +620,13 @@ interface StoreState {
   /** Mark the current segment skipped; finishes the run if that was the last one. */
   skipRoutineRun: () => void;
   /** Turn the active run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time — then clear it. */
-  finishRoutine: () => void;
+  /** Saves the run; returns the ids of the blocks it created, for Routine complete's capture. */
+  finishRoutine: () => ID[];
+  /**
+   * Routine complete's capture: a result and one line per recorded item,
+   * written onto that run's own blocks. Returns a refusal, or null.
+   */
+  recordRoutineCapture: (runBlockIds: ID[], captures: RoutineCapture[]) => string | null;
   /** The routine twin of `claimSessionSignal`, for the run that started at `startedAt` (segment boundaries). */
   claimRoutineSignal: (startedAt: string | undefined, marker: number) => boolean;
 
@@ -1672,8 +1689,15 @@ export const useStore = create<StoreState>()(
         let updatedItem = applyBlockStats(item, block, {
           itemBlocksIncludingNew: [...existing, block],
           now,
-          newStatus: input.newStatus,
           nextReviewDate: outcome.nextReviewDate,
+        });
+        // The owner's revisions, and the engine's suggestion only with a
+        // result. `outcome` was already decided from `item` as practised, so
+        // an edited status or effort never moves the date this screen showed.
+        updatedItem = applyCloseEdits(updatedItem, {
+          edits: input.itemEdits,
+          suggestedStatus: input.newStatus,
+          result: input.result,
         });
         if (outcome.sr) {
           updatedItem = {
@@ -2197,7 +2221,7 @@ export const useStore = create<StoreState>()(
 
       finishRoutine: () => {
         const { activeRoutine, db } = get();
-        if (!activeRoutine) return;
+        if (!activeRoutine) return [];
         const now = new Date();
         const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, now);
         const outcome = applyRoutineRun(activeRoutine.segs, elapsedSeconds, db.items, groupBlocksByItem(db.blocks), now);
@@ -2210,6 +2234,18 @@ export const useStore = create<StoreState>()(
             items: s.db.items.map((i) => updatedById.get(i.id) ?? i),
           },
         }));
+        return outcome.blocks.map((b) => b.id);
+      },
+
+      recordRoutineCapture: (runBlockIds, captures) => {
+        const { db } = get();
+        const outcome = captureRoutineResults(db, runBlockIds, captures, new Date());
+        if ('refused' in outcome) return outcome.refused;
+        // An unchanged capture returns the same arrays: nothing to write.
+        if (outcome.blocks !== db.blocks || outcome.items !== db.items) {
+          set((s) => ({ db: { ...s.db, blocks: outcome.blocks, items: outcome.items } }));
+        }
+        return null;
       },
 
       exportDB: () => get().db,

@@ -1,15 +1,21 @@
 import { useSyncExternalStore } from 'react';
 
 // ---------------------------------------------------------------------------
-// The practice sound: ONE AudioContext for the life of the page, created and
-// resumed only INSIDE a tap — Start, Resume, Test sound, or the practice
-// screen's "Turn on sound" — and only ever played from at a boundary.
+// The practice sound: at most ONE live AudioContext, and a FRESH one from
+// every tap that readies sound — Start, Resume, Test sound, or the practice
+// screen's "Turn on sound" — created and resumed INSIDE that tap, and only
+// ever played from at a boundary.
 //
-// Why: a context made later, in a boundary effect, is made outside any user
-// gesture, and a browser that enforces the autoplay rule (iOS Safari, the
-// installed iPhone app) leaves it SUSPENDED for good — the old cue built a new
-// one at every boundary, never resumed any of them, and leaked each. The
-// recorded trace is in docs/setar-practice-reliability.md §1.
+// Why fresh every tap: a context can die in ways its `state` does not admit —
+// left `running` but silent, or `suspended`/`interrupted` in a way resume()
+// cannot clear — after the app sits idle between blocks (the owner's report,
+// docs/setar-practice-reliability.md). Reusing it kept the cue silent until
+// the app was reopened; replacing it at each tap means a dead context never
+// outlives the next tap.
+//
+// Why only inside a tap: a context made later, in a boundary effect, is made
+// outside any user gesture, and a browser that enforces the autoplay rule
+// (iOS Safari, the installed iPhone app) leaves it SUSPENDED for good.
 //
 // What this does NOT claim: a `running` context is an engine ready to play,
 // never proof that a speaker made a sound. Volume, the mute switch, the output
@@ -57,9 +63,10 @@ function update(): void {
 
 /**
  * Ready the sound — call it SYNCHRONOUSLY in the tap's own handler, before any
- * await or navigation. Creates the one context if there is none (or the last
- * one was closed — only then, so two never coexist), and asks a suspended one
- * to resume. A refusal, a rejection or a promise that never settles is
+ * await or navigation. Closes the page's current context (whatever state it
+ * claims), creates a fresh one and asks it to resume, all inside this tap, so
+ * there is never more than one live context and a dead one is gone by the
+ * next tap. A refusal, a rejection or a promise that never settles is
  * absorbed: starting practice never waits on sound, and never fails for it.
  * Returns the one resume this tap asked for (it settles, never rejects), if any.
  */
@@ -71,19 +78,27 @@ export function primePracticeSound(): Promise<void> | undefined {
     update();
     return undefined;
   }
+  const old = context;
+  context = null;
+  if (old && old.state !== 'closed') {
+    try {
+      // Only observed: closing frees the device's audio for the fresh one.
+      void Promise.resolve(old.close()).catch(() => undefined);
+    } catch {
+      // A close that throws leaves nothing for this page to hold on to.
+    }
+  }
   try {
-    if (!context || context.state === 'closed') {
-      context = new Ctx();
-      refused = false;
-      const c = context;
-      c.addEventListener?.('statechange', () => {
-        if (c === context) update();
-      });
-    }
-    if (context.state !== 'running') {
-      // INVOKED now, inside the gesture; its promise is only observed.
-      resumed = Promise.resolve(context.resume()).then(update, update);
-    }
+    const c = new Ctx();
+    context = c;
+    refused = false;
+    c.addEventListener?.('statechange', () => {
+      if (c === context) update();
+    });
+    // INVOKED now, inside the gesture, whatever state the new context reports
+    // — one made inside a tap can still start suspended. Its promise is only
+    // observed.
+    resumed = Promise.resolve(c.resume()).then(update, update);
   } catch {
     // A constructor that throws, or a resume() that throws: unavailable until
     // the NEXT explicit tap tries again — never a retry loop of our own.
@@ -97,7 +112,7 @@ export function primePracticeSound(): Promise<void> | undefined {
 export const CUE = { hz: 880, gain: 0.2, pulseSeconds: 0.3, starts: [0, 0.45] } as const;
 
 /**
- * The boundary cue. Plays only through the page's EXISTING running context —
+ * The boundary cue. Plays only through the page's CURRENT running context —
  * it never creates one, never resumes one and never waits for one, so a
  * boundary reached while the sound is off is marked by the ring alone and is
  * NOT replayed later. Vibration is best-effort and absent on iOS.
@@ -119,7 +134,7 @@ export function playPracticeCue(): void {
       gain.gain.setValueAtTime(CUE.gain, t0 + offset);
       gain.gain.exponentialRampToValueAtTime(0.001, t0 + offset + CUE.pulseSeconds);
       osc.connect(gain).connect(c.destination);
-      // Short-lived nodes are let go once they have played; the context stays.
+      // Short-lived nodes are let go once they have played; the context stays until the next tap.
       osc.onended = () => {
         osc.disconnect();
         gain.disconnect();

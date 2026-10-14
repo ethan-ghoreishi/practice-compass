@@ -2,6 +2,51 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Works get real plan time; sound and updates recover; practice revises the item (2026-10-14)
+
+One lane (contract 20261014-…-d492, issue #51). Five owner reports met in the
+practise → close loop, the plan that feeds it, the routine beside it and the
+banner over all of them; none needed a schema change.
+
+- **Plan floor, not an instrument rule.** `allocateMinutes` floored every
+  segment at 2 minutes whatever the material, pinned the warm-up at
+  `round(B × 0.12)` and let review overflow land in the cool-down, so Setar's
+  familiar gushehs got 2-minute warm-ups and 11–25-minute cool-downs. Owner
+  decision: a whole work (`isWork`) gets at least the existing 10-minute
+  standard block in a multi-segment plan, on every instrument; drills keep 2;
+  fewer, longer segments; no new setting. The optional roles never exceed
+  their share and never carry overflow, which goes to deep and lesson work
+  first. Rejected: a floor on warm-ups only, a Setar-keyed floor, leaving the
+  overflow path (each fails `plan.test.ts`). Drill-only plans keep the old
+  allocator's literal minutes wherever no role absorbed overflow.
+- **Sound: a fresh context at every readying tap.** Reverses the 2026-10-05
+  "one page-lifetime context". A context can report `running` and be silent,
+  or stay `suspended`/`interrupted` past resume(), after a long idle; reusing it
+  kept the cue silent until the app was reopened. Every Start, Resume, Test
+  sound and Turn on sound now closes the page's context and creates and resumes
+  a new one inside the tap. Rejected: renewing only when `closed`, or at a
+  boundary (outside any gesture).
+- **Updates: the app owns its registration.** workbox-window's banner offered
+  an update with nothing waiting on an uncontrolled page (Reload did nothing)
+  and reloaded other windows. `appUpdate.ts` registers once per page, offers
+  only when this window runs older code (an uncontrolled page checks whether a
+  worker precaches its own entry chunk), and reloads only the tapping window,
+  once. A missing route's code shows the offer, never an automatic reload.
+  The stamp is the last commit that changed a build input
+  (`scripts/app-version.mjs`), so records-only pushes publish byte-identical
+  files and no offer. Rejected: keeping workbox-window with a reload fallback;
+  a HEAD stamp.
+- **Close revises Status, Primary focus, Current effort** behind one collapsed
+  line, by key presence in the block's one write; the review is decided from
+  the item as practised. Personal priority stays on the item page (owner).
+- **Routine complete captures** a result and one line per recorded item onto
+  that run's own blocks, after the minutes are saved; it never reaches a
+  review. A full close per routine item was rejected as turning one finish
+  into several forms.
+
+Proof: `docs/scheduling-evidence.md` §5–6, `docs/setar-practice-reliability.md`
+§1b and §6, and the lane's commit message (each partial fix and its failing check).
+
 ## Browser journeys wait on events; CI and the Gate are bounded and run once (2026-10-08)
 
 One technical lane (contract 20261007-…-0e6c, issue #49). Four families had failed

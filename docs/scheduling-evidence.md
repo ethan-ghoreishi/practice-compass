@@ -120,11 +120,12 @@ randomness, and nothing for the owner to maintain.
 | `MIN_BUDGET_MINUTES` / `MAX_BUDGET_MINUTES` | 5 / 120 | accepted whole-minute budgets; anything else is rejected at the boundary |
 | `SHORT_SESSION_MINUTES` | 12 | below this: ONE useful main focus, no warm-up, no cool-down |
 | `MAIN_WORK_FLOOR_MINUTES` | 5 | a warm-up may only exist if at least this much main work survives it |
-| `MIN_SEGMENT_MINUTES` | 2 | shortest segment worth starting |
+| `MIN_SEGMENT_MINUTES` | 2 | the floor for a drill, technique, passage or part |
+| `WORK_SEGMENT_MINUTES` | 10 | the floor for a whole work (`isWork`: a top-level gusheh, a full piece, anything with dastgāh/form/composer) in a multi-segment plan — the app's standard block (`DEFAULT_DURATION_MINUTES`), the same on every instrument |
 | `MAX_SEGMENT_MINUTES` | 25 | longest single block the planner will propose |
-| `warmupShare` | 0.12 (0.10–0.15) | a pinned allocation target, not a weight |
+| `warmupShare` | 0.12 (0.10–0.15) | the warm-up's minutes: exactly `round(B × warmupShare)`, never more |
 | `deepWorkShare` | 0.33 (0.25–0.40) | nudges the deep bucket's weight |
-| `reviewSlotMinMinutes` / `Max` | 3 / 7 | a retrieval check stays a check |
+| `reviewSlotMinMinutes` / `Max` | 3 / 7 | a retrieval check stays a check — while other planned work can use the minutes, and never below a whole work's floor |
 
 Order of decisions:
 
@@ -134,21 +135,47 @@ Order of decisions:
    work to an item committed for tomorrow's class.)
 2. **Warm-up**, only if one is wanted and one is *suitable*: low demand
    (difficulty ≤ 3) AND evidence of familiarity (a settled status or 3+ real
-   sessions). A due review or a class commitment is never spent as the warm-up;
-   with nothing suitable the warm-up is omitted honestly.
+   sessions), and material whose floor its share reaches — a whole work warms
+   up only when `round(B × warmupShare)` is at least 10. A due review or a
+   class commitment is never spent as the warm-up; with nothing suitable the
+   warm-up is omitted honestly.
 3. **The middle**, by adjusted priority, up to a segment target by budget
    (1 / 2 / 3 / 4 / 5 / 6 / 7 for <12 / <20 / <30 / <45 / <60 / <90 / rest).
-4. **Cool-down**, optional, from settled material only.
+4. **Cool-down**, optional, from settled material whose floor its share
+   reaches: its weighted split of the minutes after the warm-up, computed with
+   it seated.
+5. **Seating.** A segment stays only while every seated segment can still
+   reach its floor. The optional roles go first (cool-down, then warm-up), then
+   the lowest-priority work; the anchor always stays. One seated segment takes
+   the whole budget, up to 25.
 
-Minutes never exceed the budget and normally use all of it. An honest remainder
-is left — and stated in the summary — when filling it would mean stretching two
-items across two hours.
+Minutes (`allocateMinutes`, the one allocator a build, a Remove and a Swap
+share): the warm-up gets its share; everything else splits the rest by bucket
+weight (deep 2.6, lesson 1.8, review 1.2, cool-down 0.9), lifted to its floor
+and trimmed back from the lowest priority if the floors push past the budget,
+plus one rounding pass. Review segments are then held inside the slot window —
+their excess goes to deep and lesson work only. Overflow goes to deep and
+lesson work first, each up to 25, and only then to reviews. **The optional
+roles never carry overflow**: the warm-up never exceeds its share, the cool-down
+its split plus one rounding minute. Anything left is an honest remainder — and
+stated in the summary — which therefore appears only when every segment that
+may take minutes is at 25.
+
+Remove re-spreads under the same rules; Swap offers only material whose floor
+fits the slot. The floor is fixed on each segment when it is planned
+(`floorMinutes`); a running plan persisted before floors existed has none and
+still runs. A plan of drills alone keeps exactly the minutes it had wherever no
+warm-up or cool-down absorbed overflow and nothing reached 25
+(`src/domain/plan.test.ts` holds the earlier allocator's literal outputs).
 
 ### Representative outputs
 
 The same five items every time: a familiar darāmad, a phrase committed to a
 class two days away, a new chahār-mezrāb, a fragile riz drill practised for
-20 minutes yesterday, and a solid tasnif whose review is two days overdue.
+20 minutes yesterday, and a solid tasnif whose review is two days overdue. The
+darāmad, the chahār-mezrāb and the tasnif are whole works; the phrase and the
+riz drill are not. At 20 minutes the darāmad no longer warms up on a 2-minute
+share, and the tasnif no longer cools down on leftovers.
 
 ### 5 minutes
 
@@ -168,37 +195,39 @@ class two days away, a new chahār-mezrāb, a fragile riz drill practised for
 
 ### 20 minutes
 
-> 20 min · a warm-up, 1 focus block and a cool-down.
+> 20 min · 2 focus blocks.
 
 | min | role | item | reason |
 |---:|---|---|---|
-| 2 | warmup | Darāmad (familiar) | Warm up on something you already know before the harder work. |
-| 12 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
-| 6 | cooldown | Tasnif (solid, due) | End on something that already holds together. |
+| 8 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
+| 12 | deep | Chahār-mezrāb (new) | Focused work — it matters most right now. |
 
 ### 45 minutes
 
-> 45 min · a warm-up, 3 focus blocks and a cool-down.
+> 45 min · 3 focus blocks and 1 review.
 
 | min | role | item | reason |
 |---:|---|---|---|
-| 5 | warmup | Darāmad (familiar) | Warm up on something you already know before the harder work. |
-| 9 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
-| 14 | deep | Riz evenness | Focused work — it’s still shaky and needs rebuilding. |
-| 13 | deep | Chahār-mezrāb (new) | Focused work — it matters most right now. |
-| 4 | cooldown | Tasnif (solid, due) | End on something that already holds together. |
+| 8 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
+| 14 | deep | Chahār-mezrāb (new) | Focused work — it matters most right now. |
+| 13 | deep | Riz evenness | Focused work — it’s still shaky and needs rebuilding. |
+| 10 | review | Tasnif (solid, due) | Due for review (due 2027-01-13) — 2 days overdue. |
 
 ### 60 minutes
 
-> 60 min · a warm-up, 3 focus blocks and 1 review.
+> 60 min · 4 focus blocks and 1 review.
 
 | min | role | item | reason |
 |---:|---|---|---|
-| 7 | warmup | Darāmad (familiar) | Warm up on something you already know before the harder work. |
-| 12 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
-| 17 | deep | Riz evenness | Focused work — it’s still shaky and needs rebuilding. |
-| 17 | deep | Chahār-mezrāb (new) | Focused work — it matters most right now. |
-| 7 | review | Tasnif (solid, due) | Due for review (due 2027-01-13) — 2 days overdue. |
+| 9 | lesson | Foroud phrase (for class) | For your class on 2027-01-17 — 2 days away. |
+| 14 | deep | Chahār-mezrāb (new) | Focused work — it matters most right now. |
+| 14 | deep | Riz evenness | Focused work — it’s still shaky and needs rebuilding. |
+| 10 | review | Tasnif (solid, due) | Due for review (due 2027-01-13) — 2 days overdue. |
+| 13 | deep | Darāmad (familiar) | Focused work on what needs the most attention. |
+
+The tasnif's review gets 10, not the 7-minute ceiling: a whole work's floor
+holds. Before this change the same library planned 20 minutes as a 2-minute
+darāmad warm-up, 12 on the phrase and a 6-minute tasnif cool-down.
 
 Read the 5-minute answer off §1–§2 by hand: the committed phrase scores
 `8 + 3 + 3 + 0 + 0 + 7 − 0 = 21`, the new chahār-mezrāb `8 + 5 + 2 + 0 + 0 + 0 − 0 = 15`.
@@ -211,7 +240,8 @@ the store and the preview are three renderings of its single result.
 
 | situation | date | spacing |
 |---|---|---|
-| no result logged (`not_logged`, or none) — including every routine block | unchanged | unchanged |
+| no result logged (`not_logged`, or none) | unchanged | unchanged |
+| a routine block — `not_logged` when saved, or a result captured afterwards on Routine complete | unchanged: a routine never reaches this decision | unchanged |
 | manual mode | unchanged | unchanged |
 | a **protected** future date (the owner's, a fixed cadence, or legacy-unknown provenance) | unchanged, whatever the result | unchanged |
 | an **automatic** future date, any result but `worse` | unchanged — this is extra practice, not the review | unchanged |
@@ -221,6 +251,12 @@ the store and the preview are three renderings of its single result.
 | due, `same` / `slightly_better` | today + the CURRENT gap again | repetitions and ease untouched |
 | due, a stable result, not yet advanced today | SM-2 expansion | reps + 1, ease updated, marker set to today |
 | due, a stable result, already advanced today | unchanged | unchanged |
+
+A result captured on Routine complete is written onto that run's own block and
+is real evidence for every reader of results — the item's history, `lastResult`
+(only while it is the item's latest logged block), the three-same hint and its
+suppression of a status suggestion, Insights and the teacher report — but it
+never reaches this decision: no date, open review or SM-2 state moves.
 
 | constant | default | bounds |
 |---|---:|---|
