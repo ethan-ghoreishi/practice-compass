@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-06T21:39:51.362Z
-        commit: e99a73606a47b5892b3b038fa782a76efcb5ab1e
+        at: 2026-10-14T17:53:04.185Z
+        commit: f1ed69efa696d1dd1ad35872d736479e809efe07
     - actor: Practice Compass
       action: Scores every item of that instrument and shows the best one with a
         one-sentence reason.
@@ -31,8 +31,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-06T21:39:51.362Z
-        commit: e99a73606a47b5892b3b038fa782a76efcb5ab1e
+        at: 2026-10-14T17:53:04.185Z
+        commit: f1ed69efa696d1dd1ad35872d736479e809efe07
     - actor: The musician
       action: Taps 'Start · 10 min'.
       shows: "The active block screen: item title, mode and focus chips, a running
@@ -43,8 +43,9 @@ truth:
         while the app sat idle never outlives this tap.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-10-14T12:00:00.000Z
+        method: manual
+        at: 2026-10-14T17:53:04.185Z
+        commit: f1ed69efa696d1dd1ad35872d736479e809efe07
     - actor: The musician
       action: Practises, optionally opening 'About this piece' or jotting a passing
         note; pauses and resumes as needed.
@@ -58,8 +59,9 @@ truth:
       changes: Elapsed seconds accumulate only while the timer runs.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-10-14T12:00:00.000Z
+        method: manual
+        at: 2026-10-14T17:53:04.185Z
+        commit: f1ed69efa696d1dd1ad35872d736479e809efe07
     - actor: The musician
       action: Taps 'Finish'.
       shows: The close screen, with the minutes already filled in.
@@ -67,8 +69,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-06T21:39:51.362Z
-        commit: e99a73606a47b5892b3b038fa782a76efcb5ab1e
+        at: 2026-10-14T17:53:04.185Z
+        commit: f1ed69efa696d1dd1ad35872d736479e809efe07
     - actor: The musician
       action: Picks one of the six results, optionally adds an observation, a next
         action or a teacher question, and optionally revises the item behind one
@@ -80,8 +82,9 @@ truth:
       changes: Nothing until Save; untouched fields are never written.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-10-14T12:00:00.000Z
+        method: manual
+        at: 2026-10-14T17:53:04.185Z
+        commit: f1ed69efa696d1dd1ad35872d736479e809efe07
     - actor: The musician
       action: Taps 'Save block'.
       shows: Back to Today (or to the running plan), with the item's stats and status
@@ -92,8 +95,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-06T21:39:51.362Z
-        commit: e99a73606a47b5892b3b038fa782a76efcb5ab1e
+        at: 2026-10-14T17:53:04.185Z
+        commit: f1ed69efa696d1dd1ad35872d736479e809efe07
   endsWith: "The session is recorded honestly: one block, one result, one next
     action — and the item knows when it should come back."
   variations:
@@ -269,4 +272,3 @@ The session is recorded honestly: one block, one result, one next action — and
 - The musician
 - The recommendation engine
 - The spaced-repetition scheduler
-
