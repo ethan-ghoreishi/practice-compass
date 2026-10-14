@@ -36,11 +36,23 @@ function tempDir(prefix: string): string {
   return dir;
 }
 
+/**
+ * The environment `npm run build` sees on CI — never this test runner's. Vitest
+ * sets NODE_ENV=test, and a build inheriting it compiles JSX with the
+ * DEVELOPMENT runtime, which bakes each source file's absolute path into the
+ * output: two trees could then never build alike.
+ */
+function productionEnv(stamp: string): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, NODE_ENV: 'production', [VERSION_OVERRIDE]: stamp };
+  for (const key of Object.keys(env)) if (key.startsWith('VITEST') || key === 'TEST') delete env[key];
+  return env;
+}
+
 function viteBuild(root: string, stamp: string): string {
   const out = tempDir('pc-build-');
   execFileSync(process.execPath, [join(ROOT, 'node_modules/vite/bin/vite.js'), 'build', '--outDir', out, '--emptyOutDir', '--logLevel', 'error'], {
     cwd: root,
-    env: { ...process.env, [VERSION_OVERRIDE]: stamp },
+    env: productionEnv(stamp),
     stdio: 'pipe',
   });
   return out;
@@ -381,6 +393,7 @@ describe('taking a new version', () => {
           await foreground(w);
           expect(await superseded).toBe('redundant');
           await w.page.getByText(OFFER).waitFor({ timeout: 20_000 });
+          const loadsBeforeD = w.loads();
           await tapReload(w);
           // Controlled by the worker that superseded V2 — V3 — and nothing left to offer.
           const after = await w.page.evaluate(() =>
@@ -388,7 +401,7 @@ describe('taking a new version', () => {
           );
           expect(after).toEqual({ waiting: false, controlled: true });
           await quietWindow(w.app, 1_500);
-          expect(w.loads(), `${engine} D: reloads`).toBe(1);
+          expect(w.loads() - loadsBeforeD, `${engine} D: reloads`).toBe(1);
           expect(await w.page.getByText(OFFER).count(), `${engine} D: no offer`).toBe(0);
           await ctx.close();
 
@@ -399,7 +412,8 @@ describe('taking a new version', () => {
           await untilActive(w);
           await w.page.reload();
           await w.page.getByRole('navigation', { name: 'Primary' }).waitFor();
-          await w.page.getByRole('button', { name: 'Setar', exact: true }).click();
+          const loadsBeforeF = w.loads();
+          await w.page.getByRole('navigation', { name: /Which instrument/ }).getByRole('button', { name: 'Setar', exact: true }).click();
           await w.page.getByRole('button', { name: /Start · 10 min/ }).click();
           await w.page.getByRole('button', { name: 'Finish' }).click();
           await w.page.getByRole('button', { name: 'Discard without saving' }).waitFor();
@@ -410,7 +424,7 @@ describe('taking a new version', () => {
           expect(await w.page.getByText(OFFER).count(), `${engine} F: waits on /close`).toBe(0);
           await w.page.getByRole('button', { name: 'Discard without saving' }).click();
           await w.page.getByText(OFFER).waitFor({ timeout: 20_000 });
-          expect([w.loads(), w.errors.map((e) => e.message)]).toEqual([0, []]);
+          expect([w.loads() - loadsBeforeF, w.errors.map((e) => e.message)]).toEqual([0, []]);
           await ctx.close();
         } finally {
           await h.close();
