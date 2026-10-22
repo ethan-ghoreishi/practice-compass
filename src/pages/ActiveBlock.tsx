@@ -116,7 +116,9 @@ export default function ActiveBlock() {
               the title above it. */}
           {active.constraint && (
             <p className="reason">
-              Constraint: <span dir="auto">{active.constraint}</span>
+              <span dir="ltr">
+                Constraint: <span dir="auto">{active.constraint}</span>
+              </span>
             </p>
           )}
         </div>

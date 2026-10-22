@@ -25,7 +25,7 @@ export default function ItemCard({ item, now = new Date(), from = '/repertoire' 
   return (
     <Link to={`/items/${item.id}`} state={{ from }} className="card card-link">
       <div className="row between" style={{ alignItems: 'flex-start' }}>
-        <div className="grow" dir="auto">
+        <div className="grow" dir="auto" style={{ textAlign: 'start' }}>
           <div className="title-md">{item.title}</div>
           {/* Item-type and focus labels are generated metadata, never user
               text — each gets its own dir="ltr" isolate so it can't inherit

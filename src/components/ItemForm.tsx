@@ -191,6 +191,7 @@ export default function ItemForm({
               <input
                 className="input"
                 dir="auto"
+                aria-label="Gusheh"
                 value={v.persian.gusheh ?? ''}
                 onChange={(e) => set({ persian: { ...v.persian, gusheh: e.target.value } })}
               />

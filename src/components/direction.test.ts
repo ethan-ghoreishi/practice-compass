@@ -182,6 +182,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/MusicalTermField.tsx", tagName: "button", classValue: "btn btn-sm term-option" },
   // A term field's resolution line: the term's own (possibly Farsi) name.
   { file: "components/MusicalTermField.tsx", tagName: "span", classValue: "" },
+  // Quick add's instrument picker: the owner's own instrument name (UI refresh, 2026-10-22).
+  { file: "components/QuickAdd.tsx", tagName: "span", classValue: "" },
   // Link existing / which item is it / which source: each candidate's own title.
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   // SuggestionChoice: the item's title, then each suggestion's.
@@ -238,6 +240,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/PathwayDetail.tsx", tagName: "span", classValue: "" },
   { file: "pages/PathwayDetail.tsx", tagName: "p", classValue: "page-sub" },
   { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "card card-quiet small dim" },
+  // "You are here": the current stage's own code and title (2026-10-22).
+  { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "" },
   { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "small dim" },
   { file: "pages/PathwayDetail.tsx", tagName: "button", classValue: "grow" },
   { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "" },
@@ -274,6 +278,9 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
+  // The stage header: its title leads the group, its intro resolves its own (2026-10-22).
+  { file: "pages/StageDetail.tsx", tagName: "div", classValue: "stack-sm" },
+  { file: "pages/StageDetail.tsx", tagName: "p", classValue: "page-sub" },
   // A hidden suggestion's own title, beside its Restore control (the old
   // Undo banner that deleted an item is gone).
   { file: "pages/StageDetail.tsx", tagName: "span", classValue: "small" },
@@ -298,8 +305,12 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/Today.tsx", tagName: "span", classValue: "" },
   { file: "pages/Today.tsx", tagName: "link", classValue: "grow" },
   { file: "pages/Today.tsx", tagName: "div", classValue: "" },
+  // "Now in": the stage's own code and title, under an English eyebrow (2026-10-22).
+  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
   { file: "pages/Today.tsx", tagName: "link", classValue: "list-row card-link" },
   { file: "pages/Today.tsx", tagName: "div", classValue: "grow" },
+  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
+  // The Overview's "next:" line: the item's own title nested in its one LTR isolate (2026-10-22).
   { file: "pages/Today.tsx", tagName: "span", classValue: "" },
 ];
 
@@ -733,15 +744,15 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="ltr">\n                      <span dir="auto">{d.path}</span> — {d.reason}' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
-  { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">due {relativeDay(r.dueDate, now)}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">Running far past its target' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> routine running ▸</span>' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> plan running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">routine running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">plan running ▸</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
   {
     file: 'pages/Today.tsx',
-    snippet: '<span dir="ltr">\n                        {recs.best ? `next: ${recs.best.score.item.title}`',
+    snippet: '<span dir="ltr">\n                        {recs.best ? (\n                          <>\n                            next: <span dir="auto">{recs.best.score.item.title}</span>',
   },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{next.reason}</span>' },
   // "Add new levels from this course": the course's own level code and focus
@@ -750,16 +761,16 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
     file: 'pages/PathwayDetail.tsx',
     snippet: '<span dir="ltr">\n            {o.code} — {o.title}',
   },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source: </span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source:</span>{\' \'}' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">\n                  {a.kind} · {formatBytes(a.size)}' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
   {
     file: 'pages/ItemDetail.tsx',
     snippet: '<span className="tiny faint" dir="ltr">\n            {RATING_LABELS.difficulty.toLowerCase()} {item.difficulty}/5',
   },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Noticed: </span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Decided to try next: </span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Constraint: </span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Noticed:</span>{\' \'}' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Decided to try next:</span>{\' \'}' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Constraint:</span>{\' \'}' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>' },
   { file: 'pages/SessionPlan.tsx', snippet: '<span dir="ltr">{seg.reason}</span>' },
   { file: 'pages/CloseBlock.tsx', snippet: '<span dir="ltr">A few seconds to capture what happened.</span>' },
@@ -1813,7 +1824,8 @@ describe('direction lives on the group', () => {
 //  1. DATA-TITLE ANCHORS. A title-class element rendering an opaque data
 //     expression sits inside a dir="auto" group, and that group, when it is
 //     a block, re-declares `textAlign: 'start'` (WebKit inherits a physical
-//     alignment otherwise, so the resolved direction never reaches the edge).
+//     alignment otherwise, so the resolved direction never reaches the edge),
+//     or 'center' on a deliberately centred screen.
 //     Excluded: a title inside an isolate (a pinned `dir`), judged by the
 //     isolate rules; ui.tsx's EmptyState, whose `title` is a ReactNode its
 //     callers compose (an owner value inside it carries its own dir="auto").
@@ -1868,7 +1880,9 @@ function dataTitleAnchorViolations(): string[] {
       }
       if (group.dir !== 'auto') continue; // inside an isolate: the isolate rules judge it
       const tagName = (/^<\s*([A-Za-z][\w.]*)/.exec(group.tag)?.[1] ?? '').toLowerCase();
-      if (!INLINE_TAGS.includes(tagName) && !declaresStart(group.tag, consts)) {
+      // 'center' on a deliberately centred screen points at no edge, so it
+      // cannot misalign an RTL run either.
+      if (!INLINE_TAGS.includes(tagName) && !declaresStart(group.tag, consts) && !/textAlign\s*:\s*['"]center['"]/.test(styleTextOf(group.tag, consts))) {
         out.push(`${where} — its dir="auto" group never re-declares textAlign 'start'`);
       }
     }
@@ -2060,11 +2074,11 @@ describe('owner text and generated words', () => {
 
   it('each added shape fails when one fixed site is reverted', () => {
     const cases: [string, string, string, string, () => string[]][] = [
-      ['data-title anchor', 'pages/StageDetail.tsx', 'SEED_STAGE_FROM', 'SEED_STAGE_TO', dataTitleAnchorViolations],
-      ['generated word beside an isolate', 'pages/Today.tsx', 'SEED_DUE_FROM', 'SEED_DUE_TO', generatedWordViolations],
-      ['owner value fused into an isolate', 'pages/Today.tsx', 'SEED_NEXT_FROM', 'SEED_NEXT_TO', generatedWordViolations],
-      ['label separator', 'pages/ItemDetail.tsx', 'SEED_LABEL_FROM', 'SEED_LABEL_TO', labelSeparatorViolations],
-      ['instrument name', 'components/QuickAdd.tsx', 'SEED_QUICK_FROM', 'SEED_QUICK_TO', () => instrumentNameViolations().violations],
+      ['data-title anchor', 'pages/StageDetail.tsx', '<div className="stack-sm" dir="auto" style={{ textAlign: \'start\' }}>\n            <h1', '<div className="stack-sm">\n            <h1', dataTitleAnchorViolations],
+      ['generated word beside an isolate', 'pages/Today.tsx', '<span dir="ltr">due {relativeDay(r.dueDate, now)}</span>', 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>', generatedWordViolations],
+      ['owner value fused into an isolate', 'pages/Today.tsx', 'next: <span dir="auto">{recs.best.score.item.title}</span>', '{`next: ${recs.best.score.item.title}`}', generatedWordViolations],
+      ['label separator', 'pages/ItemDetail.tsx', '<span dir="ltr">Study source:</span>{\' \'}', '<span dir="ltr">Study source: </span>', labelSeparatorViolations],
+      ['instrument name', 'components/QuickAdd.tsx', '<span dir="auto">{i.name}</span>', '{i.name}', () => instrumentNameViolations().violations],
     ];
     for (const [shape, file, from, to, check] of cases) {
       const clean = check().length;

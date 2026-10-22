@@ -1,6 +1,12 @@
 /* ==========================================================================
    Practice Compass — design system
    Calm, serious, elegant. One muted accent, soft hierarchy, generous space.
+
+   Type roles: the system sans for everything, the serif only where the app
+   names a thing — .page-title, the timer, the header wordmark and the
+   Practise-now item title (.practise-title). Labels are sentence case.
+   Buttons: filled .btn-primary for a region's main action, outlined .btn
+   otherwise, .btn-ghost for tertiary row actions, .btn-danger keeps its tone.
    ========================================================================== */
 
 :root {
@@ -154,9 +160,9 @@ h1,
 h2,
 h3,
 h4 {
-  font-family: var(--font-serif);
+  font-family: var(--font-sans);
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: -0.005em;
   margin: 0;
   color: var(--text);
 }
@@ -517,8 +523,13 @@ body,
   background: var(--surface-2);
   box-shadow: none;
 }
-.card-link {
+/* :where() keeps this at zero specificity: a layout primitive combined with
+   it (.row, .stack-sm, .list-row) always keeps its own display, whatever the
+   source order. A plain card link is a block. */
+:where(.card-link) {
   display: block;
+}
+.card-link {
   cursor: pointer;
   transition: border-color 0.15s ease, transform 0.1s ease;
 }
@@ -536,30 +547,33 @@ body,
 
 /* ---- Typography helpers ---- */
 .page-title {
+  font-family: var(--font-serif);
   font-size: 1.7rem;
   line-height: 1.15;
+  letter-spacing: 0.005em;
+}
+.practise-title {
+  font-family: var(--font-serif);
+  letter-spacing: 0.005em;
 }
 .page-sub {
   color: var(--text-dim);
   font-size: 0.95rem;
 }
 .section-label {
-  font-size: 0.74rem;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
+  font-size: 0.85rem;
   color: var(--text-faint);
   font-weight: 600;
 }
 .eyebrow {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  font-size: 0.82rem;
   font-weight: 600;
   color: var(--accent);
 }
 .title-md {
-  font-size: 1.12rem;
-  font-family: var(--font-serif);
+  font-size: 1.08rem;
+  font-weight: 600;
+  line-height: 1.3;
 }
 .dim {
   color: var(--text-dim);
@@ -597,7 +611,7 @@ body,
   padding: 0 var(--space-4);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
-  background: var(--surface-2);
+  background: transparent;
   color: var(--text);
   font-size: 0.95rem;
   font-weight: 500;
@@ -606,7 +620,11 @@ body,
   -webkit-tap-highlight-color: transparent;
 }
 .btn:hover {
-  background: var(--surface-3);
+  background: var(--surface-2);
+}
+/* A label that must stay on one line (Export / Import backup). */
+.btn-nowrap {
+  white-space: nowrap;
 }
 .btn:disabled {
   opacity: 0.45;
@@ -628,6 +646,10 @@ body,
 .btn-ghost {
   background: transparent;
   border-color: transparent;
+  color: var(--text-dim);
+}
+.btn-ghost:hover {
+  color: var(--text);
 }
 .btn-ghost:hover {
   background: var(--surface-2);
@@ -707,15 +729,14 @@ body,
   gap: 2px;
 }
 .stat-value {
-  font-family: var(--font-serif);
-  font-size: 1.35rem;
+  font-size: 1.3rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
 .stat-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 0.8rem;
+  font-weight: 600;
   color: var(--text-faint);
 }
 
@@ -771,7 +792,10 @@ body,
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
-.select {
+/* A select styled as .input gets the same drawn arrow, so every select
+   takes the field's own height in WebKit too. */
+.select,
+select.input {
   appearance: none;
   background-image: linear-gradient(45deg, transparent 50%, var(--text-faint) 50%),
     linear-gradient(135deg, var(--text-faint) 50%, transparent 50%);
@@ -779,6 +803,9 @@ body,
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
   padding-right: 34px;
+  /* A select always fills its field (width: 100%); its chosen option's text
+     must never spill past it, which WebKit otherwise counts as overflow. */
+  overflow: hidden;
 }
 
 /* ---- Segmented / option buttons ---- */
@@ -788,7 +815,7 @@ body,
   gap: var(--space-2);
 }
 .option {
-  min-height: 40px;
+  min-height: var(--tap);
   padding: 0 var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
@@ -862,7 +889,6 @@ body,
   border-radius: var(--radius-sm);
   display: grid;
   place-items: center;
-  font-family: var(--font-serif);
   font-weight: 600;
   font-size: 0.95rem;
   font-variant-numeric: tabular-nums;
@@ -1083,4 +1109,50 @@ body,
 .btn-touch {
   min-height: 44px;
   min-width: 44px;
+}
+
+/* ---- Disclosures ---------------------------------------------------------
+   One look for every <details> that folds explanatory prose away: a full
+   touch-height summary with its own marker, the content below it. */
+.disclosure > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.disclosure[open] > summary {
+  margin-bottom: var(--space-2);
+}
+.disclosure p {
+  margin: 0;
+}
+
+/* ---- The phone touch floor -----------------------------------------------
+   Below the desktop breakpoint every button, select, input, textarea,
+   summary and button-styled link is at least one 44px tap tall, and a
+   button-styled control at least one wide (an icon-only one included).
+   Rating stars, sized by their own row, and links inside running text are
+   the two exceptions. */
+@media (max-width: 759.98px) {
+  button:not(.rating button),
+  select,
+  input:not([type='checkbox'], [type='radio'], [type='range'], [type='file'], [type='hidden']),
+  textarea,
+  summary,
+  a.btn,
+  .btn-sm {
+    min-height: var(--tap);
+  }
+  .btn,
+  .option {
+    min-width: var(--tap);
+  }
+  button.link {
+    display: inline-flex;
+    align-items: center;
+  }
+  /* A summary keeps its native marker (display: list-item); padding centres
+     its line in the taller box. */
+  summary {
+    padding-block: 10px;
+  }
 }

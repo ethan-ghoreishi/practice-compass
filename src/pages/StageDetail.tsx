@@ -20,6 +20,7 @@ import {
   segmentsForRun,
 } from '../domain';
 import { useStore } from '../store/useStore';
+import { useDecisionNow } from '../components/useDecisionNow';
 import QuickAdd from '../components/QuickAdd';
 import RoutineDuration from '../components/RoutineDuration';
 import { Field, useAcknowledgedSaves } from '../components/ui';
@@ -60,9 +61,11 @@ export default function StageDetail() {
   const routines = useMemo(() => (stage ? routinesOfStage(db.pathwayRoutines, stage.id) : []), [db.pathwayRoutines, stage]);
   // "for class" is a commitment to a NAMED class in the lesson agenda, not a
   // rolling flag on the item.
+  // …and only while that class is still ahead: `now` rolls at local midnight.
+  const now = useDecisionNow();
   const committedItemIds = useMemo(
-    () => itemsPreparedForLesson(db.lessonAgenda, db.lessons, new Date()),
-    [db.lessonAgenda, db.lessons],
+    () => itemsPreparedForLesson(db.lessonAgenda, db.lessons, now),
+    [db.lessonAgenda, db.lessons, now],
   );
 
   const [editing, setEditing] = useState(false);
@@ -237,11 +240,16 @@ export default function StageDetail() {
         </div>
       ) : (
         <header className="stack-sm">
-          <h1 className="page-title">
-            {stage.code}
-            {stage.title !== stage.code ? ` · ${stage.title}` : ''}
-          </h1>
-          {stage.intro && <p className="page-sub">{stage.intro}</p>}
+          {/* The stage's own name leads its group; the intro is authored on
+              its own and resolves its own direction too. */}
+          <div className="stack-sm" dir="auto" style={{ textAlign: 'start' }}>
+            <h1 className="page-title">{stage.title !== stage.code ? `${stage.code} · ${stage.title}` : stage.code}</h1>
+            {stage.intro && (
+              <p className="page-sub" dir="auto" style={{ textAlign: 'start', margin: 0 }}>
+                {stage.intro}
+              </p>
+            )}
+          </div>
           <div className="row" style={{ gap: 8 }}>
             <span className="balance-track grow" style={{ maxWidth: 220 }}>
               <span className="balance-fill" style={{ width: `${sp.percent}%` }} />
@@ -590,7 +598,7 @@ function UnitRow({
         className="stage-unit-text"
         onClick={() => (item ? navigate(`/items/${item.id}`, { state: { from: returnTo } }) : ambiguous ? onChoose() : onAdd())}
         title={item ? 'Open item' : ambiguous ? 'Choose which item this is' : 'Add to your items'}
-        dir="auto"
+        dir="auto" style={{ textAlign: 'start' }}
       >
         <div className="stage-unit-title">
           {unit.title}
@@ -650,7 +658,7 @@ function RoutineCard({
   return (
     <article className="card stack-sm">
       <div className="row between">
-        <div dir="auto">
+        <div dir="auto" style={{ textAlign: 'start' }}>
           <div className="title-md" style={{ fontSize: '1.02rem' }}>
             {routine.name}
           </div>

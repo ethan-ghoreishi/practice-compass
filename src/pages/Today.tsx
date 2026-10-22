@@ -71,6 +71,9 @@ export default function Today() {
 
   return (
     <div className="stack-lg">
+      {/* The page's name for assistive technology; the instrument switcher
+          and the recommendation are what the eye reads first. */}
+      <h1 className="sr-only">Today</h1>
       <nav className="options" aria-label="Which instrument are you practising?">
         {instruments.map((i) => (
           <button
@@ -97,7 +100,7 @@ export default function Today() {
         <Link to="/active" className="card card-accent card-link row between">
           <div>
             <div className="eyebrow">In progress</div>
-            <div dir="auto">
+            <div dir="auto" style={{ textAlign: 'start' }}>
               <div className="title-md">{getItem(db, active.itemId)?.title ?? 'Practice block'}</div>
               <StaleNote active={active} now={now} />
             </div>
@@ -185,8 +188,8 @@ function ElsewhereSessions({
       label: getItem(db, active.itemId)?.title ?? 'Practice block',
       detail: (
         <>
-          <span dir="auto">{instrumentName(db, active.instrumentId)}</span>
-          <span dir="ltr"> · in progress</span>
+          <span dir="auto">{instrumentName(db, active.instrumentId)}</span>{' '}
+          <span dir="ltr">· in progress</span>
         </>
       ),
       to: '/active',
@@ -199,8 +202,8 @@ function ElsewhereSessions({
       key: 'plan',
       label: (
         <>
-          <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span>
-          <span dir="ltr"> plan</span>
+          <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span>{' '}
+          <span dir="ltr">plan</span>
         </>
       ),
       detail: `${done} of ${activePlan.segments.length} done`,
@@ -217,8 +220,8 @@ function ElsewhereSessions({
         label: routine.name,
         detail: (
           <>
-            <span dir="auto">{instrumentName(db, routine.instrumentId)}</span>
-            <span dir="ltr"> routine</span>
+            <span dir="auto">{instrumentName(db, routine.instrumentId)}</span>{' '}
+            <span dir="ltr">routine</span>
           </>
         ),
         to: `/routine/${activeRoutine.routineId}${activeRoutine.shortOnTime ? '?short=1' : ''}`,
@@ -234,7 +237,7 @@ function ElsewhereSessions({
         <Link key={r.key} to={r.to} className="card card-quiet card-link row between">
           <div className="grow" style={{ minWidth: 0 }}>
             <div className="tiny faint">{r.detail}</div>
-            <div dir="auto">
+            <div dir="auto" style={{ textAlign: 'start' }}>
               <div className="small truncate">{r.label}</div>
               {r.note}
             </div>
@@ -286,8 +289,8 @@ function PlanCard({ instrumentId }: { instrumentId: string }) {
             bare alongside fixed English), and "plan running ▸" keeps its own
             dir="ltr" isolate as generated page copy. */}
         <span className="faint small">
-          <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span>
-          <span dir="ltr"> plan running ▸</span>
+          <span dir="auto">{instrumentName(db, activePlan.instrumentId)}</span>{' '}
+          <span dir="ltr">plan running ▸</span>
         </span>
       </button>
     );
@@ -352,7 +355,7 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
       return (
         <button className="card card-accent row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
           <span style={{ fontWeight: 600 }}>Resume your routine</span>
-          <div dir="auto" style={{ minWidth: 0 }}>
+          <div dir="auto" style={{ minWidth: 0, textAlign: 'start' }}>
             <div className="small truncate">{running?.name ?? 'Routine'} ▸</div>
           </div>
         </button>
@@ -365,7 +368,7 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
     return (
       <button className="card card-quiet row between" style={{ width: '100%', cursor: 'pointer' }} onClick={() => navigate(to)}>
         <span style={{ fontWeight: 600, opacity: 0.7 }}>Routines</span>
-        <div dir="auto" style={{ minWidth: 0 }}>
+        <div dir="auto" style={{ minWidth: 0, textAlign: 'start' }}>
           {/* The instrument name is the owner's own editable text (renameable
               in Settings, Farsi included) — its own dir="auto" isolate, not
               lumped into the fixed English suffix that follows it. "routine
@@ -375,8 +378,8 @@ function RoutinesCard({ instrumentId }: { instrumentId: string }) {
               group, which is the exact split a rejected review found
               elsewhere in this lane. */}
           <div className="faint small truncate">
-            <span dir="auto">{instrumentName(db, running?.instrumentId)}</span>
-            <span dir="ltr"> routine running ▸</span>
+            <span dir="auto">{instrumentName(db, running?.instrumentId)}</span>{' '}
+            <span dir="ltr">routine running ▸</span>
           </div>
         </div>
       </button>
@@ -445,7 +448,7 @@ function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
   return (
     <article className="card stack-sm">
       <div className="row between">
-        <div dir="auto" style={{ minWidth: 0 }}>
+        <div dir="auto" style={{ minWidth: 0, textAlign: 'start' }}>
           <div className="truncate">{routine.name}</div>
           {/* Generated English metadata, never user text — its own dir="ltr"
               isolate keeps it from inheriting a Farsi routine name's RTL base. */}
@@ -457,7 +460,7 @@ function TodayRoutineRow({ routine }: { routine: PathwayRoutine }) {
           <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/routine/${routine.id}/edit`)}>
             Edit
           </button>
-          <button className="btn btn-primary btn-sm" onClick={() => start(false)} aria-label={`Start ${routine.name}`}>
+          <button className="btn btn-sm" onClick={() => start(false)} aria-label={`Start ${routine.name}`}>
             <PlayIcon width={16} height={16} />
           </button>
         </div>
@@ -608,9 +611,9 @@ function SessionView({
             <span className="eyebrow">Practise now</span>
             <StatusBadge status={recs.best.score.item.status} />
           </div>
-          <div dir="auto">
+          <div dir="auto" style={{ textAlign: 'start' }}>
             <Link to={`/items/${recs.best.score.item.id}`} state={{ from: '/' }} style={{ color: 'var(--text)' }}>
-              <h2 className="title-md" style={{ fontSize: '1.3rem' }}>
+              <h2 className="title-md practise-title" style={{ fontSize: '1.3rem' }}>
                 {recs.best.score.item.title}
               </h2>
             </Link>
@@ -646,14 +649,16 @@ function SessionView({
                 style={{ background: 'none', border: 'none', textAlign: 'start', cursor: 'pointer', color: 'inherit', minWidth: 0, padding: 0 }}
                 onClick={() => start(rec.score.item)}
               >
-                <span className="truncate">{rec.score.item.title}</span>
+                <span className="row-title" style={{ display: 'block' }}>{rec.score.item.title}</span>
                 {/* rec.reason is always English (buildReason) — its own dir="ltr"
-                    isolate keeps its bidi base fixed regardless of the title's. */}
-                <div className="tiny faint truncate">
+                    isolate keeps its bidi base fixed regardless of the title's.
+                    It WRAPS: truncating it in a group that resolves RTL cut
+                    off its first words. */}
+                <div className="tiny faint">
                   <span dir="ltr">{rec.reason}</span>
                 </div>
               </button>
-              <button className="btn btn-sm" onClick={() => start(rec.score.item)} aria-label={`Practise ${rec.score.item.title}`}>
+              <button className="btn btn-sm" style={{ flex: 'none' }} onClick={() => start(rec.score.item)} aria-label={`Practise ${rec.score.item.title}`}>
                 <PlayIcon />
               </button>
             </div>
@@ -677,7 +682,7 @@ function SessionView({
           <div className="card card-flush list">
             {classWork.map((item) => (
               <div key={item.id} className="list-row">
-                <Link to={`/items/${item.id}`} state={{ from: '/' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
+                <Link to={`/items/${item.id}`} state={{ from: '/' }} className="grow" dir="auto" style={{ minWidth: 0, textAlign: 'start' }}>
                   <div className="truncate">{item.title}</div>
                   {/* Generated English metadata, never user text — its own
                       dir="ltr" isolate keeps it from inheriting a Farsi
@@ -686,7 +691,7 @@ function SessionView({
                     <span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>
                   </div>
                 </Link>
-                <button className="btn btn-sm btn-primary" onClick={() => start(item)} aria-label={`Practise ${item.title}`}>
+                <button className="btn btn-sm" onClick={() => start(item)} aria-label={`Practise ${item.title}`}>
                   <PlayIcon />
                 </button>
               </div>
@@ -719,7 +724,7 @@ function SessionView({
                         its own dir="ltr" isolate keeps it from inheriting a
                         Farsi title's RTL base. */}
                     <div className="tiny faint">
-                      due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>
+                      <span dir="ltr">due {relativeDay(r.dueDate, now)}</span>
                     </div>
                   </div>
                   <div className="row" style={{ flex: 'none', marginInlineStart: 'auto' }}>
@@ -738,7 +743,7 @@ function SessionView({
                       +2d
                     </button>
                     <button
-                      className="btn btn-sm btn-primary"
+                      className="btn btn-sm"
                       onClick={() => {
                         if (active && active.itemId !== item.id) return;
                         if (activeRoutine) return;
@@ -767,9 +772,9 @@ function SessionView({
         >
           <PathIcon width={16} height={16} style={{ color: 'var(--accent)', flex: 'none' }} />
           <div className="grow" style={{ minWidth: 0 }}>
-            <div className="truncate">
-              <span className="dim">Now in:</span> {stage.code}
-              {stage.title !== stage.code ? ` · ${stage.title}` : ''}
+            <div className="eyebrow">Now in</div>
+            <div dir="auto" style={{ textAlign: 'start' }}>
+              <div className="row-title">{stage.title !== stage.code ? `${stage.code} · ${stage.title}` : stage.code}</div>
             </div>
             {stageSp && (
               <div className="row" style={{ gap: 8, marginTop: 6 }}>
@@ -792,7 +797,7 @@ function SessionView({
           <h2 className="title-md">Shaky right now</h2>
           <div className="card card-flush list">
             {fragile.slice(0, 4).map((item) => (
-              <Link key={item.id} to={`/items/${item.id}`} state={{ from: '/' }} className="list-row card-link" dir="auto" style={{ borderRadius: 0 }}>
+              <Link key={item.id} to={`/items/${item.id}`} state={{ from: '/' }} className="list-row card-link" dir="auto" style={{ borderRadius: 0, textAlign: 'start' }}>
                 <div className="grow truncate">{item.title}</div>
                 <StatusBadge status={item.status} />
                 <ChevronRightIcon width={16} height={16} className="faint" />
@@ -894,9 +899,15 @@ function OverviewView({ now }: { now: Date }) {
                         own dir="ltr" isolate fixes the sentence's bidi base
                         regardless of the embedded title, the same shape
                         StageDetail's undo banner already uses. */}
-                    <div className="tiny faint truncate">
+                    <div className="tiny faint">
                       <span dir="ltr">
-                        {recs.best ? `next: ${recs.best.score.item.title}` : 'nothing queued'}
+                        {recs.best ? (
+                          <>
+                            next: <span dir="auto">{recs.best.score.item.title}</span>
+                          </>
+                        ) : (
+                          'nothing queued'
+                        )}
                         {lessonDate ? ` · class ${relativeDay(lessonDate, now)}` : ''}
                       </span>
                     </div>

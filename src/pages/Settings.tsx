@@ -15,6 +15,7 @@ import {
   RESULT_DESCRIPTIONS,
   RESULT_LABELS,
   SCHEDULING_BOUNDS,
+  type Instrument,
   type SchedulingParams,
 } from '../domain';
 import { useStore, type ThemePref } from '../store/useStore';
@@ -40,6 +41,7 @@ import {
   useSyncStatus,
 } from '../store/githubSync';
 import { Field } from '../components/ui';
+import SchedulingExplanation from '../components/SchedulingExplanation';
 import ArchiveRefresh from '../components/ArchiveRefresh';
 import SetarSetupReview from '../components/SetarSetupReview';
 import { testPracticeSound, usePracticeSound } from '../components/practiceCue';
@@ -58,7 +60,6 @@ export default function Settings() {
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
   const addInstrument = useStore((s) => s.addInstrument);
-  const updateInstrument = useStore((s) => s.updateInstrument);
   const resetDemo = useStore((s) => s.resetDemo);
   const clearAll = useStore((s) => s.clearAll);
 
@@ -143,35 +144,17 @@ export default function Settings() {
         <p className="page-sub">Your practice lives on this device; the rest is on your terms.</p>
       </header>
 
+      {/* Everyday controls first, then sync, device and backup, then the NAS,
+          then reference. Every control stays out in the open under its h2;
+          only explanatory prose folds away. */}
       <section className="stack-sm">
-        <div className="section-label">How your data is stored</div>
-        <div className="card stack-sm small">
-          <StorageRole
-            title="On this device"
-            body="The source of truth. Everything works fully offline; nothing here needs the internet."
-          />
-          <StorageRole
-            title="GitHub sync (optional)"
-            body="Keeps the MacBook and iPhone on the same data — small, versioned snapshots through one private repo you own. Use it only for apps you actually use on more than one device; a phone-only app doesn’t need it."
-          />
-          <StorageRole
-            title="NAS backup (optional)"
-            body="Your own full export (data + files) kept independently on the NAS. Sync history is convenient, but keep a real backup too — don’t rely on the sync repo as your only copy."
-          />
-          <StorageRole
-            title="NAS recordings & scores"
-            body="Large class videos — and score PDFs/docs — stay on the NAS; the app only stores small links to them. They never enter local storage, sync, or backups. Small ad-hoc photos and snippets can still be attached to a lesson directly."
-          />
-        </div>
-      </section>
-
-      <section className="stack-sm">
-        <div className="section-label">Appearance</div>
-        <div className="options">
+        <h2 className="title-md">Appearance</h2>
+        <div className="options" role="group" aria-label="Theme">
           {THEME_OPTIONS.map((o) => (
             <button
               key={o.value}
               className={`option${theme === o.value ? ' selected' : ''}`}
+              aria-pressed={theme === o.value}
               onClick={() => setTheme(o.value)}
             >
               {o.label}
@@ -183,54 +166,15 @@ export default function Settings() {
       <PracticeSoundSection />
 
       <section className="stack-sm">
-        <div className="section-label">Install as an app</div>
-        <div className="card stack-sm small dim">
-          <div>
-            <strong style={{ color: 'var(--text)' }}>iPhone / iPad (Safari):</strong> tap the Share button, then{' '}
-            <strong style={{ color: 'var(--text)' }}>“Add to Home Screen.”</strong>
-          </div>
-          <div>
-            <strong style={{ color: 'var(--text)' }}>Android (Chrome):</strong> menu (⋮) →{' '}
-            <strong style={{ color: 'var(--text)' }}>“Install app.”</strong>
-          </div>
-          <div>
-            <strong style={{ color: 'var(--text)' }}>Desktop (Chrome / Edge):</strong> the install icon in the address bar.
-          </div>
-          <div>
-            <strong style={{ color: 'var(--text)' }}>Mac (Safari):</strong> File →{' '}
-            <strong style={{ color: 'var(--text)' }}>“Add to Dock.”</strong>
-          </div>
-          <div className="tiny faint">
-            It opens full-screen as its own app, works offline, and keeps all data on the device. With sync (below)
-            turned on, the MacBook and iPhone apps stay on the same data.
-          </div>
-        </div>
-      </section>
-
-      <SyncSection />
-
-      <section className="stack-sm">
-        <div className="section-label">Instruments</div>
+        <h2 className="title-md">Instruments</h2>
         <div className="card stack-sm">
           {db.instruments.map((inst) => (
-            <div key={inst.id} className="row" style={{ gap: 8 }}>
-              <input
-                className="input grow"
-                value={inst.name}
-                onChange={(e) => updateInstrument(inst.id, { name: e.target.value })}
-              />
-              <button
-                className={`btn btn-sm${inst.active ? ' btn-primary' : ''}`}
-                onClick={() => updateInstrument(inst.id, { active: !inst.active })}
-                title={inst.active ? 'Active — tap to hide from quick start' : 'Hidden — tap to activate'}
-              >
-                {inst.active ? 'Active' : 'Hidden'}
-              </button>
-            </div>
+            <InstrumentRow key={inst.id} inst={inst} />
           ))}
           <div className="row" style={{ gap: 8 }}>
             <input
               className="input grow"
+              dir="auto"
               placeholder="Add an instrument…"
               value={newInstrument}
               onChange={(e) => setNewInstrument(e.target.value)}
@@ -242,7 +186,7 @@ export default function Settings() {
               }}
             />
             <button
-              className="btn btn-sm"
+              className="btn"
               disabled={!newInstrument.trim()}
               onClick={() => {
                 addInstrument({ name: newInstrument });
@@ -255,18 +199,21 @@ export default function Settings() {
         </div>
       </section>
 
+      <SyncSection />
+
       <section className="stack-sm">
-        <div className="section-label">Device &amp; handoff</div>
+        <h2 className="title-md">Device &amp; handoff</h2>
         <div className="card stack-sm">
           <div className="small dim">
             Each device keeps its own local copy (everything works offline). With{' '}
             <strong style={{ color: 'var(--text)' }}>sync</strong> on, devices exchange whole snapshots through your
-            GitHub repo — newest copy wins, and if both changed you choose. Without sync, moving data is a manual
-            export → import.
+            GitHub repo: when only one side changed, that side&apos;s copy is used; when both changed, you choose which
+            to continue from, and the other is archived first. Without sync, moving data is a manual export → import.
           </div>
           <Field label="This device's name" hint="Stamped into backups and sync commits so you can tell devices apart (e.g. iPhone, MacBook).">
             <input
               className="input"
+              aria-label="This device's name"
               placeholder="e.g. MacBook"
               value={deviceName}
               onChange={(e) => setDeviceNameState(e.target.value)}
@@ -281,22 +228,18 @@ export default function Settings() {
         </div>
       </section>
 
-      <NasRecordingsSection />
-
-      <SchedulingSection />
-
       <section className="stack-sm">
-        <div className="section-label">Data &amp; backup</div>
+        <h2 className="title-md">Data &amp; backup</h2>
         <div className="card stack-sm">
           <div className="row-wrap small dim">
             {db.items.length} items · {db.blocks.length} blocks · {db.pathways.length} pathways ·{' '}
             {db.attachments.length} file{db.attachments.length === 1 ? '' : 's'}
           </div>
-          <div className="grid-2">
-            <button className="btn" onClick={exportFile} disabled={busy}>
+          <div className="row-wrap">
+            <button className="btn btn-nowrap grow" onClick={exportFile} disabled={busy}>
               <DownloadIcon /> {busy ? 'Working…' : 'Export backup'}
             </button>
-            <button className="btn" onClick={() => fileRef.current?.click()} disabled={busy}>
+            <button className="btn btn-nowrap grow" onClick={() => fileRef.current?.click()} disabled={busy}>
               <UploadIcon /> Import backup
             </button>
           </div>
@@ -338,11 +281,123 @@ export default function Settings() {
         </div>
       </section>
 
+      <NasRecordingsSection />
+
+      <SchedulingSection />
+
+      <section className="stack-sm">
+        <h2 className="title-md">Install as an app</h2>
+        <details className="card disclosure small dim">
+          <summary>How to install it on each device</summary>
+          <div className="stack-sm">
+            <div>
+              <strong style={{ color: 'var(--text)' }}>iPhone / iPad (Safari):</strong> tap the Share button, then{' '}
+              <strong style={{ color: 'var(--text)' }}>“Add to Home Screen.”</strong>
+            </div>
+            <div>
+              <strong style={{ color: 'var(--text)' }}>Android (Chrome):</strong> menu (⋮) →{' '}
+              <strong style={{ color: 'var(--text)' }}>“Install app.”</strong>
+            </div>
+            <div>
+              <strong style={{ color: 'var(--text)' }}>Desktop (Chrome / Edge):</strong> the install icon in the address bar.
+            </div>
+            <div>
+              <strong style={{ color: 'var(--text)' }}>Mac (Safari):</strong> File →{' '}
+              <strong style={{ color: 'var(--text)' }}>“Add to Dock.”</strong>
+            </div>
+            <div className="tiny faint">
+              It opens full-screen as its own app, works offline, and keeps all data on the device. With sync turned
+              on, the MacBook and iPhone apps stay on the same data.
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section className="stack-sm">
+        <h2 className="title-md">How your data is stored</h2>
+        <details className="card disclosure small">
+          <summary>Where each copy lives</summary>
+          <div className="stack-sm">
+            <StorageRole
+              title="On this device"
+              body="The source of truth. Everything works fully offline; nothing here needs the internet."
+            />
+            <StorageRole
+              title="GitHub sync (optional)"
+              body="Keeps the MacBook and iPhone on the same data — small, versioned snapshots through one private repo you own. Use it only for apps you actually use on more than one device; a phone-only app doesn’t need it."
+            />
+            <StorageRole
+              title="NAS backup (optional)"
+              body="Your own full export (data + files) kept independently on the NAS. Sync history is convenient, but keep a real backup too — don’t rely on the sync repo as your only copy."
+            />
+            <StorageRole
+              title="NAS recordings & scores"
+              body="Large class videos — and score PDFs/docs — stay on the NAS; the app only stores small links to them. They never enter local storage, sync, or backups. Small ad-hoc photos and snippets can still be attached to a lesson directly."
+            />
+          </div>
+        </details>
+      </section>
+
       <div className="tiny faint" style={{ textAlign: 'center' }}>
         Practice Compass · build {__APP_VERSION__}
       </div>
 
       {message && <div className="toast">{message}</div>}
+    </div>
+  );
+}
+
+/**
+ * One instrument's name and whether it shows. The name is a DRAFT until it
+ * is committed (blur or Enter), saved trimmed; an empty name is refused by
+ * the store and the saved one comes back, with the reason beside it. The
+ * Active/Hidden pill is a state, pressed while the instrument is in use.
+ */
+function InstrumentRow({ inst }: { inst: Instrument }) {
+  const updateInstrument = useStore((s) => s.updateInstrument);
+  const [draft, setDraft] = useState(inst.name);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  // A name changed elsewhere (import, sync) replaces a draft that matched it.
+  const [seen, setSeen] = useState(inst.name);
+  if (seen !== inst.name) {
+    setSeen(inst.name);
+    setDraft(inst.name);
+  }
+  function commit() {
+    if (draft === inst.name) return;
+    const refused = updateInstrument(inst.id, { name: draft });
+    setRefusal(refused);
+    setDraft(refused ? inst.name : draft.trim());
+  }
+  return (
+    <div className="stack-sm" style={{ gap: 4 }}>
+      <div className="row" style={{ gap: 8 }}>
+        <input
+          className="input grow"
+          dir="auto"
+          aria-label={`Rename ${inst.name}`}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            setRefusal(null);
+          }}
+          onBlur={commit}
+          onKeyDown={(e) => e.key === 'Enter' && commit()}
+        />
+        <button
+          className={`option${inst.active ? ' selected' : ''}`}
+          aria-pressed={inst.active}
+          onClick={() => updateInstrument(inst.id, { active: !inst.active })}
+          title={inst.active ? 'Active — tap to hide from quick start' : 'Hidden — tap to activate'}
+        >
+          {inst.active ? 'Active' : 'Hidden'}
+        </button>
+      </div>
+      {refusal && (
+        <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
+          {refusal} The saved name is kept.
+        </p>
+      )}
     </div>
   );
 }
@@ -401,7 +456,7 @@ function SyncSection() {
 
   return (
     <section className="stack-sm">
-      <div className="section-label">Sync (GitHub)</div>
+      <h2 className="title-md">Sync (GitHub)</h2>
       <div className="card stack-sm">
         {!cfg ? (
           <>
@@ -546,19 +601,17 @@ function NasRecordingsSection() {
 
   return (
     <section className="stack-sm">
-      <div className="section-label">NAS recordings</div>
+      <h2 className="title-md">NAS recordings</h2>
       <div className="card stack-sm">
         <div className="small dim">
           Full class videos stay on your NAS. Lessons hold a small <strong style={{ color: 'var(--text)' }}>link</strong>{' '}
           to each recording; set the address of the <strong style={{ color: 'var(--text)' }}>archive folder itself</strong>{' '}
           and the links resolve against it.
         </div>
-        <Field
-          label="Setar archive base URL"
-          hint="The archive FOLDER, not the media root above it — e.g. https://192.168.0.20:5010/setar-classes. References are stored relative to this (session-39-…/…), so a base one folder too high resolves every file to a URL that addresses nothing. Stored on this device only; never synced, never a password. Each device sets its own route to the same archive."
-        >
+        <Field label="Setar archive base URL" hint="The archive FOLDER, not the media root above it — e.g. https://192.168.0.20:5010/setar-classes.">
           <input
             className="input"
+            aria-label="Setar archive base URL"
             type="url"
             inputMode="url"
             enterKeyHint="done"
@@ -579,31 +632,37 @@ function NasRecordingsSection() {
           <div className="tiny faint">Resolves to: {normalized}/…</div>
         ) : null}
 
-        <div className="row between" style={{ gap: 8 }}>
-          <div className="tiny faint">
-            Browse opens the archive folder itself — if it does not list the session folders, the base is wrong. Copy a
-            file's URL from there and paste it into a lesson: a URL under this base is stored as a relative path, so it
-            keeps working whatever route a device takes to the NAS.
-          </div>
+        {/* A single clip proved nothing: it fails for a file that was renamed
+            and passes for a base whose other thousand files are unreachable.
+            The ARCHIVE ROOT is what was configured, so it is what opens. */}
+        <div className="row" style={{ gap: 8 }}>
           <button
             className="btn btn-sm"
-            style={{ flex: 'none' }}
             disabled={!normalized}
             onClick={() => normalized && window.open(`${normalized}/`, '_blank', 'noopener,noreferrer')}
           >
             Browse
           </button>
         </div>
-
-        {/* A single clip proved nothing: it fails for a file that was renamed
-            and passes for a base whose other thousand files are unreachable.
-            The ARCHIVE ROOT is what was configured, so it is what opens. */}
-        <div className="row between" style={{ gap: 8 }}>
-          <div className="tiny faint">
-            Opening a file is a direct request from this device. The app cannot check from here whether the NAS is
-            reachable — a certificate, a blocked cross-origin request and an outage all look the same to it.
+        <details className="disclosure tiny faint">
+          <summary className="small">About this address</summary>
+          <div className="stack-sm">
+            <p>
+              References are stored relative to this (session-39-…/…), so a base one folder too high resolves every
+              file to a URL that addresses nothing. Stored on this device only; never synced, never a password. Each
+              device sets its own route to the same archive.
+            </p>
+            <p>
+              Browse opens the archive folder itself — if it does not list the session folders, the base is wrong. Copy
+              a file&apos;s URL from there and paste it into a lesson: a URL under this base is stored as a relative path,
+              so it keeps working whatever route a device takes to the NAS.
+            </p>
+            <p>
+              Opening a file is a direct request from this device. The app cannot check from here whether the NAS is
+              reachable — a certificate, a blocked cross-origin request and an outage all look the same to it.
+            </p>
           </div>
-        </div>
+        </details>
       </div>
 
       <MediaRootSection archiveBase={normalized ?? ''} />
@@ -647,33 +706,36 @@ function MediaRootSection({ archiveBase }: { archiveBase: string }) {
     <div className="card stack-sm">
       <div className="small dim">
         Course material — videos, scores and contrast cards — sits in other folders beside the Setar archive under
-        one shared media root. The root is worked out from the archive base above, so there is nothing to set here
-        unless your tree is laid out differently.
+        one shared media root, worked out from the archive base above.
       </div>
       <div className="tiny faint" style={{ textAlign: 'start' }}>
         {/* Generated English page copy, never user text — inline LTR isolate. */}
         <span dir="ltr">{explanation}</span>
       </div>
-      <div className="row between" style={{ gap: 8 }}>
-        <div className="tiny faint">
-          Browse opens the media root itself — if it does not list your course folders beside the archive folder, set
-          one explicitly below.
-        </div>
+      <div className="row" style={{ gap: 8 }}>
         <button
           className="btn btn-sm"
-          style={{ flex: 'none' }}
+          aria-label="Browse the media root"
           disabled={!root}
           onClick={() => root && window.open(`${root}/`, '_blank', 'noopener,noreferrer')}
         >
           Browse
         </button>
       </div>
+      <details className="disclosure tiny faint">
+        <summary className="small">About the media root</summary>
+        <p>
+          There is nothing to set here unless your tree is laid out differently. Browse opens the media root itself —
+          if it does not list your course folders beside the archive folder, set one explicitly below.
+        </p>
+      </details>
       <Field
         label="Media root (optional)"
         hint="Leave blank to use the one derived from your archive base. Stored on this device only; never synced, never a password."
       >
         <input
           className="input"
+          aria-label="Media root (optional)"
           type="url"
           inputMode="url"
           enterKeyHint="done"
@@ -716,42 +778,17 @@ function SchedulingSection() {
 
   return (
     <section className="stack-sm">
-      <div className="section-label" id="how-scheduling-works">How scheduling works</div>
+      <h2 className="title-md" id="how-scheduling-works">How scheduling works</h2>
       <div className="card stack-sm small">
         <div className="dim">
           Every item gets a plain priority score, then the review date comes from spaced repetition. Nothing here is a
           black box — these are the exact numbers.
         </div>
 
-        <div>
-          <div style={{ fontWeight: 600 }}>What to practise (priority)</div>
-          <div className="dim">
-            <code>
-              importance×2 + difficulty + fragility + overdue + neglected + class-deadline − recent-minutes
-            </code>
-            . Work you committed to a specific class climbs as THAT class nears, and stops counting once it has
-            passed. A question for your teacher adds nothing — it is something to ask, not a reason to practise.
-            Material you have given a lot of minutes to this week is gently set aside; the effect decays over a week
-            and is capped, so nothing is ever hidden for good.
-          </div>
-        </div>
+        <SchedulingExplanation />
 
-        <div>
-          <div style={{ fontWeight: 600 }}>When to revisit (spaced repetition)</div>
-          <div className="dim">
-            Practising early is real practice, but it is not the review: before the date, a good session records the
-            minutes and leaves the date alone. AT the review, “stable” results widen the gap
-            (≈ {p.sm2FirstIntervalDays} → {p.sm2SecondIntervalDays} days → gap × ease), at most once a day; “same” and
-            “slightly better” hold the same gap again without counting as a slip; only “worse” brings the date
-            forward — to{' '}
-            {p.sm2SlipResetDays === 1 ? 'the next day' : `${p.sm2SlipResetDays} days`} — and never pushes it back.
-            Important or hard material is pulled a little sooner. A date you chose yourself stands until it is due.
-            You can override any item to a fixed cadence or manual.
-          </div>
-        </div>
-
-        <div id="what-the-choices-mean">
-          <div style={{ fontWeight: 600 }}>What each choice means</div>
+        <details className="disclosure" id="what-the-choices-mean">
+          <summary>What each choice means</summary>
           <div className="dim">
             <strong>Status</strong> says how the item currently stands and how you are working on it — not how the
             last ten minutes went. The eight are not rungs of a ladder you must climb: neighbours overlap on purpose,
@@ -788,10 +825,10 @@ function SchedulingSection() {
             {RATING_EFFECT_NOTE} They are stored as <code>importance</code> and <code>difficulty</code>, and every
             number above uses them exactly as it always has.
           </div>
-        </div>
+        </details>
 
-        <div id="review-ownership">
-          <div style={{ fontWeight: 600 }}>Who manages a review date</div>
+        <details className="disclosure" id="review-ownership">
+          <summary>Who manages a review date</summary>
           <div className="dim">
             A date you typed, snoozed or re-armed is YOURS: the app leaves it alone until it comes due. “Use automatic
             scheduling” on an item hands that management back — it KEEPS the date exactly as it is, records no
@@ -801,16 +838,16 @@ function SchedulingSection() {
             guessing. With no date at all, automatic simply leaves it unscheduled; “Review today” puts it on today&apos;s
             list — administration, not evidence.
           </div>
-        </div>
+        </details>
 
-        <div>
-          <div style={{ fontWeight: 600 }}>Class commitments and questions</div>
+        <details className="disclosure">
+          <summary>Class commitments and questions</summary>
           <div className="dim">
             Each one names a specific class. Anything carried over from an older version of the app is listed as
             “Unassigned” on the Lessons screen with a button to move it to the class it was actually for — the old
             data never recorded which class it meant, so nothing was guessed for you.
           </div>
-        </div>
+        </details>
 
         <div className="stack-sm" style={{ marginTop: 4 }}>
           {PARAM_ROWS.map((row) => {
@@ -828,6 +865,7 @@ function SchedulingSection() {
                   min={lo}
                   max={hi}
                   step={1}
+                  aria-label={row.label}
                   value={Math.round(p[row.key] * scale)}
                   style={{ maxWidth: 120 }}
                   onChange={(e) => {
@@ -878,7 +916,7 @@ function PracticeSoundSection() {
   const sound = usePracticeSound();
   return (
     <section className="stack-sm">
-      <div className="section-label">Practice sound</div>
+      <h2 className="title-md">Practice sound</h2>
       <div className="card stack-sm small">
         <div className="row between" style={{ gap: 8, flexWrap: 'wrap' }}>
           <span dir="ltr">

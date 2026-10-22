@@ -451,8 +451,8 @@ function Summary({ plan, done = false, commitSha, fromArchive }: { plan: ImportP
               <p className="tiny faint" style={{ textAlign: 'start', margin: '6px 0 0' }}>
                 <span dir="ltr">
                   These are the archive’s own words. A new piece, a class roster or a renamed file is declared in
-                  PIECES.csv or RENAME-LOG.csv on the NAS — running the NAS job again changes nothing until then.{' '}
-                </span>
+                  PIECES.csv or RENAME-LOG.csv on the NAS — running the NAS job again changes nothing until then.
+                </span>{' '}
                 <a href={RUNBOOK} target="_blank" rel="noreferrer">
                   How to fix each one
                 </a>
@@ -523,9 +523,9 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
           ack={saves.states.restore}
           subject={
             <>
-              <span dir="ltr">Restore of </span>
-              <span dir="auto">{last.label}</span>
-              <span dir="ltr">: </span>
+              <span dir="ltr">
+                Restore of <span dir="auto">{last.label}</span>:
+              </span>{' '}
             </>
           }
           onRetry={() => run(last.target, last.label)}
@@ -535,8 +535,8 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
         <span dir="ltr">
           Restoring lifts that one decision; the next Refresh brings back what the archive still describes. Notes,
           links and files you deleted are not in the archive and cannot come back from it — restore those from a
-          backup.{' '}
-        </span>
+          backup.
+        </span>{' '}
         <a href={RUNBOOK} target="_blank" rel="noreferrer">
           The archive runbook
         </a>

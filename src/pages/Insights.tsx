@@ -30,6 +30,8 @@ export default function Insights() {
     return () => clearInterval(id);
   }, []);
   const insights = useMemo(() => generateInsights(db, now, windowDays), [db, now, windowDays]);
+  const windowed = insights.filter((i) => i.scope === 'window');
+  const current = insights.filter((i) => i.scope === 'now');
 
   return (
     <div className="stack-lg">
@@ -40,18 +42,6 @@ export default function Insights() {
 
       <PractiseTotals now={now} />
 
-      <div className="options">
-        {[7, 30].map((d) => (
-          <button
-            key={d}
-            className={`option${windowDays === d ? ' selected' : ''}`}
-            onClick={() => setWindowDays(d)}
-          >
-            Last {d} days
-          </button>
-        ))}
-      </div>
-
       {insights.length === 0 ? (
         <div className="card">
           <EmptyState icon={<InsightsIcon />} title="Not enough to say yet">
@@ -59,11 +49,40 @@ export default function Insights() {
           </EmptyState>
         </div>
       ) : (
-        <div className="stack">
-          {insights.map((i) => (
-            <InsightCard key={i.id} insight={i} />
-          ))}
-        </div>
+        <>
+          {/* What the chosen window shows, then what is true of the items
+              right now — never one undifferentiated list. */}
+          <section className="stack-sm">
+            <div className="row between" style={{ flexWrap: 'wrap', rowGap: 8 }}>
+              <h2 className="title-md">Last {windowDays} days</h2>
+              <div className="options" role="group" aria-label="Window">
+                {[7, 30].map((d) => (
+                  <button
+                    key={d}
+                    className={`option${windowDays === d ? ' selected' : ''}`}
+                    aria-pressed={windowDays === d}
+                    onClick={() => setWindowDays(d)}
+                  >
+                    Last {d} days
+                  </button>
+                ))}
+              </div>
+            </div>
+            {windowed.length === 0 ? (
+              <p className="small dim">No practice logged in the last {windowDays} days.</p>
+            ) : (
+              windowed.map((i) => <InsightCard key={i.id} insight={i} />)
+            )}
+          </section>
+          {current.length > 0 && (
+            <section className="stack-sm">
+              <h2 className="title-md">Right now</h2>
+              {current.map((i) => (
+                <InsightCard key={i.id} insight={i} />
+              ))}
+            </section>
+          )}
+        </>
       )}
 
       <Link to="/report" className="btn btn-block">
@@ -99,6 +118,8 @@ function PractiseTotals({ now }: { now: Date }) {
   return (
     <section className="card stack-sm">
       <div className="section-label">Time practised</div>
+      {/* Fits a phone: each figure may break between its minutes and its
+          block count rather than pushing the table sideways. */}
       <div className="table-scroll" style={{ overflowX: 'auto' }}>
         <table className="small" style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -139,11 +160,15 @@ function PractiseTotals({ now }: { now: Date }) {
 // physical 'left' would resolve the direction without ever reaching the
 // alignment — leaving a Farsi name shaped correctly but pinned to the
 // English edge. 'start' is identical to 'left' for every English row.
-const CELL: CSSProperties = { textAlign: 'start', padding: '4px 8px 4px 0', whiteSpace: 'nowrap' };
-const NUM: CSSProperties = { textAlign: 'right', padding: '4px 0 4px 8px', whiteSpace: 'nowrap' };
+const CELL: CSSProperties = { textAlign: 'start', padding: '4px 8px 4px 0' };
+const NUM: CSSProperties = { textAlign: 'right', padding: '4px 0 4px 8px' };
 
-function cell(t: { minutes: number; blocks: number }): string {
-  return `${t.minutes} min · ${t.blocks}`;
+function cell(t: { minutes: number; blocks: number }) {
+  return (
+    <>
+      <span style={{ whiteSpace: 'nowrap' }}>{t.minutes} min</span> <span style={{ whiteSpace: 'nowrap' }}>· {t.blocks}</span>
+    </>
+  );
 }
 
 function InsightCard({ insight }: { insight: Insight }) {
@@ -155,7 +180,7 @@ function InsightCard({ insight }: { insight: Insight }) {
       <div className="section-label" style={{ marginBottom: 4 }}>
         {insight.category}
       </div>
-      <div dir="auto">
+      <div dir="auto" style={{ textAlign: 'start' }}>
         <div className="title-md" style={{ fontSize: '1.05rem', marginBottom: 4 }}>
           {insight.title}
         </div>

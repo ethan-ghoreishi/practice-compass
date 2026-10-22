@@ -105,7 +105,15 @@ function audit(app: PracticeApp, phone: boolean): Promise<string[]> {
 
     // Reflow: nothing scrolls sideways that was not built to.
     if (document.documentElement.scrollWidth > window.innerWidth + 1) out.push('the page scrolls sideways');
-    if (main.scrollWidth > main.clientWidth + 1) out.push('main scrolls sideways');
+    if (main.scrollWidth > main.clientWidth + 1) {
+      // Name what pushes it: an element past the edge, or one whose own
+      // content spills past it.
+      const right = main.getBoundingClientRect().right;
+      const culprits = [...main.querySelectorAll('*')].filter(
+        (el) => el.getBoundingClientRect().right > right + 1 || el.getBoundingClientRect().left + el.scrollWidth > right + 1,
+      );
+      out.push(`main scrolls sideways (${culprits.slice(-2).map(describe).join('; ')})`);
+    }
     const box = main.getBoundingClientRect();
     for (const el of main.querySelectorAll('*')) {
       if (!shown(el) || el.matches('input, textarea, select, option') || el.closest('.sr-only, svg')) continue;
@@ -181,6 +189,10 @@ async function sweep(c: Config): Promise<string[]> {
     await page.getByRole('button', { name: 'My repertoire', exact: true }).click();
     await page.getByText('عراق 3').first().waitFor();
     await snap(app, c, 'repertoire');
+    // A work's parts, opened: part rows are link cards laid out as rows.
+    await page.locator('.list-row', { hasText: 'چهارمضراب ماهور' }).locator('button[aria-expanded]').first().click();
+    await page.getByText('بخش اول').first().waitFor();
+    await check('Repertoire (a work\'s parts open)');
 
     for (const [route, heading] of [
       ['/start', 'Start a block'],
@@ -231,6 +243,15 @@ async function sweep(c: Config): Promise<string[]> {
     await page.getByRole('button', { name: /^Start · 10 min/ }).click();
     await page.getByRole('button', { name: 'Finish' }).waitFor();
     await check('/active');
+    // The block in progress, seen from Today: its own instrument's banner,
+    // then another instrument's "still running elsewhere" row.
+    await goTo(app, '/');
+    await page.getByText('In progress').waitFor();
+    await check('Today (block in progress)');
+    await page.getByRole('navigation', { name: 'Which instrument are you practising?' }).getByRole('button', { name: 'سه‌تار', exact: true }).click();
+    await page.getByText('· in progress').waitFor();
+    await check('Today (block running elsewhere)');
+    await goTo(app, '/active', { arrival: /رنگ اصفهان|چهارمضراب ماهور|عراق 3|درآمد شور|تحریر/ });
     await page.getByRole('button', { name: 'Finish' }).click();
     await page.getByText('A few seconds to capture what happened.').waitFor();
     await page.getByRole('button', { name: 'Same', exact: true }).click();

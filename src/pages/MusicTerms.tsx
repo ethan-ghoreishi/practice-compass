@@ -243,7 +243,7 @@ function TermRow({
 
   return (
     <div className="list-row" style={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      <div className="grow" dir="auto" style={{ minWidth: 0 }}>
+      <div className="grow" dir="auto" style={{ textAlign: 'start', minWidth: 0 }}>
         <div className="row-title">{term.name}</div>
         {/* Generated English metadata, never user text. Spellings stay behind
             Edit — a mixed-script list on every row is noise, not guidance. */}

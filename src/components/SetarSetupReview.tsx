@@ -221,9 +221,10 @@ export default function SetarSetupReview() {
         const value = current ? ('create' in current ? 'create' : current.materialId) : '';
         return (
           <label key={g.key} className="tiny" style={{ textAlign: 'start' }}>
-            <span dir="ltr">{g.kind === 'declared' ? 'The registry declares ' : 'Items answering the reference '}</span>
-            <span dir="auto">«{g.label}»</span>
-            <span dir="ltr"> for {g.itemIds.length} items — which study source is it?</span>
+            <span dir="ltr">
+              {g.kind === 'declared' ? 'The registry declares' : 'Items answering the reference'}{' '}
+              <span dir="auto">«{g.label}»</span> for {g.itemIds.length} items — which study source is it?
+            </span>
             <select
               className="input"
               aria-label={`Study source for ${g.label}`}

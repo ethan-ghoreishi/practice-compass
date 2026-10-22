@@ -69,7 +69,7 @@ export default function QuickAdd({
               aria-pressed={instrumentId === i.id}
               onClick={() => setInstrumentId(i.id)}
             >
-              {i.name}
+              <span dir="auto">{i.name}</span>
             </button>
           ))}
         </div>

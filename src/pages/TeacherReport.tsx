@@ -117,10 +117,10 @@ export default function TeacherReport() {
         </Field>
         <div className="grid-2">
           <Field label="From">
-            <input className="input" type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+            <input className="input" type="date" aria-label="From" value={from} onChange={(e) => setFrom(e.target.value)} />
           </Field>
           <Field label="To">
-            <input className="input" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+            <input className="input" type="date" aria-label="To" value={to} onChange={(e) => setTo(e.target.value)} />
           </Field>
         </div>
       </div>
