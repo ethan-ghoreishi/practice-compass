@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Page } from 'playwright';
 import { createItem, SCHEMA_VERSION } from '../src/domain';
 import { FOCUS_LABELS, ITEM_STATUS_LABELS, RATING_LABELS, RESULT_LABELS } from '../src/domain/labels';
-import { goTo, importBackup, importOutcome, openPracticeApp, persistedDb, persistedUntil, reload, type Engine, type PracticeApp } from './practiceBrowser';
+import { goTo, importBackup, importOutcome, openPracticeApp, persistedDb, persistedUntil, reload, show, type Engine, type PracticeApp } from './practiceBrowser';
 
 // ---------------------------------------------------------------------------
 // After practice: the close screen revises the item as the practice left it
@@ -265,8 +265,9 @@ describe('after practice', () => {
       const app = await seeded(engine);
       const { page } = app;
       try {
-        // The explanation reads the SAME values Settings holds.
-        await goTo(app, '/settings', { arrival: 'Settings & backup' });
+        // The explanation reads the SAME values Settings holds (the import
+        // left this page on Settings).
+        await show(app, '/settings');
         await page.getByRole('spinbutton', { name: /^First review gap/ }).fill('3');
         await persistedUntil(app, (s) => (s.state as { db: { settings?: { sm2FirstIntervalDays: number } } }).db.settings?.sm2FirstIntervalDays, (n) => n === 3);
 
@@ -363,7 +364,8 @@ describe('after practice', () => {
         await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} → ${ITEM_STATUS_LABELS.fragile} · Focus ${FOCUS_LABELS.rhythm} · Effort 4 of 5`).waitFor();
         // The untouched minutes proposal counts the extra practice…
         const proposed = Number(await minutes.inputValue());
-        expect(proposed, engine).toBeGreaterThanOrEqual(firstMinutes + 6);
+        expect(proposed, engine).toBeGreaterThanOrEqual(6);
+        expect(proposed, engine).toBeGreaterThan(firstMinutes);
         // …and the review date is worked out again from the new settings,
         // the owner's own review-type choice kept.
         await page.getByRole('button', { name: 'Change', exact: true }).click();

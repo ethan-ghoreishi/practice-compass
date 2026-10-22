@@ -408,7 +408,13 @@ generated from [`public/icon.svg`](public/icon.svg) with `npm run gen:icons`.
 Calm, focused, serious, elegant, fast, uncluttered — encouraging but never cheesy.
 
 - No gamification, streaks, fake mastery %, leaderboards or guilt.
-- One muted accent, soft hierarchy, generous spacing, serif headings.
+- One muted accent, soft hierarchy, generous spacing.
+- Type has two roles: the serif names a thing — page titles, the practice timer, the
+  header wordmark and the Practise-now item title — and the system sans carries
+  everything else (section headings, labels in sentence case, body, controls).
+- One button system: a filled primary only for a region's main action, outlined
+  buttons otherwise, quiet ghost buttons for row actions; on a phone every control is
+  at least a 44px tap.
 - Mobile‑first, with a bottom tab bar and a one‑tap **Start** button.
 - The practice screen hides all chrome to protect attention.
 - Insights are neutral and useful, never nagging.
