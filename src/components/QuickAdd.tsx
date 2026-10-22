@@ -50,6 +50,8 @@ export default function QuickAdd({
       stageId,
       strand,
     });
+    // Names no parent, so it is never refused.
+    if (typeof id !== 'string') return;
     if (lessonId) linkItemToLesson(lessonId, id);
     setTitle('');
     setLastAddedId(id);

@@ -7,7 +7,7 @@ import { catalogReferenceId, resolveCatalogReference } from './courseSeed';
 import { planLinkReference, settleLegacyEvidence } from './pathways';
 import { resolveValue, vocabulary } from './musicTerms';
 import { createMaterial } from './factories';
-import { nowISO } from './util';
+import { isolate, nowISO } from './util';
 import { canonicalStringify } from './canonical';
 import { ITEM_STATUS_LABELS } from './labels';
 
@@ -25,14 +25,6 @@ import { ITEM_STATUS_LABELS } from './labels';
 // ---------------------------------------------------------------------------
 
 /** The kinds the registry's own form vocabulary can establish. */
-/**
- * An independently authored value inside generated English evidence, wrapped
- * in a first-strong BIDI ISOLATE (U+2068…U+2069) — the native counterpart of
- * `dir="auto"` — so a Farsi form, composer, stage or source title resolves its
- * own direction instead of inheriting the sentence's. Nothing here detects a
- * script or reorders text.
- */
-const iso = (value: string): string => `\u2068${value}\u2069`;
 
 export type PieceKind = Extract<ItemType, 'gusheh' | 'full_piece' | 'exercise' | 'improvisation'>;
 
@@ -78,7 +70,7 @@ export function classifyPiece(piece: Pick<SourcePiece, 'form' | 'composer' | 'pr
   if (form === 'درامد') return { kind: 'gusheh', family: 'radif-daramad', why: 'The registry names it a درامد — the opening gusheh of its dastgāh.' };
   if (form === 'چهارپاره') {
     return composer
-      ? { kind: null, family: 'composed-chaharpareh', why: `A چهارپاره attributed to ${iso(composer)}: a radif section or a composed piece — yours to say.` }
+      ? { kind: null, family: 'composed-chaharpareh', why: `A چهارپاره attributed to ${isolate(composer)}: a radif section or a composed piece — yours to say.` }
       : { kind: 'gusheh', family: 'radif-chaharpareh', why: 'A چهارپاره with no composer: a section of the radif.' };
   }
   if (form === 'رنگ' && !composer) {
@@ -90,9 +82,9 @@ export function classifyPiece(piece: Pick<SourcePiece, 'form' | 'composer' | 'pr
     return { kind: 'improvisation', family: 'improvisation', why: 'The registry names it a بداهه — your own improvisation, not a composed work.' };
   }
   if (COMPOSED_FORMS.has(form) || (form === 'رنگ' && composer)) {
-    return { kind: 'full_piece', family: 'composed', why: `The registry names it a ${iso(form)}${composer ? ` by ${iso(composer)}` : ''}.` };
+    return { kind: 'full_piece', family: 'composed', why: `The registry names it a ${isolate(form)}${composer ? ` by ${isolate(composer)}` : ''}.` };
   }
-  return { kind: null, family: 'unknown', why: form ? `The registry's form «${iso(form)}» does not say what kind of item this is.` : 'The registry gives no form.' };
+  return { kind: null, family: 'unknown', why: form ? `The registry's form «${isolate(form)}» does not say what kind of item this is.` : 'The registry gives no form.' };
 }
 
 /** What the import USED to seed — `full_piece` for every non-گوشه — so a seeded value is told from an owner's choice. */
@@ -199,7 +191,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
   const stageIds = new Set(pathway ? db.pathwayStages.filter((s) => s.pathwayId === pathway.id).map((s) => s.id) : []);
   const stageName = (id: ID | undefined) => {
     const st = id ? db.pathwayStages.find((s) => s.id === id) : undefined;
-    return st ? iso(`${st.code}${st.title && st.title !== st.code ? ` · ${st.title}` : ''}`) : 'a stage of another pathway';
+    return st ? isolate(`${st.code}${st.title && st.title !== st.code ? ` · ${st.title}` : ''}`) : 'a stage of another pathway';
   };
   const materials = db.materials.filter((m) => m.instrumentId === instrumentId);
   const pieceOf = (item: PracticeItem): SourcePiece | undefined =>
@@ -316,9 +308,9 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
           continue;
         }
         target = radifStageFor(pathway.id, r.term.id);
-        why = `A gusheh of ${iso(r.term.name)}.`;
+        why = `A gusheh of ${isolate(r.term.name)}.`;
         if (!target || !stageIds.has(target)) {
-          exception(`A gusheh of ${iso(r.term.name)}, but this pathway has no stage for it.`);
+          exception(`A gusheh of ${isolate(r.term.name)}, but this pathway has no stage for it.`);
           continue;
         }
       } else if (kind === 'full_piece') {
@@ -416,7 +408,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
       const piece = pieceOf(i);
       return piece ? classifyPiece(piece) : undefined;
     })();
-    const why = key.startsWith('declared:') ? `The registry declares it from «${iso(label)}».` : `It answers a ${iso(MIRZA_ABDOLLAH_RADIF.name)} reference.`;
+    const why = key.startsWith('declared:') ? `The registry declares it from «${isolate(label)}».` : `It answers a ${isolate(MIRZA_ABDOLLAH_RADIF.name)} reference.`;
     if (i.materialId === target) {
       push({ id, itemId: i.id, field: 'source', state: 'correct', before, after, choices: [], evidence: why });
     } else if (reading?.family === 'composed-chaharpareh' || reading?.family === 'radif-reng' || reading?.family === 'provisional') {
@@ -430,7 +422,7 @@ export function planSetarSetup(db: PracticeDB, ctx: SetupContext): SetupPlan {
         state: 'exception',
         before,
         choices: [{ label: 'Use this study source instead', after }],
-        evidence: `${why} You set «${iso(current?.title ?? 'another source')}»; that stays unless you choose.`,
+        evidence: `${why} You set «${isolate(current?.title ?? 'another source')}»; that stays unless you choose.`,
       });
     } else {
       push({ id, itemId: i.id, field: 'source', state: 'proposed', before, after, choices: [], evidence: why });

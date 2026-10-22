@@ -63,19 +63,20 @@ describe('questions for one class', () => {
   it('renders a plain-text sheet with answers and honest empty copy', () => {
     const list = openQuestionsForLessonId(agenda, items, 'L');
     const text = renderClassQuestionsText('Setar', '2026-06-14', list);
-    expect(text).toContain('Questions for Setar class — 2026-06-14');
+    // Each owner value is a bidi isolate (U+2068…U+2069) inside the English sheet.
+    expect(text).toContain('Questions for \u2068Setar\u2069 class — 2026-06-14');
     expect(text).toContain('Tone or tension first?');
     expect(text).toContain('آیا فرودم درست است؟');
     // The sheet never dumps the item's own Working notes, and the only
     // context it does carry is the item's latest recorded observation, DATED.
     expect(text).not.toContain('Problem:');
     expect(renderClassQuestionsText('Setar', '2026-06-14', openQuestionsForLessonId(agenda, items, 'L', blocks))).toContain(
-      'Last observed 2026-06-17: فرود روشن‌تر شد',
+      'Last observed 2026-06-17: \u2068فرود روشن‌تر شد\u2069',
     );
     expect(text).toContain('(no item)');
 
     const answered = openQuestionsForLessonId(markQuestionAsked(agenda, 'q-b', NOW, 'Tone.'), items, 'L');
-    expect(renderClassQuestionsText('Setar', 'x', answered)).not.toContain('A: Tone.'); // asked ⇒ not open
+    expect(renderClassQuestionsText('Setar', 'x', answered)).not.toContain('A: \u2068Tone.\u2069'); // asked ⇒ not open
 
     expect(renderClassQuestionsText('Setar', 'x', [])).toContain('No questions yet');
   });

@@ -881,7 +881,7 @@ describe('routine capture', () => {
     expect(generateInsights({ ...full, ...captured }, RUN_AT).map((i) => i.id)).toContain('same-A');
     const better = captureRoutineResults(db, RUN, [{ blockId: 'run-A', result: 'performable' }], RUN_AT);
     if ('refused' in better) throw new Error(better.refused);
-    expect(generateInsights({ ...full, ...better }, RUN_AT).find((i) => i.id === 'improved')?.body).toContain('"A" reached "Performable"');
+    expect(generateInsights({ ...full, ...better }, RUN_AT).find((i) => i.id === 'improved')?.body).toContain('"\u2068A\u2069" reached "Performable"');
     const report = buildReportData({ ...full, ...better }, { instrumentId: 'inst', from: '2026-10-14', to: '2026-10-14', now: RUN_AT });
     expect(report.periodResults.find((r) => r.item.id === 'A')).toMatchObject({ best: 'performable', last: 'performable' });
   });

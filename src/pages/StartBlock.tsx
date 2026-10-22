@@ -99,7 +99,9 @@ export default function StartBlock() {
     let itemId = selectedItemId;
     if (creating) {
       if (!title.trim()) return;
-      itemId = addItem({ instrumentId, title });
+      // Names no parent, so it is never refused.
+      const added = addItem({ instrumentId, title });
+      itemId = typeof added === 'string' ? added : null;
     }
     if (!itemId) return;
     startSession({

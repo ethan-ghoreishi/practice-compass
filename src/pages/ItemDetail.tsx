@@ -143,7 +143,7 @@ export default function ItemDetail() {
             <span dir="ltr">{saveRefusal}</span>
           </div>
         )}
-        <ItemForm initial={itemToValues(item)} submitLabel="Save changes" onSubmit={handleEdit} onCancel={() => setEditing(false)} />
+        <ItemForm initial={itemToValues(item)} itemId={item.id} submitLabel="Save changes" onSubmit={handleEdit} onCancel={() => setEditing(false)} />
       </div>
     );
   }
@@ -330,10 +330,13 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
   const startItemSession = useStore((s) => s.startItemSession);
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
+  const [partRefusal, setPartRefusal] = useState<string | null>(null);
 
   const parts = useMemo(() => partsOf(item.id, db.items), [item.id, db.items]);
+  // A part is never offered parts of its own (`partRelationRefusal`); parts
+  // an item already has always show.
   const canHaveParts =
-    item.itemType === 'full_piece' || item.itemType === 'exercise' || item.itemType === 'section' || parts.length > 0;
+    parts.length > 0 || (!item.parentItemId && (item.itemType === 'full_piece' || item.itemType === 'exercise' || item.itemType === 'section'));
   const next = useMemo(
     () => (parts.length > 0 ? pickNextPart(item.id, db.items, db.blocks, now) : null),
     [parts.length, item.id, db.items, db.blocks, now],
@@ -347,7 +350,7 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
 
   function addPart() {
     if (!title.trim()) return;
-    addItem({
+    const added = addItem({
       instrumentId: item.instrumentId,
       title,
       parentItemId: item.id,
@@ -355,7 +358,10 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
       materialId: item.materialId,
       stageId: item.stageId,
     });
-    setTitle('');
+    // Refused only when this item may not have parts (it became a part):
+    // the title stays and the reason shows.
+    setPartRefusal(typeof added === 'string' ? null : added.refusal);
+    if (typeof added === 'string') setTitle('');
   }
 
   return (
@@ -420,6 +426,11 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
           Add part
         </button>
       </div>
+      {partRefusal && (
+        <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
+          {partRefusal}
+        </p>
+      )}
     </section>
   );
 }

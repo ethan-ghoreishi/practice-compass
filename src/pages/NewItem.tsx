@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { vocabulary } from '../domain';
 import { useStore } from '../store/useStore';
@@ -19,6 +20,7 @@ export default function NewItem() {
   const navigate = useNavigate();
   const location = useLocation();
   const [params] = useSearchParams();
+  const [refusal, setRefusal] = useState<string | null>(null);
 
   const from = (location.state as { from?: string } | null)?.from ?? '/repertoire';
 
@@ -56,6 +58,13 @@ export default function NewItem() {
 
   function create(v: ItemFormValues) {
     const id = addItem(valuesToCreateInput(v));
+    // The form offers only parents it may have; a parent that changed since
+    // (deleted, made a part) is refused by the store and said here.
+    if (typeof id !== 'string') {
+      setRefusal(id.refusal);
+      return;
+    }
+    setRefusal(null);
     if (v.lessonId) linkItemToLesson(v.lessonId, id);
     // Creating from Start returns there with the new item ready to practise.
     if (from === '/start') {
@@ -74,6 +83,11 @@ export default function NewItem() {
         <h1 className="page-title">Add practice item</h1>
         <p className="page-sub">Only the title is required — everything else can wait.</p>
       </header>
+      {refusal && (
+        <div className="card card-quiet small" role="alert" style={{ color: 'var(--tone-warn)' }}>
+          <span dir="ltr">{refusal}</span>
+        </div>
+      )}
       <ItemForm initial={initial} submitLabel="Add practice item" showLessonLink onSubmit={create} onCancel={() => navigate(from)} />
     </div>
   );

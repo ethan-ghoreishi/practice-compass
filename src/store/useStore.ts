@@ -5,6 +5,7 @@ import { withRevision } from './revision';
 import { primePracticeSound } from '../components/practiceCue';
 import {
   acknowledgeThrough,
+  partRelationRefusal,
   applyBlockStats,
   applyCloseEdits,
   applyRoutineRun,
@@ -296,6 +297,8 @@ export interface CloseSessionInput {
 
 export interface ItemPatch {
   instrumentId?: ID;
+  /** Present-and-undefined clears the link; a change is judged by `partRelationRefusal`. */
+  parentItemId?: ID;
   title?: string;
   itemType?: PracticeItem['itemType'];
   materialId?: ID;
@@ -359,7 +362,8 @@ interface StoreState {
 
   // Instruments
   addInstrument: (input: { name: string; family?: string }) => ID;
-  updateInstrument: (id: ID, patch: Partial<Pick<Instrument, 'name' | 'family' | 'active'>>) => void;
+  /** Returns a refusal (and changes nothing) for an empty name; a name is saved trimmed. */
+  updateInstrument: (id: ID, patch: Partial<Pick<Instrument, 'name' | 'family' | 'active'>>) => string | null;
 
   // Lessons (classes with a teacher)
   addLesson: (input: { instrumentId: ID; date: ISODate; notes?: string; number?: number }) => ID;
@@ -399,7 +403,8 @@ interface StoreState {
   deleteMaterial: (id: ID) => void;
 
   // Items
-  addItem: (input: CreateItemInput) => ID;
+  /** Refused, creating nothing, when the input names a parent it may not have (`partRelationRefusal`). */
+  addItem: (input: CreateItemInput) => ID | { refusal: string };
   /**
    * Save an item's own fields. Returns null, or the reason it REFUSED — a save
    * that would hand an ambiguous pending schedule to the engine is refused
@@ -743,14 +748,20 @@ export const useStore = create<StoreState>()(
 
       updateInstrument: (id, patch) => {
         const now = new Date();
+        // A name is the owner's handle on everything filed under it: saved
+        // trimmed, and never emptied (no read refuses an empty one already
+        // stored — this only stops a new one being written).
+        const named = 'name' in patch ? { ...patch, name: (patch.name ?? '').trim() } : patch;
+        if ('name' in named && !named.name) return 'An instrument needs a name.';
         set((s) => ({
           db: {
             ...s.db,
             instruments: s.db.instruments.map((i) =>
-              i.id === id ? touch({ ...i, ...patch }, now) : i,
+              i.id === id ? touch({ ...i, ...named }, now) : i,
             ),
           },
         }));
+        return null;
       },
 
       addLesson: (input) => {
@@ -956,6 +967,10 @@ export const useStore = create<StoreState>()(
 
       addItem: (input) => {
         const now = new Date();
+        if (input.parentItemId) {
+          const refusal = partRelationRefusal(get().db.items, { instrumentId: input.instrumentId, parentItemId: input.parentItemId });
+          if (refusal) return { refusal };
+        }
         const item = createItem(input, now);
         set((s) => ({ db: { ...s.db, items: [...s.db.items, item] } }));
         return item.id;
@@ -982,6 +997,18 @@ export const useStore = create<StoreState>()(
         // detaching from the archive is a separate, explicit act.
         if (newInstrumentId && current?.source) {
           return 'This piece is linked to the Setar archive. Detach it from the archive before moving it to another instrument.';
+        }
+        // A part's parent, judged only when this write sets or changes the
+        // relationship or the instrument — an unrelated edit to a record that
+        // already breaks the rule is never newly refused.
+        const nextParent = 'parentItemId' in rest ? rest.parentItemId || undefined : current?.parentItemId;
+        if (current && (newInstrumentId || nextParent !== (current.parentItemId || undefined))) {
+          const relation = partRelationRefusal(get().db.items, {
+            id,
+            instrumentId: newInstrumentId ?? current.instrumentId,
+            parentItemId: nextParent,
+          });
+          if (relation) return relation;
         }
         // A SAVED mode change from manual/fixed-cadence to automatic is the
         // same administrative transfer the item screen's own button performs —

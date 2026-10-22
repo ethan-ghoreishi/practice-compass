@@ -1,7 +1,18 @@
-import { describe, expect, it } from 'vitest';
-import { discoverRepertoire, isWork, repertoireWorks } from './repertoire';
-import { createItem } from './factories';
+import { describe, expect, it, vi } from 'vitest';
+import { allowedParents, discoverRepertoire, isWork, partRelationRefusal, repertoireWorks } from './repertoire';
+import { createInstrument, createItem } from './factories';
 import type { CreateItemInput } from './factories';
+import { emptyDB } from './seed';
+import type { PracticeItem } from './types';
+
+// The store, exactly as it runs, over in-memory storage (Dexie has no
+// IndexedDB in Node) — the same stand-in practiceCue.test.ts uses.
+vi.mock('../store/idb', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../store/idb')>()),
+  storageSettled: () => Promise.resolve(),
+  idbStorage: { getItem: async () => null, setItem: async () => undefined, removeItem: async () => undefined },
+}));
+const { useStore } = await import('../store/useStore');
 
 const now = new Date('2026-07-11T10:00:00Z');
 
@@ -142,5 +153,75 @@ describe('My repertoire discovery', () => {
       const everyone = g.groups.flatMap((x) => x.works.map((w) => w.work.id));
       expect(everyone.sort(), groupBy).toEqual(ids(all.groups.flatMap((x) => x.works)));
     }
+  });
+});
+
+describe('a part and its parent', () => {
+  it('a parent is refused for itself, its parts or a work with parts, and kept otherwise', () => {
+    const at = (id: string, o: Partial<PracticeItem> & { title: string }): PracticeItem => ({ ...item(o), id });
+    const work = at('work', { title: 'چهارمضراب ماهور', itemType: 'full_piece' });
+    const part = at('part', { title: 'Bars 1–8', itemType: 'section', parentItemId: 'work' });
+    const other = at('other', { title: 'Reng 2', itemType: 'full_piece' });
+    const guitar = at('guitar', { instrumentId: 'gtr', title: 'Lágrima', itemType: 'full_piece' });
+    const loose = at('loose', { title: 'Forud', itemType: 'phrase' });
+    // Legacy data the read never repairs: an item that is its own parent.
+    const selfish = at('selfish', { title: 'Legacy loop', itemType: 'section', parentItemId: 'selfish' });
+    const items = [work, part, other, guitar, loose, selfish];
+    const refuse = (id: string | undefined, parentItemId: string | undefined, instrumentId = 'setar') =>
+      partRelationRefusal(items, { id, instrumentId, parentItemId });
+
+    // Each refused, each with its reason.
+    expect(refuse('work', 'work')).toMatch(/part of itself/);
+    expect(refuse('work', 'part')).toMatch(/one of its own parts/);
+    expect(refuse('loose', 'part')).toMatch(/never to another part/);
+    expect(refuse('loose', 'guitar')).toMatch(/same instrument/);
+    expect(refuse('work', 'other')).toMatch(/has parts of its own/);
+    expect(refuse('loose', 'gone')).toMatch(/no longer exists/);
+    expect(refuse(undefined, 'part')).toMatch(/never to another part/); // creating
+    // Moving a parent away from its parts, or a part away from its parent.
+    expect(refuse('work', undefined, 'gtr')).toMatch(/parts are on another instrument/);
+    expect(refuse('part', 'work', 'gtr')).toMatch(/same instrument/);
+    // Accepted: a top-level item on the same instrument, and a cleared link.
+    expect(refuse('loose', 'other')).toBeNull();
+    expect(refuse(undefined, 'other')).toBeNull();
+    expect(refuse('part', undefined)).toBeNull();
+    // The form offers exactly what the store accepts.
+    expect(allowedParents(items, { id: 'loose', instrumentId: 'setar' }).map((i) => i.id)).toEqual(['work', 'other']);
+    expect(allowedParents(items, { id: 'work', instrumentId: 'setar' })).toEqual([]);
+    expect(allowedParents(items, { instrumentId: 'gtr' }).map((i) => i.id)).toEqual(['guitar']);
+
+    // --- through the real store ------------------------------------------
+    const store = () => useStore.getState();
+    store().importDB({ ...emptyDB(), instruments: [{ ...createInstrument({ name: 'سه‌تار' }, now), id: 'setar' }, { ...createInstrument({ name: 'Guitar' }, now), id: 'gtr' }], items });
+    const unchanged = (fn: () => unknown) => {
+      const before = store();
+      const refusal = fn();
+      expect(store().db, String(refusal)).toBe(before.db);
+      expect(store().rev).toBe(before.rev);
+      return refusal;
+    };
+    expect(unchanged(() => store().updateItem('work', { parentItemId: 'work' }))).toMatch(/part of itself/);
+    expect(unchanged(() => store().updateItem('work', { parentItemId: 'part' }))).toMatch(/own parts/);
+    expect(unchanged(() => store().updateItem('work', { parentItemId: 'other' }))).toMatch(/has parts of its own/);
+    expect(unchanged(() => store().updateItem('loose', { parentItemId: 'gone' }))).toMatch(/no longer exists/);
+    expect(unchanged(() => store().updateItem('work', { instrumentId: 'gtr' }))).toMatch(/parts are on another instrument/);
+    expect(unchanged(() => store().updateItem('part', { instrumentId: 'gtr' }))).toMatch(/same instrument/);
+    expect(unchanged(() => store().addItem({ instrumentId: 'setar', title: 'New', parentItemId: 'part' }))).toEqual({ refusal: expect.stringMatching(/another part/) });
+    expect(unchanged(() => store().addItem({ instrumentId: 'gtr', title: 'New', parentItemId: 'work' }))).toEqual({ refusal: expect.stringMatching(/same instrument/) });
+
+    // Valid changes save.
+    expect(store().updateItem('loose', { parentItemId: 'other' })).toBeNull();
+    expect(store().db.items.find((i) => i.id === 'loose')!.parentItemId).toBe('other');
+    const created = store().addItem({ instrumentId: 'setar', title: 'Bars 9–16', parentItemId: 'work' });
+    expect(typeof created).toBe('string');
+    expect(store().db.items.find((i) => i.id === created)!.parentItemId).toBe('work');
+    // Clearing a link, then moving the freed part, is allowed.
+    expect(store().updateItem('part', { parentItemId: undefined })).toBeNull();
+    expect(store().updateItem('part', { instrumentId: 'gtr' })).toBeNull();
+    // An unrelated edit to a legacy-invalid record is never newly refused —
+    // including a whole-form save that resends its unchanged parent.
+    expect(store().updateItem('selfish', { notes: 'still here' })).toBeNull();
+    expect(store().updateItem('selfish', { title: 'Legacy loop 2', parentItemId: 'selfish' })).toBeNull();
+    expect(store().db.items.find((i) => i.id === 'selfish')).toMatchObject({ title: 'Legacy loop 2', parentItemId: 'selfish', notes: 'still here' });
   });
 });

@@ -3,11 +3,13 @@ import { RESULT_LABELS, RESULT_RANK } from './labels';
 import { groupBlocksByItem, lastResultsAllSame, scoreItems } from './scoring';
 import { preparationDatesByItem } from './lessonAgenda';
 import { openQuestionsForInstrument, openQuestionsForLessonId, questionsForLessonId, type ClassQuestion } from './questions';
-import { parseISODate } from './util';
+import { isolate, parseISODate } from './util';
 
 // ---------------------------------------------------------------------------
 // Copyable practice report for a lesson, scoped to one instrument and a date
-// range. Output is plain text (markdown-friendly) so it pastes anywhere.
+// range. Output is plain text (markdown-friendly) so it pastes anywhere; every
+// value the owner wrote is a bidi isolate (`isolate`), so a Farsi title
+// followed by digits never reorders the English words around it.
 // ---------------------------------------------------------------------------
 
 export interface ReportOptions {
@@ -130,14 +132,14 @@ export function renderReportText(data: ReportData): string {
   const lines: string[] = [];
   const push = (s = '') => lines.push(s);
 
-  push(`Practice report: ${data.instrumentName}`);
+  push(`Practice report: ${isolate(data.instrumentName)}`);
   push(`(${data.from} → ${data.to})`);
   push();
 
   push('Worked on:');
   if (data.worked.length === 0) push('- (no logged practice in this range)');
   for (const w of data.worked) {
-    push(`- ${w.item.title}: ${w.blocks} block${w.blocks === 1 ? '' : 's'}, ${w.minutes} minutes`);
+    push(`- ${isolate(w.item.title)}: ${w.blocks} block${w.blocks === 1 ? '' : 's'}, ${w.minutes} minutes`);
   }
   push();
 
@@ -149,14 +151,14 @@ export function renderReportText(data: ReportData): string {
   for (const r of data.periodResults) {
     const best = RESULT_LABELS[r.best].toLowerCase();
     const ended = RESULT_LABELS[r.last].toLowerCase();
-    push(`- ${r.item.title}: best ${best}; last recorded ${ended}.`);
+    push(`- ${isolate(r.item.title)}: best ${best}; last recorded ${ended}.`);
   }
   push();
 
   push('Currently shaky or being repaired (current status, not this period):');
   if (data.fragile.length === 0) push('- (nothing currently shaky)');
   for (const i of data.fragile) {
-    push(`- ${i.title}`);
+    push(`- ${isolate(i.title)}`);
   }
   push();
 
@@ -174,7 +176,7 @@ export function renderReportText(data: ReportData): string {
   if (data.lessonQuestions.length > 0) {
     push('To ask at the class this report is for:');
     data.lessonQuestions.forEach((q, idx) => {
-      push(`${idx + 1}. ${q.question}${q.title ? ` (${q.title})` : ''}`);
+      push(`${idx + 1}. ${isolate(q.question)}${q.title ? ` (${isolate(q.title)})` : ''}`);
     });
     push();
   }
@@ -187,14 +189,14 @@ export function renderReportText(data: ReportData): string {
   if (otherOpen.length === 0) push('- (none recorded)');
   otherOpen.forEach((q, idx) => {
     const where = q.unassigned ? ' [unassigned]' : '';
-    push(`${idx + 1}. ${q.question}${q.title ? ` (${q.title})` : ''}${where}`);
+    push(`${idx + 1}. ${isolate(q.question)}${q.title ? ` (${isolate(q.title)})` : ''}${where}`);
   });
   push();
 
   if (data.lessonHistory.length > 0) {
     push('Already asked at that class:');
     data.lessonHistory.forEach((q, idx) => {
-      push(`${idx + 1}. ${q.question}${q.answer ? ` — answer: ${q.answer}` : ''}`);
+      push(`${idx + 1}. ${isolate(q.question)}${q.answer ? ` — answer: ${isolate(q.answer)}` : ''}`);
     });
     push();
   }
@@ -202,7 +204,7 @@ export function renderReportText(data: ReportData): string {
   if (data.repeated.length > 0) {
     push('Currently repeating the same result (current pattern, not this period):');
     for (const i of data.repeated) {
-      push(`- ${i.title}`);
+      push(`- ${isolate(i.title)}`);
     }
     push();
   }
@@ -210,7 +212,7 @@ export function renderReportText(data: ReportData): string {
   push('Suggested lesson focus (current):');
   if (data.suggestedFocus.length === 0) push('- (no items yet)');
   data.suggestedFocus.forEach((i, idx) => {
-    push(`${idx + 1}. ${i.title}`);
+    push(`${idx + 1}. ${isolate(i.title)}`);
   });
 
   return lines.join('\n');

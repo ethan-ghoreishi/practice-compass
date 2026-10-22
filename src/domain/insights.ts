@@ -13,14 +13,21 @@ import {
   itemsWithOpenQuestion,
   neglectedImportantItems,
 } from './selectors';
-import { daysSince } from './util';
+import { daysSince, isolate } from './util';
 
 // ---------------------------------------------------------------------------
 // Weekly / monthly insights. Calm, neutral, never guilt-driven. Each insight
 // is a small card the Insights screen renders, and one is surfaced on Today.
+//
+// An insight says which data it describes: `window` reads the chosen last-N
+// days (and says so in those words), `now` reads the items as they stand.
+// Every value the owner wrote is a bidi isolate (`isolate`) inside the
+// English sentence, and a title never embeds one.
 // ---------------------------------------------------------------------------
 
 export type InsightTone = 'neutral' | 'positive' | 'attention';
+
+export type InsightScope = 'window' | 'now';
 
 export interface Insight {
   id: string;
@@ -28,10 +35,12 @@ export interface Insight {
   title: string;
   body: string;
   tone: InsightTone;
+  /** The last `windowDays` of blocks, or the current state of the items. */
+  scope: InsightScope;
 }
 
 function nameOf(item: PracticeItem): string {
-  return item.title;
+  return isolate(item.title);
 }
 
 function listNames(items: PracticeItem[], max = 3): string {
@@ -50,7 +59,7 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
     (r) => r.minutes > 0,
   );
   if (balance.length > 0) {
-    const summary = balance.map((r) => `${r.instrumentName} ${r.percent}%`).join(', ');
+    const summary = balance.map((r) => `${isolate(r.instrumentName)} ${r.percent}%`).join(', ');
     const lopsided = balance[0].percent >= 60 && balance.length > 1;
     insights.push({
       id: 'instrument-balance',
@@ -60,6 +69,7 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
         ? `Over the last ${windowDays} days: ${summary}. Is that the balance you intended?`
         : `Over the last ${windowDays} days: ${summary}.`,
       tone: lopsided ? 'attention' : 'neutral',
+      scope: 'window',
     });
   }
 
@@ -77,9 +87,10 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
       insights.push({
         id: `idle-${inst.id}`,
         category: 'Balance',
-        title: `${inst.name} is going quiet`,
-        body: `${inst.name} hasn't been practised for ${idleDays} days${tail}.`,
+        title: 'An instrument going quiet',
+        body: `${isolate(inst.name)} hasn't been practised for ${idleDays} days${tail}.`,
         tone: 'attention',
+        scope: 'now',
       });
     }
   }
@@ -98,8 +109,9 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
       id: 'most-practised',
       category: 'Time',
       title: 'Where your time went',
-      body: `Most of your time went to "${topItem.title}" — ${mins} min across ${count} block${count === 1 ? '' : 's'}.`,
+      body: `Most of your time went to "${isolate(topItem.title)}" — ${mins} min across ${count} block${count === 1 ? '' : 's'}.`,
       tone: 'neutral',
+      scope: 'window',
     });
   }
 
@@ -112,6 +124,7 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
       title: 'Fragile material',
       body: `${fragile.length} item${fragile.length === 1 ? ' is' : 's are'} fragile or under repair: ${listNames(fragile)}.`,
       tone: 'attention',
+      scope: 'now',
     });
   }
 
@@ -123,8 +136,9 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
       id: 'neglected-important',
       category: 'Attention',
       title: 'Important but neglected',
-      body: `"${worst.title}" is important but hasn't been touched for ${daysSinceTouched(worst, now)} days.`,
+      body: `"${isolate(worst.title)}" is important but hasn't been touched for ${daysSinceTouched(worst, now)} days.`,
       tone: 'attention',
+      scope: 'now',
     });
   }
 
@@ -136,8 +150,9 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
         id: `same-${item.id}`,
         category: 'Strategy',
         title: 'Stuck on the same result',
-        body: `"${item.title}" has produced the same result three times. Try a different strategy or ask your teacher.`,
+        body: `"${isolate(item.title)}" has produced the same result three times. Try a different strategy or ask your teacher.`,
         tone: 'attention',
+        scope: 'now',
       });
     }
   }
@@ -152,8 +167,9 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
       id: 'improved',
       category: 'Progress',
       title: 'Holding together',
-      body: `"${star.title}" reached "${RESULT_LABELS[star.lastResult!]}" after ${star.timesPractised} block${star.timesPractised === 1 ? '' : 's'}.`,
+      body: `"${isolate(star.title)}" reached "${RESULT_LABELS[star.lastResult!]}" after ${star.timesPractised} block${star.timesPractised === 1 ? '' : 's'}.`,
       tone: 'positive',
+      scope: 'now',
     });
   }
 
@@ -177,8 +193,9 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
       id: 'common-focus',
       category: 'Patterns',
       title: 'A recurring focus',
-      body: `${count} blocks this week focused on ${FOCUS_LABELS[focus].toLowerCase()}${cross}.`,
+      body: `${count} blocks in the last ${windowDays} days focused on ${FOCUS_LABELS[focus].toLowerCase()}${cross}.`,
       tone: cross ? 'attention' : 'neutral',
+      scope: 'window',
     });
   }
 
@@ -191,6 +208,7 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
       title: 'Questions for your teacher',
       body: `You have ${teacherQs.length} open question${teacherQs.length === 1 ? '' : 's'} to raise: ${listNames(teacherQs)}.`,
       tone: 'neutral',
+      scope: 'now',
     });
   }
 
@@ -201,8 +219,9 @@ export function generateInsights(db: PracticeDB, now: Date, windowDays = 7): Ins
       id: 'next-priorities',
       category: 'Plan',
       title: 'Suggested next three',
-      body: scored.map((s, i) => `${i + 1}. ${s.item.title}`).join('  ·  '),
+      body: scored.map((s, i) => `${i + 1}. ${isolate(s.item.title)}`).join('  ·  '),
       tone: 'neutral',
+      scope: 'now',
     });
   }
 

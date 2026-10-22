@@ -2,6 +2,7 @@ import type { ID, ISODateTime, Lesson, LessonAgendaEntry, LessonQuestion, Practi
 import { faCollator } from './farsi';
 import { isOpenQuestion, isQuestion, isUnassigned } from './lessonAgenda';
 import { latestObservation } from './blocks';
+import { isolate } from './util';
 
 // ---------------------------------------------------------------------------
 // Questions for a class — the things the owner actually wants to ask their
@@ -138,27 +139,28 @@ export function lessonLabel(lesson: Lesson | undefined): string {
   return lesson.number ? `Class ${lesson.number} · ${lesson.date}` : lesson.date;
 }
 
-/** Plain-text export (copy / download / print). Direction-neutral: the app's
- *  `unicode-bidi: plaintext` on free-text fields keeps mixed lines correct. */
+/** Plain-text export (copy / download / print). Every value the owner wrote is
+ *  a bidi isolate (`isolate`), so a Farsi line keeps its own direction inside
+ *  the English sheet wherever the text is pasted, printed or shown. */
 export function renderClassQuestionsText(
   instrumentName: string,
   dateLabel: string,
   questions: ClassQuestion[],
 ): string {
   const lines: string[] = [];
-  lines.push(`Questions for ${instrumentName} class — ${dateLabel}`);
+  lines.push(`Questions for ${isolate(instrumentName)} class — ${dateLabel}`);
   lines.push('');
   if (questions.length === 0) {
     lines.push('(No questions yet. Add one from an item or from the class itself.)');
     return lines.join('\n');
   }
   questions.forEach((q, idx) => {
-    lines.push(`${idx + 1}. ${q.title ?? '(no item)'}`);
-    lines.push(`   Q: ${q.question}`);
-    if (q.answer) lines.push(`   A: ${q.answer}`);
+    lines.push(`${idx + 1}. ${q.title !== undefined ? isolate(q.title) : '(no item)'}`);
+    lines.push(`   Q: ${isolate(q.question)}`);
+    if (q.answer) lines.push(`   A: ${isolate(q.answer)}`);
     // Current context, dated and labelled as such — never the item's Working
     // notes, and never presented as an answer to the question above it.
-    if (q.lastObservation) lines.push(`   Last observed ${q.lastObservation.at.slice(0, 10)}: ${q.lastObservation.text}`);
+    if (q.lastObservation) lines.push(`   Last observed ${q.lastObservation.at.slice(0, 10)}: ${isolate(q.lastObservation.text)}`);
     lines.push('');
   });
   return lines.join('\n').trimEnd();
