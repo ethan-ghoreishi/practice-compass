@@ -1,0 +1,74 @@
+{
+  "app": "practice-compass",
+  "schemaVersion": 16,
+  "exportedAt": "2026-10-20T19:00:00.000Z",
+  "deviceName": "ui-refresh fixture (synthetic, hand-authored; clock 2026-10-20T21:00 local)",
+  "data": {
+    "schemaVersion": 16,
+    "instruments": [
+      { "id": "inst-setar", "name": "سه‌تار", "family": "Persian", "active": true, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "inst-tar", "name": "Tar", "family": "Persian", "active": true, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
+    ],
+    "musicTerms": [
+      { "id": "dastgah:mahur", "kind": "dastgah", "name": "دستگاه ماهور", "aliases": ["Mahur", "ماهور"], "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
+    ],
+    "materials": [
+      { "id": "mat-tar-book", "instrumentId": "inst-tar", "title": "دستور تار", "sourceType": "method_book", "status": "active", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "mat-setar-book", "instrumentId": "inst-setar", "title": "Setar method book", "sourceType": "method_book", "status": "active", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
+    ],
+    "items": [
+      { "id": "it-iraq3", "instrumentId": "inst-tar", "materialId": "mat-tar-book", "stageId": "stage-fa", "title": "عراق 3", "itemType": "gusheh", "status": "repairing", "importance": 4, "difficulty": 4, "timesPractised": 3, "totalMinutes": 45, "lastPractisedAt": "2026-10-19T12:00:00.000Z", "lastResult": "same", "persian": { "dastgahAvaz": "افشاری", "gusheh": "عراق" }, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-10-19T12:15:00.000Z" },
+      { "id": "it-chahar", "instrumentId": "inst-tar", "title": "چهارمضراب ماهور", "itemType": "full_piece", "status": "usable", "importance": 3, "difficulty": 3, "nextReviewDate": "2026-10-06", "nextReviewSource": "auto", "timesPractised": 4, "totalMinutes": 60, "lastPractisedAt": "2026-09-29T12:00:00.000Z", "lastResult": "stable_alone", "persian": { "dastgahAvaz": { "termId": "dastgah:mahur" }, "form": "چهارمضراب" }, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-29T12:15:00.000Z" },
+      { "id": "it-chahar-part", "instrumentId": "inst-tar", "parentItemId": "it-chahar", "title": "بخش اول", "itemType": "section", "status": "usable", "importance": 3, "difficulty": 3, "timesPractised": 0, "totalMinutes": 0, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "it-daramad", "instrumentId": "inst-tar", "title": "درآمد شور", "itemType": "gusheh", "status": "integrated", "importance": 3, "difficulty": 3, "timesPractised": 6, "totalMinutes": 90, "lastPractisedAt": "2026-10-01T12:00:00.000Z", "lastResult": "stable_in_context", "persian": { "dastgahAvaz": "شور", "gusheh": "درآمد" }, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-10-01T12:15:00.000Z" },
+      { "id": "it-tahrir", "instrumentId": "inst-tar", "title": "تحریر", "itemType": "technique", "status": "new", "importance": 3, "difficulty": 3, "timesPractised": 0, "totalMinutes": 0, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "it-reng", "instrumentId": "inst-tar", "title": "رنگ اصفهان", "itemType": "full_piece", "status": "fragile", "importance": 4, "difficulty": 3, "timesPractised": 1, "totalMinutes": 10, "lastPractisedAt": "2026-10-05T12:00:00.000Z", "lastResult": "slightly_better", "persian": { "dastgahAvaz": "اصفهان", "form": "رنگ" }, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-10-05T12:15:00.000Z" },
+      { "id": "it-sweep", "instrumentId": "inst-setar", "title": "Mezrab sweep drill", "itemType": "exercise", "status": "usable", "importance": 3, "difficulty": 3, "timesPractised": 2, "totalMinutes": 20, "lastPractisedAt": "2026-10-17T12:00:00.000Z", "lastResult": "slightly_better", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-10-17T12:15:00.000Z" },
+      { "id": "it-kereshmeh", "instrumentId": "inst-setar", "title": "Kereshmeh study", "itemType": "gusheh", "status": "fragile", "importance": 4, "difficulty": 3, "nextReviewDate": "2026-10-18", "nextReviewSource": "auto", "timesPractised": 2, "totalMinutes": 25, "lastPractisedAt": "2026-10-04T12:00:00.000Z", "lastResult": "same", "persian": { "gusheh": "کرشمه" }, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-10-04T12:15:00.000Z" },
+      { "id": "it-piece", "instrumentId": "inst-setar", "materialId": "mat-setar-book", "stageId": "stage-en", "title": "Morning piece 2", "itemType": "full_piece", "status": "integrated", "importance": 3, "difficulty": 3, "timesPractised": 5, "totalMinutes": 70, "lastPractisedAt": "2026-09-25T12:00:00.000Z", "lastResult": "stable_in_context", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-25T12:15:00.000Z" }
+    ],
+    "blocks": [
+      { "id": "b-iraq-1", "practiceItemId": "it-iraq3", "instrumentId": "inst-tar", "startedAt": "2026-10-15T12:00:00.000Z", "endedAt": "2026-10-15T12:15:00.000Z", "durationMinutes": 15, "mode": "repair", "focus": "tone", "result": "same", "createdReview": false, "createdAt": "2026-10-15T12:15:00.000Z", "updatedAt": "2026-10-15T12:15:00.000Z" },
+      { "id": "b-iraq-2", "practiceItemId": "it-iraq3", "instrumentId": "inst-tar", "startedAt": "2026-10-17T12:00:00.000Z", "endedAt": "2026-10-17T12:15:00.000Z", "durationMinutes": 15, "mode": "repair", "focus": "tone", "result": "same", "observation": "فرود هنوز عجله دارد", "createdReview": false, "createdAt": "2026-10-17T12:15:00.000Z", "updatedAt": "2026-10-17T12:15:00.000Z" },
+      { "id": "b-iraq-3", "practiceItemId": "it-iraq3", "instrumentId": "inst-tar", "startedAt": "2026-10-19T12:00:00.000Z", "endedAt": "2026-10-19T12:15:00.000Z", "durationMinutes": 15, "mode": "repair", "focus": "tone", "result": "same", "observation": "The forud lands early.", "nextAction": "آرام‌تر بزن", "createdReview": false, "createdAt": "2026-10-19T12:15:00.000Z", "updatedAt": "2026-10-19T12:15:00.000Z" },
+      { "id": "b-sweep-1", "practiceItemId": "it-sweep", "instrumentId": "inst-setar", "startedAt": "2026-10-17T12:00:00.000Z", "endedAt": "2026-10-17T12:10:00.000Z", "durationMinutes": 10, "mode": "maintain", "focus": "mezrab", "result": "slightly_better", "createdReview": false, "createdAt": "2026-10-17T12:10:00.000Z", "updatedAt": "2026-10-17T12:10:00.000Z" },
+      { "id": "b-daramad-1", "practiceItemId": "it-daramad", "instrumentId": "inst-tar", "startedAt": "2026-10-01T12:00:00.000Z", "endedAt": "2026-10-01T12:15:00.000Z", "durationMinutes": 15, "mode": "maintain", "focus": "rhythm", "result": "stable_in_context", "createdReview": false, "createdAt": "2026-10-01T12:15:00.000Z", "updatedAt": "2026-10-01T12:15:00.000Z" },
+      { "id": "b-reng-1", "practiceItemId": "it-reng", "instrumentId": "inst-tar", "startedAt": "2026-10-05T12:00:00.000Z", "endedAt": "2026-10-05T12:10:00.000Z", "durationMinutes": 10, "mode": "learn", "focus": "rhythm", "result": "slightly_better", "createdReview": false, "createdAt": "2026-10-05T12:10:00.000Z", "updatedAt": "2026-10-05T12:10:00.000Z" },
+      { "id": "b-kereshmeh-1", "practiceItemId": "it-kereshmeh", "instrumentId": "inst-setar", "startedAt": "2026-10-02T12:00:00.000Z", "endedAt": "2026-10-02T12:10:00.000Z", "durationMinutes": 10, "mode": "repair", "focus": "ornament", "result": "same", "createdReview": false, "createdAt": "2026-10-02T12:10:00.000Z", "updatedAt": "2026-10-02T12:10:00.000Z" },
+      { "id": "b-kereshmeh-2", "practiceItemId": "it-kereshmeh", "instrumentId": "inst-setar", "startedAt": "2026-10-04T12:00:00.000Z", "endedAt": "2026-10-04T12:15:00.000Z", "durationMinutes": 15, "mode": "repair", "focus": "ornament", "result": "same", "createdReview": false, "createdAt": "2026-10-04T12:15:00.000Z", "updatedAt": "2026-10-04T12:15:00.000Z" },
+      { "id": "b-chahar-1", "practiceItemId": "it-chahar", "instrumentId": "inst-tar", "startedAt": "2026-09-29T12:00:00.000Z", "endedAt": "2026-09-29T12:15:00.000Z", "durationMinutes": 15, "mode": "integrate", "focus": "rhythm", "result": "stable_alone", "createdReview": true, "createdAt": "2026-09-29T12:15:00.000Z", "updatedAt": "2026-09-29T12:15:00.000Z" },
+      { "id": "b-piece-1", "practiceItemId": "it-piece", "instrumentId": "inst-setar", "startedAt": "2026-09-25T12:00:00.000Z", "endedAt": "2026-09-25T12:20:00.000Z", "durationMinutes": 20, "mode": "integrate", "focus": "phrase_direction", "result": "stable_in_context", "createdReview": false, "createdAt": "2026-09-25T12:20:00.000Z", "updatedAt": "2026-09-25T12:20:00.000Z" }
+    ],
+    "reviews": [
+      { "id": "r-chahar", "practiceItemId": "it-chahar", "dueDate": "2026-10-06", "reviewType": "retention", "reason": "Spaced review", "createdAt": "2026-09-29T12:15:00.000Z", "updatedAt": "2026-09-29T12:15:00.000Z" },
+      { "id": "r-kereshmeh", "practiceItemId": "it-kereshmeh", "dueDate": "2026-10-18", "reviewType": "repair", "reason": "Spaced review", "createdAt": "2026-10-04T12:15:00.000Z", "updatedAt": "2026-10-04T12:15:00.000Z" }
+    ],
+    "pathways": [
+      { "id": "pw-tar", "instrumentId": "inst-tar", "name": "ردیف تار", "currentStageId": "stage-fa", "order": 0, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "pw-setar", "instrumentId": "inst-setar", "name": "Setar foundations", "currentStageId": "stage-en", "order": 1, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
+    ],
+    "pathwayStages": [
+      { "id": "stage-fa", "pathwayId": "pw-tar", "code": "افشاری", "title": "آواز افشاری", "intro": "گوشه‌های افشاری را آرام و با حوصله بنوازید.", "order": 0, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "stage-en", "pathwayId": "pw-setar", "code": "B1", "title": "Basics of the right hand", "intro": "Slow strokes, an even tone, no hurry.", "order": 0, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
+    ],
+    "pathwayRoutines": [
+      { "id": "rt-tar", "instrumentId": "inst-tar", "name": "گرم کردن تار", "order": 0, "segments": [ { "label": "Open strings", "minutes": 5, "essential": true }, { "label": "عراق", "minutes": 10, "itemId": "it-iraq3" } ], "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
+    ],
+    "attachments": [],
+    "lessons": [
+      { "id": "les-today", "instrumentId": "inst-tar", "date": "2026-10-20", "number": 11, "notes": "استاد: فرود عراق آرام‌تر.", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "les-next", "instrumentId": "inst-tar", "date": "2026-10-21", "number": 12, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "les-archive", "instrumentId": "inst-tar", "date": "2026-11-15", "number": 40, "origin": "archive", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "les-setar", "instrumentId": "inst-setar", "date": "2026-10-10", "notes": "Lighter right hand on the kereshmeh.", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
+    ],
+    "lessonAgenda": [
+      { "id": "prep-reng", "kind": "preparation", "instrumentId": "inst-tar", "lessonId": "les-today", "itemId": "it-reng", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "prep-tahrir", "kind": "preparation", "instrumentId": "inst-tar", "lessonId": "les-next", "itemId": "it-tahrir", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "q-iraq", "kind": "question", "instrumentId": "inst-tar", "lessonId": "les-next", "itemId": "it-iraq3", "text": "فرود عراق را چطور تمیزتر بزنم؟", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "q-tempo", "kind": "question", "instrumentId": "inst-tar", "lessonId": "les-next", "text": "Which tempo for the reng?", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "q-asked", "kind": "question", "instrumentId": "inst-tar", "lessonId": "les-next", "itemId": "it-reng", "text": "Is the reng ready for class?", "askedAt": "2026-10-10T12:00:00.000Z", "answer": "هنوز نه", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-10-10T12:00:00.000Z" },
+      { "id": "q-kereshmeh", "kind": "question", "instrumentId": "inst-setar", "itemId": "it-kereshmeh", "text": "How light should the kereshmeh be?", "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
+    ],
+    "archiveSources": []
+  }
+}
