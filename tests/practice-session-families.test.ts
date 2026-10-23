@@ -767,10 +767,17 @@ describe('class preparation and the shared pool', () => {
       expect(built.segments.map((x) => [x.itemId, x.minutes]), anchor).toEqual([['other', 4], [anchor, 25]]);
       // No other candidate: the slot keeps what it had rather than repeat the work.
       expect(swapSegment(built, 0, args).segments.map((x) => x.itemId), anchor).toEqual(['other', anchor]);
-      // A relative whose OWN review is due is a distinct need and may come in.
-      const dueFamily = family.map((i) => (i.id === anchor || i.id === 'other' ? i : { ...i, nextReviewDate: TODAY, nextReviewSource: 'auto' as const }));
+      // A relative whose OWN review is due is a distinct need: never spent as
+      // a warm-up, but it may take a deep slot beside the work.
       const relative = anchor === 'parent' ? 'child' : 'parent';
-      expect(swapSegment(built, 0, { ...args, items: dueFamily }).segments.map((x) => x.itemId), anchor).toEqual([relative, anchor]);
+      const dueFamily = family.map((i) => (i.id === relative ? { ...i, nextReviewDate: TODAY, nextReviewSource: 'auto' as const } : i));
+      const dueRow = [{ id: 'due-row', practiceItemId: relative, dueDate: TODAY, reviewType: 'retention' as const, createdAt: T, updatedAt: T }];
+      const due = { ...args, items: dueFamily, reviews: dueRow };
+      expect(swapSegment(built, 0, due).segments.map((x) => x.itemId), anchor).toEqual(['other', anchor]);
+      const deep = (itemId: string): PlanSegment => ({ itemId, title: itemId, minutes: 10, bucket: 'deep', core: false, mode: 'learn', focus: 'other', reason: '', floorMinutes: 2 });
+      const twoDeep: SessionPlan = { instrumentId: SETAR, budgetMinutes: 20, segments: [deep(anchor), deep('other')], summary: '', generatedAt: T };
+      expect(swapSegment(twoDeep, 1, args).segments.map((x) => x.itemId), anchor).toEqual([anchor, 'other']);
+      expect(swapSegment(twoDeep, 1, due).segments.map((x) => x.itemId), anchor).toEqual([anchor, relative]);
     }
     // Urgency first: the class anchor leads a short plan.
     expect(buildSessionPlan({ instrumentId: SETAR, budgetMinutes: 10, now: NOW, items: [P, Q, R], blocks: [], reviews: [], preparationDates: dates() }).segments.map((s) => s.itemId)).toEqual(['p']);

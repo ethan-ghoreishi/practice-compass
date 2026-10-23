@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
-import { dropNoteDraft, heldNoteDrafts } from './notesDrafts';
+import { dropNoteDraft, heldNoteDrafts, holdNoteDraft } from './notesDrafts';
 import { withRevision } from './revision';
 import { primePracticeSound } from '../components/practiceCue';
 import {
@@ -1893,6 +1893,10 @@ export const useStore = create<StoreState>()(
               : { lessons: s.db.lessons.map((l) => (l.id === owner.id ? touch({ ...l, notes: notes || undefined }, now) : l)) }),
           },
         }));
+        // The competing text is now accounted for: the device copy becomes the
+        // kept-both text, typed over what was stored, so neither a retry nor a
+        // reload replays the old draft against it a second time.
+        if (merged) holdNoteDraft(owner, { text: notes, base: record.notes ?? '' });
         return merged ? 'merged' : 'written';
       },
 
@@ -2613,9 +2617,13 @@ export const useHydrationStatus = create<HydrationStatus>(() => ({
  */
 function replayNoteDrafts() {
   for (const { owner, draft } of heldNoteDrafts()) {
-    if (useStore.getState().saveNotes(owner, draft.text, draft.base) === 'gone') continue;
+    const outcome = useStore.getState().saveNotes(owner, draft.text, draft.base);
+    if (outcome === 'gone') continue;
+    const { db } = useStore.getState();
+    const record = owner.kind === 'item' ? db.items.find((i) => i.id === owner.id) : db.lessons.find((l) => l.id === owner.id);
+    const written = outcome === 'merged' ? (record?.notes ?? '') : draft.text;
     void storageSettled().then(
-      () => dropNoteDraft(owner, draft.text),
+      () => dropNoteDraft(owner, written),
       () => undefined,
     );
   }

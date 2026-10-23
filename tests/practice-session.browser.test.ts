@@ -451,6 +451,11 @@ describe('plan and routine controls', () => {
           await page.getByRole('button', { name: 'Skip this one — save nothing' }).click();
           await page.getByRole('button', { name: 'End the plan' }).waitFor();
           expect((await db(app)).blocks.map((b) => [b.practiceItemId, b.durationMinutes]), where).toEqual([[await idOf(app, moved[0]), 1]]);
+          // Only the entries between the skipped ones still ask for time.
+          const leftEnd = keptMinutes.slice(2, -1).reduce((n, m) => n + m, 0);
+          expect(await page.locator('main').innerText(), where).toContain(
+            `${leftEnd} min left of ${leftEnd + 1} planned · ${45 - leftEnd - 1} of 45 unused · 1 min recorded`,
+          );
           await page.getByRole('button', { name: 'End the plan' }).click();
           await page.getByRole('navigation', { name: 'Primary' }).waitFor();
 
@@ -755,6 +760,46 @@ describe('notes without a Done dependency', () => {
         await reload(app);
         expect((await db(app)).items.map((i) => i.id).sort(), engine).toEqual([CHAHAR, CLASS_ITEM, PIECE, WARM, TWIN, DUE].sort());
 
+        const kept = (theirs: string, mine: string) => `${theirs}\n\n— Also typed on this device (kept, not merged) —\n${mine}`;
+
+        // --- A REPLAYED draft kept both, its own write refused at load --------
+        // A later ordinary write makes the kept-both text durable anyway; the
+        // next reload must not replay the old draft onto it a second time.
+        await page.addInitScript(() => {
+          if (!localStorage.getItem('pc-test-refuse-writes')) return;
+          const proto = IDBObjectStore.prototype as unknown as { put: unknown; __realPut?: unknown };
+          proto.__realPut = proto.put;
+          proto.put = function failing() {
+            throw new DOMException('storage is full', 'QuotaExceededError');
+          };
+        });
+        await goTo(app, `/items/${CLASS_ITEM}`);
+        await editShownNotes(page);
+        await breakStorage(page);
+        await notesBox(page).fill('my class-item words');
+        await goTo(app, '/repertoire');
+        await repairStorage(page);
+        const under = (await readPersistedState(app)).state as { db: Db };
+        await writePersistedState(
+          app,
+          { ...under, db: { ...under.db, items: under.db.items.map((i) => (i.id === CLASS_ITEM ? { ...i, notes: 'their class-item words' } : i)) } },
+          SCHEMA_VERSION,
+        );
+        await page.evaluate(() => localStorage.setItem('pc-test-refuse-writes', '1'));
+        await reload(app);
+        await repairStorage(page);
+        await page.evaluate(() => localStorage.removeItem('pc-test-refuse-writes'));
+        await goTo(app, `/items/${PIECE}`);
+        await editShownNotes(page);
+        await notesBox(page).fill('a later, ordinary save');
+        await page.clock.runFor(1_000);
+        await page.getByText('Saved.').waitFor();
+        await notesOf(app, CLASS_ITEM, kept('their class-item words', 'my class-item words'));
+        await reload(app);
+        await show(app, `/items/${CLASS_ITEM}`);
+        await page.getByText('their class-item words', { exact: false }).first().waitFor();
+        expect((await page.locator('main').innerText()).split('my class-item words').length - 1, engine).toBe(1);
+
         // --- PULLED UNDERNEATH A LIVE EDITOR, the kept-both write refused ------
         // A sync (the device coming back online) replaces the record while the
         // words are still unwritten; the kept-both write is then refused. Both
@@ -770,7 +815,6 @@ describe('notes without a Done dependency', () => {
           await page.evaluate(() => window.dispatchEvent(new Event('online')));
           await landed();
         };
-        const kept = (theirs: string, mine: string) => `${theirs}\n\n— Also typed on this device (kept, not merged) —\n${mine}`;
         const heldDrafts = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('pc-note-draft:')));
 
         await goTo(app, `/items/${WARM}`);

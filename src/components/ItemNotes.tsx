@@ -155,13 +155,9 @@ export function DurableNotes({
     // typed next is based on it — and when both texts were kept, the editor
     // shows what the record now holds.
     const after = outcome === 'merged' ? storedNotes(d.owner) : d.text;
-    if (outcome === 'merged') {
-      // The competing text is now accounted for: the device copy becomes the
-      // kept-both text, typed over what the store held, so neither a retry nor
-      // a reload replays the old draft against it a second time.
-      durable.current = prior;
-      holdNoteDraft(d.owner, { text: after, base: prior });
-    }
+    // The store re-held the device copy as the kept-both text over `prior`;
+    // what is typed next is held over the same base.
+    if (outcome === 'merged') durable.current = prior;
     const current = draftRef.current;
     if (current && keyOf(current.owner) === keyOf(d.owner)) {
       applyDraft({ ...current, base: after, ...(outcome === 'merged' ? { text: after } : {}) });
