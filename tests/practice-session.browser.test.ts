@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
 import type { Page } from 'playwright';
 import { buildSessionPlan, createItem, isWork, SCHEMA_VERSION, type PracticeBlock, type PracticeItem } from '../src/domain';
 import { RESULT_LABELS } from '../src/domain/labels';
+import { hashState } from '../src/domain/canonical';
 import {
+  connectSync,
   goTo,
   importBackup,
+  installFakeGitHub,
+  newFakeRemote,
+  publishRemote,
+  remoteStateText,
   importOutcome,
   openPracticeApp,
   persistedDb,
@@ -429,7 +435,12 @@ describe('plan and routine controls', () => {
           await page.getByRole('button', { name: 'Finish' }).click();
           await page.getByRole('button', { name: 'Save without a result' }).click();
           await page.getByRole('button', { name: `Start ${moved[1]}` }).waitFor();
-          expect(await page.locator('main').innerText(), where).toContain('1 min recorded');
+          // Finishing early frees the rest of that target as UNUSED: 1′ of
+          // keptMinutes[0] taken, the others still ask for theirs.
+          const left = keptMinutes.slice(1).reduce((n, m) => n + m, 0);
+          expect(await page.locator('main').innerText(), where).toContain(
+            `${left} min left of ${left + 1} planned · ${45 - left - 1} of 45 unused · 1 min recorded`,
+          );
           // Skip a LATER pending entry: it records nothing; the rest keep their minutes.
           const running = moved.slice(0, -1);
           await page.getByRole('button', { name: `Skip ${running.at(-1)}` }).click();
@@ -743,6 +754,65 @@ describe('notes without a Done dependency', () => {
         await writePersistedState(app, { ...beforeDelete, db: { ...beforeDelete.db, items: beforeDelete.db.items.filter((i) => i.id !== FRESH) } }, SCHEMA_VERSION);
         await reload(app);
         expect((await db(app)).items.map((i) => i.id).sort(), engine).toEqual([CHAHAR, CLASS_ITEM, PIECE, WARM, TWIN, DUE].sort());
+
+        // --- PULLED UNDERNEATH A LIVE EDITOR, the kept-both write refused ------
+        // A sync (the device coming back online) replaces the record while the
+        // words are still unwritten; the kept-both write is then refused. Both
+        // texts survive exactly ONCE — after Try again (item) and after a
+        // reload with more typed and no retry (class) — never the old draft
+        // replayed a second time on top of them.
+        const remote = newFakeRemote();
+        await installFakeGitHub(page, remote);
+        await connectSync(app);
+        const pullUnderneath = async (change: (d: Db) => Db, landed: () => Promise<unknown>) => {
+          const theirs = change((await persistedDb(app)) as unknown as Db);
+          publishRemote(remote, remoteStateText(theirs), await hashState(theirs), 60 + remote.calls.length);
+          await page.evaluate(() => window.dispatchEvent(new Event('online')));
+          await landed();
+        };
+        const kept = (theirs: string, mine: string) => `${theirs}\n\n— Also typed on this device (kept, not merged) —\n${mine}`;
+        const heldDrafts = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('pc-note-draft:')));
+
+        await goTo(app, `/items/${WARM}`);
+        await editShownNotes(page);
+        await notesBox(page).fill('my words, while the other device synced');
+        await pullUnderneath(
+          (d) => ({ ...d, items: d.items.map((i) => (i.id === WARM ? { ...i, notes: 'their words, pulled while I typed' } : i)) }),
+          () => notesOf(app, WARM, 'their words, pulled while I typed'),
+        );
+        await breakStorage(page);
+        await page.clock.runFor(1_000);
+        await page.getByText(/Not saved/).waitFor();
+        await repairStorage(page);
+        await page.getByRole('button', { name: 'Try again' }).click();
+        await page.getByText('Saved.').waitFor();
+        // (The deleted record's draft above stays on the device, recreating nothing.)
+        expect(await heldDrafts(), engine).toEqual([`pc-note-draft:item:${FRESH}`]);
+        await reload(app);
+        await notesOf(app, WARM, kept('their words, pulled while I typed', 'my words, while the other device synced'));
+
+        await goTo(app, '/lessons');
+        const classCard = page.getByRole('article').filter({ hasText: 'Class 37' });
+        await classCard.getByRole('button', { name: /Class 37/ }).first().click();
+        await classCard.getByRole('button', { name: 'Edit Class notes' }).click();
+        const classBox = classCard.getByRole('textbox', { name: 'Class notes' });
+        await classBox.fill('my class words');
+        await pullUnderneath(
+          (d) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: 'their class words' } : l)) }),
+          () => persistedUntil(app, (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes, (n) => n === 'their class words'),
+        );
+        await breakStorage(page);
+        await page.clock.runFor(1_000);
+        await classCard.getByText(/Not saved/).waitFor();
+        expect(await classBox.inputValue(), engine).toBe(kept('their class words', 'my class words'));
+        await classBox.fill(`${kept('their class words', 'my class words')} — and more`);
+        await repairStorage(page);
+        await reload(app);
+        await persistedUntil(
+          app,
+          (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes,
+          (n) => n === kept('their class words', 'my class words — and more'),
+        );
         expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
       } finally {
         await app.close();

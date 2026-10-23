@@ -91,7 +91,8 @@ anything practised today — a routine's unassessed block included, a class
 commitment included — steps aside while anything else is eligible; with
 nothing else eligible the pool repeats today's work and every reason says so.
 A piece and its own part are one intended work (`sameWork`): one card or
-segment, unless the other has its own due review. Urgency outranks variety:
+segment, unless the other has its own due review — a swap included, judged
+against the segments that stay. Urgency outranks variety:
 diversity and the theory turn act only in a plan's middle picks.
 
 ## 6. Theory / listening study
@@ -131,7 +132,9 @@ target. An earlier real occurrence of a repeated routine item survives skipping
 a later one. A legacy run (no `skipped` flags) keeps its old skip credit.
 
 Time figures, each separate: Plan `planRunTime` → available / planned /
-remaining / unused / recorded; Routine `routineRunTime` → planned / remaining /
+remaining / unused / recorded (a done segment occupies what it actually took,
+up to its target, so finishing early frees the rest as unused); Routine
+`routineRunTime` → planned / remaining /
 unused (seconds), recorded = `aggregateItemMinutes`.
 
 ## 8. Notes without a Done dependency
@@ -148,7 +151,10 @@ same text → nothing; stored text unchanged since `base` → replaced; stored t
 changed underneath (sync, import, restore, another editor) → BOTH kept, stored
 first, then this text under `KEPT_DRAFT_HEADING`; record gone → nothing written,
 draft kept on the device. After a reload, held drafts replay through the same
-decision before the app opens. Item and lesson ids never share a draft.
+decision before the app opens. Item and lesson ids never share a draft. When a
+write kept both texts, the device copy becomes that kept-both text, based on
+what the store held, so a retry or a reload never replays the old draft onto it
+a second time.
 
 ## 9. Data and compatibility
 

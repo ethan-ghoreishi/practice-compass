@@ -142,6 +142,7 @@ export function DurableNotes({
       if (savedTimer.current) clearTimeout(savedTimer.current);
       setState({ phase: 'saving' });
     }
+    const prior = storedNotes(d.owner);
     const outcome: NoteSaveOutcome = saveNotes(d.owner, d.text, d.base);
     if (outcome === 'gone') {
       if (speak && saveSeq.current === seq) setState({ phase: 'failed', message: 'this record no longer exists, so nothing was written.' });
@@ -154,13 +155,20 @@ export function DurableNotes({
     // typed next is based on it — and when both texts were kept, the editor
     // shows what the record now holds.
     const after = outcome === 'merged' ? storedNotes(d.owner) : d.text;
+    if (outcome === 'merged') {
+      // The competing text is now accounted for: the device copy becomes the
+      // kept-both text, typed over what the store held, so neither a retry nor
+      // a reload replays the old draft against it a second time.
+      durable.current = prior;
+      holdNoteDraft(d.owner, { text: after, base: prior });
+    }
     const current = draftRef.current;
     if (current && keyOf(current.owner) === keyOf(d.owner)) {
       applyDraft({ ...current, base: after, ...(outcome === 'merged' ? { text: after } : {}) });
     }
     void storageSettled().then(
       () => {
-        dropNoteDraft(d.owner, d.text);
+        dropNoteDraft(d.owner, after);
         if (speak && saveSeq.current === seq) durable.current = after;
         if (!speak || saveSeq.current !== seq) return;
         const now = draftRef.current;

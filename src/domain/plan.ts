@@ -835,6 +835,10 @@ export function swapSegment(
   const { pool, isRepeatPool } = candidatePool(scored, blocks, args.now);
 
   const inUse = new Set(plan.segments.map((s) => s.itemId));
+  // The build's own rule: a piece and its own part are one intended work, so
+  // a swap never brings in a relative of another segment unless its own
+  // review is due.
+  const kept = items.filter((i) => plan.segments.some((s, j) => j !== index && s.itemId === i.id));
   const exclude = args.excludeIds ?? new Set<string>();
   const dueById = new Map(
     dueReviews(args.reviews, args.now)
@@ -856,6 +860,7 @@ export function swapSegment(
         : target.minutes;
   const eligible = (s: ItemScore): boolean => {
     if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
+    if (kept.some((k) => sameWork(k, s.item)) && !hasDueReview(s.item, args.now)) return false;
     if (plan.segments.length > 1 && segmentFloor(s.item) > room) return false;
     switch (target.bucket) {
       case 'warmup':
@@ -963,19 +968,23 @@ export function skipPlanSegment(run: PlanRun, index = run.pointer): PlanRun {
 
 /**
  * The run's time, each figure on its own: `available` is the budget chosen,
- * `planned` what the segments still standing ask for, `remaining` what the
- * pending ones ask for, `unused` what nothing asks for (removed, skipped or
+ * `planned` what the segments still standing ask for (a done one: what it
+ * actually took, up to its target), `remaining` what the pending ones ask
+ * for, `unused` what nothing asks for (removed, skipped, finished early or
  * never planned), `recorded` what was actually saved. Recorded is never
- * inferred from a target.
+ * inferred from a target, and overtime never borrows another segment's.
  */
 export function planRunTime(run: PlanRun): { available: number; planned: number; remaining: number; unused: number; recorded: number } {
-  const sum = (status: PlanSegmentStatus[]) =>
-    run.segments.filter((s) => status.includes(s.status)).reduce((n, s) => n + s.minutes, 0);
-  const planned = sum(['pending', 'done']);
+  const remaining = run.segments.filter((s) => s.status === 'pending').reduce((n, s) => n + s.minutes, 0);
+  // A done segment from before `actualMinutes` was kept occupies its target: nothing is claimed freed.
+  const taken = run.segments
+    .filter((s) => s.status === 'done')
+    .reduce((n, s) => n + Math.min(s.minutes, s.actualMinutes ?? s.minutes), 0);
+  const planned = remaining + taken;
   return {
     available: run.budgetMinutes,
     planned,
-    remaining: sum(['pending']),
+    remaining,
     unused: Math.max(0, run.budgetMinutes - planned),
     recorded: run.segments.reduce((n, s) => n + (s.status === 'done' ? (s.actualMinutes ?? 0) : 0), 0),
   };

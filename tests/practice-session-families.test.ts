@@ -347,6 +347,34 @@ describe('the shared session-control policy', () => {
     useStore.getState().skipPlanSegment(0);
     expect(useStore.getState().activePlan!.segments[0].status).toBe('done');
 
+    // EARLY COMPLETION frees the rest of that target: unused, never handed on.
+    // 20′ available, two 10′ entries. Saved after 2′: 10 left, 2 recorded,
+    // 20 − (2 + 10) = 8 unused. Saved after 3′: 20 − (2 + 3) = 15 unused.
+    const twoTens: SessionPlan = { ...plan, budgetMinutes: 20, segments: [seg('warm', 10, 'warmup'), seg('chahar', 10, 'lesson')] };
+    const closeAfter = (minutes: number) => {
+      useStore.getState().beginPlanSegment();
+      useStore.getState().closeSession({ result: 'same', durationMinutes: minutes, answer: 'scheduled', now: NOW });
+    };
+    seed(planDb);
+    useStore.getState().startPlan(twoTens);
+    closeAfter(2);
+    expect(planRunTime(useStore.getState().activePlan!)).toEqual({ available: 20, planned: 12, remaining: 10, unused: 8, recorded: 2 });
+    // A RESTORED run (the persisted shape, round-tripped) reads the same figures.
+    const restored = JSON.parse(JSON.stringify(useStore.getState().activePlan)) as typeof run;
+    expect(planRunTime(restored)).toEqual({ available: 20, planned: 12, remaining: 10, unused: 8, recorded: 2 });
+    closeAfter(3);
+    run = useStore.getState().activePlan!;
+    expect([run.pointer, planRunTime(run)]).toEqual([2, { available: 20, planned: 5, remaining: 0, unused: 15, recorded: 5 }]);
+    // Partial practice, then Skip the next: 20 − 2 = 18 unused, 2 recorded.
+    seed(planDb);
+    useStore.getState().startPlan(twoTens);
+    closeAfter(2);
+    useStore.getState().skipPlanSegment();
+    expect(planRunTime(useStore.getState().activePlan!)).toEqual({ available: 20, planned: 2, remaining: 0, unused: 18, recorded: 2 });
+    // A done segment with no recorded figure (an older run) claims nothing freed.
+    const older = { ...restored, segments: restored.segments.map((x) => ({ ...x, actualMinutes: undefined })) };
+    expect(planRunTime(older)).toEqual({ available: 20, planned: 20, remaining: 10, unused: 0, recorded: 0 });
+
     // Skip a LATER pending entry while running: the current one is untouched.
     seed(planDb);
     useStore.getState().startPlan(plan);
@@ -728,6 +756,22 @@ describe('class preparation and the shared pool', () => {
     expect([recs2.best, recs2.quickWin, recs2.maintenance].filter(Boolean).map((r) => r!.score.item.id).sort()).toEqual(['p', 'p-part']);
     const planned = buildSessionPlan({ instrumentId: SETAR, budgetMinutes: 30, now: NOW, items: [P, part, Q, R], blocks: [], reviews: [], preparationDates: dates() });
     expect(planned.segments.filter((s) => s.itemId === 'p' || s.itemId === 'p-part')).toHaveLength(1);
+    // … and a SWAP keeps that rule, in both directions: swapping the other
+    // entry never brings in the relative of the one that stays.
+    for (const [parentImportance, childImportance] of [[5, 4], [4, 5]] as const) {
+      const tech = (id: string, importance: number, over: Partial<PracticeItem> = {}) => item(id, id, { itemType: 'technique', importance, ...over });
+      const family = [tech('parent', parentImportance), tech('child', childImportance, { parentItemId: 'parent' }), tech('other', 1)];
+      const anchor = parentImportance > childImportance ? 'parent' : 'child';
+      const args = { instrumentId: SETAR, now: NOW, items: family, blocks: [], reviews: [] };
+      const built = buildSessionPlan({ ...args, budgetMinutes: 30 });
+      expect(built.segments.map((x) => [x.itemId, x.minutes]), anchor).toEqual([['other', 4], [anchor, 25]]);
+      // No other candidate: the slot keeps what it had rather than repeat the work.
+      expect(swapSegment(built, 0, args).segments.map((x) => x.itemId), anchor).toEqual(['other', anchor]);
+      // A relative whose OWN review is due is a distinct need and may come in.
+      const dueFamily = family.map((i) => (i.id === anchor || i.id === 'other' ? i : { ...i, nextReviewDate: TODAY, nextReviewSource: 'auto' as const }));
+      const relative = anchor === 'parent' ? 'child' : 'parent';
+      expect(swapSegment(built, 0, { ...args, items: dueFamily }).segments.map((x) => x.itemId), anchor).toEqual([relative, anchor]);
+    }
     // Urgency first: the class anchor leads a short plan.
     expect(buildSessionPlan({ instrumentId: SETAR, budgetMinutes: 10, now: NOW, items: [P, Q, R], blocks: [], reviews: [], preparationDates: dates() }).segments.map((s) => s.itemId)).toEqual(['p']);
   });
