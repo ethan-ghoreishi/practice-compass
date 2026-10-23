@@ -3,8 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   clampSchedulingParams,
   defaultTargetLesson,
+  isStableResult,
   lessonLabel,
+  nextPractice,
+  nowISO,
   planNextReview,
+  preparationDatesByItem,
+  returnIntentOf,
   proposedCloseMinutes,
   todayISODate,
   type ReviewAnswer,
@@ -19,6 +24,8 @@ import {
   RATING_LABELS,
   type BlockResult,
   type CloseItemEdits,
+  type EvidenceScope,
+  type ReturnIntent,
   type FocusArea,
   type ItemStatus,
   type Rating,
@@ -28,10 +35,20 @@ import { sessionElapsedSeconds, useStore } from '../store/useStore';
 import { getItem, instrumentName, itemBlocks } from '../store/lookups';
 import { Field, OptionPills, RatingInput } from '../components/ui';
 import { CheckIcon, PlayIcon } from '../components/icons';
-import { closeOverrideDate, reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
+import { closeOverrideDate, relativeDay, reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
 import { useDecisionNow } from '../components/useDecisionNow';
 import { closeDraftFor, closeDraftKey, dropCloseDraft, holdCloseDraft } from '../components/closeDraft';
 import SchedulingExplanation from '../components/SchedulingExplanation';
+
+const SCOPE_OPTIONS: { value: EvidenceScope; label: string }[] = [
+  { value: 'focused', label: 'Focused work — a part or one aspect' },
+  { value: 'whole', label: 'Whole-item check' },
+];
+
+const INTENT_OPTIONS: { value: ReturnIntent; label: string }[] = [
+  { value: 'working', label: 'Working on this' },
+  { value: 'keep_fresh', label: 'Keep fresh' },
+];
 
 const RESULT_BUTTON_LIST: { value: BlockResult; label: string }[] = [
   { value: 'worse', label: RESULT_LABELS.worse },
@@ -84,6 +101,12 @@ export default function CloseBlock() {
   const [restored] = useState(() => (draftKey ? closeDraftFor(draftKey) : null));
 
   const [result, setResult] = useState<BlockResult | null>(restored?.result ?? null);
+  // What this block's result is ABOUT. Focused unless the owner says it was a
+  // check of the whole item — never inferred from a result, mode or title.
+  const [scope, setScope] = useState<EvidenceScope>(restored?.scope ?? 'focused');
+  // Working on this / Keep fresh as this close leaves the item: only ever the
+  // owner's explicit choice, never a pre-selected promotion.
+  const [intentPick, setIntentPick] = useState<ReturnIntent | null>(restored?.intentPick ?? null);
   // Only a figure the owner typed is kept; otherwise the live proposal shows.
   const [correctedMinutes, setCorrectedMinutes] = useState<number | null>(restored?.correctedMinutes ?? null);
   const duration = correctedMinutes ?? proposed.minutes;
@@ -144,8 +167,9 @@ export default function CloseBlock() {
    * be one, seeding the field from a different invocation than the preview —
    * would reintroduce exactly the drift r-explainable-scheduling forbids.
    */
+  const intent: ReturnIntent | null = item ? (intentPick ?? returnIntentOf(item)) : null;
   const review = useMemo<ReviewPlan | null>(() => {
-    const base = item && result ? planNextReview({ item, result, now, params }) : null;
+    const base = item && result && intent ? planNextReview({ item, result, now, params, scope, intent }) : null;
     if (!override) return base;
     // `undefined` means NOT OVERRIDDEN (use the engine's date); `''` means the
     // owner CLEARED the field — a deliberate "schedule nothing", which
@@ -166,7 +190,7 @@ export default function CloseBlock() {
       // the engine's reason would explain a number it did not choose.
       rationale: base && dueDate === base.dueDate ? base.rationale : 'The date you chose.',
     };
-  }, [item, result, now, params, override]);
+  }, [item, result, now, params, override, scope, intent]);
 
   /**
    * The one line the screen shows for that decision. Every branch is honest
@@ -182,12 +206,38 @@ export default function CloseBlock() {
         ? reviewSummaryLine(review, now)
         : 'No date set — nothing will be scheduled.';
 
+  /**
+   * NEXT PRACTICE — the ONE scheduling line. Derived from the item exactly as
+   * this close will leave it (the date `review` will stand on, the practice
+   * just done, the intention chosen) by the same `nextPractice` the item page
+   * shows, so a class opportunity or a short Working return reads here as
+   * what it is, beside the review date it does not overwrite.
+   */
+  const preparationDate = useMemo(
+    () => (item ? preparationDatesByItem(db.lessonAgenda, db.lessons, now).get(item.id) : undefined),
+    [db.lessonAgenda, db.lessons, item, now],
+  );
+  const next = useMemo(() => {
+    if (!item || !intent) return null;
+    const standing = !result ? item.nextReviewDate : !comeBack ? undefined : review?.dueDate;
+    const source = override?.dueDate && standing === override.dueDate ? ('user' as const) : standing !== item.nextReviewDate ? ('auto' as const) : item.nextReviewSource;
+    return nextPractice({
+      item: { ...item, nextReviewDate: standing, nextReviewSource: source, lastPractisedAt: nowISO(now), returnIntent: intent },
+      preparationDate,
+      now,
+    });
+  }, [item, intent, result, comeBack, review, override, preparationDate, now]);
+  const scheduleLine =
+    !result || !next || (next.kind !== 'class' && next.date === review?.dueDate)
+      ? reviewLine
+      : `${next.date ? `Next practice ${relativeDay(next.date, now)} · ` : ''}${next.sentence}${next.keptNote ? ` ${next.keptNote}` : ''}`;
+
   const statusSuggestion = useMemo(
     () =>
       item && result
-        ? suggestStatusAfterBlock({ item, result, last3AllSame: recentSameStreak })
+        ? suggestStatusAfterBlock({ item, result, last3AllSame: recentSameStreak, scope })
         : { suggestedStatus: undefined, message: undefined },
-    [item, result, recentSameStreak],
+    [item, result, recentSameStreak, scope],
   );
 
   function pickResult(r: BlockResult) {
@@ -200,7 +250,14 @@ export default function CloseBlock() {
     // has no automatic plan for ANY result (computeReview returns null
     // unconditionally in manual mode) — the owner's typed-in date isn't tied
     // to a judgement at all, so it must survive switching results.
-    if (item && !reviewOverrideSurvivesResultChange(item, now, params)) setOverride(null);
+    if (item && intent && !reviewOverrideSurvivesResultChange(item, now, params, { scope, intent })) setOverride(null);
+  }
+
+  function pickScope(next: EvidenceScope) {
+    setScope(next);
+    // A different scope can mean a different decision — the same rule as a
+    // different result.
+    if (item && intent && !reviewOverrideSurvivesResultChange(item, now, params, { scope: next, intent })) setOverride(null);
   }
 
   if (!active || !item) {
@@ -214,17 +271,18 @@ export default function CloseBlock() {
     );
   }
 
-  // What the line shows: the owner's pick, else the engine's pending
-  // suggestion, else the item as it stands.
-  const shownStatus: ItemStatus = statusPick ?? statusSuggestion.suggestedStatus ?? item.status;
+  // What the line shows: the owner's pick, else the item as it stands. A
+  // suggestion is offered beside it, never pre-selected.
+  const shownStatus: ItemStatus = statusPick ?? item.status;
+  const shownIntent: ReturnIntent = intentPick ?? returnIntentOf(item);
+  const offerKeepFresh = scope === 'whole' && !!result && isStableResult(result) && shownIntent === 'working';
   const shownFocus: FocusArea | '' = focusPick ?? item.primaryFocus ?? '';
   const shownEffort: Rating = effortPick ?? item.difficulty;
   const itemLine = [
-    `Status ${shownStatus === item.status ? ITEM_STATUS_LABELS[item.status] : `${ITEM_STATUS_LABELS[item.status]} → ${ITEM_STATUS_LABELS[shownStatus]}`}${
-      statusPick === null && statusSuggestion.suggestedStatus ? ' (suggested)' : ''
-    }`,
+    `Status ${shownStatus === item.status ? ITEM_STATUS_LABELS[item.status] : `${ITEM_STATUS_LABELS[item.status]} → ${ITEM_STATUS_LABELS[shownStatus]}`}`,
     `Focus ${shownFocus ? FOCUS_LABELS[shownFocus] : 'none'}`,
     `Effort ${shownEffort} of 5`,
+    INTENT_OPTIONS.find((o) => o.value === shownIntent)!.label,
   ].join(' · ');
 
   /**
@@ -257,13 +315,14 @@ export default function CloseBlock() {
     if (statusPick !== null) itemEdits.status = statusPick;
     if (focusPick !== null) itemEdits.primaryFocus = focusPick === '' ? null : focusPick;
     if (effortPick !== null) itemEdits.difficulty = effortPick;
+    if (intentPick !== null) itemEdits.returnIntent = intentPick;
 
     closeSession({
       result: finalResult,
+      scope,
       durationMinutes: duration,
       observation: observation.trim() || undefined,
       nextAction: nextAction.trim() || undefined,
-      newStatus: statusSuggestion.suggestedStatus,
       itemEdits,
       answer,
       // ONLY a date the owner actually typed — never the date the screen is
@@ -299,6 +358,8 @@ export default function CloseBlock() {
       effortPick,
       becomeTeacherQ,
       teacherQText,
+      scope,
+      intentPick,
     });
     resumeSession();
     navigate('/active');
@@ -328,6 +389,12 @@ export default function CloseBlock() {
           </p>
         </div>
       </header>
+
+      {/* What the result is ABOUT. Focused is the default: a good chunk is
+          progress on that chunk, never readiness of the whole item. */}
+      <Field label="What did this block cover?">
+        <OptionPills ariaLabel="What this block covered" value={scope} onChange={pickScope} options={SCOPE_OPTIONS} />
+      </Field>
 
       {/* The most concrete thing you actually demonstrated. Each option says
           what it CLAIMS, so "same" is never mistaken for failed recall and a
@@ -360,6 +427,23 @@ export default function CloseBlock() {
         <p className="tiny faint" style={{ marginTop: -8 }}>
           <span dir="ltr">{RESULT_DESCRIPTIONS[result]}</span>
         </p>
+      )}
+
+      {statusSuggestion.suggestedStatus && statusPick === null && (
+        <div className="card card-quiet small row between" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <span dir="ltr">{statusSuggestion.message}</span>
+          <button type="button" className="btn btn-sm" onClick={() => setStatusPick(statusSuggestion.suggestedStatus!)}>
+            Mark it {ITEM_STATUS_LABELS[statusSuggestion.suggestedStatus]}
+          </button>
+        </div>
+      )}
+      {offerKeepFresh && intentPick === null && (
+        <div className="card card-quiet small row between" style={{ gap: 8, flexWrap: 'wrap' }}>
+          <span dir="ltr">It held up as a whole. Ready to keep it fresh with spaced checks?</span>
+          <button type="button" className="btn btn-sm" onClick={() => setIntentPick('keep_fresh')}>
+            Keep it fresh
+          </button>
+        </div>
       )}
 
       {recentSameStreak && (
@@ -420,7 +504,7 @@ export default function CloseBlock() {
             className="btn btn-sm"
             style={{ flex: 'none' }}
             aria-expanded={showItemControls}
-            aria-label={showItemControls ? 'Done with status, focus and effort' : 'Change status, focus and effort'}
+            aria-label={showItemControls ? 'Done with status, focus, effort and return' : 'Change status, focus, effort and return'}
             onClick={() => setShowItemControls((o) => !o)}
           >
             {showItemControls ? 'Done' : 'Change'}
@@ -454,6 +538,9 @@ export default function CloseBlock() {
             <Field label={RATING_LABELS.difficulty}>
               <RatingInput name={RATING_LABELS.difficulty} value={shownEffort} onChange={setEffortPick} />
             </Field>
+            <Field label="Comes back as">
+              <OptionPills ariaLabel="Comes back as" value={shownIntent} onChange={setIntentPick} options={INTENT_OPTIONS} />
+            </Field>
           </>
         )}
       </div>
@@ -465,7 +552,9 @@ export default function CloseBlock() {
           rendering here reads `review`; nothing computes a date. */}
       <div className="card card-quiet stack-sm">
         <div className="row between">
-          <div className="small" style={{ minWidth: 0 }}>{reviewLine}</div>
+          <div className="small" style={{ minWidth: 0 }}>
+            <span dir="ltr">{scheduleLine}</span>
+          </div>
           <button
             type="button"
             className="btn btn-sm"
@@ -482,6 +571,7 @@ export default function CloseBlock() {
               <div className="small">Should this come back?</div>
               <YesNo label="Should this come back?" value={comeBack} onChange={setComeBack} />
             </div>
+            {scheduleLine !== reviewLine && <div className="tiny faint"><span dir="ltr">{reviewLine}</span></div>}
             {comeBack && (
               <>
                 <Field label="Next review">

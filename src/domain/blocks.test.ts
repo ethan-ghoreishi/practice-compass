@@ -206,10 +206,13 @@ describe('closing a block with item edits', () => {
     for (const mode of MODES) {
       const practised = item(mode.over);
       const params = clampSchedulingParams(undefined);
-      const suggested = suggestStatusAfterBlock({ item: practised, result: RESULT, last3AllSame: false }).suggestedStatus;
+      // A readiness suggestion exists only for a whole-item check — and it is
+      // an OFFER: it applies only when the owner takes it (an explicit edit).
+      const suggested = suggestStatusAfterBlock({ item: practised, result: RESULT, last3AllSame: false, scope: 'whole' }).suggestedStatus;
       expect(suggested, mode.name).toBe('integrated');
+      expect(suggestStatusAfterBlock({ item: practised, result: RESULT, last3AllSame: false, scope: 'focused' }).suggestedStatus, mode.name).toBeUndefined();
       // What the close screen previewed: the plan for the item as practised.
-      const shown = planNextReview({ item: practised, result: RESULT, now: AT, params });
+      const shown = planNextReview({ item: practised, result: RESULT, now: AT, params, scope: 'whole' });
       const answerFor = (withResult: boolean) => (withResult ? (shown ? 'scheduled' : 'declined') : 'unanswered') as 'scheduled' | 'declined' | 'unanswered';
 
       // The same close with no edits at all: everything an edit must NOT move.
@@ -218,6 +221,7 @@ describe('closing a block with item edits', () => {
         seed(practised);
         useStore.getState().closeSession({
           result: withResult ? RESULT : 'not_logged',
+          scope: 'whole',
           durationMinutes: 10,
           answer: answerFor(withResult),
           reviewType: shown?.reviewType ?? 'retention',
@@ -226,17 +230,17 @@ describe('closing a block with item edits', () => {
         baseline[String(withResult)] = useStore.getState().db;
       }
 
-      for (const status of ['suggested', 'other', 'unchanged'] as const) {
+      for (const status of ['suggested', 'other', 'untouched'] as const) {
         for (const focus of ['set', 'cleared', 'unchanged'] as const) {
           for (const effort of ['changed', 'unchanged'] as const) {
             for (const action of ['save', 'without', 'discard'] as const) {
               for (const present of [true, false]) {
-                const untouched = status === 'suggested' && focus === 'unchanged' && effort === 'unchanged';
+                const untouched = status === 'untouched' && focus === 'unchanged' && effort === 'unchanged';
                 if (!present && !untouched) continue; // an absent edit is only possible when nothing was touched
                 const label = `${mode.name} · status ${status} · focus ${focus} · effort ${effort} · ${action} · edit ${present ? 'present' : 'absent'}`;
                 const edits: CloseItemEdits = {};
                 if (status === 'other') edits.status = 'maintenance';
-                if (status === 'unchanged') edits.status = 'usable'; // the owner keeps it, declining the suggestion
+                if (status === 'suggested') edits.status = suggested; // the owner TOOK the offered suggestion
                 if (focus === 'set') edits.primaryFocus = 'memory';
                 if (focus === 'cleared') edits.primaryFocus = null;
                 if (effort === 'changed') edits.difficulty = 5;
@@ -253,10 +257,10 @@ describe('closing a block with item edits', () => {
                   const withResult = action === 'save';
                   useStore.getState().closeSession({
                     result: withResult ? RESULT : 'not_logged',
+                    scope: 'whole',
                     durationMinutes: 10,
                     answer: answerFor(withResult),
                     reviewType: shown?.reviewType ?? 'retention',
-                    newStatus: suggested, // offered pre-selected; the store applies it only with a result
                     itemEdits: present ? edits : undefined,
                     now: AT,
                   });
@@ -276,10 +280,8 @@ describe('closing a block with item edits', () => {
                 const base = baseline[String(action === 'save')];
                 const saved = after.items[0];
                 const expected = { ...base.items[0] };
-                // Only what the owner chose moves — and the engine's
-                // suggestion only with a result.
-                expected.status =
-                  status === 'other' ? 'maintenance' : status === 'unchanged' ? 'usable' : action === 'save' ? 'integrated' : 'usable';
+                // Only what the owner chose moves — a suggestion never by itself.
+                expected.status = status === 'other' ? 'maintenance' : status === 'suggested' ? 'integrated' : 'usable';
                 if (focus === 'set') expected.primaryFocus = 'memory';
                 if (focus === 'cleared') delete expected.primaryFocus;
                 if (effort === 'changed') expected.difficulty = 5;

@@ -185,7 +185,7 @@ describe('recommend', () => {
   it('names the decisive numbers in the reason', () => {
     const overdue = mk({ id: 'od', title: 'overdue', nextReviewDate: day(-4), importance: 5 });
     const reason = buildReason(scoreItem(overdue, [], NOW), 'best');
-    expect(reason).toContain('4 days overdue');
+    expect(reason).toContain('due back 4 days ago');
     expect(reason).toContain('important');
   });
 });

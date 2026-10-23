@@ -297,7 +297,7 @@ async function sweep(c: Config): Promise<string[]> {
     await page.getByRole('button', { name: 'Same', exact: true }).click();
     await page.getByRole('button', { name: 'Change', exact: true }).click();
     await page.getByLabel('Next review date').waitFor();
-    await page.getByRole('button', { name: 'Change status, focus and effort' }).click();
+    await page.getByRole('button', { name: 'Change status, focus, effort and return' }).click();
     await page.getByRole('combobox', { name: 'Primary focus' }).waitFor();
     await check('/close (controls open)');
     await snap(app, c, 'close');
@@ -313,6 +313,17 @@ async function sweep(c: Config): Promise<string[]> {
     await check('/plan (running)');
     await page.getByRole('button', { name: 'End the plan' }).click();
     await page.getByRole('navigation', { name: 'Which instrument are you practising?' }).waitFor();
+    // A running routine with its full contents open — then skipped through,
+    // which records nothing, so the fixture still leaves as it arrived.
+    await goTo(app, '/routine/rt-tar', { arrival: 'گرم کردن تار' });
+    await page.getByRole('button', { name: 'Start', exact: true }).click();
+    await page.getByRole('button', { name: 'Pause' }).waitFor();
+    await page.locator('summary', { hasText: 'Run contents' }).click();
+    await page.getByRole('region', { name: 'Run contents' }).waitFor();
+    await check('/routine/rt-tar (running, contents open)');
+    await page.getByRole('button', { name: /^Skip/ }).click();
+    await page.getByRole('button', { name: /^Skip/ }).click();
+    await page.getByText('Routine complete').waitFor();
 
     for (const e of app.pageErrors) failures.push(`${label(c)}: page error ${e.message}`);
   } finally {

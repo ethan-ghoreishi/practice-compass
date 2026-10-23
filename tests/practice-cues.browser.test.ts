@@ -351,31 +351,44 @@ describe('the practice sound, through every door', () => {
         await primedBy(app, 'StageDetail Play', () => page.getByRole('button', { name: 'Practise Cue item A' }).click());
         await discardBlock(page);
 
-        // --- ROUTINES: one tap starts the run, inside the tap --------------
+        // --- ROUTINES: every door opens the run's contents; its Start tap
+        // starts the run AND readies the sound, inside that tap --------------
+        const startShown = (door: string) => primedBy(app, door, () => page.getByRole('button', { name: 'Start', exact: true }).click());
         await page.getByRole('button', { name: /^Routines/ }).click();
-        await primedBy(app, 'Today routine card', () => page.getByRole('button', { name: 'Start Cue routine' }).click());
+        await page.getByRole('button', { name: 'Start Cue routine…' }).click();
+        await page.getByRole('region', { name: 'What this run will contain' }).waitFor();
+        expect((await persisted(app)).activeRoutine).toBeNull();
+        await startShown('Today routine card');
         await page.getByRole('button', { name: 'Pause' }).waitFor();
         expect((await persisted(app)).activeRoutine).not.toBeNull();
         await page.getByRole('button', { name: 'Pause' }).click();
         await primedBy(app, 'RoutineRunner Resume', () => page.getByRole('button', { name: 'Resume' }).click());
         await finishRoutine(app);
         await page.getByRole('button', { name: /^Routines/ }).click();
-        await primedBy(app, 'Today short on time', () => page.getByRole('button', { name: 'Short on time — essentials only' }).click());
+        await page.getByRole('button', { name: 'Short on time — essentials only' }).click();
+        await page.getByRole('region', { name: 'What this run will contain' }).waitFor();
+        await startShown('Today short on time');
         await page.getByRole('button', { name: 'Pause' }).waitFor();
         expect(await page.locator('main').innerText()).toMatch(/short on time/i);
         await finishRoutine(app);
         await page.getByRole('button', { name: /^Routines/ }).click();
         await page.getByRole('button', { name: 'Run it for a different length' }).first().click();
         await page.getByLabel('Minutes to run Cue routine').fill('6');
-        await primedBy(app, 'RoutineDuration Start', () => page.getByRole('button', { name: 'Start', exact: true }).click());
+        await page.getByRole('button', { name: 'Start…', exact: true }).click();
+        await page.getByRole('region', { name: 'What this run will contain' }).waitFor();
+        await startShown('RoutineDuration Start');
         await finishRoutine(app);
         await goTo(app, '/pathway/pw-cue/st-cue');
         const stageCard = page.locator('article').filter({ hasText: 'Stage routine' });
-        await primedBy(app, 'StageDetail routine card', () => stageCard.getByRole('button', { name: 'Start', exact: true }).click());
+        await stageCard.getByRole('button', { name: 'Start…', exact: true }).click();
+        await page.getByRole('region', { name: 'What this run will contain' }).waitFor();
+        await startShown('StageDetail routine card');
         await finishRoutine(app);
         await goTo(app, '/pathway/pw-cue');
         const pathCard = page.locator('.card').filter({ hasText: 'Path routine' }).first();
-        await primedBy(app, 'PathwayDetail routine card', () => pathCard.getByRole('button', { name: 'Start', exact: true }).click());
+        await pathCard.getByRole('button', { name: 'Start…', exact: true }).click();
+        await page.getByRole('region', { name: 'What this run will contain' }).waitFor();
+        await startShown('PathwayDetail routine card');
         await finishRoutine(app);
 
         // A BARE ROUTINE LINK starts nothing until its own Start is tapped.
@@ -412,7 +425,7 @@ describe('the practice sound, through every door', () => {
         const running = (await persisted(app)).active!.startedAt;
         await goTo(app, '/');
         await page.getByRole('button', { name: /^Routines/ }).click();
-        await page.getByRole('button', { name: 'Start Cue routine' }).click();
+        await page.getByRole('button', { name: 'Start Cue routine…' }).click();
         await page.getByRole('button', { name: 'Finish' }).waitFor();
         expect((await persisted(app)).active!.startedAt).toBe(running);
         expect((await persisted(app)).activeRoutine).toBeNull();
@@ -661,7 +674,8 @@ describe('the practice sound, through every door', () => {
         // --- A ROUTINE: natural boundary, background catch-up, final ------
         await page.getByRole('button', { name: /^Routines/ }).click();
         from = (await trace(app)).length;
-        await page.getByRole('button', { name: 'Start Cue routine' }).click();
+        await page.getByRole('button', { name: 'Start Cue routine…' }).click();
+        await page.getByRole('button', { name: 'Start', exact: true }).click();
         await page.getByRole('button', { name: 'Pause' }).waitFor();
         await page.clock.runFor(62_000);
         await expect.poll(() => page.locator('main').innerText()).toContain('Segment 2 of 3');
@@ -694,7 +708,8 @@ describe('the practice sound, through every door', () => {
         // ZERO-TIME SKIPS, repeated: acknowledged silently, never a cue.
         await page.getByRole('button', { name: /^Routines/ }).click();
         from = (await trace(app)).length;
-        await page.getByRole('button', { name: 'Start Cue routine' }).click();
+        await page.getByRole('button', { name: 'Start Cue routine…' }).click();
+        await page.getByRole('button', { name: 'Start', exact: true }).click();
         await page.getByRole('button', { name: 'Skip' }).click();
         await page.getByRole('button', { name: 'Skip' }).click();
         await expect.poll(() => page.locator('main').innerText()).toContain('Segment 3 of 3');
@@ -707,19 +722,10 @@ describe('the practice sound, through every door', () => {
         await page.getByText('Routine complete').waitFor();
         await page.clock.runFor(70_000);
         expect(await cues(from)).toBe(0);
-        // Each skipped bound segment ran the fraction of a second before its
-        // Skip — real elapsed time, which the routine rule records as its
-        // minimum minute (`aggregateItemMinutes`); the cue rules changed none
-        // of it, and nothing was announced.
-        const skipped = ((await persistedDb(app)).blocks.slice(blocksBefore) as { practiceItemId: string; durationMinutes: number; result: string }[])
-          .map((b) => [b.practiceItemId, b.durationMinutes, b.result])
-          .sort();
-        expect(skipped).toEqual(
-          [
-            ['it-a', 1, 'not_logged'],
-            ['it-fragile', 1, 'not_logged'],
-          ].sort(),
-        );
+        // A Skip records nothing for that segment, however briefly it ran —
+        // nothing was practised there, and nothing was announced either.
+        await page.getByText('Nothing was recorded').waitFor();
+        expect((await persistedDb(app)).blocks).toHaveLength(blocksBefore);
         await goTo(app, '/');
 
         // --- A PLAN: each Begin is a real block with its own boundary ------

@@ -363,14 +363,21 @@ describe('after the date changes hands, the shipped rules apply', () => {
         if (result === 'none') {
           await page.getByRole('button', { name: 'Save without a result' }).click();
         } else {
+          // The spaced-retention rules decide a Keep-fresh item's WHOLE-item check.
+          await page.getByRole('group', { name: 'What this block covered' }).getByRole('button', { name: 'Whole-item check', exact: true }).click();
           await page.getByRole('button', { name: result, exact: true }).click();
           await page.getByRole('button', { name: 'Save block' }).click();
         }
         await reload(app);
       }
 
+      // Both items are kept fresh: the owner judged them ready as wholes.
+      for (const id of [AUTO_DUE, FARSI_ITEM]) {
+        await show(app, `/items/${id}`);
+        await page.getByRole('group', { name: 'Comes back as' }).getByRole('button', { name: 'Keep fresh', exact: true }).click();
+      }
+
       // --- Transfer a FUTURE custom date through the real control ---------
-      await goTo(app, `/items/${FARSI_ITEM}`);
       await transferButton(page).click();
       await reload(app);
       let state = await facts(app, FARSI_ITEM);

@@ -140,7 +140,7 @@ export const RESULT_LABELS: Record<BlockResult, string> = {
   stable_alone: 'Stable alone',
   stable_in_context: 'Stable in context',
   performable: 'Performable',
-  not_logged: 'Not logged',
+  not_logged: 'Not assessed',
 };
 
 /** Result options shown as quick buttons when closing a block (best last). */

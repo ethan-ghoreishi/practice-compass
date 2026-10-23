@@ -10,6 +10,7 @@ import { validateMusicTerms } from './musicTerms';
 import { validateReferences } from './pathways';
 import { validateStudySources } from './studySources';
 import { COURSES } from './courseSeed';
+import { validateEvidenceScopes } from './practiceSessionModel';
 
 // ---------------------------------------------------------------------------
 // JSON export / import. Export wraps the full DB with app + schema metadata.
@@ -160,6 +161,9 @@ export function validateDB(input: unknown): PracticeDB {
   // retired field can never be mistaken for a malformed canonical one.
   const textProblem = validatePracticeText(db);
   if (textProblem) throw new Error(textProblem);
+  // v17: what each block's result describes. Absent is legacy-unknown.
+  const scopeProblem = validateEvidenceScopes(db);
+  if (scopeProblem) throw new Error(scopeProblem);
   // The v14 source graph and the bindings into it: duplicate source keys,
   // wrong types, dangling or instrument-mismatched refs and unsafe paths are
   // refused BEFORE anything is installed.

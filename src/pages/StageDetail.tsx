@@ -17,7 +17,6 @@ import {
   courseStage,
   itemsPreparedForLesson,
   pathwaysReturnPath,
-  segmentsForRun,
 } from '../domain';
 import { useStore } from '../store/useStore';
 import { useDecisionNow } from '../components/useDecisionNow';
@@ -42,7 +41,6 @@ export default function StageDetail() {
   const chooseCourseSource = useStore((s) => s.chooseCourseSource);
   const startItemSession = useStore((s) => s.startItemSession);
   const activeRoutine = useStore((s) => s.activeRoutine);
-  const startRoutineRun = useStore((s) => s.startRoutineRun);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -293,8 +291,8 @@ export default function StageDetail() {
             key={r.id}
             routine={r}
             onStart={(short) => {
-              // Begun inside the tap, then shown — see PathwayDetail.
-              startRoutineRun(r.id, short, segmentsForRun(r.segments, short));
+              // The run's contents first; it begins only from that page's own
+              // Start tap, which readies the sound.
               navigate(`/routine/${r.id}${short ? '?short=1' : ''}`);
             }}
             onEdit={() => navigate(`/routine/${r.id}/edit`)}
@@ -675,7 +673,7 @@ function RoutineCard({
             Edit
           </button>
           <button className="btn btn-sm" onClick={() => onStart(false)}>
-            <PlayIcon /> Start
+            <PlayIcon /> Start…
           </button>
         </div>
       </div>

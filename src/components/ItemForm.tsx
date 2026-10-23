@@ -36,6 +36,7 @@ export default function ItemForm({
   submitLabel,
   showLessonLink = false,
   onSubmit,
+  initialKind,
   onCancel,
 }: {
   initial: ItemFormValues;
@@ -44,15 +45,25 @@ export default function ItemForm({
   submitLabel: string;
   /** Create flow only — lessons on existing items are managed in Connections. */
   showLessonLink?: boolean;
-  onSubmit: (v: ItemFormValues) => void;
+  /** The kind to open on (a "study focus" prompt opens Theory / listening study). */
+  initialKind?: ItemKind;
+  /** The values, and the kind chosen — a kind can carry a strand of its own (`strandForKind`). */
+  onSubmit: (v: ItemFormValues, kind: ItemKind) => void;
   onCancel: () => void;
 }) {
   const db = useStore((s) => s.db);
   const addMaterial = useStore((s) => s.addMaterial);
   const updateMaterial = useStore((s) => s.updateMaterial);
   const [v, setV] = useState<ItemFormValues>(initial);
-  const [kind, setKind] = useState<ItemKind>(() =>
-    kindFromItem({ itemType: initial.itemType, persian: initial.persian, parentItemId: initial.parentItemId || undefined }),
+  const [kind, setKind] = useState<ItemKind>(
+    () =>
+      initialKind ??
+      kindFromItem({
+        itemType: initial.itemType,
+        persian: initial.persian,
+        parentItemId: initial.parentItemId || undefined,
+        strand: itemId ? db.items.find((i) => i.id === itemId)?.strand : undefined,
+      }),
   );
   const [showWorking, setShowWorking] = useState(Boolean(initial.notes));
   const [newSourceName, setNewSourceNameState] = useState('');
@@ -407,7 +418,7 @@ export default function ItemForm({
       )}
 
       <div className="row">
-        <button className="btn btn-primary grow" disabled={!v.title.trim()} onClick={() => onSubmit(v)}>
+        <button className="btn btn-primary grow" disabled={!v.title.trim()} onClick={() => onSubmit(v, kind)}>
           {submitLabel}
         </button>
         <button className="btn" onClick={onCancel}>

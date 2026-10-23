@@ -64,8 +64,14 @@ describe('the daily practice loop, end to end', () => {
       await page.getByRole('button', { name: 'End the plan' }).click();
 
       // --- 3. THE DATE SHOWN IS THE DATE SAVED, after a reload -------------
+      // Spaced retention decides only a Keep-fresh item's WHOLE-item check
+      // (docs/practice-session-model.md): the owner says so on the item, and
+      // each close below says it checked the whole item.
+      await goTo(app, `/items/${ITEM}`);
+      await page.getByRole('group', { name: 'Comes back as' }).getByRole('button', { name: 'Keep fresh', exact: true }).click();
       let savedDate = '';
       await practise(app, ITEM, async () => {
+        await wholeCheck(page);
         await page.getByRole('button', { name: 'Stable alone' }).click();
         await page.getByRole('button', { name: 'Change', exact: true }).click();
         savedDate = await page.getByLabel('Next review date').inputValue();
@@ -89,6 +95,7 @@ describe('the daily practice loop, end to end', () => {
 
       // --- 4. A SECOND successful close the same day does NOT advance again -
       await practise(app, ITEM, async () => {
+        await wholeCheck(page);
         await page.getByRole('button', { name: 'Performable' }).click();
         await page.getByRole('button', { name: 'Change', exact: true }).click();
         expect(await page.getByLabel('Next review date').inputValue()).toBe(savedDate);
@@ -99,6 +106,7 @@ describe('the daily practice loop, end to end', () => {
 
       // --- 5. `same` keeps it too; only `worse` brings it forward ----------
       await practise(app, ITEM, async () => {
+        await wholeCheck(page);
         await page.getByRole('button', { name: 'Same' }).click();
         await page.getByRole('button', { name: 'Change', exact: true }).click();
         expect(await page.getByLabel('Next review date').inputValue()).toBe(savedDate);
@@ -109,6 +117,7 @@ describe('the daily practice loop, end to end', () => {
 
       let repairedDate = '';
       await practise(app, ITEM, async () => {
+        await wholeCheck(page);
         await page.getByRole('button', { name: 'Worse' }).click();
         await page.getByRole('button', { name: 'Change', exact: true }).click();
         repairedDate = await page.getByLabel('Next review date').inputValue();
@@ -323,6 +332,11 @@ async function practise(app: PracticeApp, itemId: string, close: () => Promise<v
   await close();
   // Saving leaves the close screen for the tab bar: the block is recorded.
   await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+}
+
+/** Say this close checked the WHOLE item, not one part of it. */
+async function wholeCheck(page: Page): Promise<void> {
+  await page.getByRole('group', { name: 'What this block covered' }).getByRole('button', { name: 'Whole-item check', exact: true }).click();
 }
 
 async function finishBlock(page: Page): Promise<void> {

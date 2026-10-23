@@ -18,6 +18,8 @@ export default function ActiveBlock() {
   const pauseSession = useStore((s) => s.pauseSession);
   const resumeSession = useStore((s) => s.resumeSession);
   const cancelSession = useStore((s) => s.cancelSession);
+  const activePlan = useStore((s) => s.activePlan);
+  const skipPlanBlockUnsaved = useStore((s) => s.skipPlanBlockUnsaved);
   const setSessionNote = useStore((s) => s.setSessionNote);
   const claimSessionSignal = useStore((s) => s.claimSessionSignal);
   const sound = usePracticeSound();
@@ -234,6 +236,26 @@ export default function ActiveBlock() {
         <button className="link small" onClick={() => setShowNote(true)} style={{ background: 'none', border: 'none' }}>
           + Note an observation for this block
         </button>
+      )}
+
+      {/* Inside a running plan: Finish is "move on and keep what I practised"
+          (it saves through Close, then the plan advances); this is the other
+          choice — skip this segment and save NOTHING from this block. */}
+      {activePlan && activePlan.segments[activePlan.pointer]?.itemId === active.itemId && (
+        <div className="stack-sm" style={{ alignItems: 'center' }}>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => {
+              skipPlanBlockUnsaved();
+              navigate('/plan');
+            }}
+          >
+            Skip this one — save nothing
+          </button>
+          <span className="tiny faint">
+            <span dir="ltr">Finish keeps what you practised; skipping records no time for this segment.</span>
+          </span>
+        </div>
       )}
 
       <button

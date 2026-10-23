@@ -352,7 +352,11 @@ export function migrateToCurrent(db: PracticeDB, fromVersion: number): PracticeD
   // v15 -> v16: an archive piece MAY carry `studySource`. Nothing converts:
   // a graph accepted before the field existed keeps NO value, which is the
   // honest "the registry said nothing" — never an empty declaration, never a
-  // value read off a key, a title or the notes, and no item is touched. The
-  // version number below is the whole migration.
+  // value read off a key, a title or the notes, and no item is touched.
+  // v16 -> v17: a block MAY carry its evidence `scope` and an item its
+  // `returnIntent`. Nothing converts either: a legacy block's scope stays
+  // UNKNOWN (never backfilled as whole-item evidence), and an item with no
+  // intention derives it on every read (`returnIntentOf`). Long legacy dates
+  // stay exactly as stored. The version number below is the whole migration.
   return { ...next, schemaVersion: SCHEMA_VERSION };
 }

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
+import { dropNoteDraft, heldNoteDrafts } from './notesDrafts';
 import { withRevision } from './revision';
 import { primePracticeSound } from '../components/practiceCue';
 import {
@@ -28,6 +29,10 @@ import {
   transferToAutomaticReview,
   AUTOMATIC_TRANSFER_REASON,
   validateUnfinishedText,
+  validateUnfinishedRun,
+  returnIntentOf,
+  removePendingSegment,
+  skipSegmentUnpractised,
   skipPlanSegment as skipPlanSegmentRun,
   setQuestionAnswer as setAgendaQuestionAnswer,
   resolveReviewDate,
@@ -109,6 +114,8 @@ import {
   SchemaTooNewError,
   type BlockMode,
   type BlockResult,
+  type EvidenceScope,
+  type ReturnIntent,
   type FocusArea,
   type GuitarFields,
   type ID,
@@ -257,15 +264,16 @@ export interface StartSessionInput {
 
 export interface CloseSessionInput {
   result: BlockResult;
+  /** What the result describes: a focused chunk (default) or an explicit whole-item check. */
+  scope?: EvidenceScope;
   durationMinutes: number;
   observation?: string;
   nextAction?: string;
-  /** The engine's suggested status, offered pre-selected: applied only when a result was recorded. */
-  newStatus?: ItemStatus;
   /**
    * What the owner revised on the item at close (status, primary focus,
-   * effort), by key presence — absent keys are never written. Applied in this
-   * close's one write, AFTER the review was decided from the item as practised.
+   * effort, return intention), by key presence — absent keys are never
+   * written. Applied in this close's one write; the review is decided from
+   * the item as practised, under the return intention this close leaves it in.
    */
   itemEdits?: CloseItemEdits;
   /**
@@ -295,12 +303,24 @@ export interface CloseSessionInput {
   now?: Date;
 }
 
+/** Whose notes: an item's Working notes or a lesson's class notes. Ids of the two never mix. */
+export interface NoteOwner {
+  kind: 'item' | 'lesson';
+  id: ID;
+}
+export type NoteSaveOutcome = 'unchanged' | 'written' | 'merged' | 'gone';
+
+/** The heading a kept competing text sits under (see `saveNotes`). */
+export const KEPT_DRAFT_HEADING = '— Also typed on this device (kept, not merged) —';
+
 export interface ItemPatch {
   instrumentId?: ID;
   /** Present-and-undefined clears the link; a change is judged by `partRelationRefusal`. */
   parentItemId?: ID;
   title?: string;
   itemType?: PracticeItem['itemType'];
+  /** Present-and-undefined clears it; the form sends one only for Theory / listening study. */
+  strand?: PracticeItem['strand'];
   materialId?: ID;
   status?: ItemStatus;
   importance?: Rating;
@@ -351,8 +371,10 @@ interface StoreState {
   startPlan: (plan: SessionPlan) => void;
   /** Start a real block seeded from the current segment (→ /active → /close). */
   beginPlanSegment: () => void;
-  /** Mark the current segment skipped and advance (no data written). */
-  skipPlanSegment: () => void;
+  /** Skip a pending segment — the current one by default — recording nothing; other targets keep their minutes. */
+  skipPlanSegment: (index?: number) => void;
+  /** Skip the plan segment whose block is open right now WITHOUT saving it: the block is discarded and the segment skipped. */
+  skipPlanBlockUnsaved: () => void;
   /** End the running plan (clears it). */
   endPlan: () => void;
 
@@ -551,6 +573,18 @@ interface StoreState {
   claimSessionSignal: (startedAt: string, marker: number) => boolean;
   cancelSession: () => void;
   closeSession: (input: CloseSessionInput) => void;
+  /** Working on this / Keep fresh — administrative: no practice, no date, no spacing state moves. */
+  setReturnIntent: (itemId: ID, intent: ReturnIntent) => void;
+  /**
+   * Write an item's or a lesson's notes, decided against what is stored NOW:
+   * unchanged text writes nothing; text based on the stored text replaces it;
+   * text based on something the store no longer holds (a sync, an import or
+   * another editor changed it) KEEPS both — the stored text, then this one
+   * under a marked heading. A record that no longer exists is never recreated.
+   */
+  saveNotes: (owner: NoteOwner, text: string, base: string) => NoteSaveOutcome;
+  /** Re-issue the persist write for the state already in memory (a retry after a failed IndexedDB write). */
+  persistAgain: () => void;
 
   // Reviews
   completeReview: (id: ID, result?: BlockResult) => void;
@@ -622,8 +656,12 @@ interface StoreState {
   startRoutineRun: (routineId: ID, shortOnTime: boolean, authoredSegments: RoutineSegment[]) => void;
   pauseRoutineRun: () => void;
   resumeRoutineRun: () => void;
-  /** Mark the current segment skipped; finishes the run if that was the last one. */
+  /** MOVE ON: end the current segment now, keeping the time practised in it. */
+  moveOnRoutineRun: () => void;
+  /** SKIP: end the current segment now and record nothing for it, however long it ran. */
   skipRoutineRun: () => void;
+  /** Remove a segment the run has not reached yet; records nothing, changes no other segment. */
+  removeRoutineSegment: (index: number) => void;
   /** Turn the active run into real practice blocks — at most one per distinct bound item, carrying its actual elapsed running time — then clear it. */
   /** Saves the run; returns the ids of the blocks it created, for Routine complete's capture. */
   finishRoutine: () => ID[];
@@ -725,8 +763,18 @@ export const useStore = create<StoreState>()(
         });
       },
 
-      skipPlanSegment: () =>
-        set((s) => (s.activePlan ? { activePlan: skipPlanSegmentRun(s.activePlan) } : {})),
+      skipPlanSegment: (index) =>
+        set((s) => (s.activePlan ? { activePlan: skipPlanSegmentRun(s.activePlan, index) } : {})),
+
+      skipPlanBlockUnsaved: () => {
+        const { active, activePlan } = get();
+        if (!active || !activePlan) return;
+        const seg = activePlan.segments[activePlan.pointer];
+        // Only the block that IS the current segment; anything else practised
+        // off-plan is resolved through its own Finish or Discard.
+        if (!seg || seg.itemId !== active.itemId || seg.status !== 'pending') return;
+        set({ active: null, activePlan: skipPlanSegmentRun(activePlan) });
+      },
 
       endPlan: () => set({ activePlan: null }),
 
@@ -1692,6 +1740,7 @@ export const useStore = create<StoreState>()(
             focus: active.focus,
             constraint: active.constraint,
             result: input.result,
+            scope: input.scope ?? 'focused',
             observation: input.observation,
             nextAction: input.nextAction,
             createdReview: input.answer === 'scheduled',
@@ -1710,6 +1759,10 @@ export const useStore = create<StoreState>()(
           reviewType: input.reviewType,
           now,
           params: clampSchedulingParams(db.settings),
+          scope: input.scope ?? 'focused',
+          // The intention this close leaves the item in — an explicit
+          // readiness choice made on this screen decides this very date.
+          intent: input.itemEdits?.returnIntent ?? returnIntentOf(item),
         });
 
         const existing = db.blocks.filter((b) => b.practiceItemId === item.id);
@@ -1718,14 +1771,10 @@ export const useStore = create<StoreState>()(
           now,
           nextReviewDate: outcome.nextReviewDate,
         });
-        // The owner's revisions, and the engine's suggestion only with a
-        // result. `outcome` was already decided from `item` as practised, so
-        // an edited status or effort never moves the date this screen showed.
-        updatedItem = applyCloseEdits(updatedItem, {
-          edits: input.itemEdits,
-          suggestedStatus: input.newStatus,
-          result: input.result,
-        });
+        // The owner's own revisions only — a suggestion applies when they
+        // took it, never because a result was recorded. `outcome` was already
+        // decided, so an edited status or effort never moves the date shown.
+        updatedItem = applyCloseEdits(updatedItem, { edits: input.itemEdits });
         if (outcome.sr) {
           updatedItem = {
             ...updatedItem,
@@ -1793,7 +1842,7 @@ export const useStore = create<StoreState>()(
         // If a Session Plan is running and this block closed its current
         // segment's item, mark that segment done and advance. The plain flow
         // (no active plan) is byte-identical to before.
-        const nextPlan = activePlan ? completePlanSegment(activePlan, item.id) : activePlan;
+        const nextPlan = activePlan ? completePlanSegment(activePlan, item.id, block.durationMinutes) : activePlan;
 
         set({
           db: {
@@ -1807,6 +1856,47 @@ export const useStore = create<StoreState>()(
           activePlan: nextPlan,
         });
       },
+
+      setReturnIntent: (itemId, intent) => {
+        const now = new Date();
+        set((s) => ({
+          db: {
+            ...s.db,
+            // The intention only: the stored date, its provenance, its open
+            // row, spacing history, status and every statistic stay exactly
+            // as they are. A later assessed close decides the next date.
+            items: s.db.items.map((i) => (i.id === itemId && i.returnIntent !== intent ? touch({ ...i, returnIntent: intent }, now) : i)),
+          },
+        }));
+      },
+
+      saveNotes: (owner, text, base) => {
+        const now = new Date();
+        const db = get().db;
+        const record =
+          owner.kind === 'item' ? db.items.find((i) => i.id === owner.id) : db.lessons.find((l) => l.id === owner.id);
+        if (!record) return 'gone';
+        const norm = (t: string | undefined) => (t ?? '').trim();
+        const stored = norm(record.notes);
+        const wanted = norm(text);
+        if (stored === wanted) return 'unchanged';
+        // Both changed since this text was typed: keep BOTH, the stored text
+        // first, never one silently over the other.
+        const merged = stored !== norm(base) && stored !== '' && wanted !== '';
+        const notes = merged ? `${stored}\n\n${KEPT_DRAFT_HEADING}\n${wanted}` : stored !== norm(base) && wanted === '' ? stored : wanted;
+        if (notes === stored) return 'unchanged';
+        set((s) => ({
+          db: {
+            ...s.db,
+            ...(owner.kind === 'item'
+              ? { items: s.db.items.map((i) => (i.id === owner.id ? touch({ ...i, notes: notes || undefined }, now) : i)) }
+              : { lessons: s.db.lessons.map((l) => (l.id === owner.id ? touch({ ...l, notes: notes || undefined }, now) : l)) }),
+          },
+        }));
+        return merged ? 'merged' : 'written';
+      },
+
+      persistAgain: () => set({}),
 
       completeReview: (id, result) => {
         const now = new Date();
@@ -2225,11 +2315,29 @@ export const useStore = create<StoreState>()(
       // finishRoutine() directly, bypassing the component's result snapshot
       // and leaving the screen blank once activeRoutine was cleared out from
       // under it.
-      skipRoutineRun: () => {
+      moveOnRoutineRun: () => {
         const { activeRoutine } = get();
         if (!activeRoutine) return;
         const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, new Date());
         const segs = skipCurrentSegment(activeRoutine.segs, elapsedSeconds);
+        const signalledThrough = acknowledgeThrough(activeRoutine.signalledThrough, elapsedSeconds, segmentBoundaries(segs));
+        set({ activeRoutine: { ...activeRoutine, segs, signalledThrough } });
+      },
+
+      removeRoutineSegment: (index) => {
+        const { activeRoutine } = get();
+        if (!activeRoutine) return;
+        const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, new Date());
+        const segs = removePendingSegment(activeRoutine.segs, index, elapsedSeconds);
+        if (segs === activeRoutine.segs) return;
+        set({ activeRoutine: { ...activeRoutine, segs } });
+      },
+
+      skipRoutineRun: () => {
+        const { activeRoutine } = get();
+        if (!activeRoutine) return;
+        const elapsedSeconds = runElapsedSeconds(activeRoutine.accumulatedSeconds, activeRoutine.runningSince, activeRoutine.running, new Date());
+        const segs = skipSegmentUnpractised(activeRoutine.segs, elapsedSeconds);
         // Skip clamps the boundary onto elapsed itself — acknowledge it silently
         // (never nextSignal's announcing path), or the very next render would
         // see a freshly-passed boundary and announce a segment the user just
@@ -2361,6 +2469,8 @@ export const useStore = create<StoreState>()(
         // boundary and is rendered the moment the practice screen opens.
         const unfinished = validateUnfinishedText((persisted as { active?: unknown } | undefined)?.active);
         if (unfinished) throw new Error(unfinished);
+        const run = validateUnfinishedRun((persisted ?? {}) as { activeRoutine?: unknown; activePlan?: unknown });
+        if (run) throw new Error(run);
         return state as unknown;
       },
       merge: (persisted, current) => {
@@ -2386,6 +2496,8 @@ export const useStore = create<StoreState>()(
         const db = p.db ? validateDB(p.db) : current.db;
         const unfinished = validateUnfinishedText(p.active);
         if (unfinished) throw new Error(unfinished);
+        const run = validateUnfinishedRun(p);
+        if (run) throw new Error(run);
         const merged = { ...current, ...p, db };
         // The start/resume guards keep active/activeRoutine from BOTH being
         // set going forward, but a device that persisted a dual-running
@@ -2492,13 +2604,30 @@ export const useHydrationStatus = create<HydrationStatus>(() => ({
   tooNew: false,
 }));
 
+/**
+ * Notes typed before a reload interrupted their canonical write are replayed
+ * through the ordinary `saveNotes` decision — so a draft whose record is gone
+ * stays on the device and recreates nothing, and one whose stored text changed
+ * meanwhile keeps both. Each local copy is dropped once its write is
+ * acknowledged.
+ */
+function replayNoteDrafts() {
+  for (const { owner, draft } of heldNoteDrafts()) {
+    if (useStore.getState().saveNotes(owner, draft.text, draft.base) === 'gone') continue;
+    void storageSettled().then(
+      () => dropNoteDraft(owner, draft.text),
+      () => undefined,
+    );
+  }
+}
+
 // Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
 function finishHydration() {
   if (storageWasEmpty && useStore.getState().db.pathways.length === 0) {
-    useStore.setState({ db: createSeedDB(), hydrated: true });
-  } else {
-    useStore.setState({ hydrated: true });
+    useStore.setState({ db: createSeedDB() });
   }
+  replayNoteDrafts();
+  useStore.setState({ hydrated: true });
 }
 if (useStore.persist.hasHydrated()) finishHydration();
 else useStore.persist.onFinishHydration(finishHydration);

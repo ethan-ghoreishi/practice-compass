@@ -1,4 +1,4 @@
-import type { ItemType, PracticeItem } from '../domain';
+import type { ItemType, PracticeItem, StepStrand } from '../domain';
 
 /**
  * "What are you adding?" — the creation form asks the KIND first and then
@@ -6,7 +6,7 @@ import type { ItemType, PracticeItem } from '../domain';
  * concept mapped onto the persisted ItemType enum; no new data model.
  */
 
-export type ItemKind = 'gusheh' | 'persian_piece' | 'piece' | 'etude' | 'passage' | 'technique' | 'other';
+export type ItemKind = 'gusheh' | 'persian_piece' | 'piece' | 'etude' | 'passage' | 'technique' | 'theory' | 'other';
 
 export interface KindOption {
   value: ItemKind;
@@ -21,6 +21,7 @@ export function kindsForFamily(family: string | undefined): KindOption[] {
       { value: 'passage', label: 'Passage / part' },
       { value: 'etude', label: 'Étude / exercise' },
       { value: 'technique', label: 'Technique' },
+      { value: 'theory', label: 'Theory / listening study' },
     ];
   }
   return [
@@ -28,7 +29,18 @@ export function kindsForFamily(family: string | undefined): KindOption[] {
     { value: 'etude', label: 'Étude / study' },
     { value: 'passage', label: 'Passage / part' },
     { value: 'technique', label: 'Technique / drill' },
+    { value: 'theory', label: 'Theory / listening study' },
   ];
+}
+
+/**
+ * The strand a kind carries. Only Theory / listening study has one of its
+ * own (`reading_theory`, the existing pathway strand): it is what keeps a
+ * study item ordinary practice, out of My repertoire and off a whole work's
+ * floor, whatever its title names.
+ */
+export function strandForKind(kind: ItemKind): StepStrand | undefined {
+  return kind === 'theory' ? 'reading_theory' : undefined;
 }
 
 export function kindToItemType(kind: ItemKind): ItemType {
@@ -44,13 +56,15 @@ export function kindToItemType(kind: ItemKind): ItemType {
       return 'phrase';
     case 'technique':
       return 'technique';
+    case 'theory':
     case 'other':
       return 'other';
   }
 }
 
 /** Infer the kind when editing an existing item. */
-export function kindFromItem(item: Pick<PracticeItem, 'itemType' | 'persian' | 'parentItemId'>): ItemKind {
+export function kindFromItem(item: Pick<PracticeItem, 'itemType' | 'persian' | 'parentItemId'> & { strand?: StepStrand }): ItemKind {
+  if (item.strand === 'reading_theory') return 'theory';
   if (item.parentItemId) return 'passage';
   switch (item.itemType) {
     case 'gusheh':
@@ -100,6 +114,10 @@ export function fieldsForKind(kind: ItemKind, family: string | undefined): KindF
       return { dastgah: false, gushehName: false, form: false, composer: false, parent: true, range: true };
     case 'etude':
       return { dastgah: persian, gushehName: false, form: false, composer: persian, parent: false, range: false };
+    case 'theory':
+      // Which dastgāh the study is about, on a Persian instrument — context
+      // for the owner, never identity: it does not make the study a work.
+      return { dastgah: persian, gushehName: false, form: false, composer: false, parent: false, range: false };
     case 'technique':
     case 'other':
       return { dastgah: false, gushehName: false, form: false, composer: false, parent: false, range: false };

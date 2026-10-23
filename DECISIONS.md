@@ -2,6 +2,81 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Practice records you can rely on, and returns that follow the work (2026-10-23)
+
+One heavy lane (contract 20261023-…-34cc, issue #56), schema **17**. Model and
+proof: `docs/practice-session-model.md`. **Owner decisions** carried by the
+approved plan, each replacing a rule AGENTS.md used to state:
+
+- **Notes never depend on Done.** The old rule — explicit Done, a draft dropped
+  when its item changed — protected ownership by throwing words away; the owner
+  lost notes by forgetting a tap. Now the draft is written, on every exit and
+  after a quiet interval, to the record it was typed for; a device-local copy
+  (`notesDrafts.ts`, localStorage, synchronous) covers the gap until IndexedDB
+  acknowledges and is replayed after a reload. Conflicts follow the existing
+  sync model — both texts kept, nothing silently overwritten — as plain text in
+  the notebook rather than a new conflict screen. What no storage has
+  acknowledged when the process dies is not promised.
+- **Skip means nothing was practised.** Old Skip clamped and KEPT any positive
+  elapsed time (a few milliseconds became a logged minute). Now Skip and Remove
+  record nothing; Move on keeps what was practised. A legacy run's Skip keeps
+  its old credit — never reinterpreted.
+- **Freed time stays free.** The Plan preview's Remove used to re-spread the
+  freed minutes over untouched work, quietly changing what each segment asked
+  of the owner. Remove, Skip and Move on now never lengthen anything, in Plan
+  and Routine alike; Regenerate / a new length / a routine length are the
+  deliberate reallocations. The one Plan/Routine difference is structural: a
+  plan segment is an independently closed block (Close, a result, scheduling),
+  a routine one continuous unassessed clock.
+- **A chunk is not the piece.** Results gained a `scope` (focused by default;
+  an explicit whole-item check), and items a return intention (`working` /
+  `keep_fresh`, derived from the old maintenance status when absent).
+  Spacing (SM-2) now decides ONLY a Keep-fresh item's whole check; Working
+  returns in 1–3 days (`WORKING_RETURN_DAYS`), which deliberately lets an
+  assessed close bring an engine-owned long date forward — replacing "only
+  `worse` may bring an automatic date forward" for Working items. Readiness
+  (status, Keep fresh) is never pre-selected or inferred from a stable result.
+- **Class work returns until its class.** The class opportunity and the
+  Working gap (`WORKING_MAX_GAP_DAYS` = 3 after the last practice) are DERIVED
+  (`nextPractice`, `effectiveReturnDate`) and never written, so protected,
+  unknown-provenance and legacy long dates stay exactly as stored while the
+  work stays reachable. Today's cards now share the plan's candidate pool:
+  practised-today work, class work included, steps aside while anything else
+  waits, and returns the next day.
+- **Theory is ordinary practice.** "Theory / listening study" is a kind on the
+  existing Add path (strand `reading_theory`), never a work, warm-up or
+  cool-down; it earns a bounded middle-pick turn (`THEORY_TURN_GAP_DAYS` 4,
+  `THEORY_TURN_POINTS` 3). Study prompts are Farsi questions behind stable ids
+  that only pre-fill the form.
+
+**The reported missing second item.** Reproduced through the real editor:
+RoutineEdit dropped any segment with no label of its own, even one bound to an
+item — so a routine whose second segment was only bound saved with one segment,
+and only the first item was ever practised or logged. Fixed at that choke
+point; aggregation, history and capture were checked clean
+(`routine completion and history preserve all practised items without feedback`).
+
+**Constants, not claims.** 1–3 days, 3 days, 4 days and 3 points are bounded
+organisational defaults chosen against the counterexample fixtures, not
+measured learning optima.
+
+**CI.** The Azure mirror's small index answers instantly while its packages
+crawl, so no small-file liveness probe can see it. `scripts/prepare-ci-browsers.sh`
+bypasses that host by NAME (dropped from a mirror list that has another mirror,
+rewritten to the Ubuntu archive in a direct source — only scheme and host
+change), still drops dead mirrors by a bounded probe, and fails clearly when no
+usable source is left. All three suite workflows run it; bounds unchanged. A
+real Actions run after ship is the post-ship evidence.
+
+**Data.** v16 → v17 converts nothing: legacy blocks keep no scope, items derive
+their intention, dates stay. Every door validates the new fields; hydration
+also validates the unfinished run's shape. A v16 build refuses a v17 file
+whole (update both devices, then sync as usual).
+
+**AGENTS.md budget.** The CLAUDE.md profile had 15 bytes of headroom, so the
+changed rules were rewritten in place and neighbouring sentences tightened
+word for word; no rule or pinned phrase was dropped.
+
 ## The UI refresh: one look, named and reachable controls, direction and dates that hold (2026-10-22)
 
 One lane (contract 20261022-…-3b19, issue #54). **Owner decisions:** one

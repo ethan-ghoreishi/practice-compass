@@ -6,9 +6,11 @@ import {
   primaryPathway,
   MAX_BUDGET_MINUTES,
   MIN_BUDGET_MINUTES,
+  movePlanSegment,
   planPreviewDayHasPassed,
+  planRunTime,
   preparationDatesByItem,
-  redistributePlan,
+  removePlanSegment,
   swapSegment,
   clampSchedulingParams,
   todayISODate,
@@ -137,6 +139,7 @@ function PlanPreview() {
   const stale = rev !== baseRev || today !== baseDay;
 
   const total = plan.segments.reduce((a, s) => a + s.minutes, 0);
+  const unused = Math.max(0, plan.budgetMinutes - total);
   const editorArgs = () => {
     const preparationDates = preparationDatesByItem(db.lessonAgenda, db.lessons, now);
     const stageItemIds = currentStageItemIds(
@@ -162,9 +165,23 @@ function PlanPreview() {
     setBaseRev(rev);
     setBaseDay(today);
   }
+  // Removing leaves the freed minutes UNUSED — the other segments keep
+  // exactly what they asked for; Regenerate (or a new length) allocates again.
   function removeAt(i: number) {
-    const segments = plan.segments.filter((_, idx) => idx !== i);
-    setPlan(redistributePlan({ ...plan, segments }, clampSchedulingParams(db.settings)));
+    setPlan(removePlanSegment(plan, i));
+  }
+  // Order is the owner's: the whole segment moves, nothing else changes, and
+  // focus stays on the control just used so repeated moves need no hunting.
+  function moveAt(i: number, dir: -1 | 1, button: HTMLButtonElement) {
+    const label = button.getAttribute('aria-label') ?? '';
+    setPlan(movePlanSegment(plan, i, dir));
+    // At either end its own control disables, so focus moves to the other one.
+    const other = label.endsWith(' earlier') ? label.replace(/ earlier$/, ' later') : label.replace(/ later$/, ' earlier');
+    requestAnimationFrame(() => {
+      const buttons = [...document.querySelectorAll<HTMLButtonElement>('button[aria-label]')];
+      const find = (name: string) => buttons.find((b) => b.getAttribute('aria-label') === name && !b.disabled);
+      (find(label) ?? find(other))?.focus();
+    });
   }
   function swapAt(i: number) {
     setPlan(swapSegment(plan, i, editorArgs()));
@@ -268,18 +285,44 @@ function PlanPreview() {
                   </div>
                 </div>
               </div>
-              <button className="btn btn-ghost btn-sm" style={{ flex: 'none' }} onClick={() => swapAt(i)} aria-label={`Swap ${seg.title} for another`}>
-                Swap
-              </button>
-              <button className="btn btn-ghost" style={{ flex: 'none', minWidth: 44, minHeight: 44, padding: 0 }} onClick={() => removeAt(i)} aria-label={`Remove ${seg.title} from the plan`}>
-                <MinusIcon />
-              </button>
+              <div className="row" style={{ flex: 'none', gap: 2, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 140 }}>
+                <button
+                  className="btn btn-ghost"
+                  style={{ minWidth: 44, minHeight: 44, padding: 0 }}
+                  disabled={i === 0}
+                  onClick={(e) => moveAt(i, -1, e.currentTarget)}
+                  aria-label={`Move ${seg.title} earlier`}
+                >
+                  ↑
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  style={{ minWidth: 44, minHeight: 44, padding: 0 }}
+                  disabled={i === plan.segments.length - 1}
+                  onClick={(e) => moveAt(i, 1, e.currentTarget)}
+                  aria-label={`Move ${seg.title} later`}
+                >
+                  ↓
+                </button>
+                <button className="btn btn-ghost btn-sm" style={{ minHeight: 44 }} onClick={() => swapAt(i)} aria-label={`Swap ${seg.title} for another`}>
+                  Swap
+                </button>
+                <button className="btn btn-ghost" style={{ minWidth: 44, minHeight: 44, padding: 0 }} onClick={() => removeAt(i)} aria-label={`Remove ${seg.title} from the plan`}>
+                  <MinusIcon />
+                </button>
+              </div>
             </div>
           ))}
           <div className="list-row">
-            <span className="grow tiny faint">Total</span>
+            <span className="grow tiny faint">Planned</span>
             <span className="mono-num" style={{ fontWeight: 600 }}>{total} min</span>
           </div>
+          {unused > 0 && (
+            <div className="list-row">
+              <span className="grow tiny faint">Unused of your {plan.budgetMinutes} min</span>
+              <span className="mono-num tiny faint">{unused} min</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -304,7 +347,7 @@ function PlanPreview() {
         <button className="btn btn-lg" onClick={regenerate}>Regenerate</button>
       </div>
       <p className="tiny faint">
-        Each block is real practice — start it, close it, and the plan moves on. Swap or remove anything before you begin.
+        Each block is real practice — start it, close it, and the plan moves on. Reorder, swap or remove anything before you begin; removing never lengthens the rest.
       </p>
     </div>
   );
@@ -322,6 +365,7 @@ function PlanRunner() {
 
   const done = activePlan.segments.filter((s) => s.status === 'done').length;
   const finished = activePlan.pointer >= activePlan.segments.length;
+  const time = planRunTime(activePlan);
 
   function begin() {
     beginPlanSegment();
@@ -345,14 +389,19 @@ function PlanRunner() {
           </button>
         </div>
         <p className="page-sub">
-          {done} of {activePlan.segments.length} done · {activePlan.budgetMinutes} min planned
+          {done} of {activePlan.segments.length} done · {time.remaining} min left of {time.planned} planned
+          {time.unused > 0 ? ` · ${time.unused} of ${time.available} unused` : ''} · {time.recorded} min recorded
         </p>
       </header>
 
       {finished ? (
         <div className="card card-accent stack-sm">
           <h2 className="title-md">Session complete</h2>
-          <p className="dim">You worked through the plan. End on that — rest is where it consolidates.</p>
+          <p className="dim">
+            {done > 0
+              ? 'You worked through the plan. End on that — rest is where it consolidates.'
+              : 'Nothing from this plan was practised — every segment was skipped, and nothing was recorded.'}
+          </p>
           <button className="btn btn-primary btn-lg" onClick={finish}>
             <CheckIcon /> Done
           </button>
@@ -372,7 +421,11 @@ function PlanRunner() {
                 <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
                   <span className="mono-num" style={{ fontWeight: 600, minWidth: 44 }}>{seg.minutes} min</span>
                   <span className="tiny faint">{BUCKET_LABEL[seg.bucket]}</span>
-                  {seg.status === 'done' && <span className="tiny" style={{ color: 'var(--tone-good)' }}>done</span>}
+                  {seg.status === 'done' && (
+                    <span className="tiny" style={{ color: 'var(--tone-good)' }}>
+                      done{seg.actualMinutes !== undefined ? ` · ${seg.actualMinutes} min recorded` : ''}
+                    </span>
+                  )}
                   {seg.status === 'skipped' && <span className="tiny faint">skipped</span>}
                 </div>
                 <div dir="auto" style={{ textAlign: 'start' }}>
@@ -389,10 +442,20 @@ function PlanRunner() {
                   <button className="btn btn-sm" onClick={begin} aria-label={`Start ${seg.title}`}>
                     <PlayIcon /> Start
                   </button>
-                  <button className="btn btn-ghost btn-sm" onClick={skipPlanSegment} aria-label={`Skip ${seg.title}`}>
+                  <button className="btn btn-ghost btn-sm" style={{ minHeight: 44 }} onClick={() => skipPlanSegment()} aria-label={`Skip ${seg.title}`}>
                     Skip
                   </button>
                 </div>
+              )}
+              {!isCurrent && seg.status === 'pending' && (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ flex: 'none', minHeight: 44 }}
+                  onClick={() => skipPlanSegment(i)}
+                  aria-label={`Skip ${seg.title}`}
+                >
+                  Skip
+                </button>
               )}
             </div>
           );

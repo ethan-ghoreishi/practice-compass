@@ -10,7 +10,6 @@ import {
   validateBudgetMinutes,
   type PathwayRoutine,
 } from '../domain';
-import { useStore } from '../store/useStore';
 
 /**
  * RUN THIS ROUTINE FOR THE TIME YOU ACTUALLY HAVE.
@@ -36,18 +35,17 @@ import { useStore } from '../store/useStore';
  * "non-essential dropped" would be a plain untruth about the one distinction
  * the syllabus's own ⭐ marking exists to make.
  *
- * It starts the run HERE and then navigates, because `startRoutineRun` already
- * takes the segments from its caller and the runner freezes whatever it is
- * given — so fitting needs no runner change at all. The bound is shared with
- * "Plan this session" (`validateBudgetMinutes`, 5-120) so the two reject
- * exactly the same thing; nothing else about the Session Plan is reused.
+ * It starts nothing: it opens the routine page with the chosen length, where
+ * the FITTED contents are listed and the run begins only from that page's own
+ * Start tap — so the preview is exactly the run that starts. The bound is
+ * shared with "Plan this session" (`validateBudgetMinutes`, 5-120) so the two
+ * reject exactly the same thing; nothing else about the Session Plan is reused.
  *
  * One component for all three routine surfaces (Today, a stage, a pathway), so
  * they cannot drift apart.
  */
 export default function RoutineDuration({ routine }: { routine: PathwayRoutine }) {
   const navigate = useNavigate();
-  const startRoutineRun = useStore((s) => s.startRoutineRun);
   const [open, setOpen] = useState(false);
   const [essentialsOnly, setEssentialsOnly] = useState(false);
   const hasEssential = routine.segments.some((s) => s.essential);
@@ -120,16 +118,12 @@ export default function RoutineDuration({ routine }: { routine: PathwayRoutine }
         disabled={minutes === null || fitted.length === 0}
         onClick={() => {
           if (minutes === null || fitted.length === 0) return;
-          // `startRoutineRun` REFUSES while any clock is already running, so a
-          // duration chosen here can never reset a run in progress to zero.
-          // Navigating regardless is deliberate and is what every other Start
-          // on this page already does: the owner lands on whichever clock is
-          // actually running and resolves it there.
-          startRoutineRun(routine.id, essentialsOnly, fitted);
-          navigate(`/routine/${routine.id}${essentialsOnly ? '?short=1' : ''}`);
+          // A run already in progress is where that page takes the owner; a
+          // chosen length never resets one.
+          navigate(`/routine/${routine.id}?minutes=${minutes}${essentialsOnly ? '&short=1' : ''}`);
         }}
       >
-        Start
+        Start…
       </button>
     </div>
   );

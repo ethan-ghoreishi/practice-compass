@@ -30,7 +30,8 @@ function fixture(): string {
     materials: [],
     items: [
       item(GUSHEH, GUSHEH_TITLE, { primaryFocus: 'tone', difficulty: 3, importance: 4, timesPractised: 4, nextReviewDate: '2026-10-14' }),
-      item(PIECE, PIECE_TITLE, { itemType: 'full_piece', primaryFocus: 'rhythm', difficulty: 4, importance: 3, timesPractised: 2, nextReviewDate: '2026-10-13' }),
+      // Kept fresh: its date is a whole-item check's, decided by spaced retention.
+      item(PIECE, PIECE_TITLE, { itemType: 'full_piece', primaryFocus: 'rhythm', difficulty: 4, importance: 3, timesPractised: 2, nextReviewDate: '2026-10-13', returnIntent: 'keep_fresh' }),
     ],
     blocks: [],
     reviews: [
@@ -89,7 +90,10 @@ async function practiseAndFinish(app: PracticeApp, itemId: string): Promise<void
 }
 
 const itemLine = (page: Page, text: string) => page.getByText(text, { exact: true });
-const changeItem = (page: Page) => page.getByRole('button', { name: 'Change status, focus and effort' });
+const changeItem = (page: Page) => page.getByRole('button', { name: 'Change status, focus, effort and return' });
+/** Say the close checked the WHOLE item — the only scope a readiness suggestion is offered for. */
+const wholeCheck = (page: Page) =>
+  page.getByRole('group', { name: 'What this block covered' }).getByRole('button', { name: 'Whole-item check', exact: true }).click();
 
 describe('after practice', () => {
   it('close screen revises status focus and effort in one tap and saves them with the block', async () => {
@@ -100,13 +104,15 @@ describe('after practice', () => {
         // --- SAVE: the collapsed line, Change, three picks, Save --------------
         await practiseAndFinish(app, GUSHEH);
         // The item as it stands, before any result: one collapsed line.
-        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} · Focus ${FOCUS_LABELS.tone} · Effort 3 of 5`).waitFor();
+        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} · Focus ${FOCUS_LABELS.tone} · Effort 3 of 5 · Working on this`).waitFor();
+        await wholeCheck(page);
         await page.getByRole('button', { name: RESULT_LABELS.stable_in_context, exact: true }).click();
-        // The engine's suggestion is the pending change, shown on that line.
-        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} → ${ITEM_STATUS_LABELS.integrated} (suggested) · Focus ${FOCUS_LABELS.tone} · Effort 3 of 5`).waitFor();
+        // A whole-item check OFFERS the readiness change; nothing is pre-selected.
+        await page.getByRole('button', { name: `Mark it ${ITEM_STATUS_LABELS.integrated}` }).click();
+        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} → ${ITEM_STATUS_LABELS.integrated} · Focus ${FOCUS_LABELS.tone} · Effort 3 of 5 · Working on this`).waitFor();
         await changeItem(page).click();
         const statusPills = page.getByRole('group', { name: 'Status after this block' });
-        // Pre-selected, and SEEN as selected — not only announced.
+        // The taken suggestion is selected, and SEEN as selected — not only announced.
         const suggested = statusPills.getByRole('button', { name: ITEM_STATUS_LABELS.integrated, exact: true });
         expect(await suggested.getAttribute('aria-pressed')).toBe('true');
         expect(await suggested.getAttribute('class')).toContain('selected');
@@ -116,7 +122,7 @@ describe('after practice', () => {
         const kept = statusPills.getByRole('button', { name: ITEM_STATUS_LABELS.maintenance, exact: true });
         expect(await kept.getAttribute('aria-pressed')).toBe('true');
         expect(await kept.getAttribute('class')).toContain('selected');
-        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} → ${ITEM_STATUS_LABELS.maintenance} · Focus ${FOCUS_LABELS.memory} · Effort 5 of 5`).waitFor();
+        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} → ${ITEM_STATUS_LABELS.maintenance} · Focus ${FOCUS_LABELS.memory} · Effort 5 of 5 · Working on this`).waitFor();
         // The date this screen shows before saving.
         await page.getByRole('button', { name: 'Change', exact: true }).click();
         const shownDate = await page.getByLabel('Next review date').inputValue();
@@ -130,7 +136,7 @@ describe('after practice', () => {
         expect(afterSave.nextReviewDate).toBe(shownDate);
         expect(afterSave.importance).toBe(4);
         const block = (await saved(app)).blocks.at(-1)!;
-        expect([block.practiceItemId, block.result, block.focus]).toEqual([GUSHEH, 'stable_in_context', 'tone']);
+        expect([block.practiceItemId, block.result, block.focus, (block as SavedBlock & { scope?: string }).scope]).toEqual([GUSHEH, 'stable_in_context', 'tone', 'whole']);
         // …and they survive a reload, on the item's own page.
         await reload(app);
         await goTo(app, `/items/${GUSHEH}`);
@@ -141,7 +147,7 @@ describe('after practice', () => {
         // --- UNTOUCHED: the item's three fields stay exactly as they were -----
         const pieceBefore = await itemOf(app, PIECE);
         await practiseAndFinish(app, PIECE);
-        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} · Focus ${FOCUS_LABELS.rhythm} · Effort 4 of 5`).waitFor();
+        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} · Focus ${FOCUS_LABELS.rhythm} · Effort 4 of 5 · Keep fresh`).waitFor();
         await page.getByRole('button', { name: RESULT_LABELS.same, exact: true }).click();
         await page.getByRole('button', { name: 'Save block' }).click();
         await page.getByRole('navigation', { name: 'Primary' }).waitFor();
@@ -149,12 +155,14 @@ describe('after practice', () => {
         expect(untouched).toBe(2);
         expect(pick(await itemOf(app, PIECE))).toEqual(pick(pieceBefore));
 
-        // --- SAVE WITHOUT A RESULT: explicit edits kept, suggestion dropped ----
+        // --- SAVE WITHOUT A RESULT: explicit edits kept, an untaken offer never applies ----
         const gushehBefore = await itemOf(app, GUSHEH);
         const pieceScheduled = await itemOf(app, PIECE);
         await practiseAndFinish(app, PIECE);
+        await wholeCheck(page);
         await page.getByRole('button', { name: RESULT_LABELS.performable, exact: true }).click();
-        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} → ${ITEM_STATUS_LABELS.performable} (suggested) · Focus ${FOCUS_LABELS.rhythm} · Effort 4 of 5`).waitFor();
+        await page.getByRole('button', { name: `Mark it ${ITEM_STATUS_LABELS.performable}` }).waitFor();
+        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} · Focus ${FOCUS_LABELS.rhythm} · Effort 4 of 5 · Keep fresh`).waitFor();
         await changeItem(page).click();
         await page.getByRole('combobox', { name: 'Primary focus' }).selectOption('');
         await page.getByRole('button', { name: 'Save without a result' }).click();
@@ -336,6 +344,7 @@ describe('after practice', () => {
       try {
         // --- THE SAME BLOCK: everything typed and chosen comes back ---------
         await practiseAndFinish(app, PIECE);
+        await wholeCheck(page);
         await page.getByRole('button', { name: RESULT_LABELS.stable_alone, exact: true }).click();
         await observation.fill('First pass was rushed.');
         await page.getByPlaceholder('The one thing to try next time').fill('Slower at the turn');
@@ -363,10 +372,12 @@ describe('after practice', () => {
         await finish();
 
         expect(await page.getByRole('button', { name: RESULT_LABELS.stable_alone, exact: true }).getAttribute('aria-pressed'), engine).toBe('true');
+        // What the block covered comes back with the rest of the draft.
+        expect(await page.getByRole('group', { name: 'What this block covered' }).getByRole('button', { name: 'Whole-item check', exact: true }).getAttribute('aria-pressed'), engine).toBe('true');
         expect(await observation.inputValue(), engine).toBe('First pass was rushed. Second pass steadier.');
         expect(await page.getByPlaceholder('The one thing to try next time').inputValue(), engine).toBe('Slower at the turn');
         expect(await page.getByRole('textbox', { name: 'Question for your teacher' }).inputValue(), engine).toBe('Which fingering at bar 9?');
-        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} → ${ITEM_STATUS_LABELS.fragile} · Focus ${FOCUS_LABELS.rhythm} · Effort 4 of 5`).waitFor();
+        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} → ${ITEM_STATUS_LABELS.fragile} · Focus ${FOCUS_LABELS.rhythm} · Effort 4 of 5 · Keep fresh`).waitFor();
         // The untouched minutes proposal counts the extra practice…
         const proposed = Number(await minutes.inputValue());
         expect(proposed, engine).toBeGreaterThanOrEqual(6);

@@ -2,17 +2,26 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   aggregateItemMinutes,
+  describeFitDrop,
+  fitRoutineToMinutes,
   locateClock,
   nextSignal,
   RESULT_LABELS,
+  routineRunTime,
   runElapsedSeconds,
+  runSegmentStates,
   segmentBoundaries,
   segmentsForRun,
+  validateBudgetMinutes,
   type BlockResult,
   type ID,
+  type PracticeDB,
+  type RoutineSegment,
   type RunSegment,
+  type RunSegmentState,
 } from '../domain';
 import { useStore } from '../store/useStore';
+import { storageSettled } from '../store/idb';
 import { getItem } from '../store/lookups';
 import { formatClock } from '../components/format';
 import { OptionPills, SaveStatus, useAcknowledgedSaves } from '../components/ui';
@@ -48,7 +57,10 @@ export default function RoutineRunner() {
   const pauseRoutineRun = useStore((s) => s.pauseRoutineRun);
   const resumeRoutineRun = useStore((s) => s.resumeRoutineRun);
   const skipRoutineRun = useStore((s) => s.skipRoutineRun);
+  const moveOnRoutineRun = useStore((s) => s.moveOnRoutineRun);
+  const removeRoutineSegment = useStore((s) => s.removeRoutineSegment);
   const finishRoutine = useStore((s) => s.finishRoutine);
+  const persistAgain = useStore((s) => s.persistAgain);
   const claimRoutineSignal = useStore((s) => s.claimRoutineSignal);
   const sound = usePracticeSound();
 
@@ -59,6 +71,13 @@ export default function RoutineRunner() {
   // — the finished screen must show exactly what was saved, never a value
   // recomputed later against a clock that has since stopped advancing.
   const [result, setResult] = useState<{ segs: RunSegment[]; elapsedSeconds: number; blockIds: ID[] } | null>(null);
+  // Whether what Finish wrote has reached IndexedDB — "Saved" is said only
+  // then. A failed write keeps the run's outcome in memory (no second credit)
+  // and Try again writes it again.
+  const [saved, setSaved] = useState<'saving' | 'saved' | 'failed' | null>(null);
+  // Before the start tap: what this run will contain. Removing an entry here
+  // drops it and its minutes from THIS run only — never from the routine.
+  const [removed, setRemoved] = useState<Set<number>>(() => new Set());
   const [, setTick] = useState(0);
 
   const isMine = !!routineId && activeRoutine?.routineId === routineId;
@@ -113,6 +132,16 @@ export default function RoutineRunner() {
   const begin = () => {
     if (routine && routineId) startRoutineRun(routineId, shortOnTime, segmentsForRun(routine.segments, shortOnTime));
   };
+  // The contents the preview shows ARE the run a Start begins: the content
+  // choice (essentials only), then any chosen length (proportional fit), then
+  // whatever was removed here — nothing refills the time removal frees.
+  const fitMinutes = validateBudgetMinutes(Number(searchParams.get('minutes') ?? ''));
+  const content = routine ? segmentsForRun(routine.segments, shortOnTime) : [];
+  const previewed = fitMinutes === null ? content : fitRoutineToMinutes(content, fitMinutes);
+  const chosen = previewed.filter((_, i) => !removed.has(i));
+  const beginChosen = () => {
+    if (routine && routineId && chosen.length > 0) startRoutineRun(routineId, shortOnTime, chosen);
+  };
 
   // Force a re-render every second so the countdown visibly ticks. The actual
   // time is always read fresh from the wall clock below, so a background/lock
@@ -143,10 +172,19 @@ export default function RoutineRunner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMine, activeRoutine?.running, activeRoutine?.signalledThrough, elapsedSeconds, segs]);
 
+  function acknowledge() {
+    setSaved('saving');
+    void storageSettled().then(
+      () => setSaved('saved'),
+      () => setSaved('failed'),
+    );
+  }
+
   function finish() {
     if (!isMine || result) return;
     // The minutes are saved HERE, before Routine complete offers any capture.
     setResult({ segs, elapsedSeconds, blockIds: finishRoutine() });
+    acknowledge();
   }
 
   // Natural completion: the wall clock alone decides once E reaches the run's
@@ -184,6 +222,29 @@ export default function RoutineRunner() {
             <div className="title-md">Routine complete</div>
           </div>
         </div>
+        {recorded.size > 0 && (
+          <div className="tiny" role="status" style={{ color: saved === 'failed' ? 'var(--tone-alert)' : undefined }}>
+            {saved === 'failed' ? (
+              <>
+                <span dir="ltr">Not saved on this device yet — the practice is held here, counted once.</span>{' '}
+                <button
+                  type="button"
+                  className="btn btn-sm"
+                  onClick={() => {
+                    persistAgain();
+                    acknowledge();
+                  }}
+                >
+                  Try again
+                </button>
+              </>
+            ) : (
+              <span className="faint" dir="ltr">
+                {saved === 'saved' ? 'Saved on this device — no feedback needed.' : 'Saving…'}
+              </span>
+            )}
+          </div>
+        )}
         {recorded.size > 0 ? (
           <div className="card stack-sm" style={{ textAlign: 'left' }}>
             <div className="section-label">Recorded</div>
@@ -193,7 +254,7 @@ export default function RoutineRunner() {
                 the title shapes RTL and still hugs the English edge.
                 Identical to 'left' for an English title. */}
             {[...recorded.entries()].map(([itemId, minutes]) => (
-              <div key={itemId} className="row between" dir="auto" style={{ textAlign: 'start' }}>
+              <div key={itemId} className="row between" dir="auto" style={{ textAlign: 'start' }} data-recorded-item={itemId}>
                 <span className="truncate">
                   {getItem(db, itemId)?.title ?? 'Item'}
                 </span>
@@ -205,7 +266,9 @@ export default function RoutineRunner() {
             ))}
           </div>
         ) : (
-          <p className="page-sub">Nicely done. Short and steady is the whole game.</p>
+          <p className="page-sub">
+            <span dir="ltr">Nothing was recorded — no item-bound segment was practised in this run.</span>
+          </p>
         )}
         {recorded.size > 0 && <RoutineCapture blockIds={result.blockIds} />}
         <button className="btn btn-primary btn-lg" onClick={() => navigate(backTo)}>
@@ -216,11 +279,12 @@ export default function RoutineRunner() {
   }
 
   if (!isMine && !otherActive && !active) {
-    const planned = segmentsForRun(routine.segments, shortOnTime);
-    const minutes = planned.reduce((n, x) => n + x.minutes, 0);
+    const chosenMinutes = chosen.reduce((n, x) => n + x.minutes, 0);
+    const removedMinutes = previewed.reduce((n, x, i) => n + (removed.has(i) ? x.minutes : 0), 0);
+    const dropped = fitMinutes === null ? null : describeFitDrop(content, previewed);
     return (
-      <div className="stack-lg" style={{ paddingTop: 'var(--space-6)', textAlign: 'center' }}>
-        <header className="stack-sm">
+      <div className="stack-lg" style={{ paddingTop: 'var(--space-6)' }}>
+        <header className="stack-sm" style={{ textAlign: 'center' }}>
           <div className="eyebrow">{stage ? `${stage.code} · ` : ''}Routine</div>
           {/* The routine's own name leads its group; the generated summary
               is an inline LTR isolate inside it. */}
@@ -228,15 +292,35 @@ export default function RoutineRunner() {
             <h1 className="page-title">{routine.name}</h1>
             <div className="tiny faint">
               <span dir="ltr">
-                {planned.length} segments · {minutes} min{shortOnTime ? ' · short on time' : ''}
+                {chosen.length} segments · {chosenMinutes} min{shortOnTime ? ' · short on time' : ''}
+                {fitMinutes !== null ? ` · fitted to ${fitMinutes} min` : ''}
+                {removedMinutes > 0 ? ` · ${removedMinutes} min removed, left unused` : ''}
+                {dropped ? ` · ${dropped}` : ''}
               </span>
             </div>
           </div>
         </header>
-        <button className="btn btn-primary btn-lg" onClick={begin}>
+        <RunContents
+          db={db}
+          segments={previewed}
+          label="What this run will contain"
+          rowState={(i) => (removed.has(i) ? 'skipped' : 'pending')}
+          onRemove={(i) => setRemoved((r) => new Set(r).add(i))}
+          removeLabel="Remove from this session"
+        />
+        {chosen.length === 0 ? (
+          <p className="small faint" style={{ textAlign: 'center' }}>
+            <span dir="ltr">Every segment is removed — nothing to run.</span>
+          </p>
+        ) : null}
+        <button
+          className="btn btn-primary btn-lg"
+          disabled={chosen.length === 0}
+          onClick={fitMinutes === null && removed.size === 0 ? begin : beginChosen}
+        >
           <PlayIcon /> Start
         </button>
-        <Link to={backTo} className="link small">
+        <Link to={backTo} className="link small" style={{ textAlign: 'center' }}>
           Not now
         </Link>
       </div>
@@ -247,9 +331,12 @@ export default function RoutineRunner() {
 
   const seg = authoredSegments[clock.segIndex];
   if (!seg) return null;
+  const states = runSegmentStates(authoredSegments, segs, elapsedSeconds);
+  const time = routineRunTime(authoredSegments, segs, elapsedSeconds);
+  const segTitle = segmentTitle(db, seg);
   const segTotalSeconds = segs[clock.segIndex]?.seconds ?? seg.minutes * 60;
   const deg = segTotalSeconds > 0 ? (clock.segElapsedSeconds / segTotalSeconds) * 360 : 0;
-  const next = authoredSegments[clock.segIndex + 1];
+  const next = authoredSegments.find((_, i) => i > clock.segIndex && !segs[i]?.skipped);
   // A segment reached via a boundary crossing (never the run's opening segment) stays
   // perceptibly marked for a defined window — never a one-render flash — so a musician
   // glancing up a few seconds after arriving still sees that the segment changed. This is
@@ -261,6 +348,8 @@ export default function RoutineRunner() {
   return (
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)', textAlign: 'center' }}>
       <header className="stack-sm">
+        {/* The page's one heading names the run; the eyebrow below shows it. */}
+        <h1 className="sr-only">{routine.name}</h1>
         <div className="eyebrow">
           {stage ? `${stage.code} · ` : ''}
           {routine.name}
@@ -269,7 +358,7 @@ export default function RoutineRunner() {
         <div className={`tiny${justArrived ? ' segment-arrived' : ' faint'}`}>
           {justArrived ? 'New segment · ' : ''}
           Segment {clock.segIndex + 1} of {authoredSegments.length}
-          {seg.itemId ? '' : ' · warm-up — not logged as practice'}
+          {seg.itemId ? '' : ' · unbound — not logged as practice'}
         </div>
       </header>
 
@@ -300,9 +389,9 @@ export default function RoutineRunner() {
           one block rather than pointing at opposite edges. */}
       <div dir="auto" style={{ textAlign: 'center' }}>
         <div className="title-md" style={{ fontSize: '1.2rem' }}>
-          {seg.label}
+          {segTitle}
         </div>
-        {seg.itemId && (
+        {seg.itemId && seg.label && (
           <div className="tiny faint" dir="auto">
             {getItem(db, seg.itemId)?.title}
           </div>
@@ -312,7 +401,7 @@ export default function RoutineRunner() {
         {next && (
           <div className="tiny faint" style={{ marginTop: 6 }}>
             <span dir="ltr">
-              Next: <span dir="auto">{next.label}</span>
+              Next: <span dir="auto">{segmentTitle(db, next)}</span>
             </span>
           </div>
         )}
@@ -340,12 +429,34 @@ export default function RoutineRunner() {
             <PlayIcon /> Resume
           </button>
         )}
-        <button className="btn" onClick={skipRoutineRun}>
+        <button className="btn" onClick={moveOnRoutineRun} aria-label="Move on — keep the time practised">
+          Move on
+        </button>
+        <button className="btn btn-ghost" onClick={skipRoutineRun} aria-label="Skip — log nothing for this segment">
           Skip
         </button>
       </div>
+      <p className="tiny faint">
+        <span dir="ltr">Move on keeps what you practised here; Skip logs nothing for this segment. Neither lengthens another segment.</span>
+      </p>
 
       <SoundNote state={sound} />
+
+      <details className="disclosure" style={{ textAlign: 'start' }}>
+        <summary className="small">
+          <span dir="ltr">
+            Run contents · {Math.round(time.remaining / 60)} of {Math.round(time.planned / 60)} min left
+            {time.unused >= 60 ? ` · ${Math.round(time.unused / 60)} min unused` : ''}
+          </span>
+        </summary>
+        <RunContents
+          db={db}
+          segments={authoredSegments}
+          rowState={(i) => states[i]}
+          onRemove={(i) => (states[i] === 'pending' ? removeRoutineSegment(i) : undefined)}
+          removeLabel="Remove from this run"
+        />
+      </details>
 
       <div className="stack-sm" style={{ alignItems: 'center' }}>
         <button className="btn btn-ghost btn-sm" onClick={finish}>
@@ -354,6 +465,82 @@ export default function RoutineRunner() {
         <span className="tiny faint">Records what you've practised so far — never a discard</span>
       </div>
     </div>
+  );
+}
+
+/** A segment's name: its own label, else its bound item's title — a bound segment needs no label of its own. */
+function segmentTitle(db: PracticeDB, seg: RoutineSegment): string {
+  return seg.label || (seg.itemId ? getItem(db, seg.itemId)?.title : undefined) || 'Segment';
+}
+
+const STATE_LABEL: Record<RunSegmentState, string> = {
+  done: 'done',
+  moved_on: 'moved on',
+  skipped: 'skipped',
+  current: 'now',
+  pending: '',
+};
+
+/**
+ * The run's contents, in order — before the start tap (what Start will run)
+ * and while running (each entry's state). An unbound segment says so: it is
+ * a countdown and logs nothing. Only a pending entry offers removal.
+ */
+function RunContents({
+  db,
+  segments,
+  label,
+  rowState,
+  onRemove,
+  removeLabel,
+}: {
+  db: PracticeDB;
+  segments: RoutineSegment[];
+  label?: string;
+  rowState: (i: number) => RunSegmentState;
+  onRemove: (i: number) => void;
+  removeLabel: string;
+}) {
+  return (
+    <section className="stack-sm" aria-label={label ?? 'Run contents'}>
+      {label && <div className="section-label">{label}</div>}
+      <ol className="card card-flush list" role="list" style={{ margin: 0, padding: 0 }}>
+        {segments.map((seg, i) => {
+          const state = rowState(i);
+          const item = seg.itemId ? getItem(db, seg.itemId) : undefined;
+          const title = segmentTitle(db, seg);
+          return (
+            <li key={i} className="list-row" style={{ alignItems: 'center', opacity: state === 'skipped' ? 0.55 : 1 }}>
+              <span className="mono-num tiny faint" style={{ minWidth: 20 }}>
+                {i + 1}
+              </span>
+              <div className="grow" dir="auto" style={{ minWidth: 0, textAlign: 'start' }}>
+                <div style={{ fontWeight: state === 'current' ? 600 : 500 }}>{title}</div>
+                {item && seg.label && <div className="tiny faint" dir="auto">{item.title}</div>}
+                <div className="tiny faint">
+                  <span dir="ltr">
+                    {seg.minutes} min{seg.essential ? ' · essential' : ''}
+                    {seg.itemId ? '' : ' · unbound — not logged'}
+                    {STATE_LABEL[state] ? ` · ${STATE_LABEL[state]}` : ''}
+                  </span>
+                </div>
+              </div>
+              {state === 'pending' && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ flex: 'none', minHeight: 44 }}
+                  onClick={() => onRemove(i)}
+                  aria-label={`${removeLabel}: ${title}`}
+                >
+                  Remove
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 

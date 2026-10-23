@@ -1,10 +1,13 @@
 import type { ID, ISODate, ItemStatus, PracticeBlock, PracticeItem } from './types';
 import {
+  candidatePool,
   groupBlocksByItem,
+  hasDueReview,
   isProactiveCandidate,
   lastResultsAllSame,
   neglectedScore,
   overdueScore,
+  sameWork,
   scoreItems,
   type ItemScore,
 } from './scoring';
@@ -59,9 +62,9 @@ export function buildReason(score: ItemScore, kind: RecommendationKind): string 
         : `you committed it for your class on ${score.lessonDate}, ${daysToLesson} day${daysToLesson === 1 ? '' : 's'} away`,
     );
   }
-  if (overdueDays === 0) drivers.push('its review is due today');
+  if (overdueDays === 0) drivers.push('it is due back today');
   else if (overdueDays !== null && overdueDays > 0) {
-    drivers.push(`its review is ${overdueDays} day${overdueDays === 1 ? '' : 's'} overdue`);
+    drivers.push(`it was due back ${overdueDays} day${overdueDays === 1 ? '' : 's'} ago`);
   }
   if (STATUS_PHRASE[item.status] && (parts.fragility >= 3 || item.status === 'dormant')) {
     drivers.push(`it's ${STATUS_PHRASE[item.status]!}`);
@@ -107,29 +110,45 @@ export function recommend(
   preparationDates?: Map<ID, ISODate>,
 ): Recommendations {
   const blocksByItem = groupBlocksByItem(blocks);
-  // ONE eligibility policy, shared with the planner and its swaps. Resting
-  // material never surfaces in a suggestion — including through a "nothing
-  // else left" fallback, which is exactly where it used to reappear.
-  const scored = scoreItems(items.filter(isProactiveCandidate), blocksByItem, now, preparationDates);
+  // ONE eligibility policy AND one candidate pool, shared with the planner and
+  // its swaps. Resting material never surfaces in a suggestion — including
+  // through a "nothing else left" fallback, which is exactly where it used to
+  // reappear — and today's practice steps aside while anything else waits.
+  const { pool: scored, isRepeatPool } = candidatePool(
+    scoreItems(items.filter(isProactiveCandidate), blocksByItem, now, preparationDates),
+    blocks,
+    now,
+  );
   const used = new Set<string>();
+  const chosen: ItemScore[] = [];
 
   const take = (s: ItemScore | undefined, kind: RecommendationKind): Recommendation | null => {
     if (!s) return null;
     used.add(s.item.id);
-    return { kind, score: s, reason: buildReason(s, kind) };
+    chosen.push(s);
+    const reason = buildReason(s, kind);
+    return {
+      kind,
+      score: s,
+      reason: isRepeatPool ? `Practised earlier today — nothing else eligible is waiting. ${reason}` : reason,
+    };
   };
+  // A piece and its own part are one intended work: one card, unless the
+  // other's own review is due.
+  const open = (s: ItemScore) =>
+    !used.has(s.item.id) && !(chosen.some((c) => sameWork(c.item, s.item)) && !hasDueReview(s.item, now));
 
   // 1. Best Next Focus — simply the highest score. Recent exposure is already
   // a bounded, decaying term IN that score, so skipping a "saturated" item
   // here would penalise it twice and could hide genuinely urgent work.
-  const best = scored.find((s) => !used.has(s.item.id));
+  const best = scored.find(open);
 
   const bestRec = take(best, 'best');
 
   // 2. Quick Win — achievable and worthwhile, not over-drilled.
   const quickWin = scored.find(
     (s) =>
-      !used.has(s.item.id) &&
+      open(s) &&
       s.item.difficulty <= 3 &&
       s.item.importance >= 3 &&
       QUICK_WIN_STATUSES.includes(s.item.status),
@@ -139,7 +158,7 @@ export function recommend(
   // 3. Maintenance — something solid that is due or has been neglected.
   const maintenance = scored.find(
     (s) =>
-      !used.has(s.item.id) &&
+      open(s) &&
       MAINTENANCE_STATUSES.includes(s.item.status) &&
       (overdueScore(s.item, now) > 0 || neglectedScore(s.item, now) >= 1),
   );
