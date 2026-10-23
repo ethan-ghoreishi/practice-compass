@@ -1,46 +1,34 @@
 ---
 id: 20261023-make-practice-records-dependable-and-kee-34cc
 contractId: 20261023-make-practice-records-dependable-and-kee-34cc
-patchId: a7b8dfac7357dca2214b887bccf05c8949f8b6e3
+patchId: 89fc828ee3e5386153d2602cb21bdd0cd9f94bee
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: notes-recovery-idempotence
-    summary: "P2: Successful retry after a failed conflicting-note save leaves a
-      recovery draft which reload appends again (ItemNotes.tsx:156-163;
-      notesDrafts.ts:44-47; useStore.ts:2614-2618)."
-    counterexample: "Edit original to local draft; replace stored notes with remote
-      words; fail autosave; repair storage; Try again; reload. Expected both
-      texts once. Actual local draft appears twice. Reproduced for item and
-      lesson owners. Affects ItemDetail, ActiveBlock, RoutineRunner and Lessons
-      through DurableNotes; plain retry, owner typing and gone-record refusal
-      checked clean. Extend exact test: working note saves preserve newest text
-      and refuse stale ownership across failures and replacement."
-  - family: session-unused-time-accounting
-    summary: "P2: planRunTime omits time freed by early completion from running and
-      completed summaries (plan.ts:971-980; SessionPlan.tsx:391-393)."
-    counterexample: "Start two 10-minute entries in a 20-minute Plan. Save the first
-      after 2 minutes: remaining=10, recorded=2, unused=0 instead of 8. Save the
-      second after 3 minutes: unused=0 instead of 15. Also affects partial
-      completion followed by skip and restored runs. Preview removal,
-      whole-entry skip and Routine move-on checked clean. Extend exact test:
-      routine controls distinguish skipped time from partial practice across run
-      transitions; cover the rendered ac-5 journey."
-  - family: parent-part-opportunity-exclusion
-    summary: "P2: swapSegment omits the parent/part exclusion applied by build and
-      Today (plan.ts:857-874)."
-    counterexample: "Generate 30 minutes with usable technique items parent
-      importance 5, child importance 4 bound to parent, and other importance 1;
-      difficulty 3 each, no blocks/reviews. Build gives other warm-up 4 minutes
-      plus parent focus 25. Swap other gives child plus parent without a
-      separately due review. Reverse the importance values to reproduce the
-      opposite direction. Shared swap eligibility is affected;
-      build/regeneration, Today, move/remove and their due-review exception
-      checked clean. Extend exact test: class preparation and shared
-      recommendation pools return useful work without repetition noise."
-createdAt: 2026-10-23T22:24:28.419Z
-sealedAt: 2026-10-23T22:36:40.551Z
+    summary: "P2: Overlapping note-save acknowledgements leave stale recovery bases
+      and can delete a newer draft by text alone (ItemNotes.tsx:167-175,241;
+      notesDrafts.ts:44-47; useStore.ts:2618-2626). Recovery must reproduce the
+      latest owner draft exactly once."
+    counterexample: "Both item and lesson owners: hold save A, type A plus more,
+      acknowledge A, refuse the automatically queued newer write, then reload.
+      The recovery copy still has the pre-A base, so replay appends A plus more
+      to A; a previously kept-both save duplicates both competing texts. Also
+      queue saves first then second, type first again before either
+      acknowledgement, acknowledge first then second, and refuse the resulting
+      third write. The old first acknowledgement drops the newest first draft;
+      disk holds second and reload loses the latest first edit. Affects
+      ItemDetail, ActiveBlock and RoutineRunner through ItemNotes, and Lessons
+      through LessonNotes/DurableNotes, plus hydration replay. Checked clean:
+      ordinary and conflicting save failure followed by successful Try again,
+      item/lesson id separation, and gone-record refusal. Extend the exact test
+      working note saves preserve newest text and refuse stale ownership across
+      failures and replacement with both acknowledgement/failure/reload
+      sequences for both owners; rework the entire recovery-base and draft-drop
+      family."
+createdAt: 2026-10-23T23:00:46.867Z
+sealedAt: 2026-10-23T23:08:48.464Z
 ---
 
 # Review: Make practice records dependable and keep session choices aligned with the work being done
@@ -54,422 +42,8 @@ sealedAt: 2026-10-23T22:36:40.551Z
 - **Contract:** 20261023-make-practice-records-dependable-and-kee-34cc
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/56
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `a7b8dfac7357dca2214b887bccf05c8949f8b6e3`
+- **Diff patch-id:** `89fc828ee3e5386153d2602cb21bdd0cd9f94bee`
 - **Computed by:** prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified
-
-## The plan the owner approved
-
-Verbatim. `assumptions` and `possibleConflicts` are the Planner's advisory
-reading — check them against the diff rather than accepting them.
-
-````yaml
-# Approved intent: Make practice records dependable and keep session choices aligned with the work being done
-
-The owner imported this plan and confirmed the change. Its approved meaning is
-recorded here verbatim; the transport snapshot is deliberately omitted.
-
-- **Kind:** existing-flow
-- **Risk tier:** heavy
-- **Builder:** claude
-
-## What the owner asked for
-
-This is the wording the owner and the planning agent settled on together, taken
-from the plan itself — not a description reconstructed afterwards.
-
-> Use the Prismatica start skill to inspect the current practice-compass repo and produce an import-ready plan for Claude to build.
-> Treat this as a fresh, first-principles review of the practice/session experience. Prefer one coherent lane if safe. Diagnose root causes and choose the best UX/domain model rather than assuming my suggested solutions are correct. Recommended solutions are suggestions only. decide the best and most optimal options and solutions yourself if needed.
-> Cover these issues:
-> - Routine runs (solutions are suggestions only. decide the best and most optimal options and solutions yourself if needed): with my Setar “Warm up” routine containing two items, only the first item is reliably logged. If optional feedback is omitted, completed practice may not appear in that item’s Practice history. A skipped item should not be falsely logged as practised.
-> - Routine clarity/control: show what items are in a routine before starting and while running it. During a run, support a sensible skip/remove flow and decide whether unused time should be redistributed or discarded.
-> - Session Plan: allow the planned items to be reordered, not only swapped or removed.
-> - Working notes: edits made during practice should not be lost merely because I forget to press Done; design safe autosave/draft behaviour.
-> - Theory: find a coherent, low-friction way for session planning/recommendations to include useful theory study from time to time, especially for Setar/Persian music (e.g. Radif, dastgah, note functions), without bolting on an unrelated feature.
-> - Scheduling/review model: rethink it deeply. The current Status/result choices and spacing can confuse progress on a small chunk with readiness of the whole work. A successful chunk can push a still-unfinished piece out by weeks/months. Material being prepared for the next class should normally keep returning appropriately until that lesson rather than disappearing because it has accumulated successful reviews. Decide the best model for chunk work, whole-work readiness, class-driven urgency, results/statuses, recommendation and next-review dates while preserving honest practice records and avoiding repetitive/noisy recommendations.
-> - CI/release reliability: we repeatedly hit the GitHub Actions 10-minute Playwright browser-install timeout because azure.archive.ubuntu.com was reachable but too slow. Existing mirror protection detects dead mirrors but not this slow-mirror case. Deployment eventually succeeded after reruns. Inspect the current reliability machinery and include a bounded fix if still needed.
-> Protect existing data, sync, offline/PWA behaviour, sound/wake-lock behaviour, mobile keyboard/tab fixes and previously solved flows. If saved-data semantics must change, plan migration/backward compatibility explicitly.
-> Most importantly, design the plan to minimise builder↔reviewer loops: use family-level acceptance checks, test real counterexamples and missed states, distinguish product failures from harness/infrastructure failures, give Claude implementation discretion, and explicitly bound review so taste, speculative edge cases and unrelated pre-existing defects do not block. Do not over-prescribe implementation or create brittle source scanners merely to satisfy the plan. Allow the builder room to make optimal decision especially about implementation as it has direct access to the repo and changes and might have more insights.
-> Review the current Flows, AGENTS/DECISIONS and existing test before deciding scope. Anticipate interactions between these changes and consolidate shared root causes. Include only owner/manual checks that automation genuinely cannot prove.
-> Builder: Claude.
-> Return the final Prismatica import-ready plan only.
-> 
-> Final owner refinements, superseding only conflicting details above:
-> 1. Clarify CI lifecycle: deterministic local CI-setup proof is sufficient before review/seal. A real GitHub Actions run is post-ship evidence and must pass before merge; its absence before ship is not a review blocker.
-> 2. Add one minimal OWNER product check using real Setar data: one unfinished piece being prepared for the next class, focused chunk practice, its Next practice explanation, one Keep fresh item and one generated session plan. This is only to judge whether the new model and UX make sense in real practice; date/data correctness remains automated. Keep the existing native iPhone/sound check.
-> 3. For note conflicts, require no silent loss or overwrite and preservation of both competing texts, but let Claude use the simplest resolution consistent with the existing conflict model rather than requiring a new explicit conflict UI.
-> 4. Review Plan and Routine controls together, especially remove/skip/move-on and treatment of unused time. Choose the most coherent and user-friendly model across both so similar actions behave consistently where that makes sense and differences exist only when they have a clear product reason. Avoid making the user learn unnecessary different behaviours between Plan and Routine. Decide whether unused time is redistributed, discarded or handled another way in each relevant state, including before and during practice, based on the overall workflow rather than assuming the current Routine rule should apply to Plan. Make the resulting behaviour clear, deterministic and covered by the appropriate acceptance families. Preserve builder discretion over the exact interaction design.
-> Keep the existing bounded review rules, family-level proof and other settled product decisions. Avoid adding requirements solely for theoretical edge cases or implementation preference.
-> Revalidate and return the final Prismatica import-ready plan only.
-
-## Why
-
-One coherent heavy lane: planning, performing, recording and returning to work share the same item, practice evidence and persistence boundaries. Correct those shared meanings once rather than add a separate theory app, another routine logger or another ranking engine. The small CI repair is an explicitly requested technical companion, not a new product Flow. Retain the existing independent Plan/Routines doorways. Implementation freedom applies to structure, controls and bounded policy tuning, not to fabricating evidence or weakening data protection.
-
-## Today
-
-Inspected clean main dc964b3b, current Flow context, AGENTS.md, CLAUDE.md, relevant DECISIONS entries and connected domain/store/UI/tests. No code or owner database was changed and no test suite or live Actions run was executed during planning.
-1. Routines: routines.ts aggregates every positive elapsed bound-item interval, including repeated bindings, into one not_logged block per item. finishRoutine saves before optional RoutineCapture. lookups.itemBlocks and ItemDetail.BlockHistory do NOT filter not_logged. The existing post-practice browser test saves two bound items, omits capture and reloads, but checks histories only after annotated capture; it does not reproduce the owner's exact missing-second-item report. A binding, transition, persistence or display failure remains to be discriminated, not asserted as a known root cause. Skip currently keeps positive elapsed time, even a few milliseconds rounded to one minute. Label-only/unbound segments intentionally produce no item block.
-2. RoutineRunner's pre-start screen shows only count/total, and the live screen shows current/next rather than the full run. Today/PathwayDetail/StageDetail and RoutineDuration can start directly. Runs snapshot authoredSegments and effective segments. Edits must keep that identity relationship coherent.
-3. SessionPlan preview supports swap/remove/regenerate, but no reorder. Start rejects stale rev/day; each segment then opens a real block. Allocation already protects whole-work floors and warm-up/cool-down shares; preview Remove currently reallocates its freed minutes, while running Skip leaves the other targets unchanged.
-4. DurableNotes is shared by item and lesson notes. It requires Done and intentionally abandons an unsaved draft on owner change or remount, including a routine boundary. Its saveSeq, live draft ref, acknowledgement and retry protections solve other races and must survive replacing that explicit-save requirement.
-5. Theory already has strand reading_theory, mapped to ordinary itemType other and focus other. The full item-kind chooser does not make it easy to create such work. Diversity can prefer another dimension but does not assure a useful theory opportunity.
-6. decideReview receives item/result/date/params, not the scope of evidence or lesson preparation. Stable results can expand SR and feed preselected status suggestions, even if the owner practised only a chunk. same/slightly_better repeat the current interval, which may already be long. Positive early practice correctly keeps future dates; protected dates and one advancement/day already exist. LessonAgenda's dated preparations affect ranking and plan eligibility, not the date decision. Today and planner also differ in their same-day repeat treatment. Status mixes readiness and work intention; result has no scope in saved blocks.
-7. All three suite workflows probe only a small InRelease file within five seconds before a ten-minute with-deps install. DECISIONS explicitly records the still-open alive-but-slow Azure limitation. Existing tests execute that probe against local hung/refused/missing/live endpoints but not a mirror whose small index is quick and large package transfer is slow. Some canonical Flow prose still describes older behaviour, such as lesson blur-saving and rolling class flags; code and present rules govern, and only affected truth should be reconciled.
-
-## Instead
-
-PRODUCT MODEL AND BUILDER CHECKLIST
-[ ] First establish a committed synthetic two-item Setar Warm up counterexample through the real editor and normal start doors, with deliberately different labels and bound titles. Inspect binding, effective segments, store outcome, IndexedDB and BOTH histories with feedback omitted. Distinguish an absent block from an invisible block and from an intentionally unbound segment. If the reported missing-second-item defect is not reproduced, retain the checked-clean implementation and add the missing proof; do not invent a logger rewrite or historical repair.
-[ ] Implement the unified evidence and return policy, then routine/control and note changes, then the small CI fix. The highest-leverage action is settling and testing the scope/return decision before editing its screens. Next three actions for Claude: reproduce the routine family; write the decision table and independent expected examples; implement through the existing domain/store boundaries with the focused proof route below. One lane, staged internally, not several independently changing schedulers.
-
-A. HONEST ROUTINE RUNS
-Completion is the clock/run outcome, not optional feedback. Every practised bound item reaches its own history and totals after natural completion or Finish & save, including leaving completion without feedback. Preserve at most one block per distinct item with actual aggregated minutes and no fabricated assessment. A label without an item remains visibly unbound; never infer binding by title or create an item silently. The save acknowledgement must distinguish written-to-memory from durable storage; a failed finish retains enough run/outcome state for retry without double credit and never claims the run is safely saved.
-Use the shared Plan/Routine control and time policy in section B. Preserve routine boundary acknowledgement, pause/resume and the one-clock invariant. An unassessed finish and routine feedback still never complete retention reviews, advance SR or promote status.
-Show an ordered, readable contents preview before the start tap, including bound item, segment label, duration, essentials and unbound status. Reach it from Today, stage, pathway and duration/essentials choices without making routine Edit the preview. While running, make the full frozen contents reachable with current/completed/skipped/pending states and the controls above; keep the clock and current item prominent, no persistent dashboard. The fitted/essentials preview must be the run actually started. Changes to the saved routine mid-run cannot replace the frozen run. No effect-started clock; every actual Start/Resume still readies sound in that tap.
-
-B. COHERENT PLAN/ROUTINE CONTROLS AND TIME
-Treat the selected time as available capacity, not a requirement to fill every minute after the owner removes work. Choose the same predictable default in both flows: removing/skipping a task or moving on early does not lengthen the others. This avoids changing the practice commitment attached to an untouched item. The state/action policy is:
-- Before starting either flow, Remove from this session removes only that preview entry, records nothing, preserves the other entries' order/durations, and leaves an honest unused remainder. For a routine it never edits the saved definition; review its actual fitted/essentials contents before starting. Essentials-only drops excluded work and its time rather than silently refitting what remains.
-- Reordering the Plan preview changes only order. Swap retains the slot's duration and existing eligibility/floor constraints. An explicit Regenerate or change of available Plan budget can rebuild allocations through the existing planner; an explicit routine duration choice can proportionally fit the selected contents through its existing fitter. These are deliberate time-allocation actions, not side effects of Remove. Keep the displayed preview consistent with the action the owner just chose. No new redistribution setting, refill wizard or automatic attempt to spend the remainder.
-- During either session, a not-yet-started entry can be skipped or removed from this run without logging practice, changing other durations, editing a saved routine or deleting the practice item. Use consistent words and consequences for equivalent controls; a single skip/remove affordance per state is sufficient. Do not require duplicate controls or a new running-plan editor. Completed entries and their records cannot be retrospectively removed by session controls.
-- For the current running or paused item, distinguish Skip without practising from Move on and keep practised time. Skip records no time/evidence for THAT occurrence, even when time has passed before the tap; make that consequence clear using the existing discard protection where appropriate. Move on keeps the actual partial practice and leaves the unused target time unallocated. Earlier real practice of a repeated routine item survives skipping a later occurrence. In Plan, route kept practice through the existing Finish/Close/Save flow, with its deliberate Save without a result option and eligible scheduling decision, then advance only after saving. In Routine, retain its lighter elapsed-time recording with optional capture after the run and no retention judgement. This existing distinction is justified by real independently closed Plan blocks versus a continuous routine, not by different meanings of Skip or kept time. Claude chooses labels, placement and the smallest reliable transition implementation.
-- Finishing early or ending a session preserves already saved practice; ongoing practice is kept only through the appropriate save path, never silently discarded. Skipped, removed or unused time creates no block. Overtime is recorded only as actual practice and never charged to another entry's target. Remaining targets stay unchanged throughout the run; do not retroactively recover unused time by redistribution. If every entry is removed/skipped, present the ordinary empty/completed outcome without a blank screen or invented practice.
-Show the actual planned/remaining time and any unused portion clearly, separately from available time and actual recorded practice. The total must never claim to fill the budget after a removal, and actual time must never be inferred from the original budget. Preserve generated-plan floors, role-share caps and budget limits; change only automatic redistribution after removal, not the generator's useful initial allocations.
-Provide accessible Move earlier/Move later controls in the Plan preview, usable by keyboard and touch; drag is unnecessary. Move the whole segment identity with its existing minutes, role, reason and focus. It changes no ranking, database, review or budget. Owner order wins over generated role order when starting. Preserve stale rev/day and startability checks. Running-plan reordering remains excluded.
-
-C. NOTES WITHOUT A DONE DEPENDENCY
-Use the shared DurableNotes ownership model so item and lesson instances do not diverge. Edits autosave after a short quiet interval; navigation, Finish, collapse, routine boundary and switching owner must preserve the latest text for its original owner without requiring Done. Done may remain as close/flush, never the only saving path. Keep the text editable while saves settle. Acknowledged IndexedDB, not a debounce timer or updated Zustand state, is what permits Saved. Retain retry that really writes, Copy, intentional empty clearing, current-save sequence protection and correct Farsi IME composition/caret behaviour.
-A draft must survive editor unmount and be recoverable after an ordinary reload once its local persistence is acknowledged. Choose the smallest local draft/write mechanism that covers rapid exits before the quiet interval, with an explicit bounded outstanding-write window. Do not promise survival of a process kill before any storage can acknowledge. Canonical working notes remain item.notes; any recovery draft is device-local, owner-typed, temporary and never another synchronised notebook. Handle the item-versus-lesson id namespace, concurrent editors and stale writes from before import/sync/restore/reset: a pending draft cannot resurrect a deleted record, write onto a replacement database, or silently overwrite newer remote text. When both texts changed, preserve both competing texts without silent loss or overwrite. Claude should use the simplest recoverable resolution consistent with the existing conflict model; a new dedicated conflict UI is not required. Notes change no practice counter, clock, review, exposure, status, sound claim or next action. Never flush a stale draft merely because blur fired.
-
-D. SCOPED EVIDENCE AND RETURNING TO WORK
-Keep the persisted status/result enum keys and old records readable. Separate three questions in the UX and decision: what this block covered, what happened there, and whether the complete ITEM is ready to be kept fresh. A result describes only the saved block's scope. The default is focused work; a whole-item retention check is an explicit, low-effort choice, never inferred from a stable button, mode, title, elapsed time or successful part. A child item can be checked as its own complete unit; nothing propagates its status, results, counters, review completion or spacing to its parent. No mandatory new text field or extra close form. Use calm labels, keep the six historical result meanings (including not_logged), and make readiness an explicit owner decision rather than a preselected automatic promotion from focused work. Suggestions are permissible when scope warrants them, but accepting one must be deliberate.
-Distinguish Working on this from Keep fresh as return intentions, separate from manual/fixed/automatic date ownership. Default new and unresolved legacy automatic items to Working; an existing explicit maintenance status can retain its intention, while stable historical results or integrated/performable labels alone do not prove whole-item retention. Keep fresh is owner-controlled and reversible without recording practice or resetting historical SR. Claude may encode this with the smallest additive representation; do not build a second progress hierarchy.
-Automatic Working schedules short useful returns, independent of accumulated SR intervals: choose and document a deterministic 1–3-day default policy, with weaker evidence no later than stronger evidence, rather than weeks/months after chunk success or an unchanged result. A close without assessment preserves schedule/evidence semantics; recording time alone is not a retention judgement. A due Keep fresh item expands spacing only after an explicit whole-item check with eligible stable evidence, at most once per local day. Focused work never completes that whole-item check or expands/resets its SR, even with a performable/worse result. Same is not failed recall. Preserve protected future manual, fixed-cadence and unknown-provenance dates; voluntary switching intention transfers no date authority and creates no practice. Working cadence intentionally permits an assessed close to bring an engine-owned long date forward, replacing the old positive-early-practice keep rule for Working only; Keep fresh retains that early-practice protection. A switch of intention alone keeps the stored date. All date writes and pending rows stay coupled, explicit clear stays distinct from omitted, and administrative actions never invent practice.
-Lesson preparation remains an intent for its named upcoming class, not a claim of mastery or completion. An active preparation gets a near-term practice opportunity through the lesson, including when a retained review lies months away. Derive this opportunity from lessonAgenda, the lesson's real date and recent real practice using the same pure return decision consumed by Today and Plan. It may bring a suggestion earlier than a protected retention date but never silently rewrites that date. Show one primary Next practice explanation identifying whether it is working cadence, class preparation or a retention review; the retained/manual review date remains inspectable and is never falsely described as overwritten/calculated. No duplicate class-review rows, second stored class calendar or automatic carry-forward. A passed, removed, retargeted, unassigned, other-instrument or archive-origin lesson contributes no inherited deadline. Questions never add urgency.
-Share eligibility, evidence interpretation and repeat suppression across Today, build, regenerate, swap and fallback. Recent genuine exposure, including unassessed routine practice, lowers repetitive suggestions today without completing preparation. On a later day the still-live class work can return; when it is the only eligible work, show an honest explained fallback rather than hide it or call it fresh. Deduplicate cards and parent/part opportunities where they represent the same intended work, without copying practice evidence between them; a separately due whole-work check remains a distinct eligible need. Urgency outranks variety. Choose and document bounded constants using counterexample fixtures, not claims of an empirically optimal music-learning algorithm. One pure decision must support preview, persistence and explanation, with the existing save-time day-refresh guarantee.
-
-E. THEORY AS ORDINARY USEFUL WORK
-Expose Theory / listening study through the existing Add practice item path, reusing reading_theory and ordinary notes, study source, lessons, references, routine bindings and block history. No third creation path, theory database, quiz, flashcard system, generated expertise or runtime AI. A theory item belongs to the selected instrument and sits in Practice list, not My repertoire merely because it names a dastgah. Reuse identity/metadata rules rather than infer musical authority from text.
-Offer a small, dismissible way to add a title-only study focus relevant to the current material, such as listening to a teacher's Radif example, comparing phrases in the current dastgah, or studying note functions using the owner's source. These are prompts/questions, not asserted Persian theory or invented lesson content. Never create or seed an owned study item without the owner's tap. Use neutral built-in Farsi behind stable ids where any Persian reference prompts ship; free text stays free text.
-An existing eligible theory item should occasionally surface through shared planning/recommendation logic when urgent work is covered and there is room: a bounded recent-exposure/diversity preference, not a mandatory daily slot, calendar, quota or extra panel. The proof must include a multi-session fixture where useful unpractised theory gets a turn and an opposing imminent-class/short-budget fixture where it does not displace the main work. No candidate means no filler. Keep time budgets and item floors, and do not give a small study task a whole-work floor because its label mentions Radif.
-
-F. BOUNDED CI REPAIR
-Address the known alive-but-slow Azure apt route before the with-deps install across ci.yml, deploy.yml and prismatica-gate.yml. Prefer a small deterministic bypass of that implicated mirror using the runner's supported Ubuntu source configuration and appropriate trusted alternatives over another small-file liveness/throughput heuristic. Claude may choose another bounded fallback if it demonstrably handles a fast index plus slow package transfer. Retain valid suites/components/signing/security settings; do not rewrite arbitrary repositories, disable signature/TLS checks, assume all runner layouts are identical, or leave no usable source without a clear failure. Preserve pinned-lockfile Chromium AND WebKit provisioning, aligned check steps, ten-minute install/twenty-minute job bounds, cancel-superseded behaviour and tests-before-publish. No timeout inflation, rerun-as-the-fix, skipped engine or broad caching redesign. Execute the setup logic with temporary source layouts and local fake endpoints; syntax/string checks alone cannot prove failover. Deterministic local execution of the CI-setup logic plus the required local checks is sufficient before review/seal. A real GitHub Actions run is post-ship evidence: after the normal owner-controlled ship/push, it must pass before merge. Its absence before ship is not a review/seal blocker. Keep actual runner/install failures separate from product correctness, and do not add an owner CI ritual.
-
-G. DATA AND COMPATIBILITY
-Additive semantics require the next schema version and a pure deterministic idempotent migration through migrateToCurrent/validateDB. Preserve all old blocks verbatim, including ambiguous result scope; never backfill whole-item evidence, recalculate past totals, delete routine records or infer missing practice from a routine definition. Preserve SR history even when new Working returns cease using it for long intervals. Preserve ids, enum keys, dates/provenance, commitments, user notes, attachments and bytes, source/catalogue identity and untouched fields. Legacy automatic long dates are retained as data and visibly explained; the new Working/class opportunity must make unfinished material reachable now, without bulk rewriting them on hydration. A later eligible assessed close can adopt the Working policy through the normal coupled date write.
-Validate every new field and any new unfinished-run shape at every applicable door: persist migrate AND merge, state/full import, sync pull/Keep remote, archive restore, cold-start recovery. Missing legacy scope stays unknown. Wrong types/values and too-new schemas refuse before changing memory, disk, blobs or live practice. Old clients must refuse the new schema rather than silently discard fields; explain the existing update-both-devices path without adding an update wizard. An in-progress legacy routine must remain resumable with its old accumulated time and bindings; do not reinterpret an old skip as new evidence or silently drop its elapsed practice. Tests must distinguish old dual-clock recovery from ordinary single-clock states.
-
-H. FAMILY PROOF AND REVIEW BOUNDARY
-Before first review, put the final decision table, consumer inventory, fixed fixtures with independently calculated expected outcomes and one focused command in docs/practice-session-model.md. Cover invariants in the acceptance families below across actual store mutations and rendered readers, not just helper return values. Show each reached consumer, including checked-clean consumers, and the limits of the proof. Use a compact set of purposeful counterexamples, not an unbounded Cartesian product. Expected dates/minutes/statuses must be literal or independently calculated, not obtained by calling the implementation as its own oracle.
-Focused route: npx vitest run tests/practice-session-families.test.ts tests/practice-session.browser.test.ts tests/practice-session-inbound.browser.test.ts tests/ci-browser-setup.test.ts. Place each named acceptance title in exactly one test; engines/cases may loop within it. Reuse current helpers, fixtures, fake fetch and storage controls. Fix touched tests that currently assert deliberate draft loss, implicit skip credit, automatic redistribution after removal or unscoped SR expansion. Retain meaningful old negative protections. Full required checks are npm run lint, npm test and npm run build plus configured Prismatica checks. Existing direction/agent-context ledgers may be updated for changed sites/rules; create no new source scanners or implementation-shape assertions. No mandatory mutation framework, exhaustive fuzzing, repeated full-suite stress loops or second proof CLI.
-Review the exact built patch and these finite behaviour/data families. A blocker needs a reproducible reachable counterexample violating an agreed invariant or an attributable regression; provide expected/actual and the affected family. Fix the shared cause and sweep its identified consumers together, then recheck that family and required checks affected by the fix. Do not reopen accepted decisions as taste, block on a preferred component architecture, invent unsupported data states or demand unrelated pre-existing cleanup. New evidence of real data loss remains a blocker. Infrastructure/setup/harness failures are separately labelled with logs and the positive event that failed; they do not establish product failure or justify loosening waits. Required local checks must have valid passing evidence before review/seal; the post-ship Actions requirement is the separate pre-merge gate specified in section F. Reuse patch-bound evidence until code relevant to it changes; do not turn review into an arbitrary round limit.
-Reconcile changed Flow truth/mechanics through governed proposals for practise-todays-recommendation, run-a-session-plan, work-a-pathway-stage, adjust-how-scheduling-works, clear-a-due-review and capture-a-practice-item; log-a-class is affected by the shared editor. Preserve unmodified Flow mechanics and signatures, do not silently edit canonical records, and do not turn unrelated stale Flow wording into a discovery campaign. Update AGENTS current rules in place for autosave ownership, shared session-control/time semantics, scoped review/return and theory eligibility, with rationale in DECISIONS.
-Owner checks are limited to the existing native iPhone/sound check and one minimal real-Setar product walkthrough. For the latter, use one real unfinished piece prepared for its named next class, record focused chunk practice, read its Next practice explanation, compare one Keep fresh item, and inspect one generated session plan. Judge only whether the model and UX make sense in actual practice; dates, preservation, ranking policy and minute correctness remain automated. One brief acceptance observation is sufficient, not a general taste review or a request to upload private data. All ordinary histories, note recovery, flows, budgets, offline persistence and release gates remain automated. A two-item named owner routine is still a fixture requirement, not a demand for private database access.
-
-## Advisory — the planning agent's reading, not established fact
-
-The two lists below are the planning agent's interpretation. Deterministic code
-checked that this plan is complete, in scope, correctly bound, and correctly
-tiered; it did not and cannot check whether this reading of the app is right.
-Verify them against the code.
-
-**Assumptions**
-
-- A1. The owner has authorised choosing the interaction/domain model; this import is the concrete owner decision replacing Done-only notes and the old ambiguous Skip behaviour, with corresponding AGENTS edits. Builder is claude as explicitly requested.
-- A2. Missing second-item logging is an owner report, not reproduced here; synthetic fixtures must resolve which boundary fails without access to private practice data.
-- A3. Working returns and occasional theory are organisational defaults, not prescriptions or measured mastery; Claude chooses clear controls, module boundaries and documented bounded constants that satisfy the specified counterexamples.
-
-**Possible conflicts**
-
-- Present AGENTS rules explicitly require Done, drop a draft on item change, and define Skip as clamping elapsed. This proposal intentionally replaces those rules while preserving their ownership and durability protections; record the owner-approved change rather than pretending it is a refactor. Automatic Working returns also intentionally replace the current rule that only worse may bring any engine-owned future date forward; the early-date protection remains for Keep fresh and for all owner/fixed/unknown dates. Plan preview Remove currently redistributes freed minutes; this proposal deliberately makes its default consistent with the other remove/skip states, leaving time unused until a deliberate rebuild or duration choice.
-- The one-date preview rule must evolve into one coherent return decision that can explain an earlier derived class/working opportunity alongside an unchanged protected review date. Do not silently create two schedulers or claim a derived suggestion was written.
-- Current Flow text contains pre-existing stale details. Update only changed truth through governed proposals; canonical Flow/rule signatures require the established owner approval lifecycle. The CI companion needs no invented Flow.
-
-## The complete approved plan
-
-```json
-{
-  "format": "prismatica/start@1",
-  "request": "Use the Prismatica start skill to inspect the current practice-compass repo and produce an import-ready plan for Claude to build.\nTreat this as a fresh, first-principles review of the practice/session experience. Prefer one coherent lane if safe. Diagnose root causes and choose the best UX/domain model rather than assuming my suggested solutions are correct. Recommended solutions are suggestions only. decide the best and most optimal options and solutions yourself if needed.\nCover these issues:\n- Routine runs (solutions are suggestions only. decide the best and most optimal options and solutions yourself if needed): with my Setar “Warm up” routine containing two items, only the first item is reliably logged. If optional feedback is omitted, completed practice may not appear in that item’s Practice history. A skipped item should not be falsely logged as practised.\n- Routine clarity/control: show what items are in a routine before starting and while running it. During a run, support a sensible skip/remove flow and decide whether unused time should be redistributed or discarded.\n- Session Plan: allow the planned items to be reordered, not only swapped or removed.\n- Working notes: edits made during practice should not be lost merely because I forget to press Done; design safe autosave/draft behaviour.\n- Theory: find a coherent, low-friction way for session planning/recommendations to include useful theory study from time to time, especially for Setar/Persian music (e.g. Radif, dastgah, note functions), without bolting on an unrelated feature.\n- Scheduling/review model: rethink it deeply. The current Status/result choices and spacing can confuse progress on a small chunk with readiness of the whole work. A successful chunk can push a still-unfinished piece out by weeks/months. Material being prepared for the next class should normally keep returning appropriately until that lesson rather than disappearing because it has accumulated successful reviews. Decide the best model for chunk work, whole-work readiness, class-driven urgency, results/statuses, recommendation and next-review dates while preserving honest practice records and avoiding repetitive/noisy recommendations.\n- CI/release reliability: we repeatedly hit the GitHub Actions 10-minute Playwright browser-install timeout because azure.archive.ubuntu.com was reachable but too slow. Existing mirror protection detects dead mirrors but not this slow-mirror case. Deployment eventually succeeded after reruns. Inspect the current reliability machinery and include a bounded fix if still needed.\nProtect existing data, sync, offline/PWA behaviour, sound/wake-lock behaviour, mobile keyboard/tab fixes and previously solved flows. If saved-data semantics must change, plan migration/backward compatibility explicitly.\nMost importantly, design the plan to minimise builder↔reviewer loops: use family-level acceptance checks, test real counterexamples and missed states, distinguish product failures from harness/infrastructure failures, give Claude implementation discretion, and explicitly bound review so taste, speculative edge cases and unrelated pre-existing defects do not block. Do not over-prescribe implementation or create brittle source scanners merely to satisfy the plan. Allow the builder room to make optimal decision especially about implementation as it has direct access to the repo and changes and might have more insights.\nReview the current Flows, AGENTS/DECISIONS and existing test before deciding scope. Anticipate interactions between these changes and consolidate shared root causes. Include only owner/manual checks that automation genuinely cannot prove.\nBuilder: Claude.\nReturn the final Prismatica import-ready plan only.\n\nFinal owner refinements, superseding only conflicting details above:\n1. Clarify CI lifecycle: deterministic local CI-setup proof is sufficient before review/seal. A real GitHub Actions run is post-ship evidence and must pass before merge; its absence before ship is not a review blocker.\n2. Add one minimal OWNER product check using real Setar data: one unfinished piece being prepared for the next class, focused chunk practice, its Next practice explanation, one Keep fresh item and one generated session plan. This is only to judge whether the new model and UX make sense in real practice; date/data correctness remains automated. Keep the existing native iPhone/sound check.\n3. For note conflicts, require no silent loss or overwrite and preservation of both competing texts, but let Claude use the simplest resolution consistent with the existing conflict model rather than requiring a new explicit conflict UI.\n4. Review Plan and Routine controls together, especially remove/skip/move-on and treatment of unused time. Choose the most coherent and user-friendly model across both so similar actions behave consistently where that makes sense and differences exist only when they have a clear product reason. Avoid making the user learn unnecessary different behaviours between Plan and Routine. Decide whether unused time is redistributed, discarded or handled another way in each relevant state, including before and during practice, based on the overall workflow rather than assuming the current Routine rule should apply to Plan. Make the resulting behaviour clear, deterministic and covered by the appropriate acceptance families. Preserve builder discretion over the exact interaction design.\nKeep the existing bounded review rules, family-level proof and other settled product decisions. Avoid adding requirements solely for theoretical edge cases or implementation preference.\nRevalidate and return the final Prismatica import-ready plan only.",
-  "builder": "claude",
-  "summary": "Make practice records dependable and keep session choices aligned with the work being done",
-  "rationale": "One coherent heavy lane: planning, performing, recording and returning to work share the same item, practice evidence and persistence boundaries. Correct those shared meanings once rather than add a separate theory app, another routine logger or another ranking engine. The small CI repair is an explicitly requested technical companion, not a new product Flow. Retain the existing independent Plan/Routines doorways. Implementation freedom applies to structure, controls and bounded policy tuning, not to fabricating evidence or weakening data protection.",
-  "kind": "existing-flow",
-  "flowId": "practise-todays-recommendation",
-  "currentBehaviour": "Inspected clean main dc964b3b, current Flow context, AGENTS.md, CLAUDE.md, relevant DECISIONS entries and connected domain/store/UI/tests. No code or owner database was changed and no test suite or live Actions run was executed during planning.\n1. Routines: routines.ts aggregates every positive elapsed bound-item interval, including repeated bindings, into one not_logged block per item. finishRoutine saves before optional RoutineCapture. lookups.itemBlocks and ItemDetail.BlockHistory do NOT filter not_logged. The existing post-practice browser test saves two bound items, omits capture and reloads, but checks histories only after annotated capture; it does not reproduce the owner's exact missing-second-item report. A binding, transition, persistence or display failure remains to be discriminated, not asserted as a known root cause. Skip currently keeps positive elapsed time, even a few milliseconds rounded to one minute. Label-only/unbound segments intentionally produce no item block.\n2. RoutineRunner's pre-start screen shows only count/total, and the live screen shows current/next rather than the full run. Today/PathwayDetail/StageDetail and RoutineDuration can start directly. Runs snapshot authoredSegments and effective segments. Edits must keep that identity relationship coherent.\n3. SessionPlan preview supports swap/remove/regenerate, but no reorder. Start rejects stale rev/day; each segment then opens a real block. Allocation already protects whole-work floors and warm-up/cool-down shares; preview Remove currently reallocates its freed minutes, while running Skip leaves the other targets unchanged.\n4. DurableNotes is shared by item and lesson notes. It requires Done and intentionally abandons an unsaved draft on owner change or remount, including a routine boundary. Its saveSeq, live draft ref, acknowledgement and retry protections solve other races and must survive replacing that explicit-save requirement.\n5. Theory already has strand reading_theory, mapped to ordinary itemType other and focus other. The full item-kind chooser does not make it easy to create such work. Diversity can prefer another dimension but does not assure a useful theory opportunity.\n6. decideReview receives item/result/date/params, not the scope of evidence or lesson preparation. Stable results can expand SR and feed preselected status suggestions, even if the owner practised only a chunk. same/slightly_better repeat the current interval, which may already be long. Positive early practice correctly keeps future dates; protected dates and one advancement/day already exist. LessonAgenda's dated preparations affect ranking and plan eligibility, not the date decision. Today and planner also differ in their same-day repeat treatment. Status mixes readiness and work intention; result has no scope in saved blocks.\n7. All three suite workflows probe only a small InRelease file within five seconds before a ten-minute with-deps install. DECISIONS explicitly records the still-open alive-but-slow Azure limitation. Existing tests execute that probe against local hung/refused/missing/live endpoints but not a mirror whose small index is quick and large package transfer is slow. Some canonical Flow prose still describes older behaviour, such as lesson blur-saving and rolling class flags; code and present rules govern, and only affected truth should be reconciled.",
-  "desiredBehaviour": "PRODUCT MODEL AND BUILDER CHECKLIST\n[ ] First establish a committed synthetic two-item Setar Warm up counterexample through the real editor and normal start doors, with deliberately different labels and bound titles. Inspect binding, effective segments, store outcome, IndexedDB and BOTH histories with feedback omitted. Distinguish an absent block from an invisible block and from an intentionally unbound segment. If the reported missing-second-item defect is not reproduced, retain the checked-clean implementation and add the missing proof; do not invent a logger rewrite or historical repair.\n[ ] Implement the unified evidence and return policy, then routine/control and note changes, then the small CI fix. The highest-leverage action is settling and testing the scope/return decision before editing its screens. Next three actions for Claude: reproduce the routine family; write the decision table and independent expected examples; implement through the existing domain/store boundaries with the focused proof route below. One lane, staged internally, not several independently changing schedulers.\n\nA. HONEST ROUTINE RUNS\nCompletion is the clock/run outcome, not optional feedback. Every practised bound item reaches its own history and totals after natural completion or Finish & save, including leaving completion without feedback. Preserve at most one block per distinct item with actual aggregated minutes and no fabricated assessment. A label without an item remains visibly unbound; never infer binding by title or create an item silently. The save acknowledgement must distinguish written-to-memory from durable storage; a failed finish retains enough run/outcome state for retry without double credit and never claims the run is safely saved.\nUse the shared Plan/Routine control and time policy in section B. Preserve routine boundary acknowledgement, pause/resume and the one-clock invariant. An unassessed finish and routine feedback still never complete retention reviews, advance SR or promote status.\nShow an ordered, readable contents preview before the start tap, including bound item, segment label, duration, essentials and unbound status. Reach it from Today, stage, pathway and duration/essentials choices without making routine Edit the preview. While running, make the full frozen contents reachable with current/completed/skipped/pending states and the controls above; keep the clock and current item prominent, no persistent dashboard. The fitted/essentials preview must be the run actually started. Changes to the saved routine mid-run cannot replace the frozen run. No effect-started clock; every actual Start/Resume still readies sound in that tap.\n\nB. COHERENT PLAN/ROUTINE CONTROLS AND TIME\nTreat the selected time as available capacity, not a requirement to fill every minute after the owner removes work. Choose the same predictable default in both flows: removing/skipping a task or moving on early does not lengthen the others. This avoids changing the practice commitment attached to an untouched item. The state/action policy is:\n- Before starting either flow, Remove from this session removes only that preview entry, records nothing, preserves the other entries' order/durations, and leaves an honest unused remainder. For a routine it never edits the saved definition; review its actual fitted/essentials contents before starting. Essentials-only drops excluded work and its time rather than silently refitting what remains.\n- Reordering the Plan preview changes only order. Swap retains the slot's duration and existing eligibility/floor constraints. An explicit Regenerate or change of available Plan budget can rebuild allocations through the existing planner; an explicit routine duration choice can proportionally fit the selected contents through its existing fitter. These are deliberate time-allocation actions, not side effects of Remove. Keep the displayed preview consistent with the action the owner just chose. No new redistribution setting, refill wizard or automatic attempt to spend the remainder.\n- During either session, a not-yet-started entry can be skipped or removed from this run without logging practice, changing other durations, editing a saved routine or deleting the practice item. Use consistent words and consequences for equivalent controls; a single skip/remove affordance per state is sufficient. Do not require duplicate controls or a new running-plan editor. Completed entries and their records cannot be retrospectively removed by session controls.\n- For the current running or paused item, distinguish Skip without practising from Move on and keep practised time. Skip records no time/evidence for THAT occurrence, even when time has passed before the tap; make that consequence clear using the existing discard protection where appropriate. Move on keeps the actual partial practice and leaves the unused target time unallocated. Earlier real practice of a repeated routine item survives skipping a later occurrence. In Plan, route kept practice through the existing Finish/Close/Save flow, with its deliberate Save without a result option and eligible scheduling decision, then advance only after saving. In Routine, retain its lighter elapsed-time recording with optional capture after the run and no retention judgement. This existing distinction is justified by real independently closed Plan blocks versus a continuous routine, not by different meanings of Skip or kept time. Claude chooses labels, placement and the smallest reliable transition implementation.\n- Finishing early or ending a session preserves already saved practice; ongoing practice is kept only through the appropriate save path, never silently discarded. Skipped, removed or unused time creates no block. Overtime is recorded only as actual practice and never charged to another entry's target. Remaining targets stay unchanged throughout the run; do not retroactively recover unused time by redistribution. If every entry is removed/skipped, present the ordinary empty/completed outcome without a blank screen or invented practice.\nShow the actual planned/remaining time and any unused portion clearly, separately from available time and actual recorded practice. The total must never claim to fill the budget after a removal, and actual time must never be inferred from the original budget. Preserve generated-plan floors, role-share caps and budget limits; change only automatic redistribution after removal, not the generator's useful initial allocations.\nProvide accessible Move earlier/Move later controls in the Plan preview, usable by keyboard and touch; drag is unnecessary. Move the whole segment identity with its existing minutes, role, reason and focus. It changes no ranking, database, review or budget. Owner order wins over generated role order when starting. Preserve stale rev/day and startability checks. Running-plan reordering remains excluded.\n\nC. NOTES WITHOUT A DONE DEPENDENCY\nUse the shared DurableNotes ownership model so item and lesson instances do not diverge. Edits autosave after a short quiet interval; navigation, Finish, collapse, routine boundary and switching owner must preserve the latest text for its original owner without requiring Done. Done may remain as close/flush, never the only saving path. Keep the text editable while saves settle. Acknowledged IndexedDB, not a debounce timer or updated Zustand state, is what permits Saved. Retain retry that really writes, Copy, intentional empty clearing, current-save sequence protection and correct Farsi IME composition/caret behaviour.\nA draft must survive editor unmount and be recoverable after an ordinary reload once its local persistence is acknowledged. Choose the smallest local draft/write mechanism that covers rapid exits before the quiet interval, with an explicit bounded outstanding-write window. Do not promise survival of a process kill before any storage can acknowledge. Canonical working notes remain item.notes; any recovery draft is device-local, owner-typed, temporary and never another synchronised notebook. Handle the item-versus-lesson id namespace, concurrent editors and stale writes from before import/sync/restore/reset: a pending draft cannot resurrect a deleted record, write onto a replacement database, or silently overwrite newer remote text. When both texts changed, preserve both competing texts without silent loss or overwrite. Claude should use the simplest recoverable resolution consistent with the existing conflict model; a new dedicated conflict UI is not required. Notes change no practice counter, clock, review, exposure, status, sound claim or next action. Never flush a stale draft merely because blur fired.\n\nD. SCOPED EVIDENCE AND RETURNING TO WORK\nKeep the persisted status/result enum keys and old records readable. Separate three questions in the UX and decision: what this block covered, what happened there, and whether the complete ITEM is ready to be kept fresh. A result describes only the saved block's scope. The default is focused work; a whole-item retention check is an explicit, low-effort choice, never inferred from a stable button, mode, title, elapsed time or successful part. A child item can be checked as its own complete unit; nothing propagates its status, results, counters, review completion or spacing to its parent. No mandatory new text field or extra close form. Use calm labels, keep the six historical result meanings (including not_logged), and make readiness an explicit owner decision rather than a preselected automatic promotion from focused work. Suggestions are permissible when scope warrants them, but accepting one must be deliberate.\nDistinguish Working on this from Keep fresh as return intentions, separate from manual/fixed/automatic date ownership. Default new and unresolved legacy automatic items to Working; an existing explicit maintenance status can retain its intention, while stable historical results or integrated/performable labels alone do not prove whole-item retention. Keep fresh is owner-controlled and reversible without recording practice or resetting historical SR. Claude may encode this with the smallest additive representation; do not build a second progress hierarchy.\nAutomatic Working schedules short useful returns, independent of accumulated SR intervals: choose and document a deterministic 1–3-day default policy, with weaker evidence no later than stronger evidence, rather than weeks/months after chunk success or an unchanged result. A close without assessment preserves schedule/evidence semantics; recording time alone is not a retention judgement. A due Keep fresh item expands spacing only after an explicit whole-item check with eligible stable evidence, at most once per local day. Focused work never completes that whole-item check or expands/resets its SR, even with a performable/worse result. Same is not failed recall. Preserve protected future manual, fixed-cadence and unknown-provenance dates; voluntary switching intention transfers no date authority and creates no practice. Working cadence intentionally permits an assessed close to bring an engine-owned long date forward, replacing the old positive-early-practice keep rule for Working only; Keep fresh retains that early-practice protection. A switch of intention alone keeps the stored date. All date writes and pending rows stay coupled, explicit clear stays distinct from omitted, and administrative actions never invent practice.\nLesson preparation remains an intent for its named upcoming class, not a claim of mastery or completion. An active preparation gets a near-term practice opportunity through the lesson, including when a retained review lies months away. Derive this opportunity from lessonAgenda, the lesson's real date and recent real practice using the same pure return decision consumed by Today and Plan. It may bring a suggestion earlier than a protected retention date but never silently rewrites that date. Show one primary Next practice explanation identifying whether it is working cadence, class preparation or a retention review; the retained/manual review date remains inspectable and is never falsely described as overwritten/calculated. No duplicate class-review rows, second stored class calendar or automatic carry-forward. A passed, removed, retargeted, unassigned, other-instrument or archive-origin lesson contributes no inherited deadline. Questions never add urgency.\nShare eligibility, evidence interpretation and repeat suppression across Today, build, regenerate, swap and fallback. Recent genuine exposure, including unassessed routine practice, lowers repetitive suggestions today without completing preparation. On a later day the still-live class work can return; when it is the only eligible work, show an honest explained fallback rather than hide it or call it fresh. Deduplicate cards and parent/part opportunities where they represent the same intended work, without copying practice evidence between them; a separately due whole-work check remains a distinct eligible need. Urgency outranks variety. Choose and document bounded constants using counterexample fixtures, not claims of an empirically optimal music-learning algorithm. One pure decision must support preview, persistence and explanation, with the existing save-time day-refresh guarantee.\n\nE. THEORY AS ORDINARY USEFUL WORK\nExpose Theory / listening study through the existing Add practice item path, reusing reading_theory and ordinary notes, study source, lessons, references, routine bindings and block history. No third creation path, theory database, quiz, flashcard system, generated expertise or runtime AI. A theory item belongs to the selected instrument and sits in Practice list, not My repertoire merely because it names a dastgah. Reuse identity/metadata rules rather than infer musical authority from text.\nOffer a small, dismissible way to add a title-only study focus relevant to the current material, such as listening to a teacher's Radif example, comparing phrases in the current dastgah, or studying note functions using the owner's source. These are prompts/questions, not asserted Persian theory or invented lesson content. Never create or seed an owned study item without the owner's tap. Use neutral built-in Farsi behind stable ids where any Persian reference prompts ship; free text stays free text.\nAn existing eligible theory item should occasionally surface through shared planning/recommendation logic when urgent work is covered and there is room: a bounded recent-exposure/diversity preference, not a mandatory daily slot, calendar, quota or extra panel. The proof must include a multi-session fixture where useful unpractised theory gets a turn and an opposing imminent-class/short-budget fixture where it does not displace the main work. No candidate means no filler. Keep time budgets and item floors, and do not give a small study task a whole-work floor because its label mentions Radif.\n\nF. BOUNDED CI REPAIR\nAddress the known alive-but-slow Azure apt route before the with-deps install across ci.yml, deploy.yml and prismatica-gate.yml. Prefer a small deterministic bypass of that implicated mirror using the runner's supported Ubuntu source configuration and appropriate trusted alternatives over another small-file liveness/throughput heuristic. Claude may choose another bounded fallback if it demonstrably handles a fast index plus slow package transfer. Retain valid suites/components/signing/security settings; do not rewrite arbitrary repositories, disable signature/TLS checks, assume all runner layouts are identical, or leave no usable source without a clear failure. Preserve pinned-lockfile Chromium AND WebKit provisioning, aligned check steps, ten-minute install/twenty-minute job bounds, cancel-superseded behaviour and tests-before-publish. No timeout inflation, rerun-as-the-fix, skipped engine or broad caching redesign. Execute the setup logic with temporary source layouts and local fake endpoints; syntax/string checks alone cannot prove failover. Deterministic local execution of the CI-setup logic plus the required local checks is sufficient before review/seal. A real GitHub Actions run is post-ship evidence: after the normal owner-controlled ship/push, it must pass before merge. Its absence before ship is not a review/seal blocker. Keep actual runner/install failures separate from product correctness, and do not add an owner CI ritual.\n\nG. DATA AND COMPATIBILITY\nAdditive semantics require the next schema version and a pure deterministic idempotent migration through migrateToCurrent/validateDB. Preserve all old blocks verbatim, including ambiguous result scope; never backfill whole-item evidence, recalculate past totals, delete routine records or infer missing practice from a routine definition. Preserve SR history even when new Working returns cease using it for long intervals. Preserve ids, enum keys, dates/provenance, commitments, user notes, attachments and bytes, source/catalogue identity and untouched fields. Legacy automatic long dates are retained as data and visibly explained; the new Working/class opportunity must make unfinished material reachable now, without bulk rewriting them on hydration. A later eligible assessed close can adopt the Working policy through the normal coupled date write.\nValidate every new field and any new unfinished-run shape at every applicable door: persist migrate AND merge, state/full import, sync pull/Keep remote, archive restore, cold-start recovery. Missing legacy scope stays unknown. Wrong types/values and too-new schemas refuse before changing memory, disk, blobs or live practice. Old clients must refuse the new schema rather than silently discard fields; explain the existing update-both-devices path without adding an update wizard. An in-progress legacy routine must remain resumable with its old accumulated time and bindings; do not reinterpret an old skip as new evidence or silently drop its elapsed practice. Tests must distinguish old dual-clock recovery from ordinary single-clock states.\n\nH. FAMILY PROOF AND REVIEW BOUNDARY\nBefore first review, put the final decision table, consumer inventory, fixed fixtures with independently calculated expected outcomes and one focused command in docs/practice-session-model.md. Cover invariants in the acceptance families below across actual store mutations and rendered readers, not just helper return values. Show each reached consumer, including checked-clean consumers, and the limits of the proof. Use a compact set of purposeful counterexamples, not an unbounded Cartesian product. Expected dates/minutes/statuses must be literal or independently calculated, not obtained by calling the implementation as its own oracle.\nFocused route: npx vitest run tests/practice-session-families.test.ts tests/practice-session.browser.test.ts tests/practice-session-inbound.browser.test.ts tests/ci-browser-setup.test.ts. Place each named acceptance title in exactly one test; engines/cases may loop within it. Reuse current helpers, fixtures, fake fetch and storage controls. Fix touched tests that currently assert deliberate draft loss, implicit skip credit, automatic redistribution after removal or unscoped SR expansion. Retain meaningful old negative protections. Full required checks are npm run lint, npm test and npm run build plus configured Prismatica checks. Existing direction/agent-context ledgers may be updated for changed sites/rules; create no new source scanners or implementation-shape assertions. No mandatory mutation framework, exhaustive fuzzing, repeated full-suite stress loops or second proof CLI.\nReview the exact built patch and these finite behaviour/data families. A blocker needs a reproducible reachable counterexample violating an agreed invariant or an attributable regression; provide expected/actual and the affected family. Fix the shared cause and sweep its identified consumers together, then recheck that family and required checks affected by the fix. Do not reopen accepted decisions as taste, block on a preferred component architecture, invent unsupported data states or demand unrelated pre-existing cleanup. New evidence of real data loss remains a blocker. Infrastructure/setup/harness failures are separately labelled with logs and the positive event that failed; they do not establish product failure or justify loosening waits. Required local checks must have valid passing evidence before review/seal; the post-ship Actions requirement is the separate pre-merge gate specified in section F. Reuse patch-bound evidence until code relevant to it changes; do not turn review into an arbitrary round limit.\nReconcile changed Flow truth/mechanics through governed proposals for practise-todays-recommendation, run-a-session-plan, work-a-pathway-stage, adjust-how-scheduling-works, clear-a-due-review and capture-a-practice-item; log-a-class is affected by the shared editor. Preserve unmodified Flow mechanics and signatures, do not silently edit canonical records, and do not turn unrelated stale Flow wording into a discovery campaign. Update AGENTS current rules in place for autosave ownership, shared session-control/time semantics, scoped review/return and theory eligibility, with rationale in DECISIONS.\nOwner checks are limited to the existing native iPhone/sound check and one minimal real-Setar product walkthrough. For the latter, use one real unfinished piece prepared for its named next class, record focused chunk practice, read its Next practice explanation, compare one Keep fresh item, and inspect one generated session plan. Judge only whether the model and UX make sense in actual practice; dates, preservation, ranking policy and minute correctness remain automated. One brief acceptance observation is sufficient, not a general taste review or a request to upload private data. All ordinary histories, note recovery, flows, budgets, offline persistence and release gates remain automated. A two-item named owner routine is still a fixture requirement, not a demand for private database access.",
-  "mustNotChange": [
-    "One item, mode, focus, result and next action per block; the latest non-empty next action remains visible before practice. Separate notes, observations, next actions and lesson agenda retain their canonical homes.",
-    "Local-first offline PWA; no backend/auth/runtime paid service, gamification, audio/AI grading or guilt-driven copy. GitHub snapshot transport, conflict archives, attachment bytes, device-only secrets and unfinished-practice replacement protection remain intact.",
-    "Wall-clock minutes, one active clock, gesture-primed fresh audio contexts, marker claims, visual boundaries and wake-lock lifecycle remain independent of feedback, note writes and controls. Preserve update offer/reload ownership and build-input stamp.",
-    "Instrument scoping, independent Plan/Routines doorways above the recommendation, catalogue/source/term identity, explicit adoption, NAS references and archive authority boundaries remain intact.",
-    "Only main scrolls, existing native keyboard/tab fixes, mixed-language direction, one h1, named accessible controls, 44px mobile targets and 390px reflow remain protected. No viewport/audio/service-worker redesign."
-  ],
-  "assumptions": [
-    "A1. The owner has authorised choosing the interaction/domain model; this import is the concrete owner decision replacing Done-only notes and the old ambiguous Skip behaviour, with corresponding AGENTS edits. Builder is claude as explicitly requested.",
-    "A2. Missing second-item logging is an owner report, not reproduced here; synthetic fixtures must resolve which boundary fails without access to private practice data.",
-    "A3. Working returns and occasional theory are organisational defaults, not prescriptions or measured mastery; Claude chooses clear controls, module boundaries and documented bounded constants that satisfy the specified counterexamples."
-  ],
-  "possibleConflicts": [
-    "Present AGENTS rules explicitly require Done, drop a draft on item change, and define Skip as clamping elapsed. This proposal intentionally replaces those rules while preserving their ownership and durability protections; record the owner-approved change rather than pretending it is a refactor. Automatic Working returns also intentionally replace the current rule that only worse may bring any engine-owned future date forward; the early-date protection remains for Keep fresh and for all owner/fixed/unknown dates. Plan preview Remove currently redistributes freed minutes; this proposal deliberately makes its default consistent with the other remove/skip states, leaving time unused until a deliberate rebuild or duration choice.",
-    "The one-date preview rule must evolve into one coherent return decision that can explain an earlier derived class/working opportunity alongside an unchanged protected review date. Do not silently create two schedulers or claim a derived suggestion was written.",
-    "Current Flow text contains pre-existing stale details. Update only changed truth through governed proposals; canonical Flow/rule signatures require the established owner approval lifecycle. The CI companion needs no invented Flow."
-  ],
-  "scope": {
-    "allow": [
-      "AGENTS.md",
-      "DECISIONS.md",
-      "docs/scheduling-evidence.md",
-      "docs/repertoire-experience.md",
-      "docs/practice-session-model.md",
-      "src/domain/types.ts",
-      "src/domain/factories.ts",
-      "src/domain/defaults.ts",
-      "src/domain/labels.ts",
-      "src/domain/blocks.ts",
-      "src/domain/routines.ts",
-      "src/domain/scheduling.ts",
-      "src/domain/scoring.ts",
-      "src/domain/recommend.ts",
-      "src/domain/plan.ts",
-      "src/domain/lessonAgenda.ts",
-      "src/domain/selectors.ts",
-      "src/domain/repertoire.ts",
-      "src/domain/practiceInformation.ts",
-      "src/domain/practiceSession.ts",
-      "src/domain/practiceSessionModel.ts",
-      "src/domain/migrations.ts",
-      "src/domain/io.ts",
-      "src/domain/insights.ts",
-      "src/domain/report.ts",
-      "src/domain/canonical.ts",
-      "src/domain/sync.ts",
-      "src/domain/index.ts",
-      "src/domain/util.ts",
-      "src/store/useStore.ts",
-      "src/store/lookups.ts",
-      "src/store/sessionHelpers.ts",
-      "src/store/idb.ts",
-      "src/store/backup.ts",
-      "src/store/databaseInstall.ts",
-      "src/store/revision.ts",
-      "src/store/syncEngine.ts",
-      "src/store/notesDrafts.ts",
-      "src/components/ItemNotes.tsx",
-      "src/components/LessonNotes.tsx",
-      "src/components/RoutineDuration.tsx",
-      "src/components/RoutineContents.tsx",
-      "src/components/useNotesDraft.ts",
-      "src/components/ItemForm.tsx",
-      "src/components/QuickAdd.tsx",
-      "src/components/itemKinds.ts",
-      "src/components/ItemCard.tsx",
-      "src/components/ItemAgenda.tsx",
-      "src/components/CloseDraft.tsx",
-      "src/components/closeDraft.ts",
-      "src/components/format.ts",
-      "src/components/SchedulingExplanation.tsx",
-      "src/components/ui.tsx",
-      "src/components/direction.test.ts",
-      "src/components/pressedState.test.ts",
-      "src/components/itemKinds.test.ts",
-      "src/pages/Today.tsx",
-      "src/pages/SessionPlan.tsx",
-      "src/pages/RoutineRunner.tsx",
-      "src/pages/RoutineEdit.tsx",
-      "src/pages/StartBlock.tsx",
-      "src/pages/ActiveBlock.tsx",
-      "src/pages/CloseBlock.tsx",
-      "src/pages/ItemDetail.tsx",
-      "src/pages/NewItem.tsx",
-      "src/pages/Repertoire.tsx",
-      "src/pages/PathwayDetail.tsx",
-      "src/pages/StageDetail.tsx",
-      "src/pages/Lessons.tsx",
-      "src/pages/Insights.tsx",
-      "src/pages/TeacherReport.tsx",
-      "src/pages/Settings.tsx",
-      "src/styles/global.css",
-      "src/domain/routines.test.ts",
-      "src/domain/scheduling.test.ts",
-      "src/domain/blocks.test.ts",
-      "src/domain/plan.test.ts",
-      "src/domain/recommend.test.ts",
-      "src/domain/scoring.test.ts",
-      "src/domain/lessonAgenda.test.ts",
-      "src/domain/selectors.test.ts",
-      "src/domain/repertoire.test.ts",
-      "src/domain/io.test.ts",
-      "src/domain/migrations.test.ts",
-      "src/domain/practiceSession.test.ts",
-      "src/store/backup.test.ts",
-      "src/store/syncEngine.test.ts",
-      "tests/practice-session-families.test.ts",
-      "tests/practice-session.browser.test.ts",
-      "tests/practice-session-inbound.browser.test.ts",
-      "tests/fixtures/practice-session-v16.json",
-      "tests/fixtures/practice-session-expectations.json",
-      "tests/ci-browser-setup.test.ts",
-      "tests/post-practice.browser.test.ts",
-      "tests/practice-information.browser.test.ts",
-      "tests/practice-information-inbound.browser.test.ts",
-      "tests/practice-information-layout.browser.test.ts",
-      "tests/lessonNotes.browser.test.ts",
-      "tests/daily-practice.browser.test.ts",
-      "tests/lesson-agenda.browser.test.ts",
-      "tests/review-ownership.browser.test.ts",
-      "tests/ui-date-refresh.browser.test.ts",
-      "tests/ui-conformance.browser.test.ts",
-      "tests/repertoire-viewport.browser.test.ts",
-      "tests/practice-cues.browser.test.ts",
-      "tests/practiceBrowser.ts",
-      "tests/agent-context.test.ts",
-      ".github/workflows/ci.yml",
-      ".github/workflows/deploy.yml",
-      ".github/workflows/prismatica-gate.yml",
-      "scripts/prepare-ci-browsers.sh"
-    ],
-    "forbid": [
-      "src/domain/setarClasses.ts",
-      "src/domain/sourceArchive.ts",
-      "src/domain/setarSetup.ts",
-      "src/domain/khonyagarData.ts",
-      "src/domain/cgsData.ts",
-      "scripts/scan-setar-classes.mjs",
-      "scripts/publish-setar-index.mjs",
-      "scripts/nas-mirror.mjs",
-      "src/components/viewport.ts",
-      "src/components/useViewportGuard.ts",
-      "src/components/appUpdate.ts",
-      "src/components/practiceCue.ts",
-      "src/components/screenAwake.ts",
-      "src/components/useScreenAwake.ts",
-      "src/store/gitRemote.ts",
-      "src/store/githubSync.ts",
-      ".prismatica/rules.md",
-      ".prismatica/flows/*.md",
-      "CLAUDE.md",
-      "package.json",
-      "package-lock.json"
-    ]
-  },
-  "exclusions": [
-    "No implementation in this planning session, private database inspection, guessed repair/backfill of lost historical practice, NAS/archive/course redesign, research claims of optimal intervals, theory curriculum or generated musical authority.",
-    "No new settings dashboard, second planner/ranking engine, third creation path, routine-to-full-close wizard, running-plan reorder, automatic redistribution after session remove/skip/move-on, analytics redesign or general test-harness rewrite.",
-    "No permission to submit/merge/deploy, approve signed Flow/Rule changes, erase owner data or broaden into unrelated findings. Claude follows the normal governed owner boundaries."
-  ],
-  "acceptance": [
-    {
-      "description": "Two differently named bound Setar items created through the real editor: natural completion and early Finish, omitted/partial/full optional capture, leave completion and reload. Assert BOTH persisted blocks and BOTH item histories/totals, truthful not-assessed presentation and untouched reviews/SR. Repeat binding aggregates into one block; an unbound segment stays unlogged. Include the reported first-item-only shape and identify any checked-clean path.",
-      "test": "routine completion and history preserve all practised items without feedback"
-    },
-    {
-      "description": "Table-driven store/domain proof of the shared session-control policy for Plan and Routine: remove before start, skip/remove not-yet-started work during a session, active/paused skip with elapsed time, keep partial practice through move-on, first/middle/final/all removal, repeated routine item after an earlier real occurrence, duplicate finish and reload/resume. Skips create zero practice; kept partial time is real; remaining order/targets stay unchanged and freed time is visibly unused. Explicit Plan regeneration/budget change and routine duration fitting can allocate again. Cover actual overtime without borrowing another target, protected completed records, and empty/completed outcomes. Plan move-on saves through Close before advancing; Routine keeps its lighter recording with no retention judgement. Finish write failure/retry retains a recoverable outcome and counts each real item once. Use independently expected minute totals for both flows, not just identical function names.",
-      "test": "routine controls distinguish skipped time from partial practice across run transitions"
-    },
-    {
-      "description": "Chromium/WebKit: Today, stage, pathway, bare URL and duration/essentials doors show/reach actual bound contents before starting. Start only from a tap; preview matches frozen run, full list states remain available while running, editing saved routine does not shift active identities, removing/skipping does not edit the saved routine or delete items. Named mobile controls and empty/unbound states are covered. Include preview removal and essentials filtering: the shorter contents/time shown are the ones started; no automatic refill of removed time.",
-      "test": "routine contents and controls describe the exact run started from every doorway"
-    },
-    {
-      "description": "Domain plus store: first/last/no-op/empty/single moves, repeated moves then swap/remove, and start/close sequence execute owner order with identical moved-segment minutes/roles/reasons/focus and no invented block. Remove leaves other allocations unchanged and shows unused capacity; explicit regeneration/budget choice is the allocation boundary, preserving generator floors/shares/caps. Cross-check pre-start and running skip/remove/move-on with the shared control family. Reorder logs no practice and cannot bypass deleted/moved-item, revision or day checks.",
-      "test": "session plan reordering preserves segment identity allocation and execution order"
-    },
-    {
-      "description": "Chromium/WebKit at phone and desktop widths: reorder with named keyboard/touch controls, keep focus usable and start/finish in displayed order. In the same finite journey, compare Plan and Routine removal before start, pending skip and early move-on: equivalent actions have consistent meanings, remaining durations do not silently increase, actual/remaining/unused time is truthful, and actual practice is kept through the appropriate existing save path. Check empty/completed outcomes and explicit regeneration/duration fitting without a new control wizard. Revision/day staleness stays visible without silently re-sorting edits; no drag dependency or horizontal overflow.",
-      "test": "session plan move controls work by keyboard and touch without losing the draft"
-    },
-    {
-      "description": "Chromium/WebKit: item detail, active block, bound routine and shared lesson editor; type then immediately navigate, collapse, Finish, cross a natural boundary, change item/lesson and ordinary reload. After acknowledged persistence recover exact latest text for the original owner, including clear-to-empty and Farsi composition. New owner never displays/saves the prior draft. Done is optional; practice facts and clock remain unchanged.",
-      "test": "working note drafts survive exits boundaries and reload without Done"
-    },
-    {
-      "description": "Delay/reorder/reject acknowledgements, type during a pending save, retry after store memory already changed, two editors with equal item/lesson ids, and import/sync/restore/reset/delete underneath an editor. Saved never precedes durability; newer words survive, failed text remains recoverable with retry/Copy, stale writes cannot resurrect records or overwrite replacement/remote notes, both competing texts remain preserved and recoverable under the simplest resolution consistent with the existing conflict model, without requiring a new conflict UI. Exercise rapid exit before debounce, not just waiting for autosave.",
-      "test": "working note saves preserve newest text and refuse stale ownership across failures and replacement"
-    },
-    {
-      "description": "Fixed decision table: all six results plus not_logged crossed with focused/explicit-whole/legacy-unknown evidence on Working/Keep fresh; whole child versus parent; due/future/unscheduled; same-day double close. Focused performable never promotes whole readiness or expands/resets/completes retention. Explicit whole stable can advance when eligible; same is neutral; no-assessment/routine capture/admin changes never fabricate retention. Store outcomes, not merely helpers, prove the boundaries.",
-      "test": "scoped evidence separates focused progress from whole item retention and readiness"
-    },
-    {
-      "description": "Literal high-SR unfinished-piece fixture (for example reps 8, interval 90) with focused success and same produces the documented 1–3-day Working return rather than repeating/expanding 90 days. A real explicit due whole-item check in Keep fresh retains honest spaced progression. Include user/manual/fixed/unknown future protection, auto future, due, no date, deliberate clear versus omitted, switching intention, repeated decline/rearm/reload and once-per-local-day progress. Match one preview decision to the exact saved item/open-row outcome and rationale.",
-      "test": "working returns stay short while protected dates and retention spacing keep their authority"
-    },
-    {
-      "description": "An unfinished/retained item committed to a class in four days with a 90-day review returns as class preparation without overwriting its protected date. Heavy practice today reduces repeats when an alternative exists; it returns on a later eligible day until its named lesson, including after a routine without feedback. Test only-candidate honest fallback, near versus later class, retarget/delete/pass/unassigned/archive/other-instrument classes, question-only entries, dormant exclusion, equal-score stable ties and parent/part opportunities. Today/build/regenerate/swap/fallback consume the same eligibility/return policy; urgency beats diversity.",
-      "test": "class preparation and shared recommendation pools return useful work without repetition noise"
-    },
-    {
-      "description": "Chromium/WebKit: focused versus explicit whole, unchanged and stable results on a high-SR unfinished piece, explicit readiness decision, class opportunity versus protected retention date, manual correction, no result, Back, local midnight and ordinary/plan entry. History preserves evidence scope; Why this date uses the same decision. No preselected whole-readiness promotion, lost close draft, duplicated date derivation or required extra text.",
-      "test": "close and review screens explain scope readiness and next practice with the date actually saved"
-    },
-    {
-      "description": "Create/edit Theory through the existing full Add path, with a title-only default and optional source; no auto-creation on load/regenerate. Fixed multi-session library shows an eligible reading_theory task being offered when urgent needs are covered, lowers its repeat after actual practice, and excludes it when absent/resting/other-instrument. Opposing short-budget and imminent-class fixtures keep the urgent anchor. Reorder/swap/routine/direct practice record normal blocks with scope, do not misclassify theory as repertoire, invent musical facts or violate minute floors/shares.",
-      "test": "theory study uses ordinary practice items and earns bounded non urgent opportunities"
-    },
-    {
-      "description": "Committed pre-upgrade v16 fixture plus supported older chain: migration is deterministic, clock-free and idempotent. Old blocks/ids/results/notes/counters/SR/dates/provenance/commitments/references/catalogue and attachment bytes survive; no whole scope/readiness or missing routine block is inferred. Cover current/new fields, missing legacy scope, invalid type/value, duplicate ids and too-new data. New schema round-trips through exports and canonical hashing; equal inputs on different dates produce equal data/hashes.",
-      "test": "session model migration preserves history dates bytes and unresolved legacy meanings"
-    },
-    {
-      "description": "Real store/browser inbound family across persist migrate AND merge, state/full import, sync pull/Keep remote, archive restore and cold-start recovery. Valid migrated/new data survives reload; malformed or too-new new semantics refuse without changing memory/disk/blobs. Active paused/running block/routine presence continues to defer/refuse replacement; fresh/legacy in-progress routines and dual-clock recovery preserve actual accumulated time. Full attachment bytes are proved outside WebKit Blob seeding. Update both-device compatibility is explicit; no older-schema silent field loss.",
-      "test": "session model inbound doors preserve live practice and fail before replacing data"
-    },
-    {
-      "description": "Execute the actual setup against temporary mirror+file and direct-source layouts with fast-index/slow-package, dead/refused, missing suite, healthy fallback, no matching Azure source, missing list and all-unavailable cases. Demonstrate the chosen bypass/fallback prevents reliance on the known slow route, preserves suites/components/signatures/third-party sources, and ends clearly within its own bound. No source-text heuristic alone, global apt changes in tests or longer install timeout. Deterministic local proof satisfies this acceptance before review/seal; a pre-ship live Actions run is not required.",
-      "test": "ci browser setup avoids a fast index slow package mirror within the existing bounds"
-    },
-    {
-      "description": "All three real suite workflows use the same bounded setup and lockfile-resolved Chromium/WebKit install before checks; retain CI/deploy check parity, PR-only Gate, cancellation, job/install bounds and tests-before-deploy. Adapt existing runner tests to execution semantics, with missing-engine/late-setup/bypassed-check negative fixtures; no new bespoke YAML/source scanner. Prove the setup and gate wiring locally before review/seal. The real Actions run is post-ship evidence and must pass before merge; its absence before ship is not a blocker.",
-      "test": "ci release paths retain pinned dual engine provisioning and tests before publishing"
-    },
-    {
-      "description": "One bounded native-device regression pass on the built HTTPS candidate: iPhone Safari AND installed PWA, 390px-class viewport, edit mixed Farsi/English notes while a routine changes item, dismiss the keyboard and use all five tabs, pause/resume after genuine idle and observe a real boundary cue/display wake. Record device/iOS/build and actual audible/wake outcome. No new calibration target, repeated UX taste sign-off or real NAS/media mutation; desktop WebKit cannot prove these physical/native properties.",
-      "test": "manual:OWNER"
-    },
-    {
-      "description": "One minimal OWNER product walkthrough using real Setar data on the built candidate: one unfinished piece being prepared for its named next class, focused chunk practice, its Next practice explanation, one Keep fresh item and one generated session plan. Record a brief judgement of whether the model and UX make sense for real practice. This is product acceptance only; do not manually recalculate dates, audit data correctness, supply a private export or broaden into a fresh product/taste review. Keep the separate native iPhone/sound check unchanged.",
-      "test": "manual:OWNER"
-    }
-  ],
-  "risk": {
-    "touchesAuth": false,
-    "touchesPayments": false,
-    "touchesSavedData": true,
-    "copyOnly": false,
-    "rationale": "Heavy: additive saved evidence/return semantics, schema migration and unfinished-run/note durability cross hydration/import/sync boundaries. No auth or payment changes; existing tokens remain device-only."
-  },
-  "delta": {
-    "today": "The practice loop stores unscoped results and uses them for item-wide status/spacing; routine time is separate from optional capture but skip credits any positive elapsed interval, contents are opaque, notes require Done, plan order cannot be edited, and class/theory opportunities are not consistently integrated.",
-    "instead": "Use the scoped evidence and Working/Keep fresh return model in this proposal throughout the existing practice loop and its routine/plan entry paths. Record completed routine practice durably without requiring feedback; explicit skips log nothing; show contents and preserve item-bound autosaved notes. Use consistent remove/skip/move-on meanings across Plan and Routine, leaving unused time unallocated unless the owner deliberately rebuilds or changes duration. Reorder preview segments and include ordinary theory study through the shared eligibility/return policy. Keep class opportunities distinct from protected retention dates and fix the known slow apt route as bounded technical work.",
-    "keep": [
-      "r-local-first-offline",
-      "r-no-silent-data-loss",
-      "r-practice-completes-reviews",
-      "r-explainable-scheduling",
-      "r-pure-tested-domain",
-      "r-one-instrument-per-session",
-      "r-quick-start",
-      "r-direction-aware-text",
-      "r-no-gamification",
-      "r-secrets-stay-on-device",
-      "r-large-files-stay-on-nas"
-    ],
-    "assumptions": [],
-    "showMe": "The named acceptance families below, using a two-item Setar Warm up created through the real UI, literal long-gap chunk/class counterexamples, failure/reload/restore states and Chromium plus WebKit histories; one focused proof route, full required checks and one bounded native-device observation."
-  },
-  "desiredRules": [],
-  "docsDelta": [
-    "AGENTS.md",
-    "DECISIONS.md",
-    "docs/scheduling-evidence.md",
-    "docs/repertoire-experience.md",
-    "docs/practice-session-model.md"
-  ]
-}
-```
-````
 
 ## The Delta this change was framed from
 
@@ -509,70 +83,454 @@ The named acceptance families below, using a two-item Setar Warm up created thro
 
 
 
-## Files in this diff
+## Re-review after a rejection — scoped to the rework
 
-- .github/workflows/ci.yml
-- .github/workflows/deploy.yml
-- .github/workflows/prismatica-gate.yml
-- AGENTS.md
-- DECISIONS.md
-- docs/practice-session-model.md
-- docs/repertoire-experience.md
-- docs/scheduling-evidence.md
-- scripts/prepare-ci-browsers.sh
-- src/components/ItemForm.tsx
-- src/components/ItemNotes.tsx
-- src/components/LessonNotes.tsx
-- src/components/RoutineDuration.tsx
-- src/components/SchedulingExplanation.tsx
-- src/components/closeDraft.ts
-- src/components/direction.test.ts
-- src/components/format.ts
-- src/components/itemKinds.ts
-- src/domain/blocks.test.ts
-- src/domain/blocks.ts
-- src/domain/factories.ts
-- src/domain/index.ts
-- src/domain/io.test.ts
-- src/domain/io.ts
-- src/domain/labels.ts
-- src/domain/migrations.ts
-- src/domain/plan.test.ts
-- src/domain/plan.ts
-- src/domain/practiceSessionModel.ts
-- src/domain/recommend.test.ts
-- src/domain/recommend.ts
-- src/domain/repertoire.ts
-- src/domain/routines.ts
-- src/domain/scheduling.test.ts
-- src/domain/scheduling.ts
-- src/domain/scoring.ts
-- src/domain/types.ts
-- src/pages/ActiveBlock.tsx
-- src/pages/CloseBlock.tsx
-- src/pages/ItemDetail.tsx
-- src/pages/NewItem.tsx
-- src/pages/PathwayDetail.tsx
-- src/pages/RoutineEdit.tsx
-- src/pages/RoutineRunner.tsx
-- src/pages/SessionPlan.tsx
-- src/pages/StageDetail.tsx
-- src/pages/Today.tsx
-- src/store/notesDrafts.ts
-- src/store/useStore.ts
-- tests/ci-browser-setup.test.ts
-- tests/daily-practice.browser.test.ts
-- tests/fixtures/practice-session-expectations.json
-- tests/fixtures/practice-session-v16.json
-- tests/lessonNotes.browser.test.ts
-- tests/post-practice.browser.test.ts
-- tests/practice-cues.browser.test.ts
-- tests/practice-information.browser.test.ts
-- tests/practice-session-families.test.ts
-- tests/practice-session-inbound.browser.test.ts
-- tests/practice-session.browser.test.ts
-- tests/review-ownership.browser.test.ts
-- tests/ui-conformance.browser.test.ts
+The last review of this contract asked for changes. This is NOT the whole plan
+restated: it is what changed since the previously reviewed head, the findings
+that review recorded, and the paths the rework touched — read any file you need
+from the lane. The same Check already bound to this head is not to be rerun
+wholesale.
+
+Verify each prior finding's FAMILY across every consumer in the repository, not
+only the lines this rework changed: a family is closed when no instance of its
+invariant survives anywhere, and a fix that reached one consumer while a sibling
+still breaks it is not closed.
+
+**Approved intent:** `.prismatica/intents/20261023-make-practice-records-dependable-and-kee-34cc.md`
+
+**Findings from the previous review:**
+
+- **notes-recovery-idempotence** — P2: Successful retry after a failed conflicting-note save leaves a recovery draft which reload appends again (ItemNotes.tsx:156-163; notesDrafts.ts:44-47; useStore.ts:2614-2618).
+  _counterexample:_ Edit original to local draft; replace stored notes with remote words; fail autosave; repair storage; Try again; reload. Expected both texts once. Actual local draft appears twice. Reproduced for item and lesson owners. Affects ItemDetail, ActiveBlock, RoutineRunner and Lessons through DurableNotes; plain retry, owner typing and gone-record refusal checked clean. Extend exact test: working note saves preserve newest text and refuse stale ownership across failures and replacement.
+- **session-unused-time-accounting** — P2: planRunTime omits time freed by early completion from running and completed summaries (plan.ts:971-980; SessionPlan.tsx:391-393).
+  _counterexample:_ Start two 10-minute entries in a 20-minute Plan. Save the first after 2 minutes: remaining=10, recorded=2, unused=0 instead of 8. Save the second after 3 minutes: unused=0 instead of 15. Also affects partial completion followed by skip and restored runs. Preview removal, whole-entry skip and Routine move-on checked clean. Extend exact test: routine controls distinguish skipped time from partial practice across run transitions; cover the rendered ac-5 journey.
+- **parent-part-opportunity-exclusion** — P2: swapSegment omits the parent/part exclusion applied by build and Today (plan.ts:857-874).
+  _counterexample:_ Generate 30 minutes with usable technique items parent importance 5, child importance 4 bound to parent, and other importance 1; difficulty 3 each, no blocks/reviews. Build gives other warm-up 4 minutes plus parent focus 25. Swap other gives child plus parent without a separately due review. Reverse the importance values to reproduce the opposite direction. Shared swap eligibility is affected; build/regeneration, Today, move/remove and their due-review exception checked clean. Extend exact test: class preparation and shared recommendation pools return useful work without repetition noise.
+
+**What changed since the previously reviewed head:**
+
+```diff
+diff --git a/docs/practice-session-model.md b/docs/practice-session-model.md
+index 76d658900ebe4f0353b55636a15d69cbf3e86bea..e38aed2075e586d4917a9d11c62b08b36c8d95f4 100644
+--- a/docs/practice-session-model.md
++++ b/docs/practice-session-model.md
+@@ -91,7 +91,8 @@ anything practised today — a routine's unassessed block included, a class
+ commitment included — steps aside while anything else is eligible; with
+ nothing else eligible the pool repeats today's work and every reason says so.
+ A piece and its own part are one intended work (`sameWork`): one card or
+-segment, unless the other has its own due review. Urgency outranks variety:
++segment, unless the other has its own due review — a swap included, judged
++against the segments that stay. Urgency outranks variety:
+ diversity and the theory turn act only in a plan's middle picks.
+ 
+ ## 6. Theory / listening study
+@@ -131,7 +132,9 @@ target. An earlier real occurrence of a repeated routine item survives skipping
+ a later one. A legacy run (no `skipped` flags) keeps its old skip credit.
+ 
+ Time figures, each separate: Plan `planRunTime` → available / planned /
+-remaining / unused / recorded; Routine `routineRunTime` → planned / remaining /
++remaining / unused / recorded (a done segment occupies what it actually took,
++up to its target, so finishing early frees the rest as unused); Routine
++`routineRunTime` → planned / remaining /
+ unused (seconds), recorded = `aggregateItemMinutes`.
+ 
+ ## 8. Notes without a Done dependency
+@@ -148,7 +151,10 @@ same text → nothing; stored text unchanged since `base` → replaced; stored t
+ changed underneath (sync, import, restore, another editor) → BOTH kept, stored
+ first, then this text under `KEPT_DRAFT_HEADING`; record gone → nothing written,
+ draft kept on the device. After a reload, held drafts replay through the same
+-decision before the app opens. Item and lesson ids never share a draft.
++decision before the app opens. Item and lesson ids never share a draft. When a
++write kept both texts, the device copy becomes that kept-both text, based on
++what the store held, so a retry or a reload never replays the old draft onto it
++a second time.
+ 
+ ## 9. Data and compatibility
+ 
+diff --git a/src/components/ItemNotes.tsx b/src/components/ItemNotes.tsx
+index 7589c81007d69840895098d827e86fe0a91216a9..c6607f095843f52f59445251b572f9413fcfb9cc 100644
+--- a/src/components/ItemNotes.tsx
++++ b/src/components/ItemNotes.tsx
+@@ -142,6 +142,7 @@ export function DurableNotes({
+       if (savedTimer.current) clearTimeout(savedTimer.current);
+       setState({ phase: 'saving' });
+     }
++    const prior = storedNotes(d.owner);
+     const outcome: NoteSaveOutcome = saveNotes(d.owner, d.text, d.base);
+     if (outcome === 'gone') {
+       if (speak && saveSeq.current === seq) setState({ phase: 'failed', message: 'this record no longer exists, so nothing was written.' });
+@@ -154,13 +155,16 @@ export function DurableNotes({
+     // typed next is based on it — and when both texts were kept, the editor
+     // shows what the record now holds.
+     const after = outcome === 'merged' ? storedNotes(d.owner) : d.text;
++    // The store re-held the device copy as the kept-both text over `prior`;
++    // what is typed next is held over the same base.
++    if (outcome === 'merged') durable.current = prior;
+     const current = draftRef.current;
+     if (current && keyOf(current.owner) === keyOf(d.owner)) {
+       applyDraft({ ...current, base: after, ...(outcome === 'merged' ? { text: after } : {}) });
+     }
+     void storageSettled().then(
+       () => {
+-        dropNoteDraft(d.owner, d.text);
++        dropNoteDraft(d.owner, after);
+         if (speak && saveSeq.current === seq) durable.current = after;
+         if (!speak || saveSeq.current !== seq) return;
+         const now = draftRef.current;
+diff --git a/src/domain/plan.ts b/src/domain/plan.ts
+index 600a1db36dec447502c197949726912221a41c02..5ea9584ecf1605179b6d9101185d3686c540601d 100644
+--- a/src/domain/plan.ts
++++ b/src/domain/plan.ts
+@@ -835,6 +835,10 @@ export function swapSegment(
+   const { pool, isRepeatPool } = candidatePool(scored, blocks, args.now);
+ 
+   const inUse = new Set(plan.segments.map((s) => s.itemId));
++  // The build's own rule: a piece and its own part are one intended work, so
++  // a swap never brings in a relative of another segment unless its own
++  // review is due.
++  const kept = items.filter((i) => plan.segments.some((s, j) => j !== index && s.itemId === i.id));
+   const exclude = args.excludeIds ?? new Set<string>();
+   const dueById = new Map(
+     dueReviews(args.reviews, args.now)
+@@ -856,6 +860,7 @@ export function swapSegment(
+         : target.minutes;
+   const eligible = (s: ItemScore): boolean => {
+     if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
++    if (kept.some((k) => sameWork(k, s.item)) && !hasDueReview(s.item, args.now)) return false;
+     if (plan.segments.length > 1 && segmentFloor(s.item) > room) return false;
+     switch (target.bucket) {
+       case 'warmup':
+@@ -963,19 +968,23 @@ export function skipPlanSegment(run: PlanRun, index = run.pointer): PlanRun {
+ 
+ /**
+  * The run's time, each figure on its own: `available` is the budget chosen,
+- * `planned` what the segments still standing ask for, `remaining` what the
+- * pending ones ask for, `unused` what nothing asks for (removed, skipped or
++ * `planned` what the segments still standing ask for (a done one: what it
++ * actually took, up to its target), `remaining` what the pending ones ask
++ * for, `unused` what nothing asks for (removed, skipped, finished early or
+  * never planned), `recorded` what was actually saved. Recorded is never
+- * inferred from a target.
++ * inferred from a target, and overtime never borrows another segment's.
+  */
+ export function planRunTime(run: PlanRun): { available: number; planned: number; remaining: number; unused: number; recorded: number } {
+-  const sum = (status: PlanSegmentStatus[]) =>
+-    run.segments.filter((s) => status.includes(s.status)).reduce((n, s) => n + s.minutes, 0);
+-  const planned = sum(['pending', 'done']);
++  const remaining = run.segments.filter((s) => s.status === 'pending').reduce((n, s) => n + s.minutes, 0);
++  // A done segment from before `actualMinutes` was kept occupies its target: nothing is claimed freed.
++  const taken = run.segments
++    .filter((s) => s.status === 'done')
++    .reduce((n, s) => n + Math.min(s.minutes, s.actualMinutes ?? s.minutes), 0);
++  const planned = remaining + taken;
+   return {
+     available: run.budgetMinutes,
+     planned,
+-    remaining: sum(['pending']),
++    remaining,
+     unused: Math.max(0, run.budgetMinutes - planned),
+     recorded: run.segments.reduce((n, s) => n + (s.status === 'done' ? (s.actualMinutes ?? 0) : 0), 0),
+   };
+diff --git a/src/store/useStore.ts b/src/store/useStore.ts
+index e253f182f235a187cb3f472edb3e3aa6775dbf71..da347b37f995f796584fdfa45da8b100122d24b2 100644
+--- a/src/store/useStore.ts
++++ b/src/store/useStore.ts
+@@ -1,7 +1,7 @@
+ import { create } from 'zustand';
+ import { createJSONStorage, persist } from 'zustand/middleware';
+ import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
+-import { dropNoteDraft, heldNoteDrafts } from './notesDrafts';
++import { dropNoteDraft, heldNoteDrafts, holdNoteDraft } from './notesDrafts';
+ import { withRevision } from './revision';
+ import { primePracticeSound } from '../components/practiceCue';
+ import {
+@@ -1893,6 +1893,10 @@ export const useStore = create<StoreState>()(
+               : { lessons: s.db.lessons.map((l) => (l.id === owner.id ? touch({ ...l, notes: notes || undefined }, now) : l)) }),
+           },
+         }));
++        // The competing text is now accounted for: the device copy becomes the
++        // kept-both text, typed over what was stored, so neither a retry nor a
++        // reload replays the old draft against it a second time.
++        if (merged) holdNoteDraft(owner, { text: notes, base: record.notes ?? '' });
+         return merged ? 'merged' : 'written';
+       },
+ 
+@@ -2613,9 +2617,13 @@ export const useHydrationStatus = create<HydrationStatus>(() => ({
+  */
+ function replayNoteDrafts() {
+   for (const { owner, draft } of heldNoteDrafts()) {
+-    if (useStore.getState().saveNotes(owner, draft.text, draft.base) === 'gone') continue;
++    const outcome = useStore.getState().saveNotes(owner, draft.text, draft.base);
++    if (outcome === 'gone') continue;
++    const { db } = useStore.getState();
++    const record = owner.kind === 'item' ? db.items.find((i) => i.id === owner.id) : db.lessons.find((l) => l.id === owner.id);
++    const written = outcome === 'merged' ? (record?.notes ?? '') : draft.text;
+     void storageSettled().then(
+-      () => dropNoteDraft(owner, draft.text),
++      () => dropNoteDraft(owner, written),
+       () => undefined,
+     );
+   }
+diff --git a/tests/practice-session-families.test.ts b/tests/practice-session-families.test.ts
+index 7ef521bab206889df576ea9e827af002b888fcfe..a2bbf36c24534bddafc01ca62a015bb02e31f665 100644
+--- a/tests/practice-session-families.test.ts
++++ b/tests/practice-session-families.test.ts
+@@ -347,6 +347,34 @@ describe('the shared session-control policy', () => {
+     useStore.getState().skipPlanSegment(0);
+     expect(useStore.getState().activePlan!.segments[0].status).toBe('done');
+ 
++    // EARLY COMPLETION frees the rest of that target: unused, never handed on.
++    // 20′ available, two 10′ entries. Saved after 2′: 10 left, 2 recorded,
++    // 20 − (2 + 10) = 8 unused. Saved after 3′: 20 − (2 + 3) = 15 unused.
++    const twoTens: SessionPlan = { ...plan, budgetMinutes: 20, segments: [seg('warm', 10, 'warmup'), seg('chahar', 10, 'lesson')] };
++    const closeAfter = (minutes: number) => {
++      useStore.getState().beginPlanSegment();
++      useStore.getState().closeSession({ result: 'same', durationMinutes: minutes, answer: 'scheduled', now: NOW });
++    };
++    seed(planDb);
++    useStore.getState().startPlan(twoTens);
++    closeAfter(2);
++    expect(planRunTime(useStore.getState().activePlan!)).toEqual({ available: 20, planned: 12, remaining: 10, unused: 8, recorded: 2 });
++    // A RESTORED run (the persisted shape, round-tripped) reads the same figures.
++    const restored = JSON.parse(JSON.stringify(useStore.getState().activePlan)) as typeof run;
++    expect(planRunTime(restored)).toEqual({ available: 20, planned: 12, remaining: 10, unused: 8, recorded: 2 });
++    closeAfter(3);
++    run = useStore.getState().activePlan!;
++    expect([run.pointer, planRunTime(run)]).toEqual([2, { available: 20, planned: 5, remaining: 0, unused: 15, recorded: 5 }]);
++    // Partial practice, then Skip the next: 20 − 2 = 18 unused, 2 recorded.
++    seed(planDb);
++    useStore.getState().startPlan(twoTens);
++    closeAfter(2);
++    useStore.getState().skipPlanSegment();
++    expect(planRunTime(useStore.getState().activePlan!)).toEqual({ available: 20, planned: 2, remaining: 0, unused: 18, recorded: 2 });
++    // A done segment with no recorded figure (an older run) claims nothing freed.
++    const older = { ...restored, segments: restored.segments.map((x) => ({ ...x, actualMinutes: undefined })) };
++    expect(planRunTime(older)).toEqual({ available: 20, planned: 20, remaining: 10, unused: 0, recorded: 0 });
++
+     // Skip a LATER pending entry while running: the current one is untouched.
+     seed(planDb);
+     useStore.getState().startPlan(plan);
+@@ -728,6 +756,29 @@ describe('class preparation and the shared pool', () => {
+     expect([recs2.best, recs2.quickWin, recs2.maintenance].filter(Boolean).map((r) => r!.score.item.id).sort()).toEqual(['p', 'p-part']);
+     const planned = buildSessionPlan({ instrumentId: SETAR, budgetMinutes: 30, now: NOW, items: [P, part, Q, R], blocks: [], reviews: [], preparationDates: dates() });
+     expect(planned.segments.filter((s) => s.itemId === 'p' || s.itemId === 'p-part')).toHaveLength(1);
++    // … and a SWAP keeps that rule, in both directions: swapping the other
++    // entry never brings in the relative of the one that stays.
++    for (const [parentImportance, childImportance] of [[5, 4], [4, 5]] as const) {
++      const tech = (id: string, importance: number, over: Partial<PracticeItem> = {}) => item(id, id, { itemType: 'technique', importance, ...over });
++      const family = [tech('parent', parentImportance), tech('child', childImportance, { parentItemId: 'parent' }), tech('other', 1)];
++      const anchor = parentImportance > childImportance ? 'parent' : 'child';
++      const args = { instrumentId: SETAR, now: NOW, items: family, blocks: [], reviews: [] };
++      const built = buildSessionPlan({ ...args, budgetMinutes: 30 });
++      expect(built.segments.map((x) => [x.itemId, x.minutes]), anchor).toEqual([['other', 4], [anchor, 25]]);
++      // No other candidate: the slot keeps what it had rather than repeat the work.
++      expect(swapSegment(built, 0, args).segments.map((x) => x.itemId), anchor).toEqual(['other', anchor]);
++      // A relative whose OWN review is due is a distinct need: never spent as
++      // a warm-up, but it may take a deep slot beside the work.
++      const relative = anchor === 'parent' ? 'child' : 'parent';
++      const dueFamily = family.map((i) => (i.id === relative ? { ...i, nextReviewDate: TODAY, nextReviewSource: 'auto' as const } : i));
++      const dueRow = [{ id: 'due-row', practiceItemId: relative, dueDate: TODAY, reviewType: 'retention' as const, createdAt: T, updatedAt: T }];
++      const due = { ...args, items: dueFamily, reviews: dueRow };
++      expect(swapSegment(built, 0, due).segments.map((x) => x.itemId), anchor).toEqual(['other', anchor]);
++      const deep = (itemId: string): PlanSegment => ({ itemId, title: itemId, minutes: 10, bucket: 'deep', core: false, mode: 'learn', focus: 'other', reason: '', floorMinutes: 2 });
++      const twoDeep: SessionPlan = { instrumentId: SETAR, budgetMinutes: 20, segments: [deep(anchor), deep('other')], summary: '', generatedAt: T };
++      expect(swapSegment(twoDeep, 1, args).segments.map((x) => x.itemId), anchor).toEqual([anchor, 'other']);
++      expect(swapSegment(twoDeep, 1, due).segments.map((x) => x.itemId), anchor).toEqual([anchor, relative]);
++    }
+     // Urgency first: the class anchor leads a short plan.
+     expect(buildSessionPlan({ instrumentId: SETAR, budgetMinutes: 10, now: NOW, items: [P, Q, R], blocks: [], reviews: [], preparationDates: dates() }).segments.map((s) => s.itemId)).toEqual(['p']);
+   });
+diff --git a/tests/practice-session.browser.test.ts b/tests/practice-session.browser.test.ts
+index 7db378d65f5d8569e9fee9de6aefe35b8aebe023..55ceefcf5db77d94f0bcb02b1e097c0001afc66e 100644
+--- a/tests/practice-session.browser.test.ts
++++ b/tests/practice-session.browser.test.ts
+@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
+ import type { Page } from 'playwright';
+ import { buildSessionPlan, createItem, isWork, SCHEMA_VERSION, type PracticeBlock, type PracticeItem } from '../src/domain';
+ import { RESULT_LABELS } from '../src/domain/labels';
++import { hashState } from '../src/domain/canonical';
+ import {
++  connectSync,
+   goTo,
+   importBackup,
++  installFakeGitHub,
++  newFakeRemote,
++  publishRemote,
++  remoteStateText,
+   importOutcome,
+   openPracticeApp,
+   persistedDb,
+@@ -429,7 +435,12 @@ describe('plan and routine controls', () => {
+           await page.getByRole('button', { name: 'Finish' }).click();
+           await page.getByRole('button', { name: 'Save without a result' }).click();
+           await page.getByRole('button', { name: `Start ${moved[1]}` }).waitFor();
+-          expect(await page.locator('main').innerText(), where).toContain('1 min recorded');
++          // Finishing early frees the rest of that target as UNUSED: 1′ of
++          // keptMinutes[0] taken, the others still ask for theirs.
++          const left = keptMinutes.slice(1).reduce((n, m) => n + m, 0);
++          expect(await page.locator('main').innerText(), where).toContain(
++            `${left} min left of ${left + 1} planned · ${45 - left - 1} of 45 unused · 1 min recorded`,
++          );
+           // Skip a LATER pending entry: it records nothing; the rest keep their minutes.
+           const running = moved.slice(0, -1);
+           await page.getByRole('button', { name: `Skip ${running.at(-1)}` }).click();
+@@ -440,6 +451,11 @@ describe('plan and routine controls', () => {
+           await page.getByRole('button', { name: 'Skip this one — save nothing' }).click();
+           await page.getByRole('button', { name: 'End the plan' }).waitFor();
+           expect((await db(app)).blocks.map((b) => [b.practiceItemId, b.durationMinutes]), where).toEqual([[await idOf(app, moved[0]), 1]]);
++          // Only the entries between the skipped ones still ask for time.
++          const leftEnd = keptMinutes.slice(2, -1).reduce((n, m) => n + m, 0);
++          expect(await page.locator('main').innerText(), where).toContain(
++            `${leftEnd} min left of ${leftEnd + 1} planned · ${45 - leftEnd - 1} of 45 unused · 1 min recorded`,
++          );
+           await page.getByRole('button', { name: 'End the plan' }).click();
+           await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+ 
+@@ -743,6 +759,104 @@ describe('notes without a Done dependency', () => {
+         await writePersistedState(app, { ...beforeDelete, db: { ...beforeDelete.db, items: beforeDelete.db.items.filter((i) => i.id !== FRESH) } }, SCHEMA_VERSION);
+         await reload(app);
+         expect((await db(app)).items.map((i) => i.id).sort(), engine).toEqual([CHAHAR, CLASS_ITEM, PIECE, WARM, TWIN, DUE].sort());
++
++        const kept = (theirs: string, mine: string) => `${theirs}\n\n— Also typed on this device (kept, not merged) —\n${mine}`;
++
++        // --- A REPLAYED draft kept both, its own write refused at load --------
++        // A later ordinary write makes the kept-both text durable anyway; the
++        // next reload must not replay the old draft onto it a second time.
++        await page.addInitScript(() => {
++          if (!localStorage.getItem('pc-test-refuse-writes')) return;
++          const proto = IDBObjectStore.prototype as unknown as { put: unknown; __realPut?: unknown };
++          proto.__realPut = proto.put;
++          proto.put = function failing() {
++            throw new DOMException('storage is full', 'QuotaExceededError');
++          };
++        });
++        await goTo(app, `/items/${CLASS_ITEM}`);
++        await editShownNotes(page);
++        await breakStorage(page);
++        await notesBox(page).fill('my class-item words');
++        await goTo(app, '/repertoire');
++        await repairStorage(page);
++        const under = (await readPersistedState(app)).state as { db: Db };
++        await writePersistedState(
++          app,
++          { ...under, db: { ...under.db, items: under.db.items.map((i) => (i.id === CLASS_ITEM ? { ...i, notes: 'their class-item words' } : i)) } },
++          SCHEMA_VERSION,
++        );
++        await page.evaluate(() => localStorage.setItem('pc-test-refuse-writes', '1'));
++        await reload(app);
++        await repairStorage(page);
++        await page.evaluate(() => localStorage.removeItem('pc-test-refuse-writes'));
++        await goTo(app, `/items/${PIECE}`);
++        await editShownNotes(page);
++        await notesBox(page).fill('a later, ordinary save');
++        await page.clock.runFor(1_000);
++        await page.getByText('Saved.').waitFor();
++        await notesOf(app, CLASS_ITEM, kept('their class-item words', 'my class-item words'));
++        await reload(app);
++        await show(app, `/items/${CLASS_ITEM}`);
++        await page.getByText('their class-item words', { exact: false }).first().waitFor();
++        expect((await page.locator('main').innerText()).split('my class-item words').length - 1, engine).toBe(1);
++
++        // --- PULLED UNDERNEATH A LIVE EDITOR, the kept-both write refused ------
++        // A sync (the device coming back online) replaces the record while the
++        // words are still unwritten; the kept-both write is then refused. Both
++        // texts survive exactly ONCE — after Try again (item) and after a
++        // reload with more typed and no retry (class) — never the old draft
++        // replayed a second time on top of them.
++        const remote = newFakeRemote();
++        await installFakeGitHub(page, remote);
++        await connectSync(app);
++        const pullUnderneath = async (change: (d: Db) => Db, landed: () => Promise<unknown>) => {
++          const theirs = change((await persistedDb(app)) as unknown as Db);
++          publishRemote(remote, remoteStateText(theirs), await hashState(theirs), 60 + remote.calls.length);
++          await page.evaluate(() => window.dispatchEvent(new Event('online')));
++          await landed();
++        };
++        const heldDrafts = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('pc-note-draft:')));
++
++        await goTo(app, `/items/${WARM}`);
++        await editShownNotes(page);
++        await notesBox(page).fill('my words, while the other device synced');
++        await pullUnderneath(
++          (d) => ({ ...d, items: d.items.map((i) => (i.id === WARM ? { ...i, notes: 'their words, pulled while I typed' } : i)) }),
++          () => notesOf(app, WARM, 'their words, pulled while I typed'),
++        );
++        await breakStorage(page);
++        await page.clock.runFor(1_000);
++        await page.getByText(/Not saved/).waitFor();
++        await repairStorage(page);
++        await page.getByRole('button', { name: 'Try again' }).click();
++        await page.getByText('Saved.').waitFor();
++        // (The deleted record's draft above stays on the device, recreating nothing.)
++        expect(await heldDrafts(), engine).toEqual([`pc-note-draft:item:${FRESH}`]);
++        await reload(app);
++        await notesOf(app, WARM, kept('their words, pulled while I typed', 'my words, while the other device synced'));
++
++        await goTo(app, '/lessons');
++        const classCard = page.getByRole('article').filter({ hasText: 'Class 37' });
++        await classCard.getByRole('button', { name: /Class 37/ }).first().click();
++        await classCard.getByRole('button', { name: 'Edit Class notes' }).click();
++        const classBox = classCard.getByRole('textbox', { name: 'Class notes' });
++        await classBox.fill('my class words');
++        await pullUnderneath(
++          (d) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: 'their class words' } : l)) }),
++          () => persistedUntil(app, (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes, (n) => n === 'their class words'),
++        );
++        await breakStorage(page);
++        await page.clock.runFor(1_000);
++        await classCard.getByText(/Not saved/).waitFor();
++        expect(await classBox.inputValue(), engine).toBe(kept('their class words', 'my class words'));
++        await classBox.fill(`${kept('their class words', 'my class words')} — and more`);
++        await repairStorage(page);
++        await reload(app);
++        await persistedUntil(
++          app,
++          (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes,
++          (n) => n === kept('their class words', 'my class words — and more'),
++        );
+         expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
+       } finally {
+         await app.close();
+```
+
+**Paths the rework touched:**
+
+- `docs/practice-session-model.md`
+- `src/components/ItemNotes.tsx`
+- `src/domain/plan.ts`
+- `src/store/useStore.ts`
+- `tests/practice-session-families.test.ts`
+- `tests/practice-session.browser.test.ts`
+
+**The builder's rework commit messages — claims to verify against the diff, never evidence:**
+
+```
+050ba4e Rework review findings: kept-both note drafts, early-finish unused time, swap parent/part rule
+
+- notes-recovery-idempotence: after a kept-both write the device draft becomes
+  that text based on what the store held, and the drop matches what was written,
+  so a retry or reload never replays the old draft a second time (items and
+  lessons via DurableNotes).
+- session-unused-time-accounting: planRunTime counts a done segment as what it
+  actually took, up to its target, so finishing early frees the rest as unused.
+- parent-part-opportunity-exclusion: swapSegment applies the build's sameWork
+  exclusion against the segments that stay, keeping the due-review exception.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+dc1f663 Rework review findings: share the kept-both draft rebase with reload replay
+
+- notes-recovery-idempotence: saveNotes itself re-holds the device draft as the
+  kept-both text, so the reload replay path and the editor share one rule; the
+  replay drops by what it actually wrote. Proven with a replay whose own write
+  is refused at load and a later ordinary save makes the text durable.
+- parent-part-opportunity-exclusion: the due-review exception is proven with a
+  coupled review row in a deep slot (never a warm-up).
+- session-unused-time-accounting: the rendered Plan header is checked at the
+  end of the run as well as mid-run.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+```
 
 ## Check against the contract
 
