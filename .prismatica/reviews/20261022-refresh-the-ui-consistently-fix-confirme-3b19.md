@@ -1,87 +1,12 @@
 ---
 id: 20261022-refresh-the-ui-consistently-fix-confirme-3b19
 contractId: 20261022-refresh-the-ui-consistently-fix-confirme-3b19
-patchId: 9777c925f375e9b9d989a48d87de2a7e8c18a99a
+patchId: 409220a49199fbb0fafdb2e2f1cf27c2c94ec5dd
 reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: same-session-close-observation-retention
-    summary: "B7 Back/ac-15: a retained Close observation is silently replaced when
-      Active's separate scratch observation changes."
-    counterexample: "CloseBlock.tsx:91-93 restores restored.observation only while
-      restored.sessionNote equals active.note. Type 'First pass rushed' on
-      Close, Back, open 'Observation for this block' on Active (the Close text
-      is absent there), type 'Second pass steadier', Finish. Close now contains
-      only the latter and Save writes only it. Producers/consumers swept:
-      CloseBlock.practiseMore and handleSave, closeDraft.ts, ActiveBlock scratch
-      editor, useStore.setSessionNote/closeSession. Other retained inputs
-      (result, nextAction, review choices, item edits, question and corrected
-      duration) have no corresponding overwrite branch. The exact ac-15 test
-      never edits Active's observation."
-  - family: phone-control-target-floor
-    summary: "Look spec 6/B12/ac-1: the 44px phone floor still misses InstallHint's
-      Dismiss button and all six checkbox sites."
-    counterexample: InstallHint.tsx:57 sets minHeight:28 inline, overriding
-      global.css:1143. global.css:1138 excludes checkboxes, with no 44px input
-      or associated label target supplied at RoutineEdit.tsx:220,
-      RoutineDuration.tsx:106, PathwayDetail.tsx:529 and :594, or
-      SetarSetupReview.tsx:279 and :327. The exact ac-1 test never triggers the
-      install hint, adds a routine segment, opens routine fitting, or exercises
-      these offer/setup states. Swept all TSX input types and inline size
-      overrides; standard buttons, selects, text/date/number inputs, textareas,
-      summaries and stage actions use the shared floor. No rendered radio/range
-      inputs; file inputs are hidden, and rating stars are the authorised
-      exception. Browser remeasurement was unavailable in the read-only sandbox;
-      the override and exclusions are source-proven.
-  - family: always-loaded-rule-preservation
-    summary: "DOCS/ac-17: condensation moves binding constraints out of AGENTS.md,
-      although amendments permit moving mechanism detail and require every rule
-      to remain represented."
-    counterexample: Compared every baseline AGENTS section with HEAD, its six
-      moved-doc sections, CLAUDE imports and both guidance guards. AGENTS.md:61
-      omits vibration being best-effort/never asserted; :70-73 omits one
-      catalogue resolver across surfaces, freezing routine segments, never
-      rewriting an instrument to satisfy a binding, wall-clock elapsed time and
-      refusing another term's spelling; :107-109 omits persisted
-      Decisions/Skips/deletions and a separate NAS publisher token kept only in
-      NAS runtime; :115 omits no persisted course graph/no inbound door/no
-      schema change; :124 loses the stated stable/due/once-per-day eligibility
-      definition; :130 omits the shared build/swap candidate policy,
-      familiar/easy warm-up eligibility and item revalidation at start. These
-      clauses survive in optional docs, not the always-loaded file. The phrase
-      guards pass because they do not enumerate these losses. Hard do-nots,
-      recorded owner decisions, practice-information, quick-start, Today order,
-      unfinished-session, calendar totals, lessons/agenda, material, device/sync
-      and architecture sections otherwise retain their constraints. Restore the
-      constraints without weakening the 3584-byte headroom check.
-  - family: row-play-button-consistency
-    summary: "Look spec 4: row play buttons remain filled primary on several
-      surfaces despite the explicit outlined-row rule."
-    counterexample: All PlayIcon sites swept. Filled row actions remain at
-      StageDetail.tsx:630 (unit Practise), :677 (routine Start),
-      PathwayDetail.tsx:466 (routine Start), ItemDetail.tsx:390 (suggested part
-      Practise), and SessionPlan.tsx:389 (segment Start). Today.tsx
-      routine/then/class/due rows are outlined and clean; Close Back and
-      Active/RoutineRunner Resume are secondary. Standalone main Start/Begin
-      controls and Today's in-progress Resume banner were checked separately as
-      region-primary actions; media icons and navigation are not row practice
-      buttons. This is the settled look specification, not a taste judgement.
-  - family: owner-visual-review-packet
-    summary: "VISUAL REVIEW PACKET/DOCS: the required captioned matched before/after
-      packet is not linked or delivered."
-    counterexample: DECISIONS.md:90-93 gives UI_PACKET_DIR=<dir> and a test
-      invocation, not an actual packet location or image links/captions.
-      Repository and lane review/report/evidence records contain no linked
-      packet. tests/ui-conformance.browser.test.ts only writes images if the
-      optional environment variable is provided. Today, mixed-language
-      list/detail, Close and Settings matched artefacts must be supplied and
-      linked for owner inspection. Capture support uses the same fixture and
-      viewport/theme configurations, which is clean, but is not the deliverable.
-      Native iPhone/Safari and Messages acceptance ac-14 remains owner-only and
-      is not demonstrated by browser fixtures.
-createdAt: 2026-10-23T00:51:30.317Z
-sealedAt: 2026-10-23T03:50:19.567Z
+verdict: approve
+createdAt: 2026-10-23T12:20:22.331Z
+sealedAt: 2026-10-23T12:26:51.114Z
 ---
 
 # Review: Refresh the UI consistently, fix confirmed interaction bugs and preserve proven mobile behaviour
@@ -95,7 +20,7 @@ sealedAt: 2026-10-23T03:50:19.567Z
 - **Contract:** 20261022-refresh-the-ui-consistently-fix-confirme-3b19
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/54
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `9777c925f375e9b9d989a48d87de2a7e8c18a99a`
+- **Diff patch-id:** `409220a49199fbb0fafdb2e2f1cf27c2c94ec5dd`
 - **Computed by:** prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified
 
 ## The plan the owner approved
@@ -506,6 +431,7 @@ Verify them against the code.
 - docs/setar-archive.md
 - docs/setar-practice-reliability.md
 - src/components/ArchiveRefresh.tsx
+- src/components/InstallHint.tsx
 - src/components/ItemCard.tsx
 - src/components/ItemForm.tsx
 - src/components/QuickAdd.tsx
@@ -551,6 +477,7 @@ Verify them against the code.
 - tests/fixtures/ui-refresh.json
 - tests/journey-harness.browser.test.ts
 - tests/post-practice.browser.test.ts
+- tests/setar-practice.browser.test.ts
 - tests/ui-conformance.browser.test.ts
 - tests/ui-date-refresh.browser.test.ts
 - tests/ui-guidance.test.ts
