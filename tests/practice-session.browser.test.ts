@@ -857,6 +857,94 @@ describe('notes without a Done dependency', () => {
           (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes,
           (n) => n === kept('their class words', 'my class words — and more'),
         );
+
+        // --- OVERLAPPING acknowledgements, then the next write refused --------
+        // For an item and for a class alike, a reload reproduces the newest
+        // words exactly once: a landed write re-bases the device copy, and an
+        // older acknowledgement never drops words typed after it.
+        const replaceOnDisk = async (change: (d: Db) => Db) => {
+          const st = (await readPersistedState(app)).state as { db: Db };
+          await writePersistedState(app, { ...st, db: change(st.db) }, SCHEMA_VERSION);
+        };
+        const owners = [
+          {
+            open: async () => {
+              await show(app, `/items/${PIECE}`);
+              await editShownNotes(page);
+              return notesBox(page);
+            },
+            landed: (want: string) => notesOf(app, PIECE, want),
+            replace: (theirs: string) =>
+              replaceOnDisk((d) => ({ ...d, items: d.items.map((i) => (i.id === PIECE ? { ...i, notes: theirs } : i)) })),
+          },
+          {
+            open: async () => {
+              await show(app, '/lessons');
+              const c = page.getByRole('article').filter({ hasText: 'Class 37' });
+              await c.getByRole('button', { name: /Class 37/ }).first().click();
+              await c.getByRole('button', { name: 'Edit Class notes' }).click();
+              return c.getByRole('textbox', { name: 'Class notes' });
+            },
+            landed: (want: string) =>
+              persistedUntil(app, (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes, (n) => n === want),
+            replace: (theirs: string) =>
+              replaceOnDisk((d) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: theirs } : l)) })),
+          },
+        ];
+        const refuseAfterRelease = async () => {
+          await breakStorage(page);
+          await releaseStorage(page);
+          await page.getByText(/Not saved/).waitFor();
+          await repairStorage(page);
+          await reload(app);
+        };
+        for (const [n, owner] of owners.entries()) {
+          // Held write A; more typed; A lands; the queued newer write refused.
+          let box = await owner.open();
+          await holdStorage(page);
+          await box.fill(`A${n}`);
+          await page.clock.runFor(1_000);
+          await page.getByText('Saving…').waitFor();
+          await box.fill(`A${n} — and more`);
+          await refuseAfterRelease();
+          await owner.landed(`A${n} — and more`);
+
+          // The same over a kept-both text: words refused, the record replaced
+          // underneath, the kept-both replay refused at load — then the overlap.
+          box = await owner.open();
+          await breakStorage(page);
+          await box.fill(`mine${n}`);
+          await page.clock.runFor(1_000);
+          await page.getByText(/Not saved/).waitFor();
+          await repairStorage(page);
+          await owner.replace(`theirs${n}`);
+          await page.evaluate(() => localStorage.setItem('pc-test-refuse-writes', '1'));
+          await reload(app);
+          await repairStorage(page);
+          await page.evaluate(() => localStorage.removeItem('pc-test-refuse-writes'));
+          box = await owner.open();
+          expect(await box.inputValue(), engine).toBe(kept(`theirs${n}`, `mine${n}`));
+          await holdStorage(page);
+          await box.fill(kept(`theirs${n}`, `mine${n} — and more`));
+          await page.clock.runFor(1_000);
+          await page.getByText('Saving…').waitFor();
+          await box.fill(kept(`theirs${n}`, `mine${n} — and more, still`));
+          await refuseAfterRelease();
+          await owner.landed(kept(`theirs${n}`, `mine${n} — and more, still`));
+
+          // Two writes queued, the first words typed again before either lands;
+          // first lands, then second, and the write carrying them is refused.
+          box = await owner.open();
+          await holdStorage(page);
+          await box.fill(`first${n}`);
+          await page.clock.runFor(1_000);
+          await page.getByText('Saving…').waitFor();
+          await box.fill(`second${n}`);
+          await page.clock.runFor(1_000);
+          await box.fill(`first${n}`);
+          await refuseAfterRelease();
+          await owner.landed(`first${n}`);
+        }
         expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
       } finally {
         await app.close();

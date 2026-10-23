@@ -154,7 +154,12 @@ draft kept on the device. After a reload, held drafts replay through the same
 decision before the app opens. Item and lesson ids never share a draft. When a
 write kept both texts, the device copy becomes that kept-both text, based on
 what the store held, so a retry or a reload never replays the old draft onto it
-a second time.
+a second time. The copy always holds the latest words typed, based on what
+IndexedDB last acknowledged: every landed write (editor or replay, through
+`noteWriteIssued`/`settleNoteDraft`) re-bases it on the text that landed, and
+it is dropped only when that text IS its words and no later write of the record
+is in flight — never by text alone. Overlapping acknowledgements followed by a
+refused write therefore replay the newest words exactly once.
 
 ## 9. Data and compatibility
 

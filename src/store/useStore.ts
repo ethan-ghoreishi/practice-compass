@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
-import { dropNoteDraft, heldNoteDrafts, holdNoteDraft } from './notesDrafts';
+import { heldNoteDrafts, holdNoteDraft, noteWriteIssued, settleNoteDraft } from './notesDrafts';
 import { withRevision } from './revision';
 import { primePracticeSound } from '../components/practiceCue';
 import {
@@ -2612,8 +2612,8 @@ export const useHydrationStatus = create<HydrationStatus>(() => ({
  * Notes typed before a reload interrupted their canonical write are replayed
  * through the ordinary `saveNotes` decision — so a draft whose record is gone
  * stays on the device and recreates nothing, and one whose stored text changed
- * meanwhile keeps both. Each local copy is dropped once its write is
- * acknowledged.
+ * meanwhile keeps both. Each local copy is settled by its write's
+ * acknowledgement (`settleNoteDraft`), exactly like the editor's.
  */
 function replayNoteDrafts() {
   for (const { owner, draft } of heldNoteDrafts()) {
@@ -2622,8 +2622,9 @@ function replayNoteDrafts() {
     const { db } = useStore.getState();
     const record = owner.kind === 'item' ? db.items.find((i) => i.id === owner.id) : db.lessons.find((l) => l.id === owner.id);
     const written = outcome === 'merged' ? (record?.notes ?? '') : draft.text;
+    const token = noteWriteIssued(owner);
     void storageSettled().then(
-      () => dropNoteDraft(owner, written),
+      () => settleNoteDraft(owner, token, written),
       () => undefined,
     );
   }
