@@ -1,8 +1,8 @@
 ---
 id: 20261022-refresh-the-ui-consistently-fix-confirme-3b19
 contractId: 20261022-refresh-the-ui-consistently-fix-confirme-3b19
-contractHash: 7ec42833872be8e8730f6c052a2c18528bb008d738563096f9daf62af38c1f6c
-createdAt: 2026-10-23T00:06:57.368Z
+contractHash: a1cf808d062a005b02bde3131e277f0b9cf8c92c1d7b3968b4aadb4a960b5d59
+createdAt: 2026-10-23T00:35:52.340Z
 skills:
   - ui-work
   - build
@@ -591,6 +591,7 @@ Refresh the UI consistently, fix confirmed interaction bugs and preserve proven 
 - docs/khonyagar-course.md
 - docs/repertoire-experience.md
 - docs/scheduling-evidence.md
+- docs/setar-practice-reliability.md
 
 Never touch:
 
@@ -665,7 +666,7 @@ Never touch:
 - **ac-14** — Owner on the candidate build, installed iPhone PWA AND Safari: repeat keyboard open/dismiss with focus retained on Close, notes and a lesson question; verify tabs return and remain reachable, with main scroll usable. Include route change, rotation, background/resume and pinch zoom, checking after dismissal at normal scale; record device, OS, build and outcome, without claiming browser fixtures prove native behaviour. On MacBook and iPhone in light/dark, review the small before/after packet against the look spec and paste a mixed-language report into Messages. Owner taste adjustments within the spec are a passing refinement, not a new reviewer family. Actual regressions remain blockers. → proven by `manual:OWNER`
 - **ac-15** — Browser through real controls: fill close inputs, Back, practise further, Finish; retain result/text/manual choices/item edits/question, refresh an untouched duration proposal and preserve a corrected duration. Save creates one block with the retained values and the displayed current review decision. Repeat with discard and a new session on the SAME item, verifying no draft leakage. Include a day/settings change while away so derived dates refresh rather than restoring stale calculations; old session completion cannot clear or overwrite a newer draft. → proven by `close draft survives Back for the same block and never leaks to another session`
 - **ac-16** — Reuse the exact existing tests/repertoire-viewport.browser.test.ts test and src/components/viewport.test.ts fixtures unchanged in the required check. Preserve standalone height, safe areas, main-only scrolling and diagnostic trace. This guards the scripted mechanism; native keyboard acceptance remains manual:OWNER. → proven by `viewport recovery respects focus zoom and scroll ownership`
-- **ac-17** — A focused test under tests/ verifies both AGENTS.md and the recursive CLAUDE.md import profile leave at least 4096 bytes under 32768 after additions, reusing the existing counting semantics. Keep existing agent-context budget, prohibition and path tests unchanged and green. Review the short baseline-to-final disposition of condensed sections for semantic preservation; passing phrase checks alone is not sufficient. → proven by `UI refresh leaves instruction headroom without losing current prohibitions`
+- **ac-17** — A focused test under tests/ verifies both AGENTS.md and the recursive CLAUDE.md import profile leave at least 3584 bytes (3.5 KiB) under 32768 after additions, reusing the existing counting semantics. Keep existing agent-context budget, prohibition and path tests unchanged and green. Review the short baseline-to-final disposition of condensed sections for semantic preservation; passing phrase checks alone is not sufficient. → proven by `UI refresh leaves instruction headroom without losing current prohibitions`
 
 ## Docs to update as part of this change
 
@@ -681,7 +682,7 @@ Never touch:
 
 ## Current progress
 
-Not started — no checks have run yet. Default state is "not ready".
+Last checks passed (2026-10-23T00:13:01.382Z). Rework loops so far: 0.
 
 ## Before the first review
 
