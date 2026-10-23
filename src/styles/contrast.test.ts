@@ -177,6 +177,50 @@ describe('shipped colour tokens', () => {
     expect(failures).toEqual([]);
   });
 
+  it('keeps every baseline colour token at its exact value in all three palette blocks', () => {
+    // Contrast alone cannot prove the palette is unchanged: two different
+    // colours can both pass. These are the literal values global.css shipped
+    // at 24a84be (the UI refresh's baseline; the owner chose "keep it"), as
+    // [dark, light]. A new token may join a block; an existing one never moves.
+    const BASELINE: Record<string, [string, string]> = {
+      '--bg': ['#15171c', '#f4f1ea'],
+      '--bg-grad': ['radial-gradient(1200px 600px at 50% -10%, #1c1f27 0%, #15171c 60%)', 'radial-gradient(1200px 600px at 50% -10%, #fbf9f4 0%, #f1ede4 70%)'],
+      '--surface': ['#1d2027', '#fffefb'],
+      '--surface-2': ['#232730', '#f4f0e8'],
+      '--surface-3': ['#2b303a', '#ece7dc'],
+      '--border': ['rgba(255, 255, 255, 0.08)', 'rgba(40, 35, 25, 0.10)'],
+      '--border-strong': ['rgba(255, 255, 255, 0.16)', 'rgba(40, 35, 25, 0.18)'],
+      '--text': ['#e8e6e0', '#2c2924'],
+      '--text-dim': ['#a6a299', '#6a655b'],
+      '--text-faint': ['#908e88', '#716c63'],
+      '--accent': ['#74b3a6', '#316e62'],
+      '--accent-dim': ['#4d7d74', '#6aa99b'],
+      '--accent-contrast': ['#0e1714', '#ffffff'],
+      '--accent-soft': ['rgba(116, 179, 166, 0.14)', 'rgba(63, 141, 125, 0.12)'],
+      '--gold': ['#cba86a', '#876830'],
+      '--tone-alert': ['#db9181', '#98503f'],
+      '--tone-warn': ['#cda35f', '#845d21'],
+      '--tone-progress': ['#8ca9c4', '#466686'],
+      '--tone-good': ['#84bb9c', '#326f4f'],
+      '--tone-rest': ['#a5a2b2', '#666175'],
+      '--tone-alert-soft': ['rgba(217, 140, 124, 0.16)', 'rgba(192, 101, 79, 0.12)'],
+      '--tone-warn-soft': ['rgba(205, 163, 95, 0.16)', 'rgba(169, 118, 42, 0.12)'],
+      '--tone-progress-soft': ['rgba(139, 168, 196, 0.16)', 'rgba(79, 115, 150, 0.12)'],
+      '--tone-good-soft': ['rgba(132, 187, 156, 0.16)', 'rgba(63, 140, 99, 0.12)'],
+      '--tone-rest-soft': ['rgba(160, 156, 173, 0.16)', 'rgba(117, 111, 134, 0.12)'],
+    };
+    const moved: string[] = [];
+    for (const [i, block] of BLOCKS.entries()) {
+      const tokens = declarationsIn(CSS, block.selector);
+      for (const [token, values] of Object.entries(BASELINE)) {
+        const want = values[i === 0 ? 0 : 1];
+        const got = tokens[token]?.replace(/\s+/g, ' ');
+        if (got !== want) moved.push(`${block.name}: ${token} is ${got ?? '(missing)'}, baseline ${want}`);
+      }
+    }
+    expect(moved).toEqual([]);
+  });
+
   it('asserts the light palette in BOTH blocks that declare it', () => {
     // The duplicate is not decoration: it is the palette an owner who has never
     // picked a theme actually sees. Dropping it would silently halve the check.

@@ -135,7 +135,7 @@ export default function RoutineEdit() {
           label="Instrument"
           hint={instrumentId === '' && existing ? 'No instrument set — it stays that way until you choose one.' : undefined}
         >
-          <select className="select" value={instrumentId} onChange={(e) => onInstrumentChange(e.target.value)}>
+          <select className="select" aria-label="Instrument" value={instrumentId} onChange={(e) => onInstrumentChange(e.target.value)}>
             {instruments.length === 0 && <option value="">No instruments yet</option>}
             {instruments.length > 0 && instrumentId === '' && <option value="">Choose an instrument…</option>}
             {instruments.map((i) => (
@@ -148,7 +148,7 @@ export default function RoutineEdit() {
 
         <div className="grid-2">
           <Field label="Pathway (optional)">
-            <select className="select" value={pathwayId} onChange={(e) => onPathwayChange(e.target.value)}>
+            <select className="select" aria-label="Pathway (optional)" value={pathwayId} onChange={(e) => onPathwayChange(e.target.value)}>
               <option value="">Unplaced — just this routine</option>
               {availablePathways.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -158,7 +158,7 @@ export default function RoutineEdit() {
             </select>
           </Field>
           <Field label="Stage (optional)">
-            <select className="select" value={stageId} onChange={(e) => setStageId(e.target.value)} disabled={!pathwayId}>
+            <select className="select" aria-label="Stage (optional)" value={stageId} onChange={(e) => setStageId(e.target.value)} disabled={!pathwayId}>
               <option value="">Whole pathway</option>
               {availableStages.map((s) => (
                 <option key={s.id} value={s.id}>

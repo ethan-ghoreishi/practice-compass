@@ -615,3 +615,23 @@ RENAME-LOG.csv; no tool writes them.
 **Order when this lane's scanner reaches the NAS:** deploy the app first (a v16
 app reads both old and new indexes), then copy all three runtime files (§4), then
 run the job and Refresh.
+
+## Rules in full
+
+Moved from `AGENTS.md` on 2026-10-22 to keep the always-loaded rules within
+their budget (UI refresh lane, owner amendment). `AGENTS.md` still states every
+rule below as a short binding line and points here; this section keeps the
+mechanism, identifiers and examples that go with them, in the UI-refresh
+lane's condensed wording of the base rules, every clause kept. Both bind;
+neither weakens the other. Change a rule in both places.
+
+### The Setar archive is a source: it describes, never testifies
+
+Runbook: `docs/setar-archive.md`; app side `sourceReconcile.ts`.
+
+- The grammar lives once, in the scanner; the app never parses a filename. The scanner never follows a symlink, treats a failed read as empty, splits on token 0 or picks the largest file; a rename loop or fork is diagnosed, never walked. The app refuses a newer index version, recomputes the digest (`parseSourceIndex`), refuses a present but wrong-typed value; `checkSourceGraph` is the one grammar at every door. Fix the grammar or the door, never with a guard in a component.
+- Archive evidence may establish repertoire membership, lesson provenance and source material, never practice, a result, exposure, review completion or scheduling progress. The owner's own practice takes are never a resource; a roster is the registry's, never inferred from files; an unnamed demo never spreads over a guessed set; every role-named file, registered or not, counts against the roster. An imported class is history even when future-dated: upcoming tests go through `isUpcomingLesson`, never a bare date compare. Imported pieces arrive resting.
+- Exact bindings win; weak equivalences ask (Link / Create separately / Skip), never merge; `aliases_seen` is search only, never identity; a built-in `catalogKey` never equals a canonical key. Decisions, Skips and deletions persist; one whose premise (typed value, meaning, exact proposal, never a label) moved is refused as stale; an unanswered offer writes nothing; a registry field is offered only when changed since the accepted graph. Restore lifts one exact suppression tuple; `--attention` only prints; Review Setar setup writes only selected rows, never on load, import, sync or Refresh. The commit re-plans, validates, waits for IndexedDB, never replaces the database or touches a blob. Moving an archive-bound item to another instrument is refused.
+- Repair legacy paths exactly through the rename log or diagnose them, no fuzzy matching by title, size or modification time; `not-described` never means gone; two rows naming one file both survive. A refresh rewrites references only on lessons the archive owns. **Open gap:** a legacy `setar-classes/` reference on a lesson the archive does not own stays in the old namespace for the owner to repoint.
+- One media base per device, naming the archive folder: no second archive-specific base, no resolver fallback. The shared media root derives from it (`src/domain/mediaRoots.ts`), never guessed; each reference resolves against exactly one; an undecodable base is unrecognised, never thrown. An unreachable NAS is never called absent (`describeArchiveAccess`).
+- The NAS publisher's token is separate and repository-scoped (Contents write, no workflow or admin scope), only in the NAS runtime; the branch restriction is the script's, never called credential isolation. No credential or archive root enters a committed file, app data, a log, sync or a backup.

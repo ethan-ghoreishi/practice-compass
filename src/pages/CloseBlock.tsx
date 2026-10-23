@@ -30,6 +30,8 @@ import { Field, OptionPills, RatingInput } from '../components/ui';
 import { CheckIcon, PlayIcon } from '../components/icons';
 import { closeOverrideDate, reviewOverrideSurvivesResultChange, reviewSummaryLine } from '../components/format';
 import { useDecisionNow } from '../components/useDecisionNow';
+import { closeDraftFor, closeDraftKey, dropCloseDraft, holdCloseDraft } from '../components/closeDraft';
+import SchedulingExplanation from '../components/SchedulingExplanation';
 
 const RESULT_BUTTON_LIST: { value: BlockResult; label: string }[] = [
   { value: 'worse', label: RESULT_LABELS.worse },
@@ -74,27 +76,38 @@ export default function CloseBlock() {
     ? proposedCloseMinutes(sessionElapsedSeconds(active), active.targetMinutes)
     : { minutes: 10, stale: false };
 
-  const [result, setResult] = useState<BlockResult | null>(null);
-  const [duration, setDuration] = useState(proposed.minutes);
-  const [observation, setObservation] = useState(active?.note ?? '');
-  const [nextAction, setNextAction] = useState('');
-  const [comeBack, setComeBack] = useState(true);
+  // What the owner left here when they went Back to practise more — THIS
+  // block's inputs only (closeDraft.ts), never a derived decision: the review
+  // line, the suggestion and an untouched minutes proposal are worked out
+  // again from now.
+  const draftKey = active ? closeDraftKey(active) : '';
+  const [restored] = useState(() => (draftKey ? closeDraftFor(draftKey) : null));
+
+  const [result, setResult] = useState<BlockResult | null>(restored?.result ?? null);
+  // Only a figure the owner typed is kept; otherwise the live proposal shows.
+  const [correctedMinutes, setCorrectedMinutes] = useState<number | null>(restored?.correctedMinutes ?? null);
+  const duration = correctedMinutes ?? proposed.minutes;
+  // A held draft's observation is the block's observation: Active edited it
+  // in place while practising more (closeDraft.ts), so nothing here chooses.
+  const [observation, setObservation] = useState(restored ? restored.observation : (active?.note ?? ''));
+  const [nextAction, setNextAction] = useState(restored?.nextAction ?? '');
+  const [comeBack, setComeBack] = useState(restored?.comeBack ?? true);
   // A CORRECTION to the engine's plan, never a second copy of it. Held as an
   // override so there is still exactly ONE review value on this screen (below).
-  const [override, setOverride] = useState<{ dueDate?: string; reviewType?: ReviewType } | null>(null);
+  const [override, setOverride] = useState<{ dueDate?: string; reviewType?: ReviewType } | null>(restored?.override ?? null);
   const [showReviewControls, setShowReviewControls] = useState(false);
   // The item as this practice left it: Status, Primary focus and Current
   // effort, each `null` while untouched — an untouched field is never written.
   // Focus '' is a deliberate None.
-  const [statusPick, setStatusPick] = useState<ItemStatus | null>(null);
-  const [focusPick, setFocusPick] = useState<FocusArea | '' | null>(null);
-  const [effortPick, setEffortPick] = useState<Rating | null>(null);
+  const [statusPick, setStatusPick] = useState<ItemStatus | null>(restored?.statusPick ?? null);
+  const [focusPick, setFocusPick] = useState<FocusArea | '' | null>(restored?.focusPick ?? null);
+  const [effortPick, setEffortPick] = useState<Rating | null>(restored?.effortPick ?? null);
   const [showItemControls, setShowItemControls] = useState(false);
-  const [becomeTeacherQ, setBecomeTeacherQ] = useState(false);
+  const [becomeTeacherQ, setBecomeTeacherQ] = useState(restored?.becomeTeacherQ ?? false);
   // A NEW question every time: it becomes its own agenda entry rather than
   // overwriting whatever the item already carried, and raising one never
   // commits the item to a class.
-  const [teacherQText, setTeacherQText] = useState('');
+  const [teacherQText, setTeacherQText] = useState(restored?.teacherQText ?? '');
 
   // Recent results including the (pending) one, for the "three same" check.
   const recentSameStreak = useMemo(() => {
@@ -266,8 +279,29 @@ export default function CloseBlock() {
           ? { text: teacherQText.trim(), lessonId: questionLesson?.id }
           : undefined,
     });
+    dropCloseDraft(draftKey);
     // If a Session Plan is running, return to it (closeSession advanced it).
     navigate(useStore.getState().activePlan ? '/plan' : '/');
+  }
+
+  /** Back to practising THIS block: what is typed here waits for its Finish. */
+  function practiseMore() {
+    holdCloseDraft({
+      key: draftKey,
+      result,
+      observation,
+      nextAction,
+      correctedMinutes,
+      comeBack,
+      override,
+      statusPick,
+      focusPick,
+      effortPick,
+      becomeTeacherQ,
+      teacherQText,
+    });
+    resumeSession();
+    navigate('/active');
   }
 
   return (
@@ -285,7 +319,7 @@ export default function CloseBlock() {
             own dir="ltr" isolate keeps its bidi base fixed regardless of the
             title's, so a Farsi title's RTL base can't drag its trailing full
             stop to the visual start. */}
-        <div className="stack-sm" dir="auto">
+        <div className="stack-sm" dir="auto" style={{ textAlign: 'start' }}>
           <h1 className="page-title" style={{ fontSize: '1.45rem' }}>
             {item.title}
           </h1>
@@ -366,7 +400,7 @@ export default function CloseBlock() {
           min={1}
           aria-label="Minutes practised"
           value={duration}
-          onChange={(e) => setDuration(Math.max(1, Number(e.target.value) || 1))}
+          onChange={(e) => setCorrectedMinutes(Math.max(1, Number(e.target.value) || 1))}
           style={{ maxWidth: 120 }}
         />
       </Field>
@@ -470,9 +504,11 @@ export default function CloseBlock() {
                     }))}
                   />
                 </Field>
-                <Link to="/settings#how-scheduling-works" className="tiny faint" style={{ textDecoration: 'underline' }}>
-                  Why this date?
-                </Link>
+                {/* Explained in place: leaving would lose everything typed above. */}
+                <details className="disclosure">
+                  <summary className="small">Why this date?</summary>
+                  <SchedulingExplanation />
+                </details>
               </>
             )}
           </>
@@ -511,13 +547,7 @@ export default function CloseBlock() {
         <button className="btn btn-primary btn-lg grow" onClick={() => handleSave()} disabled={!result}>
           <CheckIcon /> Save block
         </button>
-        <button
-          className="btn"
-          onClick={() => {
-            resumeSession();
-            navigate('/active');
-          }}
-        >
+        <button className="btn" onClick={practiseMore}>
           <PlayIcon /> Back
         </button>
       </div>
@@ -531,6 +561,7 @@ export default function CloseBlock() {
       <button
         className="btn btn-ghost btn-sm"
         onClick={() => {
+          dropCloseDraft(draftKey);
           cancelSession();
           navigate(useStore.getState().activePlan ? '/plan' : '/');
         }}

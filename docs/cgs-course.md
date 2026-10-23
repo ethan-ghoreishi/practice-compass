@@ -346,3 +346,22 @@ reappears in a list — never in the pathway — and only if they choose it.
   deliberate — silently retitling a stage the owner may have edited is exactly
   what "adds nothing on its own" rules out — and renaming one by hand takes a
   tap on Edit. A fresh install gets the course's titles.
+
+## Rules in full
+
+Moved from `AGENTS.md` on 2026-10-22 to keep the always-loaded rules within
+their budget (UI refresh lane, owner amendment). `AGENTS.md` still states every
+rule below as a short binding line and points here; this section keeps the
+mechanism, identifiers and examples that go with them, in the UI-refresh
+lane's condensed wording of the base rules, every clause kept. Both bind;
+neither weakens the other. Change a rule in both places.
+
+### Courses are reference data in code (both courses)
+
+Runbooks: `docs/cgs-course.md`, `docs/khonyagar-course.md`.
+
+- A course never reuses the Setar archive machinery: no persisted graph, no inbound door, no schema change. Its scanner is the only grammar, never imported by or reachable from runtime; what it cannot read is absent with a diagnostic, never guessed; it refuses a duplicate key. Generated data (`courseData.ts`, `khonyagarData.ts`) is never hand-edited; legacy key aliases live in hand-written `courseSeed.ts` (`COURSE_LEGACY_KEYS`). Stored paths are NFC.
+- Catalogue keys are added, never renamed (`pathways.test.ts`); a section never moves stage; a work key never changes meaning; a shipped work row is never removed (literal ledgers, never derived from the data). An ordinary key matches per stage (`stageId`+`catalogKey`); only a declared work key crosses stages. Of two folders of one family, a preserved key goes to the one with real content, never merely the lower ordinal.
+- One musical work is one repertoire item. Identity is DECLARED (`courseWorkKey`, `carriedCourseWorkItem`), never matched by name, ZWNJ or space; only an entry naming one work becomes repertoire, never a drill, an aid or two works. Material is composed from the catalogue (deduplicated by path, never basename), opened where it lives; contrast-card decks are one folder reference, never a viewer, flashcard player or deck-by-deck list. Guidance is copied into notes once; regeneration never rewrites notes or stored fields.
+- Only the owner adds levels or shipped defaults, offered by deterministic id (`offeredCourseLevels`, `offeredDefaultPathways`), added only when chosen, never on load, hydration, import or sync; `reseedDefaultPathways` never adds a stage to an existing pathway; `seedInstrumentIds` never reads Setar or Guitar as Tar.
+- Routine fitting (`fitRoutineToMinutes`) never reuses `allocateMinutes` and names its drops honestly (`describeFitDrop`). Khonyagar ships no routine and creates no `Lesson`; nothing may claim the Session Plan follows its guide; no Persian identity is inferred from a Khonyagar title.

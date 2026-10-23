@@ -108,3 +108,16 @@ export function valuesToCreateInput(v: ItemFormValues) {
     guitar: cleanRecord(v.guitar),
   };
 }
+
+/**
+ * The form's values after its instrument moves from one family to another:
+ * the identity fields the new family's form cannot show are dropped, so they
+ * are never saved unseen — Persian fields leaving Persian, guitar fields
+ * arriving there. Within a family (or with no change) every value stays.
+ */
+export function dropUnshownIdentity(v: ItemFormValues, fromFamily: string | undefined, toFamily: string | undefined): ItemFormValues {
+  const wasPersian = fromFamily === 'Persian';
+  const isPersian = toFamily === 'Persian';
+  if (wasPersian === isPersian) return v;
+  return isPersian ? { ...v, guitar: {} } : { ...v, persian: {} };
+}

@@ -110,7 +110,7 @@ export default function PathwayDetail() {
           onCancel={() => setEditing(false)}
         />
       ) : (
-        <header className="stack-sm" dir="auto">
+        <header className="stack-sm" dir="auto" style={{ textAlign: 'start' }}>
           <h1 className="page-title">{pathway.name}</h1>
           {/* The instrument name is the owner's own editable text (renameable
               in Settings, Farsi included) — its own dir="auto" isolate, same
@@ -194,9 +194,10 @@ export default function PathwayDetail() {
               {prog.done}/{prog.total} solid
             </span>
           </div>
-          <div className="title-md" style={{ fontSize: '1.2rem' }}>
-            {current.code}
-            {current.title !== current.code ? ` · ${current.title}` : ''}
+          <div dir="auto" style={{ textAlign: 'start' }}>
+            <div className="title-md" style={{ fontSize: '1.2rem' }}>
+              {current.title !== current.code ? `${current.code} · ${current.title}` : current.code}
+            </div>
           </div>
           <Link to={`/pathway/${pathway.id}/${current.id}`} state={{ from }} className="btn btn-primary">
             Continue this stage
@@ -422,10 +423,10 @@ function StageRow({
         </div>
       </button>
       <div className="stack" style={{ gap: 2 }}>
-        <button className="btn btn-ghost btn-sm" style={{ minHeight: 22, padding: '0 6px' }} onClick={() => onMove(-1)} aria-label="Move up">
+        <button className="btn btn-ghost btn-sm" style={{ padding: '0 6px' }} onClick={() => onMove(-1)} aria-label="Move up">
           ↑
         </button>
-        <button className="btn btn-ghost btn-sm" style={{ minHeight: 22, padding: '0 6px' }} onClick={() => onMove(1)} aria-label="Move down">
+        <button className="btn btn-ghost btn-sm" style={{ padding: '0 6px' }} onClick={() => onMove(1)} aria-label="Move down">
           ↓
         </button>
       </div>
@@ -448,7 +449,7 @@ function RoutineRow({
   return (
     <article className="card stack-sm">
       <div className="row between">
-        <div dir="auto">
+        <div dir="auto" style={{ textAlign: 'start' }}>
           <div className="title-md" style={{ fontSize: '1.02rem' }}>
             {routine.name}
           </div>
@@ -462,7 +463,7 @@ function RoutineRow({
           <button className="btn btn-ghost btn-sm" onClick={onEdit}>
             Edit
           </button>
-          <button className="btn btn-primary btn-sm" onClick={() => onStart(false)}>
+          <button className="btn btn-sm" onClick={() => onStart(false)}>
             <PlayIcon /> Start
           </button>
         </div>

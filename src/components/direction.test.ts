@@ -182,6 +182,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/MusicalTermField.tsx", tagName: "button", classValue: "btn btn-sm term-option" },
   // A term field's resolution line: the term's own (possibly Farsi) name.
   { file: "components/MusicalTermField.tsx", tagName: "span", classValue: "" },
+  // Quick add's instrument picker: the owner's own instrument name (UI refresh, 2026-10-22).
+  { file: "components/QuickAdd.tsx", tagName: "span", classValue: "" },
   // Link existing / which item is it / which source: each candidate's own title.
   { file: "components/ReferenceChoices.tsx", tagName: "span", classValue: "" },
   // SuggestionChoice: the item's title, then each suggestion's.
@@ -238,6 +240,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/PathwayDetail.tsx", tagName: "span", classValue: "" },
   { file: "pages/PathwayDetail.tsx", tagName: "p", classValue: "page-sub" },
   { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "card card-quiet small dim" },
+  // "You are here": the current stage's own code and title (2026-10-22).
+  { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "" },
   { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "small dim" },
   { file: "pages/PathwayDetail.tsx", tagName: "button", classValue: "grow" },
   { file: "pages/PathwayDetail.tsx", tagName: "div", classValue: "" },
@@ -274,6 +278,9 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
+  // The stage header: its title leads the group, its intro resolves its own (2026-10-22).
+  { file: "pages/StageDetail.tsx", tagName: "div", classValue: "stack-sm" },
+  { file: "pages/StageDetail.tsx", tagName: "p", classValue: "page-sub" },
   // A hidden suggestion's own title, beside its Restore control (the old
   // Undo banner that deleted an item is gone).
   { file: "pages/StageDetail.tsx", tagName: "span", classValue: "small" },
@@ -298,8 +305,12 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/Today.tsx", tagName: "span", classValue: "" },
   { file: "pages/Today.tsx", tagName: "link", classValue: "grow" },
   { file: "pages/Today.tsx", tagName: "div", classValue: "" },
+  // "Now in": the stage's own code and title, under an English eyebrow (2026-10-22).
+  { file: "pages/Today.tsx", tagName: "div", classValue: "" },
   { file: "pages/Today.tsx", tagName: "link", classValue: "list-row card-link" },
   { file: "pages/Today.tsx", tagName: "div", classValue: "grow" },
+  { file: "pages/Today.tsx", tagName: "span", classValue: "" },
+  // The Overview's "next:" line: the item's own title nested in its one LTR isolate (2026-10-22).
   { file: "pages/Today.tsx", tagName: "span", classValue: "" },
 ];
 
@@ -733,15 +744,15 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
   { file: 'components/ArchiveRefresh.tsx', snippet: '<span dir="ltr">\n                      <span dir="auto">{d.path}</span> — {d.reason}' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{recs.best.reason}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{rec.reason}</span>' },
-  { file: 'pages/Today.tsx', snippet: 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">due {relativeDay(r.dueDate, now)}</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{routine.segments.length} segments · {total} min</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">Running far past its target' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> routine running ▸</span>' },
-  { file: 'pages/Today.tsx', snippet: '<span dir="ltr"> plan running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">routine running ▸</span>' },
+  { file: 'pages/Today.tsx', snippet: '<span dir="ltr">plan running ▸</span>' },
   { file: 'pages/Today.tsx', snippet: '<span dir="ltr">{ITEM_STATUS_LABELS[item.status]}</span>' },
   {
     file: 'pages/Today.tsx',
-    snippet: '<span dir="ltr">\n                        {recs.best ? `next: ${recs.best.score.item.title}`',
+    snippet: '<span dir="ltr">\n                        {recs.best ? (\n                          <>\n                            next: <span dir="auto">{recs.best.score.item.title}</span>',
   },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{next.reason}</span>' },
   // "Add new levels from this course": the course's own level code and focus
@@ -750,16 +761,16 @@ const LTR_ISOLATE_SITES: { file: string; snippet: string }[] = [
     file: 'pages/PathwayDetail.tsx',
     snippet: '<span dir="ltr">\n            {o.code} — {o.title}',
   },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source: </span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Study source:</span>{\' \'}' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">\n                  {a.kind} · {formatBytes(a.size)}' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">{ITEM_TYPE_LABELS[item.itemType]}</span>' },
   {
     file: 'pages/ItemDetail.tsx',
     snippet: '<span className="tiny faint" dir="ltr">\n            {RATING_LABELS.difficulty.toLowerCase()} {item.difficulty}/5',
   },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Noticed: </span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Decided to try next: </span>' },
-  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Constraint: </span>' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Noticed:</span>{\' \'}' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Decided to try next:</span>{\' \'}' },
+  { file: 'pages/ItemDetail.tsx', snippet: '<span dir="ltr">Constraint:</span>{\' \'}' },
   { file: 'pages/ItemDetail.tsx', snippet: '<span className="tiny warn-flag" dir="ltr">saturated — consider resting</span>' },
   { file: 'pages/SessionPlan.tsx', snippet: '<span dir="ltr">{seg.reason}</span>' },
   { file: 'pages/CloseBlock.tsx', snippet: '<span dir="ltr">A few seconds to capture what happened.</span>' },
@@ -1529,40 +1540,10 @@ describe('direction lives on the group', () => {
   // `GROUP_SITE_INVENTORY`'s exhaustive equality against any new dir="auto"
   // site, not by this check.
   //
-  // Excluded: ItemForm.tsx, QuickAdd.tsx and RoutineEdit.tsx, the three
-  // files this lane's own contract puts out of scope ("their dir='auto'
-  // usage is already correct and must not be touched"). That claim turned
-  // out to be wrong for one of them — QuickAdd.tsx's instrument-picker
-  // button renders `{i.name}` with no dir anywhere — but fixing it means
-  // editing a forbidden file, so it is named here and in AGENTS.md instead
-  // of silently passing OR silently failing a check this lane cannot act on.
-  const OUT_OF_SCOPE_FOR_THIS_LANE = ['components/ItemForm.tsx', 'components/QuickAdd.tsx', 'pages/RoutineEdit.tsx'];
+  // Every file is scanned: <option> text is the one exclusion (the native
+  // control owns its rendering), applied inside `instrumentNameOccurrences`.
   it('an instrument name resolves its own direction, wherever it renders', () => {
-    const violations: string[] = [];
-    let sitesSeen = 0;
-    for (const file of sourceFiles().filter((f) => !OUT_OF_SCOPE_FOR_THIS_LANE.includes(f))) {
-      const src = stripComments(SOURCES[file]);
-      const occurrences = instrumentNameOccurrences(file);
-      sitesSeen += occurrences.length;
-      for (const { at, end } of occurrences) {
-        if (isFusedIntoTemplate(src, at)) {
-          const line = src.slice(0, at).split('\n').length;
-          violations.push(`${file}:${line} — an instrument name is fused into a template string before it renders`);
-          continue;
-        }
-        const { ok, dir } = resolvesOwnDirection(src, at);
-        if (!ok) {
-          const line = src.slice(0, at).split('\n').length;
-          const found =
-            dir === null
-              ? 'no dir="" ancestor at all'
-              : dir === 'auto'
-                ? 'a dir="auto" ancestor whose resolution is already claimed by something preceding it'
-                : `an ancestor forces dir="${dir}"`;
-          violations.push(`${file}:${line} — "${src.slice(at, end)}" resolves its direction from ${found}`);
-        }
-      }
-    }
+    const { violations, sitesSeen } = instrumentNameViolations();
     expect(violations).toEqual([]);
     // A scanner that silently finds nothing is not proof of nothing being
     // wrong — this fails if a regression in the discovery patterns above
@@ -1831,5 +1812,277 @@ describe('direction lives on the group', () => {
     }
     expect(violations).toEqual([]);
     expect(judged).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The four structural families the UI refresh (2026-10-22) closed. Each is a
+// SHAPE read from source, reported together, and each is proved by a seeded
+// regression below; tests/ui-conformance.browser.test.ts measures the same
+// surfaces on screen (ac-2). Supported shapes and reasoned exclusions:
+//
+//  1. DATA-TITLE ANCHORS. A title-class element rendering an opaque data
+//     expression sits inside a dir="auto" group, and that group, when it is
+//     a block, re-declares `textAlign: 'start'` (WebKit inherits a physical
+//     alignment otherwise, so the resolved direction never reaches the edge),
+//     or 'center' on a deliberately centred screen.
+//     Excluded: a title inside an isolate (a pinned `dir`), judged by the
+//     isolate rules; ui.tsx's EmptyState, whose `title` is a ReactNode its
+//     callers compose (an owner value inside it carries its own dir="auto").
+//  2. GENERATED WORDS WITH OWNER VALUES. (a) Inside a dir="auto" group,
+//     generated words never sit bare beside an isolate ("due <span dir=ltr>",
+//     "gusheh: <span dir=auto>"): in a group that resolves RTL they land on
+//     the wrong side of it. They join ONE inline dir="ltr" isolate with the
+//     values nested. (b) Inside a dir="ltr"/"rtl" isolate, an owner value
+//     (a title, name, code, label, question, answer, observation or note) is
+//     never fused bare into the generated words: it is nested in its own
+//     dir="auto" element. Excluded: values in an attribute (aria-label,
+//     title) and numbers, which carry no strong direction.
+//  3. LABEL SEPARATORS. A dir="ltr"/"rtl" isolate's own text never begins or
+//     ends with whitespace: a separator inside the isolate travels with it
+//     to whichever edge the isolate lands on, so in an RTL row the gap is on
+//     the far side and the label touches its value.
+//  4. INSTRUMENT NAMES ACROSS FILES: the check above, now over every file —
+//     <option> text is its only exclusion.
+// ---------------------------------------------------------------------------
+
+const DATA_TITLE_EXCLUSIONS: { file: string; snippet: string; why: string }[] = [
+  {
+    file: 'components/ui.tsx',
+    snippet: '<div className="title-md" style={{ marginBottom: 4 }}>',
+    why: "EmptyState's title is a ReactNode its callers compose; an owner value inside it carries its own dir=\"auto\"",
+  },
+];
+
+/** Inline-level tags: text-align is a block concept they never take part in. */
+const INLINE_TAGS = ['span', 'bdi', 'strong', 'em', 'b', 'i', 'small'];
+
+function dataTitleAnchorViolations(): string[] {
+  const out: string[] = [];
+  for (const file of sourceFiles()) {
+    const src = stripComments(SOURCES[file]);
+    const consts = styleConstants(src);
+    for (const title of dataTitleSites(file)) {
+      if (/\sdir="/.test(title.tag)) continue;
+      // Only owner text the title shows OUTSIDE its own isolates needs the
+      // group: a name already in its own dir="auto" span resolves itself.
+      const body = elementBody(src, title.tag, title.at);
+      const exposed = bodyParts(src, body.start, body.end).some(
+        (p) => (p.kind === 'expr' && OWNER_VALUE.test(codeOf(p.text))) || (p.kind === 'el' && p.dir === null && /\{[^}]*\}/.test(src.slice(p.at, elementBody(src, p.tag, p.at).end)) && OWNER_VALUE.test(codeOf(src.slice(p.at, elementBody(src, p.tag, p.at).end)))),
+      );
+      if (!exposed) continue;
+      if (DATA_TITLE_EXCLUSIONS.some((e) => e.file === file && title.tag.includes(e.snippet))) continue;
+      const where = `${file}:${title.line} [${classNameOf(title.tag).trim()}]`;
+      const group = ancestorTags(src, title.at + 1).find((e) => e.dir !== null);
+      if (!group) {
+        out.push(`${where} — a data title with no dir="auto" group to anchor it`);
+        continue;
+      }
+      if (group.dir !== 'auto') continue; // inside an isolate: the isolate rules judge it
+      const tagName = (/^<\s*([A-Za-z][\w.]*)/.exec(group.tag)?.[1] ?? '').toLowerCase();
+      // 'center' on a deliberately centred screen points at no edge, so it
+      // cannot misalign an RTL run either.
+      if (!INLINE_TAGS.includes(tagName) && !declaresStart(group.tag, consts) && !/textAlign\s*:\s*['"]center['"]/.test(styleTextOf(group.tag, consts))) {
+        out.push(`${where} — its dir="auto" group never re-declares textAlign 'start'`);
+      }
+    }
+  }
+  return out;
+}
+
+/** Owner-authored text, by the property or binding it is read from. */
+const OWNER_VALUE = /(?:^|[^\w$])(?:[\w$]+\.)*(?:title|name|code|label|question|answer|observation|nextAction|notes|intro|gusheh)\b(?!\s*\()/;
+
+type Part = { kind: 'el'; tag: string; at: number; dir: string | null } | { kind: 'text'; text: string } | { kind: 'expr'; text: string; at: number };
+
+/**
+ * The direct children of a body, in source order: elements (with their dir),
+ * literal text, and opaque expressions. An expression holding JSX is
+ * TRANSPARENT — the elements inside it (`{cond && <span>…</span>}`, a list's
+ * `.map(…)`) are children like any other — and a pure string literal
+ * (`{' '}`, `{'due '}`) is text.
+ */
+function bodyParts(src: string, start: number, end: number): Part[] {
+  const out: Part[] = [];
+  let i = start;
+  let text = '';
+  const flush = () => {
+    if (text) out.push({ kind: 'text', text });
+    text = '';
+  };
+  while (i < end) {
+    if (src[i] === '<' && /[A-Za-z]/.test(src[i + 1] ?? '')) {
+      flush();
+      const tag = enclosingTag(src, i);
+      out.push({ kind: 'el', tag, at: i, dir: /\sdir="(auto|ltr|rtl)"/.exec(tag)?.[1] ?? null });
+      i = elementBody(src, tag, i).end;
+      continue;
+    }
+    if (src[i] === '<' && src[i + 1] === '/') break;
+    if (src[i] === '{') {
+      const close = matchingBraceClose(src, i);
+      const expr = src.slice(i + 1, close);
+      const literal = /^\s*(['"])([^'"]*)\1\s*$/.exec(expr);
+      if (literal) {
+        text += literal[2];
+      } else if (/<[A-Za-z]/.test(expr)) {
+        flush();
+        for (let j = i + 1; j < close; j += 1) {
+          if (src[j] === '<' && /[A-Za-z]/.test(src[j + 1] ?? '') && !/[\w$)\]]\s*$/.test(src.slice(Math.max(i + 1, j - 3), j))) {
+            const tag = enclosingTag(src, j);
+            out.push({ kind: 'el', tag, at: j, dir: /\sdir="(auto|ltr|rtl)"/.exec(tag)?.[1] ?? null });
+            j = elementBody(src, tag, j).end - 1;
+          }
+        }
+      } else {
+        flush();
+        out.push({ kind: 'expr', text: expr, at: i });
+      }
+      i = close + 1;
+      continue;
+    }
+    text += src[i];
+    i += 1;
+  }
+  flush();
+  return out;
+}
+
+/** An expression's code with its string literals emptied (template substitutions kept). */
+const codeOf = (expr: string) =>
+  expr.replace(/'[^'\n]*'|"[^"\n]*"/g, "''").replace(/`(?:[^`$]|\$(?!\{))*`/g, '``');
+
+const WORD = /[A-Za-z]{2,}/;
+
+function generatedWordViolations(): string[] {
+  const out: string[] = [];
+  for (const file of sourceFiles()) {
+    const src = stripComments(SOURCES[file]);
+    // (a) bare generated words beside an isolate, inside a group.
+    const visit = (tag: string, openAt: number) => {
+      const body = elementBody(src, tag, openAt);
+      const parts = bodyParts(src, body.start, body.end);
+      parts.forEach((p, k) => {
+        if (p.kind !== 'text' || !WORD.test(p.text)) return;
+        const near = [parts[k - 1], parts[k + 1]].filter(Boolean);
+        if (near.some((n) => n.kind === 'el' && n.dir !== null)) {
+          out.push(`${file}:${src.slice(0, openAt).split('\n').length} — "${p.text.trim()}" sits bare beside an isolate in a dir="auto" group`);
+        }
+      });
+      for (const p of parts) if (p.kind === 'el' && p.dir === null) visit(p.tag, p.at);
+    };
+    for (const site of directionSites(file).filter(isGroup)) visit(site.text, src.lastIndexOf('<', site.at));
+    // (b) an owner value fused bare into an isolate's generated words.
+    for (const site of isolateSites(file)) {
+      const openAt = src.lastIndexOf('<', site.at);
+      const body = elementBody(src, site.text, openAt);
+      const parts = bodyParts(src, body.start, body.end);
+      const words = parts.some((p) => (p.kind === 'text' && WORD.test(p.text)) || (p.kind === 'expr' && /(['"`])[^'"`]*[A-Za-z]{2,}[^'"`]*\1/.test(p.text)));
+      for (const p of parts) {
+        if (p.kind !== 'expr') continue;
+        const fused = [...p.text.matchAll(/\$\{([^{}]*)\}/g)].some((m) => OWNER_VALUE.test(codeOf(m[1])));
+        if (fused || (words && OWNER_VALUE.test(codeOf(p.text)))) {
+          out.push(`${file}:${site.line} — an owner value ({${p.text.trim().slice(0, 50)}}) is fused into an isolate's generated words`);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function labelSeparatorViolations(): string[] {
+  const out: string[] = [];
+  for (const file of sourceFiles()) {
+    const src = stripComments(SOURCES[file]);
+    for (const site of isolateSites(file)) {
+      const openAt = src.lastIndexOf('<', site.at);
+      const body = elementBody(src, site.text, openAt);
+      const parts = bodyParts(src, body.start, body.end);
+      const first = parts[0];
+      const last = parts[parts.length - 1];
+      const edge = (p: (typeof parts)[number] | undefined, re: RegExp) =>
+        p?.kind === 'text' ? re.test(p.text.replace(/\n\s*/g, '')) && !/^\s*$/.test(p.text.replace(/\n\s*/g, '')) : false;
+      if (edge(first, /^\s/) || edge(last, /\s$/)) {
+        out.push(`${file}:${site.line} — a separator sits inside the isolate ${site.text.slice(0, 40)}…`);
+      }
+    }
+  }
+  return out;
+}
+
+function instrumentNameViolations(): { violations: string[]; sitesSeen: number } {
+  const violations: string[] = [];
+  let sitesSeen = 0;
+  for (const file of sourceFiles()) {
+    const src = stripComments(SOURCES[file]);
+    const occurrences = instrumentNameOccurrences(file);
+    sitesSeen += occurrences.length;
+    for (const { at, end } of occurrences) {
+      const line = src.slice(0, at).split('\n').length;
+      if (isFusedIntoTemplate(src, at)) {
+        violations.push(`${file}:${line} — an instrument name is fused into a template string before it renders`);
+        continue;
+      }
+      const { ok, dir } = resolvesOwnDirection(src, at);
+      if (!ok) {
+        const found =
+          dir === null
+            ? 'no dir="" ancestor at all'
+            : dir === 'auto'
+              ? 'a dir="auto" ancestor whose resolution is already claimed by something preceding it'
+              : `an ancestor forces dir="${dir}"`;
+        violations.push(`${file}:${line} — "${src.slice(at, end)}" resolves its direction from ${found}`);
+      }
+    }
+  }
+  return { violations, sitesSeen };
+}
+
+/** Run `check` against the sources with ONE site reverted, then restore them. */
+function seeded<T>(file: string, from: string, to: string, check: () => T): T {
+  const original = SOURCES[file];
+  expect(original.includes(from), `seed site not found in ${file}: ${from}`).toBe(true);
+  SOURCES[file] = original.replace(from, to);
+  try {
+    return check();
+  } finally {
+    SOURCES[file] = original;
+  }
+}
+
+describe('owner text and generated words', () => {
+  it('owner text and generated words keep their own direction', () => {
+    const report = {
+      'data-title anchors': dataTitleAnchorViolations(),
+      'generated words with owner values': generatedWordViolations(),
+      'label separators': labelSeparatorViolations(),
+      'instrument names': instrumentNameViolations().violations,
+    };
+    expect(report).toEqual({
+      'data-title anchors': [],
+      'generated words with owner values': [],
+      'label separators': [],
+      'instrument names': [],
+    });
+  });
+
+  it('keeps every data-title exclusion real, so it cannot rot', () => {
+    for (const e of DATA_TITLE_EXCLUSIONS) {
+      expect(dataTitleSites(e.file).some((t) => t.tag.includes(e.snippet)), `${e.file}: ${e.snippet}`).toBe(true);
+    }
+  });
+
+  it('each added shape fails when one fixed site is reverted', () => {
+    const cases: [string, string, string, string, () => string[]][] = [
+      ['data-title anchor', 'pages/StageDetail.tsx', '<div className="stack-sm" dir="auto" style={{ textAlign: \'start\' }}>\n            <h1', '<div className="stack-sm">\n            <h1', dataTitleAnchorViolations],
+      ['generated word beside an isolate', 'pages/Today.tsx', '<span dir="ltr">due {relativeDay(r.dueDate, now)}</span>', 'due <span dir="ltr">{relativeDay(r.dueDate, now)}</span>', generatedWordViolations],
+      ['owner value fused into an isolate', 'pages/Today.tsx', 'next: <span dir="auto">{recs.best.score.item.title}</span>', '{`next: ${recs.best.score.item.title}`}', generatedWordViolations],
+      ['label separator', 'pages/ItemDetail.tsx', '<span dir="ltr">Study source:</span>{\' \'}', '<span dir="ltr">Study source: </span>', labelSeparatorViolations],
+      ['instrument name', 'components/QuickAdd.tsx', '<span dir="auto">{i.name}</span>', '{i.name}', () => instrumentNameViolations().violations],
+    ];
+    for (const [shape, file, from, to, check] of cases) {
+      const clean = check().length;
+      expect(seeded(file, from, to, check).length, `${shape}: reverting ${file} is caught`).toBeGreaterThan(clean);
+    }
   });
 });

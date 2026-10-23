@@ -40,6 +40,7 @@ import {
   type Vocabulary,
 } from '../domain';
 import { useStore } from '../store/useStore';
+import { useDecisionNow } from '../components/useDecisionNow';
 import { instrumentName } from '../store/lookups';
 import ItemCard from '../components/ItemCard';
 import QuickAdd from '../components/QuickAdd';
@@ -266,7 +267,8 @@ function MyRepertoireView({
   update: BrowseUpdate;
   here: string;
 }) {
-  const now = useMemo(() => new Date(), []);
+  // Rolls at local midnight while the screen stays open.
+  const now = useDecisionNow();
   const vocab = useMemo(() => vocabulary(db.musicTerms), [db.musicTerms]);
   const aliases = useMemo(() => archiveSearchAliases(db), [db]);
   const found = useMemo(
@@ -357,7 +359,7 @@ function MyRepertoireView({
       )}
 
       {found.groups.map((g) => (
-        <section key={g.key} className="stack-sm" dir="auto">
+        <section key={g.key} className="stack-sm" dir="auto" style={{ textAlign: 'start' }}>
           <div className="row between">
             <h2 className="title-md">{g.unclassified ? unclassifiedLabel(g.grouping) : g.label}</h2>
             {/* Generated English metadata, never user text. */}
@@ -397,7 +399,7 @@ function WorkRow({
   return (
     <div className="list-row" style={{ flexWrap: 'wrap' }}>
       <Link to={`/items/${work.id}`} state={{ from: here }} className="grow row" style={{ minWidth: 0, gap: 10 }}>
-        <div className="grow" dir="auto" style={{ minWidth: 0 }}>
+        <div className="grow" dir="auto" style={{ textAlign: 'start', minWidth: 0 }}>
           <div className="row-title">{work.title}</div>
           {/* form/composer/gusheh and the instrument name are each authored
               independently of the title (their own dir="auto" isolates); the
@@ -407,7 +409,7 @@ function WorkRow({
               form ? <span dir="auto">{form}</span> : null,
               composer ? <span dir="auto">{composer}</span> : null,
               work.persian?.gusheh ? (
-                <span>
+                <span dir="ltr">
                   gusheh: <span dir="auto">{work.persian.gusheh}</span>
                 </span>
               ) : null,
@@ -619,7 +621,8 @@ function AllItemsView({
   update: BrowseUpdate;
   here: string;
 }) {
-  const now = useMemo(() => new Date(), []);
+  // Rolls at local midnight while the screen stays open.
+  const now = useDecisionNow();
 
   // The agenda is the one source of "committed for a class" and "has an open
   // question" — both were item fields that could only ever hold one answer.

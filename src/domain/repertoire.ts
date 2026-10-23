@@ -31,6 +31,43 @@ export function isWork(item: PracticeItem): boolean {
   return hasPersianIdentity(item) || item.itemType === 'full_piece' || item.itemType === 'gusheh';
 }
 
+/**
+ * Why an item may not have this parent/part relationship, or null when it
+ * may. A part's parent is a top-level item on the same instrument — never the
+ * item itself or one of its own parts — and an item that has parts never
+ * becomes a part; an item with parts keeps them on its own instrument. No
+ * parent at all (a cleared link) is always fine. The ONE rule the item form's
+ * choices and the store's create/update writes share; it is asked only when a
+ * write sets or changes the relationship or the instrument, so an unrelated
+ * edit to a record that already breaks it is never newly refused, and nothing
+ * here repairs or reads stored data.
+ */
+export function partRelationRefusal(
+  items: PracticeItem[],
+  proposed: { id?: ID; instrumentId: ID; parentItemId?: ID },
+): string | null {
+  const parts = proposed.id ? items.filter((i) => i.parentItemId === proposed.id) : [];
+  if (proposed.parentItemId) {
+    if (proposed.parentItemId === proposed.id) return 'An item cannot be a part of itself.';
+    const parent = items.find((i) => i.id === proposed.parentItemId);
+    if (!parent) return 'That item no longer exists, so it cannot be the parent.';
+    if (parts.some((p) => p.id === parent.id)) return 'That item is one of its own parts.';
+    if (parent.parentItemId) return 'A part belongs to a top-level item, never to another part.';
+    if (parent.instrumentId !== proposed.instrumentId) return 'A part belongs to an item on the same instrument.';
+    if (parts.length > 0) return 'This item has parts of its own, so it cannot become a part.';
+    return null;
+  }
+  if (parts.some((p) => p.instrumentId !== proposed.instrumentId)) {
+    return 'Its parts are on another instrument. Move or detach them first.';
+  }
+  return null;
+}
+
+/** The items a form may offer as this item's parent: exactly those `partRelationRefusal` accepts. */
+export function allowedParents(items: PracticeItem[], child: { id?: ID; instrumentId: ID }): PracticeItem[] {
+  return items.filter((i) => partRelationRefusal(items, { ...child, parentItemId: i.id }) === null);
+}
+
 export interface RepertoireWork {
   work: PracticeItem;
   parts: PracticeItem[];

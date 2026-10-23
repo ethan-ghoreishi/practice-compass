@@ -298,7 +298,7 @@ export default function RoutineRunner() {
 
       {/* The segment's own label leads, so it and the item beneath it read as
           one block rather than pointing at opposite edges. */}
-      <div dir="auto">
+      <div dir="auto" style={{ textAlign: 'center' }}>
         <div className="title-md" style={{ fontSize: '1.2rem' }}>
           {seg.label}
         </div>
@@ -311,7 +311,9 @@ export default function RoutineRunner() {
             dir="auto" isolate resolves from its own content, not seg's. */}
         {next && (
           <div className="tiny faint" style={{ marginTop: 6 }}>
-            Next: <span dir="auto">{next.label}</span>
+            <span dir="ltr">
+              Next: <span dir="auto">{next.label}</span>
+            </span>
           </div>
         )}
       </div>

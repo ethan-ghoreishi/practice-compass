@@ -258,7 +258,7 @@ function PlanPreview() {
                   <span className="tiny faint">{BUCKET_LABEL[seg.bucket]}</span>
                   {seg.core && <span className="tiny" style={{ color: 'var(--accent)' }}>core</span>}
                 </div>
-                <div dir="auto">
+                <div dir="auto" style={{ textAlign: 'start' }}>
                   <div className="truncate" style={{ fontWeight: 500 }}>{seg.title}</div>
                   {/* seg.reason is always English (planSegmentReason) — its own
                       dir="ltr" isolate keeps its bidi base fixed regardless of
@@ -375,7 +375,7 @@ function PlanRunner() {
                   {seg.status === 'done' && <span className="tiny" style={{ color: 'var(--tone-good)' }}>done</span>}
                   {seg.status === 'skipped' && <span className="tiny faint">skipped</span>}
                 </div>
-                <div dir="auto">
+                <div dir="auto" style={{ textAlign: 'start' }}>
                   <div className="truncate" style={{ fontWeight: 500 }}>{seg.title}</div>
                   {isCurrent && (
                     <div className="tiny faint">
@@ -386,7 +386,7 @@ function PlanRunner() {
               </div>
               {isCurrent && (
                 <div className="row" style={{ gap: 6, flex: 'none' }}>
-                  <button className="btn btn-primary btn-sm" onClick={begin} aria-label={`Start ${seg.title}`}>
+                  <button className="btn btn-sm" onClick={begin} aria-label={`Start ${seg.title}`}>
                     <PlayIcon /> Start
                   </button>
                   <button className="btn btn-ghost btn-sm" onClick={skipPlanSegment} aria-label={`Skip ${seg.title}`}>

@@ -9,6 +9,7 @@ import {
   RATING_HINTS,
   RATING_LABELS,
   REVIEW_MODE_LABELS,
+  allowedParents,
   type FocusArea,
   type ItemStatus,
   type ReviewMode,
@@ -19,7 +20,7 @@ import { Field, OptionPills, RatingInput, SaveStatus, useAcknowledgedSaves } fro
 import { recordToOptions } from './options';
 import MusicalTermField from './MusicalTermField';
 import { fieldsForKind, kindFromItem, kindsForFamily, kindToItemType, type ItemKind } from './itemKinds';
-import type { ItemFormValues } from './itemFormValues';
+import { dropUnshownIdentity, type ItemFormValues } from './itemFormValues';
 
 const REVIEW_MODE_OPTIONS = recordToOptions(REVIEW_MODE_LABELS);
 
@@ -31,12 +32,15 @@ const REVIEW_MODE_OPTIONS = recordToOptions(REVIEW_MODE_LABELS);
  */
 export default function ItemForm({
   initial,
+  itemId,
   submitLabel,
   showLessonLink = false,
   onSubmit,
   onCancel,
 }: {
   initial: ItemFormValues;
+  /** The item being edited (absent when creating): it is never offered as its own parent. */
+  itemId?: string;
   submitLabel: string;
   /** Create flow only — lessons on existing items are managed in Connections. */
   showLessonLink?: boolean;
@@ -77,10 +81,11 @@ export default function ItemForm({
     set({ itemType: kindToItemType(next), ...(next !== 'passage' ? { parentItemId: '' } : {}) });
   }
 
-  // Candidate parent works for passages: same instrument, not itself a part.
-  const parentOptions = db.items
-    .filter((i) => i.instrumentId === v.instrumentId && !i.parentItemId)
-    .sort((a, b) => a.title.localeCompare(b.title));
+  // Candidate parent works for passages: exactly the ones the store would
+  // accept (`allowedParents`) — a top-level item on this instrument, never
+  // this item or one of its own parts.
+  const parentOptions = allowedParents(db.items, { id: itemId, instrumentId: v.instrumentId }).sort((a, b) => a.title.localeCompare(b.title));
+  const familyOf = (id: string) => db.instruments.find((i) => i.id === id)?.family;
 
   const stageOptions = db.pathways
     .filter((p) => !p.instrumentId || p.instrumentId === v.instrumentId)
@@ -136,7 +141,19 @@ export default function ItemForm({
             className="select"
             aria-label="Instrument"
             value={v.instrumentId}
-            onChange={(e) => set({ instrumentId: e.target.value, materialId: '', stageId: '', lessonId: '', parentItemId: '' })}
+            onChange={(e) => {
+              const next = e.target.value;
+              // Connections belong to the old instrument; identity fields the
+              // new family's form cannot show are dropped, never saved unseen.
+              setV((cur) => ({
+                ...dropUnshownIdentity(cur, familyOf(cur.instrumentId), familyOf(next)),
+                instrumentId: next,
+                materialId: '',
+                stageId: '',
+                lessonId: '',
+                parentItemId: '',
+              }));
+            }}
           >
             {db.instruments.map((i) => (
               <option key={i.id} value={i.id}>
@@ -174,6 +191,7 @@ export default function ItemForm({
               <input
                 className="input"
                 dir="auto"
+                aria-label="Gusheh"
                 value={v.persian.gusheh ?? ''}
                 onChange={(e) => set({ persian: { ...v.persian, gusheh: e.target.value } })}
               />

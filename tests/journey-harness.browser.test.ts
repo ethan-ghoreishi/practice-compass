@@ -44,9 +44,9 @@ describe('the journey harness', () => {
         b.title = SHARED;
         await writePersistedState(app, persisted.state, persisted.version);
         await reload(app);
-        expect(await headings(app), engine).toEqual([]); // Today has no page title
+        expect(await headings(app), engine).toEqual(['Today']); // Today's own title is for screen readers only
 
-        // A first-load lazy page, from a page with no heading of its own.
+        // A first-load lazy page, from Today.
         await goTo(app, '/lessons');
         expect(await headings(app), engine).toEqual(['Lessons']);
 
@@ -110,9 +110,9 @@ describe('the journey harness', () => {
         expect(await page.getByRole('button', { name: 'Pathways' }).getAttribute('aria-pressed'), engine).toBe('false');
         expect(await headings(app), engine).toEqual([SHARED]);
 
-        // Back to a page with no title at all: the outgoing heading is gone.
+        // Back to Today: the outgoing heading is replaced by Today's own.
         await goTo(app, '/');
-        expect(await headings(app), engine).toEqual([]);
+        expect(await headings(app), engine).toEqual(['Today']);
         await page.getByRole('navigation', { name: 'Primary' }).waitFor();
         expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
       } finally {

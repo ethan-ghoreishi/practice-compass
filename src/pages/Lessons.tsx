@@ -26,6 +26,7 @@ import {
   type LessonFileKind,
 } from '../domain';
 import { useStore } from '../store/useStore';
+import { useDecisionNow } from '../components/useDecisionNow';
 import { getNasBaseUrl } from '../store/backup';
 import { Field } from '../components/ui';
 import { MusicIcon, PlayIcon, PlusIcon, ReportIcon, XIcon } from '../components/icons';
@@ -49,7 +50,9 @@ function lessonLabel(lesson: Lesson): string {
  */
 export default function Lessons() {
   const db = useStore((s) => s.db);
-  const now = useMemo(() => new Date(), []);
+  // Rolls at local midnight while the screen stays open ("in N days",
+  // "upcoming", which class work still counts).
+  const now = useDecisionNow();
   const instruments = db.instruments.filter((i) => i.active);
   const wide = useIsWide();
 
@@ -155,7 +158,7 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
                   resolves from the first strong character), same shape as
                   InstrumentLessons' identical row below — the badge gets its
                   own dir="ltr" isolate so it can't inherit the name's base. */}
-              <div className="row between" dir="auto">
+              <div className="row between" dir="auto" style={{ textAlign: 'start' }}>
                 <h2 className="title-md" style={{ fontSize: '1.05rem' }}>
                   {inst.name}
                 </h2>
@@ -251,7 +254,8 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
                   bare, undirected string as they used to be. */}
               <strong>
                 <span dir="auto">{instruments.find((i) => i.id === selected.instrumentId)?.name}</span>
-                <span dir="ltr"> · {lessonLabel(selected)}</span>
+                {' '}
+                <span dir="ltr">· {lessonLabel(selected)}</span>
               </strong>
               <span className="tiny faint">{relativeDay(selected.date, now)}</span>
             </div>
@@ -286,7 +290,7 @@ function InstrumentLessons({ instrumentId, name, now }: { instrumentId: string; 
 
   return (
     <section className="stack-sm">
-      <div className="row between" dir="auto">
+      <div className="row between" dir="auto" style={{ textAlign: 'start' }}>
         <h2 className="title-md">{name}</h2>
         {/* Fixed English page copy / generated metadata, never user text —
             its own dir="ltr" isolate keeps it from inheriting the
@@ -398,7 +402,7 @@ function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDe
 /** Notes, linked items, files and delete — the body of an open lesson. */
 function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => void }) {
   const db = useStore((s) => s.db);
-  const now = useMemo(() => new Date(), []);
+  const now = useDecisionNow();
 
   const upcoming = isUpcomingLesson(lesson, todayISODate(now));
   // BY LESSON ID, never by instrument: every future class used to show the
@@ -569,7 +573,7 @@ function LessonRecordings({ lesson }: { lesson: Lesson }) {
             <span className="faint" style={{ flex: 'none', display: 'grid', placeItems: 'center' }} aria-hidden="true">
               <KindIcon kind={kind} />
             </span>
-            <div className="grow" dir="auto" style={{ minWidth: 0 }}>
+            <div className="grow" dir="auto" style={{ textAlign: 'start', minWidth: 0 }}>
               <div className="truncate">
                 {rec.title}
               </div>
@@ -738,7 +742,7 @@ function LessonItems({ lesson }: { lesson: Lesson }) {
         <div className="card card-flush list">
           {linked.map((item) => (
             <div key={item.id} className="list-row" style={{ paddingLeft: 'var(--space-3)', paddingRight: 'var(--space-3)' }}>
-              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" dir="auto" style={{ minWidth: 0 }}>
+              <Link to={`/items/${item.id}`} state={{ from: '/lessons' }} className="grow" dir="auto" style={{ textAlign: 'start', minWidth: 0 }}>
                 <div className="truncate">
                   {item.title}
                 </div>

@@ -143,7 +143,7 @@ export default function ItemDetail() {
             <span dir="ltr">{saveRefusal}</span>
           </div>
         )}
-        <ItemForm initial={itemToValues(item)} submitLabel="Save changes" onSubmit={handleEdit} onCancel={() => setEditing(false)} />
+        <ItemForm initial={itemToValues(item)} itemId={item.id} submitLabel="Save changes" onSubmit={handleEdit} onCancel={() => setEditing(false)} />
       </div>
     );
   }
@@ -156,7 +156,7 @@ export default function ItemDetail() {
 
       {/* Title and the details that belong to it in ONE group, so a Farsi
           item's name and its own metadata line align to the same edge. */}
-      <header className="stack-sm" dir="auto">
+      <header className="stack-sm" dir="auto" style={{ textAlign: 'start' }}>
         <div className="row between" style={{ alignItems: 'flex-start' }}>
           <h1 className="page-title">
             {item.title}
@@ -330,10 +330,13 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
   const startItemSession = useStore((s) => s.startItemSession);
   const navigate = useNavigate();
   const [title, setTitle] = useState('');
+  const [partRefusal, setPartRefusal] = useState<string | null>(null);
 
   const parts = useMemo(() => partsOf(item.id, db.items), [item.id, db.items]);
+  // A part is never offered parts of its own (`partRelationRefusal`); parts
+  // an item already has always show.
   const canHaveParts =
-    item.itemType === 'full_piece' || item.itemType === 'exercise' || item.itemType === 'section' || parts.length > 0;
+    parts.length > 0 || (!item.parentItemId && (item.itemType === 'full_piece' || item.itemType === 'exercise' || item.itemType === 'section'));
   const next = useMemo(
     () => (parts.length > 0 ? pickNextPart(item.id, db.items, db.blocks, now) : null),
     [parts.length, item.id, db.items, db.blocks, now],
@@ -347,7 +350,7 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
 
   function addPart() {
     if (!title.trim()) return;
-    addItem({
+    const added = addItem({
       instrumentId: item.instrumentId,
       title,
       parentItemId: item.id,
@@ -355,7 +358,10 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
       materialId: item.materialId,
       stageId: item.stageId,
     });
-    setTitle('');
+    // Refused only when this item may not have parts (it became a part):
+    // the title stays and the reason shows.
+    setPartRefusal(typeof added === 'string' ? null : added.refusal);
+    if (typeof added === 'string') setTitle('');
   }
 
   return (
@@ -370,18 +376,18 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
             <div className="tiny" style={{ color: 'var(--accent)' }}>
               Practise this part now · 10 min
             </div>
-            <div dir="auto">
+            <div dir="auto" style={{ textAlign: 'start' }}>
               <div className="truncate">{next.score.item.title}</div>
               {/* next.reason is always English (buildReason) — its own
                   dir="ltr" isolate keeps its bidi base fixed regardless of
-                  the title's. */}
-              <div className="tiny faint truncate">
+                  the title's. A generated line wraps, never clipped. */}
+              <div className="tiny faint">
                 <span dir="ltr">{next.reason}</span>
               </div>
             </div>
           </div>
           <button
-            className="btn btn-sm btn-primary"
+            className="btn btn-sm"
             onClick={() => {
               startItemSession(next.score.item.id);
               navigate('/active');
@@ -396,7 +402,7 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
       {parts.length > 0 && (
         <div className="card card-flush list">
           {parts.map((p) => (
-            <Link key={p.id} to={`/items/${p.id}`} state={{ from: `/items/${item.id}` }} className="list-row card-link" dir="auto" style={{ borderRadius: 0 }}>
+            <Link key={p.id} to={`/items/${p.id}`} state={{ from: `/items/${item.id}` }} className="list-row card-link" dir="auto" style={{ textAlign: 'start', borderRadius: 0 }}>
               <div className="grow truncate">
                 {p.title}
               </div>
@@ -420,6 +426,11 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
           Add part
         </button>
       </div>
+      {partRefusal && (
+        <p className="tiny" role="alert" style={{ color: 'var(--tone-alert)', margin: 0 }}>
+          {partRefusal}
+        </p>
+      )}
     </section>
   );
 }
@@ -505,7 +516,7 @@ function ItemFilesCrud({ itemId }: { itemId: string }) {
       {list.length > 0 && (
         <div className="card card-flush list">
           {list.map((a) => (
-            <div key={a.id} className="list-row" dir="auto">
+            <div key={a.id} className="list-row" dir="auto" style={{ textAlign: 'start' }}>
               <div className="grow truncate">{a.name}</div>
               {/* Generated English metadata, never user text — its own
                   dir="ltr" isolate keeps it from inheriting a Farsi file
@@ -567,7 +578,7 @@ function ConnectedTo({ item }: { item: PracticeItem }) {
         )}
         {material && (
           <span className="dim" dir="auto">
-            <span dir="ltr">Study source: </span>
+            <span dir="ltr">Study source:</span>{' '}
             <strong style={{ color: 'var(--text)' }}>{material.title}</strong>
           </span>
         )}
@@ -758,19 +769,19 @@ function BlockHistory({ blocks }: { blocks: PracticeItemBlocks }) {
                   </div>
                   {b.observation && (
                     <div className="tiny faint" style={{ whiteSpace: 'pre-wrap' }}>
-                      <span dir="ltr">Noticed: </span>
+                      <span dir="ltr">Noticed:</span>{' '}
                       <span dir="auto">{b.observation}</span>
                     </div>
                   )}
                   {b.nextAction && (
                     <div className="tiny faint" style={{ whiteSpace: 'pre-wrap' }}>
-                      <span dir="ltr">Decided to try next: </span>
+                      <span dir="ltr">Decided to try next:</span>{' '}
                       <span dir="auto">{b.nextAction}</span>
                     </div>
                   )}
                   {b.constraint && (
                     <div className="tiny faint" style={{ whiteSpace: 'pre-wrap' }}>
-                      <span dir="ltr">Constraint: </span>
+                      <span dir="ltr">Constraint:</span>{' '}
                       <span dir="auto">{b.constraint}</span>
                     </div>
                   )}

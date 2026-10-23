@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Page } from 'playwright';
 import { createItem, SCHEMA_VERSION } from '../src/domain';
 import { FOCUS_LABELS, ITEM_STATUS_LABELS, RATING_LABELS, RESULT_LABELS } from '../src/domain/labels';
-import { goTo, importBackup, importOutcome, openPracticeApp, persistedDb, persistedUntil, reload, type Engine, type PracticeApp } from './practiceBrowser';
+import { goTo, importBackup, importOutcome, openPracticeApp, persistedDb, persistedUntil, reload, show, type Engine, type PracticeApp } from './practiceBrowser';
 
 // ---------------------------------------------------------------------------
 // After practice: the close screen revises the item as the practice left it
@@ -254,6 +254,163 @@ describe('after practice', () => {
           [PIECE, 'not_logged'],
         ]);
         expect(app.pageErrors.map((e) => e.message)).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    }
+  }, 600_000);
+
+  it('why this date explains in place and keeps the close draft', async () => {
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      const app = await seeded(engine);
+      const { page } = app;
+      try {
+        // The explanation reads the SAME values Settings holds (the import
+        // left this page on Settings).
+        await show(app, '/settings');
+        await page.getByRole('spinbutton', { name: /^First review gap/ }).fill('3');
+        await persistedUntil(app, (s) => (s.state as { db: { settings?: { sm2FirstIntervalDays: number } } }).db.settings?.sm2FirstIntervalDays, (n) => n === 3);
+
+        await practiseAndFinish(app, GUSHEH);
+        await page.getByRole('button', { name: RESULT_LABELS.stable_alone, exact: true }).click();
+        await page.getByPlaceholder('What did you notice?').fill('The turn held at tempo.');
+        await page.getByPlaceholder('The one thing to try next time').fill('آرام‌تر بزن');
+        await page.getByRole('spinbutton', { name: 'Minutes practised' }).fill('17');
+        await changeItem(page).click();
+        await page.getByRole('group', { name: 'Status after this block' }).getByRole('button', { name: ITEM_STATUS_LABELS.maintenance, exact: true }).click();
+        await page.getByRole('group', { name: 'Make this a teacher question?' }).getByRole('button', { name: 'Yes', exact: true }).click();
+        await page.getByRole('textbox', { name: 'Question for your teacher' }).fill('Is the turn too fast?');
+        await page.getByRole('button', { name: 'Change', exact: true }).click();
+        await page.getByRole('group', { name: 'Review type' }).getByRole('button', { name: 'Repair', exact: true }).click();
+        const shown = await page.getByLabel('Next review date').inputValue();
+
+        // In place: the explanation opens on /close, with the live first gap.
+        await page.locator('summary', { hasText: 'Why this date?' }).click();
+        await page.locator('details[open]', { hasText: 'When to revisit (spaced repetition)' }).getByText('≈ 3 →').waitFor();
+        expect(await page.evaluate(() => location.hash), engine).toBe('#/close');
+        // Nothing typed or chosen moved, and the decision is the same one.
+        expect(await page.getByRole('button', { name: RESULT_LABELS.stable_alone, exact: true }).getAttribute('aria-pressed'), engine).toBe('true');
+        expect(await page.getByPlaceholder('What did you notice?').inputValue(), engine).toBe('The turn held at tempo.');
+        expect(await page.getByPlaceholder('The one thing to try next time').inputValue(), engine).toBe('آرام‌تر بزن');
+        expect(await page.getByRole('spinbutton', { name: 'Minutes practised' }).inputValue(), engine).toBe('17');
+        expect(await page.getByRole('textbox', { name: 'Question for your teacher' }).inputValue(), engine).toBe('Is the turn too fast?');
+        expect(await page.getByRole('group', { name: 'Review type' }).getByRole('button', { name: 'Repair', exact: true }).getAttribute('aria-pressed'), engine).toBe('true');
+        expect(await page.getByLabel('Next review date').inputValue(), engine).toBe(shown);
+
+        // Save writes them.
+        await page.getByRole('button', { name: 'Save block' }).click();
+        await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+        await persistedUntil(app, (s) => (s.state as { db: { blocks: unknown[] } }).db.blocks.length, (n) => n === 1);
+        const db = (await persistedDb(app)) as unknown as { blocks: SavedBlock[]; items: SavedItem[]; lessonAgenda: { text?: string }[] };
+        const block = db.blocks[0];
+        expect([block.result, block.observation, (block as SavedBlock & { nextAction?: string }).nextAction, block.durationMinutes], engine).toEqual([
+          'stable_alone',
+          'The turn held at tempo.',
+          'آرام‌تر بزن',
+          17,
+        ]);
+        const item = db.items.find((i) => i.id === GUSHEH)!;
+        expect([item.status, item.nextReviewDate], engine).toEqual(['maintenance', shown]);
+        expect(db.lessonAgenda.map((e) => e.text), engine).toContain('Is the turn too fast?');
+        expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
+      } finally {
+        await app.close();
+      }
+    }
+  }, 600_000);
+
+  it('close draft survives Back for the same block and never leaks to another session', async () => {
+    for (const engine of ['chromium', 'webkit'] as Engine[]) {
+      const app = await seeded(engine);
+      const { page } = app;
+      const minutes = page.getByRole('spinbutton', { name: 'Minutes practised' });
+      const observation = page.getByPlaceholder('What did you notice?');
+      const back = async () => {
+        await page.getByRole('button', { name: 'Back', exact: true }).click();
+        await page.getByRole('button', { name: 'Finish' }).waitFor();
+      };
+      const finish = async () => {
+        await page.getByRole('button', { name: 'Finish' }).click();
+        await page.getByRole('button', { name: 'Save without a result' }).waitFor();
+      };
+      try {
+        // --- THE SAME BLOCK: everything typed and chosen comes back ---------
+        await practiseAndFinish(app, PIECE);
+        await page.getByRole('button', { name: RESULT_LABELS.stable_alone, exact: true }).click();
+        await observation.fill('First pass was rushed.');
+        await page.getByPlaceholder('The one thing to try next time').fill('Slower at the turn');
+        await changeItem(page).click();
+        await page.getByRole('group', { name: 'Status after this block' }).getByRole('button', { name: ITEM_STATUS_LABELS.fragile, exact: true }).click();
+        await page.getByRole('group', { name: 'Make this a teacher question?' }).getByRole('button', { name: 'Yes', exact: true }).click();
+        await page.getByRole('textbox', { name: 'Question for your teacher' }).fill('Which fingering at bar 9?');
+        await page.getByRole('button', { name: 'Change', exact: true }).click();
+        await page.getByRole('group', { name: 'Review type' }).getByRole('button', { name: 'Repair', exact: true }).click();
+        const firstDate = await page.getByLabel('Next review date').inputValue();
+        const firstMinutes = Number(await minutes.inputValue());
+
+        // Back to practise more; meanwhile the scheduling settings change.
+        await back();
+        await goTo(app, '/settings', { arrival: 'Settings & backup' });
+        await page.getByRole('spinbutton', { name: /^First review gap/ }).fill('4');
+        await persistedUntil(app, (s) => (s.state as { db: { settings?: { sm2FirstIntervalDays: number } } }).db.settings?.sm2FirstIntervalDays, (n) => n === 4);
+        await goTo(app, '/active', { arrival: PIECE_TITLE });
+        // Active's observation for this block IS the one typed on Close — one
+        // value, shown and edited here, never a second copy that replaces it.
+        const scratch = page.getByRole('textbox', { name: 'Observation for this block' });
+        expect(await scratch.inputValue(), engine).toBe('First pass was rushed.');
+        await scratch.fill('First pass was rushed. Second pass steadier.');
+        await page.clock.fastForward(6 * 60_000);
+        await finish();
+
+        expect(await page.getByRole('button', { name: RESULT_LABELS.stable_alone, exact: true }).getAttribute('aria-pressed'), engine).toBe('true');
+        expect(await observation.inputValue(), engine).toBe('First pass was rushed. Second pass steadier.');
+        expect(await page.getByPlaceholder('The one thing to try next time').inputValue(), engine).toBe('Slower at the turn');
+        expect(await page.getByRole('textbox', { name: 'Question for your teacher' }).inputValue(), engine).toBe('Which fingering at bar 9?');
+        await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} → ${ITEM_STATUS_LABELS.fragile} · Focus ${FOCUS_LABELS.rhythm} · Effort 4 of 5`).waitFor();
+        // The untouched minutes proposal counts the extra practice…
+        const proposed = Number(await minutes.inputValue());
+        expect(proposed, engine).toBeGreaterThanOrEqual(6);
+        expect(proposed, engine).toBeGreaterThan(firstMinutes);
+        // …and the review date is worked out again from the new settings,
+        // the owner's own review-type choice kept.
+        await page.getByRole('button', { name: 'Change', exact: true }).click();
+        expect(await page.getByRole('group', { name: 'Review type' }).getByRole('button', { name: 'Repair', exact: true }).getAttribute('aria-pressed'), engine).toBe('true');
+        const shownDate = await page.getByLabel('Next review date').inputValue();
+        expect(shownDate > firstDate, `${engine}: ${firstDate} → ${shownDate}`).toBe(true);
+
+        // Save: ONE block, with the kept values and the decision on screen.
+        await page.getByRole('button', { name: 'Save block' }).click();
+        await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+        await persistedUntil(app, (s) => (s.state as { db: { blocks: unknown[] } }).db.blocks.length, (n) => n === 1);
+        const db = (await persistedDb(app)) as unknown as { blocks: SavedBlock[]; items: SavedItem[]; lessonAgenda: { text?: string }[] };
+        expect(db.blocks.map((b) => [b.practiceItemId, b.result, b.observation, b.durationMinutes]), engine).toEqual([[PIECE, 'stable_alone', 'First pass was rushed. Second pass steadier.', proposed]]);
+        const piece = db.items.find((i) => i.id === PIECE)!;
+        expect([piece.status, piece.nextReviewDate], engine).toEqual(['fragile', shownDate]);
+        expect(db.lessonAgenda.filter((e) => e.text === 'Which fingering at bar 9?'), engine).toHaveLength(1);
+
+        // --- A CORRECTED duration survives Back; discarding forgets it -------
+        await practiseAndFinish(app, PIECE);
+        // A new block on the same item starts clean.
+        expect(await observation.inputValue(), engine).toBe('');
+        expect(await page.getByRole('button', { name: RESULT_LABELS.stable_alone, exact: true }).getAttribute('aria-pressed'), engine).toBe('false');
+        await observation.fill('Second pass.');
+        await minutes.fill('17');
+        await back();
+        await page.clock.fastForward(3 * 60_000);
+        await finish();
+        expect([await minutes.inputValue(), await observation.inputValue()], engine).toEqual(['17', 'Second pass.']);
+        await page.getByRole('button', { name: 'Discard without saving' }).click();
+        await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+
+        // --- …and the next block on the SAME item receives none of it --------
+        await practiseAndFinish(app, PIECE);
+        expect([await observation.inputValue(), await page.getByPlaceholder('The one thing to try next time').inputValue()], engine).toEqual(['', '']);
+        expect(await minutes.inputValue(), engine).not.toBe('17');
+        await page.getByRole('button', { name: 'Discard without saving' }).click();
+        await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+        await reload(app);
+        expect(((await persistedDb(app)) as unknown as { blocks: unknown[] }).blocks, engine).toHaveLength(1);
+        expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
       } finally {
         await app.close();
       }

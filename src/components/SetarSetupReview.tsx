@@ -221,9 +221,10 @@ export default function SetarSetupReview() {
         const value = current ? ('create' in current ? 'create' : current.materialId) : '';
         return (
           <label key={g.key} className="tiny" style={{ textAlign: 'start' }}>
-            <span dir="ltr">{g.kind === 'declared' ? 'The registry declares ' : 'Items answering the reference '}</span>
-            <span dir="auto">«{g.label}»</span>
-            <span dir="ltr"> for {g.itemIds.length} items — which study source is it?</span>
+            <span dir="ltr">
+              {g.kind === 'declared' ? 'The registry declares' : 'Items answering the reference'}{' '}
+              <span dir="auto">«{g.label}»</span> for {g.itemIds.length} items — which study source is it?
+            </span>
             <select
               className="input"
               aria-label={`Study source for ${g.label}`}
@@ -273,20 +274,23 @@ export default function SetarSetupReview() {
         </button>
         <ul className="stack-sm" role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {status.map((p) => (
-            <li key={p.id} className="row" style={{ gap: 8 }}>
-              <input
-                type="checkbox"
-                aria-label={`Keeping fresh: ${title(p.itemId)}`}
-                disabled={p.state === 'correct'}
-                checked={p.state === 'correct' || !!chosenFor(p)}
-                onChange={(e) => choose(p, e.target.checked ? p.choices[0]!.after : null)}
-              />
-              <span className="small grow" dir="auto" style={{ textAlign: 'start' }}>
-                <span>{title(p.itemId)}</span>{' '}
-                <span className="tiny faint" dir="ltr">
-                  {p.evidence}
+            <li key={p.id}>
+              {/* The row is the checkbox's label, so the whole row is its tap. */}
+              <label className="row" style={{ gap: 8 }}>
+                <input
+                  type="checkbox"
+                  aria-label={`Keeping fresh: ${title(p.itemId)}`}
+                  disabled={p.state === 'correct'}
+                  checked={p.state === 'correct' || !!chosenFor(p)}
+                  onChange={(e) => choose(p, e.target.checked ? p.choices[0]!.after : null)}
+                />
+                <span className="small grow" dir="auto" style={{ textAlign: 'start' }}>
+                  <span>{title(p.itemId)}</span>{' '}
+                  <span className="tiny faint" dir="ltr">
+                    {p.evidence}
+                  </span>
                 </span>
-              </span>
+              </label>
             </li>
           ))}
         </ul>

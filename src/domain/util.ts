@@ -67,6 +67,38 @@ export function hoursSince(iso: ISODateTime, now: Date): number {
   return (now.getTime() - new Date(iso).getTime()) / 3_600_000;
 }
 
+/**
+ * An owner value inside generated text, as a first-strong BIDI ISOLATE
+ * (U+2068…U+2069): the plain-text counterpart of `dir="auto"`, so a Farsi
+ * title followed by digits resolves its own direction instead of reordering
+ * the English words around it — on screen, and in copied, downloaded and
+ * printed text alike. It detects no script and reorders nothing. Each line is
+ * isolated on its own, because a newline ends every isolate; a line the owner
+ * already isolated whole is left exactly as it is. Stored values never carry
+ * these marks: only generated text does.
+ */
+export function isolate(value: string): string {
+  return value
+    .split('\n')
+    .map((line) => (line === '' || isolatedWhole(line) ? line : `⁨${line}⁩`))
+    .join('\n');
+}
+
+/** True when the line's first character opens an isolate that its last character closes. */
+function isolatedWhole(line: string): boolean {
+  if (!/^[⁦-⁨]/.test(line)) return false;
+  let depth = 0;
+  for (let i = 0; i < line.length; i += 1) {
+    const c = line[i];
+    if (c >= '⁦' && c <= '⁨') depth += 1;
+    else if (c === '⁩') {
+      depth -= 1;
+      if (depth === 0) return i === line.length - 1;
+    }
+  }
+  return false;
+}
+
 export function clampRating(n: number): 1 | 2 | 3 | 4 | 5 {
   const r = Math.max(1, Math.min(5, Math.round(n)));
   return r as 1 | 2 | 3 | 4 | 5;

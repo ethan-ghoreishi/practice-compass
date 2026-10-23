@@ -2,6 +2,193 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## The UI refresh: one look, named and reachable controls, direction and dates that hold (2026-10-22)
+
+One lane (contract 20261022-…-3b19, issue #54). **Owner decisions:** one
+coherent lane rather than several (it also closes the two direction open gaps
+AGENTS.md said needed lanes of their own: QuickAdd's instrument name and the
+names fused into `insights.ts`); evolve the existing identity; keep every
+colour token. No schema, migration, validation, sync or backup change.
+
+- **Look.** Sans everywhere, the serif only where the app names a thing
+  (`.page-title`, the timer, the wordmark, `.practise-title`); sentence-case
+  labels; outlined secondary buttons and outlined row play buttons, a filled
+  primary only for a region's main action; the instrument Active/Hidden
+  control is a pressed pill, a state. Token values are pinned literally in
+  `contrast.test.ts` against 24a84be.
+- **B1 at the root:** `:where(.card-link) { display: block }` has zero
+  specificity, so `.row`/`.stack-sm`/`.list-row` win whatever the order.
+- **44px floor** below 760px for every button, select, input, textarea,
+  summary and `a.btn` (stars and in-text links excepted). It makes the header's
+  theme button 44px, so the header is 10px taller; the recommendation still
+  clears the fold (`repertoire-viewport`, unchanged). A summary keeps its
+  native marker and gains padding. Every `select` (`.select`, `select.input`)
+  draws its own arrow and clips its chosen text: WebKit otherwise let a long
+  option widen a grid field and scroll `main` sideways (the item form at 390).
+- **B7.** "Why this date?" opens `SchedulingExplanation` (the same formula and
+  spaced-repetition text Settings shows, with live values) in place. Back holds
+  the close inputs in module memory keyed by the session's `startedAt` and item
+  (`closeDraft.ts`): inputs only, never a derived decision; a minutes figure
+  survives only if typed; a note changed during the extra practice wins; a
+  newer block's draft is never cleared by an older one. Rejected: putting the
+  draft in `active` (persisted store state) or in the database.
+- **B8.** `partRelationRefusal` is judged only when a write sets or changes the
+  link or the instrument, so an unrelated edit to a legacy self-parent (even a
+  whole-form save resending it) is never newly refused; a part never offers
+  "Add part". `addItem` returns `{ refusal }` instead of an id when refused.
+- **B5.** `isolate` wraps each line of an owner value separately (a newline
+  ends every bidi isolate) and leaves a line the owner already isolated whole.
+- **B6.** The new `direction.test.ts` shapes require every data-title group to
+  re-declare `textAlign: 'start'` — the AGENTS rule, now enforced: 30 groups
+  gained it. The routine runner's segment group is centred instead (its screen
+  is centred; 'center' points at no edge). Stage code and title render as one
+  expression where they share a group.
+- **Settings:** h2 sections, everyday controls first, prose (choices, review
+  ownership, class commitments, NAS address notes, install steps, storage
+  roles) in closed disclosures; the sync copy now says what `decideSync` does.
+
+Where each family's proof lives (`npx vitest run <file> -t "<title>"`), and
+what the base said:
+
+- Route sweep, ac-1 (`tests/ui-conformance.browser.test.ts`, "every route
+  reflows…"). `UI_BASE_ROOT=<checkout of 24a84be>` serves the base: **667
+  failures** — under 44px 293 (Chromium 390) / 295 (WebKit 390) across 26
+  route states; unnamed controls 15 per config (7 scheduling inputs and 2
+  instrument names in Settings, report From/To, 3 New-routine selects, the
+  item form's gusheh field); 0 h1 on Today's three states per config; B1 on
+  Today's "Now in" card and both Repertoire pathway cards per config; reflow
+  6/7 at 390 (the Insights table both windows, the Then-if-you-have-time
+  reasons, WebKit's item form). Parts-open and block-in-progress states were
+  added after that run. Final: 0.
+- Direction measured, ac-2 (same file, "mismatched languages…"): base 8 per
+  engine — QuickAdd name ltr, "14 days ago due", both Then reasons clipped,
+  ":gusheh", the Farsi stage header left-aligned, "Study source:" touching its
+  value (0px), the Insights body and the report line reordered. Final: 0.
+- Direction shapes, ac-3 (`src/components/direction.test.ts`, "owner text and
+  generated words…"), run on the base sources: **54** — data-title anchors 33
+  (3 with no group, 30 not re-declaring start), generated words 5 (`due`,
+  `gusheh:`, `Constraint:`, `Next:`, the fused `next:` title), label
+  separators 15, instrument names 1 (QuickAdd). "each added shape fails when
+  one fixed site is reverted" reverts one fixed site per shape in memory and
+  asserts the shape reports it. Supported shapes and exclusions are written at
+  the shapes; source scanning sees literal JSX only.
+- Exported text, ac-5 (`src/domain/report.test.ts`): the expected base text
+  was committed in dba8d2e, before `report.ts`/`questions.ts` changed; the
+  output with only the added marks removed equals it byte for byte. Fixtures:
+  a Farsi instrument, `عراق 3`, an English title with a comma and an en dash,
+  a multi-line mixed question, an answer mixing scripts, a title already
+  isolated. Insights, ac-4 (`src/domain/insights.test.ts`): approved wording
+  written out for windows 7 and 30. Limits: these fixtures, not universal
+  Unicode coverage; how a destination app renders U+2068/U+2069 is the
+  owner's check (ac-14).
+- Parent/part, ac-6 (`repertoire.test.ts`); family switch, ac-7
+  (`itemFormValues.test.ts`); Settings, ac-8/ac-9 (ui-conformance); Close,
+  ac-10/ac-15 (`post-practice.browser.test.ts`); midnight, ac-11
+  (`tests/ui-date-refresh.browser.test.ts`, consumers: Lessons page and open
+  lesson, Repertoire's two views, StageDetail's "for class"); palette, ac-12;
+  fixture: `tests/fixtures/ui-refresh.json` (clock 2026-10-20 21:00 local).
+- Owner packet (local review artefact, owner's choice 2026-10-23; images have
+  no committed path in this lane). Folder:
+  `/private/tmp/claude-501/-Users-Ehsan-workspace-active-practice-compass-lanes-20261022-refresh-the-ui-consistently-fix-confirme-3b19/03f50edb-f7fd-4f8f-b3a6-d703467acf11/scratchpad/packet/page/img/`, each pair `<name>-before.png` (base 24a84be, served via
+  `UI_BASE_ROOT`) and `<name>-after.png` (this lane), same fixture, viewport
+  and theme. The full 30+30 set is in `../../before/` and `../../after/`.
+  It lives in a temporary directory: regenerate with `UI_PACKET_DIR=<dir> npx
+  vitest run tests/ui-conformance.browser.test.ts -t "every route"` (add
+  `UI_BASE_ROOT=<checkout of 24a84be>` for "before").
+  - `today-chromium-390-light`: section labels in sentence case; the "Then"
+    reason wraps instead of clipping beside a Farsi title; Details and row
+    play are outlined, Start the one filled action; Today's order unchanged.
+  - `repertoire-webkit-390-dark` (mixed-language list): "gusheh:" precedes its
+    Farsi value (was ":gusheh"); pills and selects meet the 44px floor.
+  - `item-chromium-1280-light` (mixed-language detail): "Study source:" keeps
+    its gap from a Farsi value (was fused); semibold sentence-case labels.
+  - `close-chromium-390-dark`: sans labels, 44px status pills and fields;
+    "Why this date?" now explains in place (not in this frame).
+  - `settings-chromium-1280-dark`: h2 sections, everyday controls first, prose
+    in closed disclosures below; Active/Hidden reads as a state.
+
+**AGENTS.md headroom (ac-17).** Base: AGENTS.md 31,880 bytes, profile with
+CLAUDE.md 32,745 (23 spare). Condensing every section in place while keeping
+each clause reached only 31,597 with this lane's new rules (~1.4 KB). The
+owner then amended the lane twice (2026-10-23): mechanism, identifiers and
+examples may move into subsystem docs, and ac-17's headroom is 3,584 bytes
+(3.5 KiB) rather than 4,096, because nothing further could go without losing
+rule content. A first slim rewrite of the moved sections narrowed or dropped
+rules (unknown-provenance dates, the 10-minute work floor, Restore and commit
+steps, the branch-restriction wording, the Active alignment exception, among
+others); a clause-by-clause check against the base restored every one before
+this was final. Final at the first review: AGENTS.md 28,266, profile 29,131.
+The sealed review then compared the moved sections clause by clause and found
+binding constraints that had survived only in the docs; they are back in
+AGENTS.md (vibration best-effort; one catalogue resolver; never rewriting an
+instrument for a binding; a run freezes its segments; wall-clock elapsed;
+another term's spelling refused; Decisions/Skips/deletions persist; the NAS
+publisher token separate and only in the NAS runtime; no course graph, inbound
+door or schema change; eligibility = stable, due, not yet advanced today;
+build/swap share `isProactiveCandidate`/`candidatePool`; warm-up from familiar
+easy items; each item revalidated at start; reseeding never adds a stage to an
+EXISTING pathway, the slim wording having said "never adds a stage"). Paid for
+by wording only: the intro sentence, the budget line's parentheticals, the
+roadmap line's repeat of the do-not heading, the quick-add step titles and
+Today's routine labels (both in their code), the `digest` error quoted in
+short, and the reason after "never isolate the element a group resolves from".
+Final: AGENTS.md 28,304, profile 29,169 (3,599 spare).
+Disposition:
+- *Moved* under "Rules in full" (this lane's condensed wording of the base
+  rules, every clause kept; hands-free practice keeps the base wording):
+  Pathways, routines and repertoire → `docs/repertoire-experience.md`; the
+  Setar archive → `docs/setar-archive.md`; Courses → `docs/cgs-course.md`
+  (Khonyagar's doc points there); Review scheduling and the Session Plan →
+  `docs/scheduling-evidence.md`; Hands-free practice →
+  `docs/setar-practice-reliability.md`. AGENTS.md states each of their rules
+  as a short binding line and points to the doc; identifiers that are only
+  mechanism live in the doc.
+- *Condensed in place* (wording only, every clause kept): every other section.
+  Dropped as rationale, not rule: "(both orders fit above the fold)", the LAN
+  example of an insecure context, "(clock, block, result, review, SM-2)".
+- *Added*: `isolate`, the data-title/separator/one-isolate direction rules,
+  instrument names in every file, `partRelationRefusal`,
+  `dropUnshownIdentity`, `useDecisionNow` screens, in-place "Why this date?",
+  the close draft, the UI conventions line; the closed Direction open-gaps
+  bullet is gone (both gaps closed here).
+`tests/ui-guidance.test.ts` checks the headroom and that every added,
+reworded and restored rule (and each pointer) is present;
+`tests/agent-context.test.ts` is unchanged. Its 3.5 KiB floor is this lane's
+acceptance, not a standing budget: a later lane that needs the room revisits
+it with the owner.
+
+**After the sealed review (2026-10-23).** Five families, each closed at its
+choke point and proved by a seeded revert:
+- *One observation per block while Close is held.* Active's "Observation for
+  this block" now edits the held draft's observation (`editHeldObservation`)
+  instead of a second value Close chose between; ac-15 types on Close, edits
+  on Active, and saves both. Consumers checked: CloseBlock restore/Back/Save/
+  Discard, ActiveBlock's editor, `setSessionNote` (still used when no draft
+  is held). Ceiling: after Back those edits are in memory only, so a reload
+  loses them, where before they reached the persisted `active.note`; reload
+  recovery of the draft is outside this lane.
+- *The phone floor reaches every control.* A checkbox is tapped through its
+  label: `label:has(> input[type=checkbox])` gets 44px (the one unlabelled
+  site, Keeping fresh, now wraps its row in a label), InstallHint loses its
+  inline 28px. The sweep measures a checkbox's label and now visits the
+  install hint, routine fitting, a new routine's segment, a course's missing
+  levels and a shipped pathway's missing stages (two stage-less fixture
+  pathways); the Setar setup journey asserts its checkboxes. Revert: 14
+  failures across both phone engines.
+- *Row play buttons are outlined.* StageDetail unit and routine Start,
+  PathwayDetail routine Start, ItemDetail's suggested part, the running
+  plan's segment Start. The sweep fails any filled small play button and now
+  visits a running plan and a work with parts; revert: 15 failures. Exposed
+  on the way: ItemDetail's suggested-part reason truncated past main; it
+  wraps now.
+- *Rules stay loaded.* Above; every restored phrase joined `LANE_RULES`.
+- *The packet.* Above, as a local folder.
+
+Follow-ups (release valve): the plan picker reads "Your — session" when the
+session instrument is unresolved after Overview (pre-existing); `goTo`'s no-heading branch now has no live page to
+exercise (every route has an h1); many list titles still truncate rather than
+wrap (Elsewhere rows, routine names); Settings' `.toast` stays fixed.
+
 ## Works get real plan time; sound and updates recover; practice revises the item (2026-10-14)
 
 One lane (contract 20261014-…-d492, issue #51). Five owner reports met in the

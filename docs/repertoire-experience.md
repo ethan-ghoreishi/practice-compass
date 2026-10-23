@@ -221,3 +221,25 @@ the real app at `b6bef34` in a disposable worktree. A restored shipped stage kee
 (`group`): if the owner renamed that section, it lands in a section of its own — added, never
 overwriting. Scripted viewport geometry proves the
 mechanism, not the native keyboard. The radif audit above is the owner's to settle.
+
+## Rules in full
+
+Moved from `AGENTS.md` on 2026-10-22 to keep the always-loaded rules within
+their budget (UI refresh lane, owner amendment). `AGENTS.md` still states every
+rule below as a short binding line and points here; this section keeps the
+mechanism, identifiers and examples that go with them, in the UI-refresh
+lane's condensed wording of the base rules, every clause kept. Both bind;
+neither weakens the other. Change a rule in both places.
+
+### Pathways, routines and repertoire
+
+- The practice item is the only unit of work; pathways are a view with derived progress (`itemStageState`), never a parallel to-do list, "pieces" object or guitar-specific model. Pieces may have parts (`parentItemId`), never quotas: a parent is a top-level item on the same instrument, never the item or its own part, and a work with parts never becomes one (`partRelationRefusal`, for the form's choices and each write changing the link or instrument; never repaired on read).
+- The catalogue is reference data in code (`pathwaySeed.ts`): suggestions are reference aids, never canonical; keys stay stable per stage. `addFromCatalog` makes an honest "Not practised yet" item (`new`, zero stats) in one `set()`, never a second `addMaterial`.
+- Suggestions bind by stable reference id (`catalogReferenceId`, in `catalogRefs`), never by title or placement; one resolver, `resolveCatalogReference`, serves every surface (`docs/repertoire-experience.md`). Two items answering one suggestion are candidates, never picked; placing is not linking (`unlinkedInStage`). Unlink, Remove from pathway (`hiddenRefs`) and Hide never delete; hidden suggestions count for nothing; an empty stage is never complete; Delete practice item is the only destructive action. Undecided legacy evidence is settled or refused, never promoted or lost; every write passes `identityRefusal`, never overruling another item's legacy answer (`legacyClaimRefusal`); validity never reads an instrument's name.
+- Pathways, stages and routines are editable; deleting a stage or pathway only detaches its items and routines and clears a stale pin. A `currentStageId` pin wins while its stage exists; one route selector (`visiblePathways`/`primaryPathway`/`pathwayPosition`) serves every surface; never treat linear order as truth for Setar/Tar.
+- A routine belongs to an instrument, required when new, never invented for a legacy one; a bound segment item always matches it, checked by `retargetRoutineInstrument` on every create and save (an unresolved placement is cleared, never read as General), never by rewriting an instrument. A run freezes its segments, writes at most one block per bound item (`aggregateItemMinutes`, `not_logged`) and never completes a review or advances SM-2; Routine complete annotates only those blocks (`captureRoutineResults`). Skip clamps to elapsed; "Short on time" (`segmentsForRun`) drops non-essentials; Finish always saves.
+- ONE practice clock at a time: block and routine start/resume each refuse while the other exists; the persist `merge` freezes both if it finds both, losing neither. Pages redirect to the running clock; elapsed time is wall-clock (`locateClock`).
+- My repertoire is a derived lens (`discoverRepertoire`): every work once; browsing never writes `sessionInstrumentId`; technique, exercise and study material stay out.
+- Dastgah/Avaz, Form and Composer share one vocabulary (`musicTerms.ts`), ids never derived from a label; legacy text is never rewritten, nothing reseeds; identity is exact (`resolveValue`), transliteration search only. An edit changing an unedited value's meaning (`reclassifiedItems`) or taking another term's spelling is refused; only unused custom terms delete; gusheh titles are not terms. Saves report through `useAcknowledgedSaves`; nothing closes before acknowledgement.
+- A study source is what an item is studied FROM, never a person, pathway or lesson (`studySources.ts`); never deduplicate sources by title or share them across instruments. A shipped course's source is keyed (`sourceKey`) once per instrument (a second is refused, never silently un-keyed); an unproven match is asked.
+- Seeds are honest starting points, never fabricated authority (`pathwaySeed.ts`); an upgraded Setar device keeps its mixed pathway and is only offered the named radif; `MIRZA_ABDOLLAH_RADIF` is PARTIAL; Forms is a lens, never a pathway; per-gusheh `about` text stays a generic prompt, never invented specifics (the teacher is the authority). Copy is calm and self-paced ("Move on when it feels right, not by a deadline").
