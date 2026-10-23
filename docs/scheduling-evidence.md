@@ -329,3 +329,23 @@ clock the screen was rendered with — the same guard the close screen's Save
 already applies, for the same reason: a device left open across local midnight
 would otherwise write the day the panel was drawn on. Both paths refresh what is
 displayed and let the next tap through, rather than silently writing the stale day.
+
+## Rules in full
+
+Moved from `AGENTS.md` on 2026-10-22 to keep the always-loaded rules within
+their budget (UI refresh lane, owner amendment). `AGENTS.md` still states every
+rule below as a short binding line and points here; this section keeps the
+mechanism, identifiers and examples that go with them, exactly as AGENTS.md
+said them. Both bind; neither weakens the other. Change a rule in both places.
+
+### Review scheduling stays explainable (r-explainable-scheduling)
+
+Numbers: `docs/scheduling-evidence.md`. One pure decision, `decideReview` (`scheduling.ts`), which preview, write and screen render.
+
+- Practice is exposure; only eligible retention evidence (a stable result, due, not yet advanced today: `srLastProgressDay`) advances spacing. `same` is not failure; only `worse` may bring an automatic date forward, never later; nothing else reads as failure. A future date the owner owns (or of unknown provenance) is protected until due, and manual mode with no new date keeps it. A keep completes nothing.
+- An open date editor is bound to its item and date (`reviewDateDraftFor`, reconciled each render, never from an effect). "Schedule again", "Use automatic scheduling" (`transferToAutomaticReview`, keeps the date) and "Review today" (day read at the tap) are administration and record no practice; an ordinary item save never releases a protected date; ambiguous schedules are refused, never guessed; never describe a retained date as a new calculation.
+- Bounded params (`SchedulingParams`, `clampSchedulingParams`) are threaded wherever a date is shown or saved. The published priority formula, `importance*2 + difficulty + fragility + overdue + neglected + lessonUrgency - exposurePenalty`, is what the code computes (`src/domain/scoring.test.ts`) and Settings shows with live values; keep it deterministic, never an opaque model. Status enum keys stay stable; change only labels (`labels.ts`).
+
+### The Session Plan is a view over real blocks
+
+`plan.ts` reuses the same `scoreItems` priorities, never a second ranking: no scores, no "optimal" claims, its evidence never dressed up as an optimum. Minutes never exceed the budget; a whole work (`isWork`) gets at least 10 beside other work; warm-up and cool-down never exceed their shares or take overflow (`allocateMinutes`); a budget outside 5-120 is rejected, never clamped (`validateBudgetMinutes`); one `isProactiveCandidate` policy and one `candidatePool` serve build and swap; resting material never surfaces, even by fallback; warm-up is for familiar easy items, never a due review or class commitment; diversity stays subordinate to real needs. A plan is stale when `rev` or the local day moves; Start rechecks the day and refuses visibly. It runs real blocks, each segment's item revalidated at start; skipping logs nothing. The running plan (`activePlan`, `planMinutesByInstrument`) is store state, never in `PracticeDB`, sync or a backup.

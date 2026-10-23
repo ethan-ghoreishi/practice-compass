@@ -92,6 +92,31 @@ what the base said:
   for "before") writes Today, Repertoire, an item, Close and Settings at
   Chromium 390/1280 and WebKit 390, light and dark, from the same fixture.
 
+**AGENTS.md headroom (ac-17).** Base: AGENTS.md 31,880 bytes, profile with
+CLAUDE.md 32,745 (23 spare). Condensing every section in place while keeping
+each clause reached only 31,597 with this lane's new rules (~1.4 KB), so the
+owner amended the lane (2026-10-23) to let mechanism, identifiers and examples
+move into the subsystem docs. Final: AGENTS.md 27,794, profile 28,659 (4,109
+under the ceiling). Disposition:
+- *Moved in full* (verbatim as AGENTS.md last said them, under "Rules in
+  full"): Pathways, routines and repertoire → `docs/repertoire-experience.md`;
+  the Setar archive → `docs/setar-archive.md`; Courses →
+  `docs/cgs-course.md` (Khonyagar's doc points there); Review scheduling and
+  the Session Plan → `docs/scheduling-evidence.md`. Each AGENTS.md section
+  keeps every prohibition as a short binding line and points to its doc.
+- *Condensed in place* (wording only, every clause kept): every other section.
+  Merged: the hard do-nots' sync sentence, "How to change this file" (two
+  bullets), the doorways decision (it no longer repeats "only the owner
+  changes it"; "never re-derive or flip it" stands), the secure-context note
+  (the LAN example went; the HTTPS check and the no-fallback-hash rule stay).
+- *Added*: `isolate`, the data-title/separator/one-isolate direction rules,
+  instrument names in every file, `partRelationRefusal`,
+  `dropUnshownIdentity`, `useDecisionNow` screens, in-place "Why this date?",
+  the close draft, the UI conventions line; the closed Direction open-gaps
+  bullet is gone (both gaps closed here).
+`tests/ui-guidance.test.ts` checks the headroom and that the added and
+reworded rules are present; `tests/agent-context.test.ts` is unchanged.
+
 Follow-ups (release valve): `goTo`'s no-heading branch now has no live page to
 exercise (every route has an h1); many list titles still truncate rather than
 wrap (Elsewhere rows, routine names); Settings' `.toast` stays fixed.

@@ -344,3 +344,9 @@ A correction is a data change: edit the scanner's tables, re-run it with
 The ledgers in `khonyagarCourse.test.ts` fail if any of these is broken. A new
 work, or a newly recognised one, gets its own anchored key and is added to the
 ledgers.
+
+## Rules in full
+
+The rules for both courses, moved from `AGENTS.md` on 2026-10-22, are kept in
+full in [`docs/cgs-course.md`](cgs-course.md) ("Rules in full"); they bind
+this course exactly as they bind that one.

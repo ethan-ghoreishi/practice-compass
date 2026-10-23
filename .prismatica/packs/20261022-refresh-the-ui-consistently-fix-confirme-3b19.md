@@ -1,8 +1,8 @@
 ---
 id: 20261022-refresh-the-ui-consistently-fix-confirme-3b19
 contractId: 20261022-refresh-the-ui-consistently-fix-confirme-3b19
-contractHash: 5a5f31dc37299b5607ab50e6db18dee03010e46ac69f803a00add0dac8fdff05
-createdAt: 2026-10-22T22:58:39.759Z
+contractHash: 7ec42833872be8e8730f6c052a2c18528bb008d738563096f9daf62af38c1f6c
+createdAt: 2026-10-23T00:06:57.368Z
 skills:
   - ui-work
   - build
@@ -586,6 +586,11 @@ Refresh the UI consistently, fix confirmed interaction bugs and preserve proven 
 - tests/ui-guidance.test.ts
 - tests/fixtures/ui-refresh.json
 - src/components/itemFormValues.test.ts
+- docs/setar-archive.md
+- docs/cgs-course.md
+- docs/khonyagar-course.md
+- docs/repertoire-experience.md
+- docs/scheduling-evidence.md
 
 Never touch:
 

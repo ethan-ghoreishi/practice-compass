@@ -131,6 +131,11 @@ allowedPaths:
   - tests/ui-guidance.test.ts
   - tests/fixtures/ui-refresh.json
   - src/components/itemFormValues.test.ts
+  - docs/setar-archive.md
+  - docs/cgs-course.md
+  - docs/khonyagar-course.md
+  - docs/repertoire-experience.md
+  - docs/scheduling-evidence.md
 forbiddenPaths:
   - src/components/Layout.tsx
   - src/components/viewport.ts
@@ -404,7 +409,12 @@ docsDelta:
   - DECISIONS.md
   - README.md
 createdAt: 2026-10-22T22:58:35.149Z
-amendments: []
+amendments:
+  - at: 2026-10-23T00:05:15.830Z
+    reason: "AGENTS headroom: mechanism detail moves to subsystem docs"
+    description: "allow: +docs/setar-archive.md, docs/cgs-course.md,
+      docs/khonyagar-course.md, docs/repertoire-experience.md,
+      docs/scheduling-evidence.md"
 ---
 
 # Refresh the UI consistently, fix confirmed interaction bugs and preserve proven mobile behaviour
@@ -533,6 +543,11 @@ amendments: []
 - tests/ui-guidance.test.ts
 - tests/fixtures/ui-refresh.json
 - src/components/itemFormValues.test.ts
+- docs/setar-archive.md
+- docs/cgs-course.md
+- docs/khonyagar-course.md
+- docs/repertoire-experience.md
+- docs/scheduling-evidence.md
 
 ## Never touch
 
@@ -620,5 +635,5 @@ amendments: []
 
 ## Amendments
 
-_none_
+- 2026-10-23T00:05:15.830Z — AGENTS headroom: mechanism detail moves to subsystem docs: allow: +docs/setar-archive.md, docs/cgs-course.md, docs/khonyagar-course.md, docs/repertoire-experience.md, docs/scheduling-evidence.md
 
