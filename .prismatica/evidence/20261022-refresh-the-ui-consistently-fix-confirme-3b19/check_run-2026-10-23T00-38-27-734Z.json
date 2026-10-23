@@ -1,0 +1,150 @@
+{
+  "contractId": "20261022-refresh-the-ui-consistently-fix-confirme-3b19",
+  "event": "check_run",
+  "at": "2026-10-23T00:38:27.734Z",
+  "pass": true,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "pass",
+      "detail": "npx vitest run --reporter=json"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "no separate journey command is configured — browser tests may be included in another configured runner, which is not inferred here"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "59 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "16 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "all required docs were updated"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "instruction-budget",
+      "status": "pass",
+      "detail": "prismatica-instructions/2: claude 29131 of 32768 bytes (CLAUDE.md 865 B, AGENTS.md 28266 B); codex 28266 of 32768 bytes (AGENTS.md 28266 B)"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "flow-proposals",
+      "status": "pass",
+      "detail": "this change files no Flow proposal"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "flow report covers what this change touches"
+    },
+    {
+      "name": "implementation",
+      "status": "pass",
+      "detail": "attribution, not proof: prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified"
+    }
+  ],
+  "changedFiles": [
+    "AGENTS.md",
+    "DECISIONS.md",
+    "README.md",
+    "docs/cgs-course.md",
+    "docs/khonyagar-course.md",
+    "docs/repertoire-experience.md",
+    "docs/scheduling-evidence.md",
+    "docs/setar-archive.md",
+    "docs/setar-practice-reliability.md",
+    "src/components/ArchiveRefresh.tsx",
+    "src/components/ItemCard.tsx",
+    "src/components/ItemForm.tsx",
+    "src/components/QuickAdd.tsx",
+    "src/components/SchedulingExplanation.tsx",
+    "src/components/SetarSetupReview.tsx",
+    "src/components/closeDraft.test.ts",
+    "src/components/closeDraft.ts",
+    "src/components/direction.test.ts",
+    "src/components/itemFormValues.test.ts",
+    "src/components/itemFormValues.ts",
+    "src/domain/insights.test.ts",
+    "src/domain/insights.ts",
+    "src/domain/questions.test.ts",
+    "src/domain/questions.ts",
+    "src/domain/repertoire.test.ts",
+    "src/domain/repertoire.ts",
+    "src/domain/report.test.ts",
+    "src/domain/report.ts",
+    "src/domain/routines.test.ts",
+    "src/domain/setarSetup.ts",
+    "src/domain/util.ts",
+    "src/pages/ActiveBlock.tsx",
+    "src/pages/CloseBlock.tsx",
+    "src/pages/Insights.tsx",
+    "src/pages/ItemDetail.tsx",
+    "src/pages/Lessons.tsx",
+    "src/pages/Materials.tsx",
+    "src/pages/MusicTerms.tsx",
+    "src/pages/NewItem.tsx",
+    "src/pages/PathwayDetail.tsx",
+    "src/pages/Repertoire.tsx",
+    "src/pages/RoutineEdit.tsx",
+    "src/pages/RoutineRunner.tsx",
+    "src/pages/SessionPlan.tsx",
+    "src/pages/Settings.tsx",
+    "src/pages/StageDetail.tsx",
+    "src/pages/StartBlock.tsx",
+    "src/pages/TeacherReport.tsx",
+    "src/pages/Today.tsx",
+    "src/store/useStore.ts",
+    "src/styles/contrast.test.ts",
+    "src/styles/global.css",
+    "tests/fixtures/ui-refresh.json",
+    "tests/journey-harness.browser.test.ts",
+    "tests/post-practice.browser.test.ts",
+    "tests/ui-conformance.browser.test.ts",
+    "tests/ui-date-refresh.browser.test.ts",
+    "tests/ui-guidance.test.ts",
+    "tests/ui-refresh-store.test.ts"
+  ],
+  "prismaticaVersion": "0.11.0"
+}

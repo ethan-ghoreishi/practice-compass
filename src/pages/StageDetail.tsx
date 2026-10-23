@@ -627,7 +627,7 @@ function UnitRow({
 
       {/* Fixed-size trailing action: Play once added, Add before. */}
       {item ? (
-        <button className="btn btn-primary stage-unit-action" onClick={onPractise} aria-label={`Practise ${unit.title}`}>
+        <button className="btn stage-unit-action" onClick={onPractise} aria-label={`Practise ${unit.title}`}>
           <PlayIcon />
         </button>
       ) : ambiguous ? (
@@ -674,7 +674,7 @@ function RoutineCard({
           <button className="btn btn-ghost btn-sm" onClick={onEdit}>
             Edit
           </button>
-          <button className="btn btn-primary btn-sm" onClick={() => onStart(false)}>
+          <button className="btn btn-sm" onClick={() => onStart(false)}>
             <PlayIcon /> Start
           </button>
         </div>

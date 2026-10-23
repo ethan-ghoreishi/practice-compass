@@ -12,11 +12,14 @@ import type { BlockResult, FocusArea, ItemStatus, Rating, ReviewType } from '../
  * review date, status suggestion and minutes proposal are derived again from
  * the current time and settings when the screen comes back; a minutes figure
  * survives only if the owner corrected it.
+ *
+ * Its observation is THE block's observation while it is held: Active's
+ * "Observation for this block" edits it here (`editHeldObservation`), so the
+ * close screen's text and the scratch note can never be two values one
+ * silently replaces.
  */
 export interface CloseDraft {
   key: string;
-  /** The block's own note when this was held: a note changed since wins. */
-  sessionNote: string | undefined;
   result: BlockResult | null;
   observation: string;
   nextAction: string;
@@ -46,6 +49,11 @@ export function holdCloseDraft(draft: CloseDraft): void {
 export function closeDraftFor(key: string): CloseDraft | null {
   if (held && held.key !== key) held = null;
   return held;
+}
+
+/** Active's observation editor writes here while this block's draft is held. */
+export function editHeldObservation(key: string, observation: string): void {
+  if (held?.key === key) held = { ...held, observation };
 }
 
 /** Forget this block's draft — and only this block's: a newer one stays. */

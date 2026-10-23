@@ -5,7 +5,7 @@ title: Refresh the UI consistently, fix confirmed interaction bugs and preserve
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/54
 intent: 20261022-refresh-the-ui-consistently-fix-confirme-3b19
 tier: heavy
-stage: prove
+stage: review
 baseline:
   commit: 24a84beeb19cfbd0e0e43682b5644c2b50657961
   branch: main

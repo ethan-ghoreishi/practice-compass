@@ -380,14 +380,14 @@ function PartsSection({ item, now }: { item: PracticeItem; now: Date }) {
               <div className="truncate">{next.score.item.title}</div>
               {/* next.reason is always English (buildReason) — its own
                   dir="ltr" isolate keeps its bidi base fixed regardless of
-                  the title's. */}
-              <div className="tiny faint truncate">
+                  the title's. A generated line wraps, never clipped. */}
+              <div className="tiny faint">
                 <span dir="ltr">{next.reason}</span>
               </div>
             </div>
           </div>
           <button
-            className="btn btn-sm btn-primary"
+            className="btn btn-sm"
             onClick={() => {
               startItemSession(next.score.item.id);
               navigate('/active');

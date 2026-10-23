@@ -143,13 +143,21 @@ function audit(app: PracticeApp, phone: boolean): Promise<string[]> {
       }
     }
 
+    // One button system: a play button in a row is the outlined one; only a
+    // region's own large Start/Resume is filled.
+    for (const el of document.querySelectorAll('button.btn-primary:not(.btn-lg)')) {
+      if (shown(el) && el.querySelector('polygon[points="7 4 20 12 7 20 7 4"]')) out.push(`filled row play button: ${describe(el)}`);
+    }
+
     // Every visible control has a name; at phone width, a 44px target.
     const controls = document.querySelectorAll('button, a[href], input, select, textarea, summary, [role="button"], [tabindex]:not([tabindex="-1"])');
     for (const el of controls) {
       if (!shown(el) || (el as HTMLInputElement).type === 'hidden') continue;
       if (!nameOf(el)) out.push(`unnamed control: ${el.outerHTML.slice(0, 90)}`);
       if (!phone || !el.matches('button, select, input, textarea, summary, a.btn') || el.matches('.rating button')) continue;
-      const r = el.getBoundingClientRect();
+      // A checkbox is tapped through its label: that is the target measured.
+      const target = el.matches('input[type="checkbox"]') ? ((el as HTMLInputElement).labels?.[0] ?? el) : el;
+      const r = target.getBoundingClientRect();
       if (r.height < 43.5) out.push(`${Math.round(r.height)}px tall: ${describe(el)}`);
       if (el.matches('button') && !text(el) && r.width < 43.5) out.push(`${Math.round(r.width)}px wide icon button: ${describe(el)}`);
     }
@@ -176,9 +184,16 @@ async function sweep(c: Config): Promise<string[]> {
     expect(await tarPill.getAttribute('class'), label(c)).toContain('selected');
     await check('Today (Tar session)');
     await snap(app, c, 'today');
+    // The install hint, offered as a browser that can install would offer it.
+    await page.evaluate(() => window.dispatchEvent(new Event('beforeinstallprompt')));
+    await page.getByRole('button', { name: 'Dismiss' }).waitFor();
+    await check('Today (install hint)');
     await page.getByRole('button', { name: /^Plan this session/ }).click();
     await page.getByRole('button', { name: /^Routines/ }).click();
     await page.getByText('How long today?').waitFor();
+    // A routine fitted to another length, with its essentials-only choice.
+    await page.getByRole('button', { name: 'Run it for a different length' }).first().click();
+    await page.getByText('Essentials only').first().waitFor();
     await check('Today (doorways open)');
     await page.getByRole('button', { name: 'Overview' }).click();
     await page.getByText('Each instrument, at a glance').waitFor();
@@ -214,6 +229,26 @@ async function sweep(c: Config): Promise<string[]> {
     ] as const) {
       await goTo(app, route, { arrival: heading });
       await check(route);
+    }
+    // A work with parts suggests the next one to practise.
+    await goTo(app, '/items/it-chahar', { arrival: 'چهارمضراب ماهور' });
+    await check('/items/it-chahar');
+
+    // Editable and offered states: a new routine's segment, a course's
+    // missing levels and a shipped pathway's missing stages — each ticked
+    // through its label.
+    await goTo(app, '/routine/new?instrument=inst-tar', { arrival: 'New routine' });
+    await page.getByRole('button', { name: 'Add segment' }).click();
+    await page.getByText('essential', { exact: true }).waitFor();
+    await check('/routine/new (a segment added)');
+    for (const [route, heading, offer] of [
+      ['/pathway/tar-khonyagar', 'Khonyagar offers', /^Add new levels from this course/],
+      ['/pathway/tar-honarestan', 'Honarestan offers', /^Restore shipped stages/],
+    ] as const) {
+      await goTo(app, route, { arrival: heading });
+      await page.getByRole('button', { name: offer }).click();
+      await page.getByRole('checkbox').first().waitFor();
+      await check(`${route} (offers open)`);
     }
 
     await goTo(app, '/lessons', { arrival: 'Lessons' });
@@ -269,6 +304,15 @@ async function sweep(c: Config): Promise<string[]> {
     await page.getByRole('button', { name: 'Back', exact: true }).click();
     await page.getByRole('button', { name: 'Discard block' }).click();
     await page.getByRole('button', { name: /^Start · 10 min/ }).waitFor();
+    // A running Tar Session Plan: its current segment's own Start, then ended.
+    await page.getByRole('navigation', { name: 'Which instrument are you practising?' }).getByRole('button', { name: 'Tar', exact: true }).click();
+    await page.getByRole('navigation', { name: 'Which instrument are you practising?' }).getByRole('button', { name: 'Tar', exact: true, pressed: true }).waitFor();
+    await goTo(app, '/plan?minutes=20', { arrival: 'Your Tar session' });
+    await page.getByRole('button', { name: 'Start plan' }).click();
+    await page.getByRole('button', { name: 'End the plan' }).waitFor();
+    await check('/plan (running)');
+    await page.getByRole('button', { name: 'End the plan' }).click();
+    await page.getByRole('navigation', { name: 'Which instrument are you practising?' }).waitFor();
 
     for (const e of app.pageErrors) failures.push(`${label(c)}: page error ${e.message}`);
   } finally {

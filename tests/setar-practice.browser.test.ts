@@ -906,6 +906,14 @@ describe('Review Setar setup, interrupted', () => {
         await page.getByText(/Keeping fresh — choose which items/).click();
         await page.getByRole('button', { name: 'Choose every item without a note' }).click();
         const fresh = (title: string) => page.getByRole('checkbox', { name: `Keeping fresh: ${title}` });
+        // At phone width every setup checkbox is tapped through a 44px label.
+        const shortTaps = await page.locator('main input[type="checkbox"]').evaluateAll((boxes) =>
+          boxes
+            .filter((b) => b.getClientRects().length > 0)
+            .map((b) => [b.getAttribute('aria-label'), ((b as HTMLInputElement).labels?.[0] ?? b).getBoundingClientRect().height] as const)
+            .filter(([, h]) => h < 43.5),
+        );
+        expect(shortTaps, where).toEqual([]);
         await expect
           .poll(() => Promise.all([fresh(SABA.title).isChecked(), fresh(KERESHMEH_MAHUR.title).isChecked()]), { message: where })
           .toEqual([true, true]);

@@ -45,14 +45,18 @@
     ],
     "pathways": [
       { "id": "pw-tar", "instrumentId": "inst-tar", "name": "ردیف تار", "currentStageId": "stage-fa", "order": 0, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
-      { "id": "pw-setar", "instrumentId": "inst-setar", "name": "Setar foundations", "currentStageId": "stage-en", "order": 1, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
+      { "id": "pw-setar", "instrumentId": "inst-setar", "name": "Setar foundations", "currentStageId": "stage-en", "order": 1, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "tar-khonyagar", "instrumentId": "inst-tar", "name": "Khonyagar offers", "order": 2, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "tar-honarestan", "instrumentId": "inst-tar", "name": "Honarestan offers", "order": 3, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
     ],
     "pathwayStages": [
       { "id": "stage-fa", "pathwayId": "pw-tar", "code": "افشاری", "title": "آواز افشاری", "intro": "گوشه‌های افشاری را آرام و با حوصله بنوازید.", "order": 0, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
       { "id": "stage-en", "pathwayId": "pw-setar", "code": "B1", "title": "Basics of the right hand", "intro": "Slow strokes, an even tone, no hurry.", "order": 0, "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
     ],
     "pathwayRoutines": [
-      { "id": "rt-tar", "instrumentId": "inst-tar", "name": "گرم کردن تار", "order": 0, "segments": [ { "label": "Open strings", "minutes": 5, "essential": true }, { "label": "عراق", "minutes": 10, "itemId": "it-iraq3" } ], "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
+      { "id": "rt-tar", "instrumentId": "inst-tar", "name": "گرم کردن تار", "order": 0, "segments": [ { "label": "Open strings", "minutes": 5, "essential": true }, { "label": "عراق", "minutes": 10, "itemId": "it-iraq3" } ], "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "rt-pathway", "instrumentId": "inst-tar", "pathwayId": "pw-tar", "name": "Pathway warm-up", "order": 1, "segments": [ { "label": "Scales", "minutes": 5 } ], "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" },
+      { "id": "rt-stage", "instrumentId": "inst-tar", "pathwayId": "pw-tar", "stageId": "stage-fa", "name": "Stage warm-up", "order": 2, "segments": [ { "label": "Tremolo", "minutes": 5 } ], "createdAt": "2026-09-01T09:00:00.000Z", "updatedAt": "2026-09-01T09:00:00.000Z" }
     ],
     "attachments": [],
     "lessons": [

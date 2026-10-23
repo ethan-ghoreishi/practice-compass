@@ -6,6 +6,7 @@ import { getItem, instrumentName, itemBlocks } from '../store/lookups';
 import { formatClock } from '../components/format';
 import ItemMaterial from '../components/ItemMaterial';
 import ItemNotes from '../components/ItemNotes';
+import { closeDraftFor, closeDraftKey, editHeldObservation } from '../components/closeDraft';
 import { PauseIcon, PlayIcon } from '../components/icons';
 import { useScreenAwake } from '../components/useScreenAwake';
 import { playPracticeCue, testPracticeSound, usePracticeSound } from '../components/practiceCue';
@@ -23,7 +24,14 @@ export default function ActiveBlock() {
   const navigate = useNavigate();
 
   const [, setTick] = useState(0);
-  const [showNote, setShowNote] = useState(false);
+  // Back from Close: the observation typed there IS this block's observation
+  // until Finish, edited here rather than beside a second copy (closeDraft.ts).
+  // It stays in memory, never in the persisted session.
+  const [heldObservation, setHeldObservation] = useState(() =>
+    active ? (closeDraftFor(closeDraftKey(active))?.observation ?? null) : null,
+  );
+  // Shown already when it holds text — but only a tap focuses it (no keyboard on return).
+  const [showNote, setShowNote] = useState<boolean | 'held'>(() => (heldObservation ? 'held' : false));
 
   useEffect(() => {
     if (!active?.running) return;
@@ -210,9 +218,13 @@ export default function ActiveBlock() {
             className="textarea"
             aria-label="Observation for this block"
             placeholder="What are you noticing right now?"
-            value={active.note ?? ''}
-            onChange={(e) => setSessionNote(e.target.value)}
-            autoFocus
+            value={heldObservation ?? active.note ?? ''}
+            onChange={(e) => {
+              if (heldObservation === null) return setSessionNote(e.target.value);
+              setHeldObservation(e.target.value);
+              editHeldObservation(closeDraftKey(active), e.target.value);
+            }}
+            autoFocus={showNote === true}
           />
           <div className="tiny faint">
             <span dir="ltr">Carried to the close screen as this block's observation.</span>

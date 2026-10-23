@@ -354,11 +354,16 @@ describe('after practice', () => {
         await page.getByRole('spinbutton', { name: /^First review gap/ }).fill('4');
         await persistedUntil(app, (s) => (s.state as { db: { settings?: { sm2FirstIntervalDays: number } } }).db.settings?.sm2FirstIntervalDays, (n) => n === 4);
         await goTo(app, '/active', { arrival: PIECE_TITLE });
+        // Active's observation for this block IS the one typed on Close — one
+        // value, shown and edited here, never a second copy that replaces it.
+        const scratch = page.getByRole('textbox', { name: 'Observation for this block' });
+        expect(await scratch.inputValue(), engine).toBe('First pass was rushed.');
+        await scratch.fill('First pass was rushed. Second pass steadier.');
         await page.clock.fastForward(6 * 60_000);
         await finish();
 
         expect(await page.getByRole('button', { name: RESULT_LABELS.stable_alone, exact: true }).getAttribute('aria-pressed'), engine).toBe('true');
-        expect(await observation.inputValue(), engine).toBe('First pass was rushed.');
+        expect(await observation.inputValue(), engine).toBe('First pass was rushed. Second pass steadier.');
         expect(await page.getByPlaceholder('The one thing to try next time').inputValue(), engine).toBe('Slower at the turn');
         expect(await page.getByRole('textbox', { name: 'Question for your teacher' }).inputValue(), engine).toBe('Which fingering at bar 9?');
         await itemLine(page, `Status ${ITEM_STATUS_LABELS.usable} → ${ITEM_STATUS_LABELS.fragile} · Focus ${FOCUS_LABELS.rhythm} · Effort 4 of 5`).waitFor();
@@ -378,7 +383,7 @@ describe('after practice', () => {
         await page.getByRole('navigation', { name: 'Primary' }).waitFor();
         await persistedUntil(app, (s) => (s.state as { db: { blocks: unknown[] } }).db.blocks.length, (n) => n === 1);
         const db = (await persistedDb(app)) as unknown as { blocks: SavedBlock[]; items: SavedItem[]; lessonAgenda: { text?: string }[] };
-        expect(db.blocks.map((b) => [b.practiceItemId, b.result, b.observation, b.durationMinutes]), engine).toEqual([[PIECE, 'stable_alone', 'First pass was rushed.', proposed]]);
+        expect(db.blocks.map((b) => [b.practiceItemId, b.result, b.observation, b.durationMinutes]), engine).toEqual([[PIECE, 'stable_alone', 'First pass was rushed. Second pass steadier.', proposed]]);
         const piece = db.items.find((i) => i.id === PIECE)!;
         expect([piece.status, piece.nextReviewDate], engine).toEqual(['fragile', shownDate]);
         expect(db.lessonAgenda.filter((e) => e.text === 'Which fingering at bar 9?'), engine).toHaveLength(1);

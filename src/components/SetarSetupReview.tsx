@@ -274,20 +274,23 @@ export default function SetarSetupReview() {
         </button>
         <ul className="stack-sm" role="list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
           {status.map((p) => (
-            <li key={p.id} className="row" style={{ gap: 8 }}>
-              <input
-                type="checkbox"
-                aria-label={`Keeping fresh: ${title(p.itemId)}`}
-                disabled={p.state === 'correct'}
-                checked={p.state === 'correct' || !!chosenFor(p)}
-                onChange={(e) => choose(p, e.target.checked ? p.choices[0]!.after : null)}
-              />
-              <span className="small grow" dir="auto" style={{ textAlign: 'start' }}>
-                <span>{title(p.itemId)}</span>{' '}
-                <span className="tiny faint" dir="ltr">
-                  {p.evidence}
+            <li key={p.id}>
+              {/* The row is the checkbox's label, so the whole row is its tap. */}
+              <label className="row" style={{ gap: 8 }}>
+                <input
+                  type="checkbox"
+                  aria-label={`Keeping fresh: ${title(p.itemId)}`}
+                  disabled={p.state === 'correct'}
+                  checked={p.state === 'correct' || !!chosenFor(p)}
+                  onChange={(e) => choose(p, e.target.checked ? p.choices[0]!.after : null)}
+                />
+                <span className="small grow" dir="auto" style={{ textAlign: 'start' }}>
+                  <span>{title(p.itemId)}</span>{' '}
+                  <span className="tiny faint" dir="ltr">
+                    {p.evidence}
+                  </span>
                 </span>
-              </span>
+              </label>
             </li>
           ))}
         </ul>

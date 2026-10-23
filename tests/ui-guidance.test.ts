@@ -86,6 +86,24 @@ const LANE_RULES = [
   'an independently authored value gets its own `dir="auto"`',
   'only the owner changes it',
   'edited in place only when a rule changes',
+  // Restored after the sealed review's clause-by-clause comparison of each
+  // moved section with the baseline: binding constraints stay here, not only
+  // in the optional doc.
+  'audio and vibration are best-effort, never asserted',
+  'via one resolver, `resolveCatalogReference`,',
+  'never by rewriting an instrument',
+  'A run freezes its segments',
+  'ONE practice clock (`locateClock`, wall-clock elapsed)',
+  "a reclassifying edit or another term's spelling is refused",
+  'Decisions, Skips and deletions persist',
+  "The NAS publisher's token is separate, repository-scoped",
+  'and only in the NAS runtime',
+  'no persisted graph, inbound door or schema change',
+  '`reseedDefaultPathways` never adds a stage to an existing pathway',
+  'stable, due, not yet advanced today: `srLastProgressDay`',
+  'build and swap share `isProactiveCandidate`/`candidatePool`',
+  'warm-up takes familiar easy items',
+  'each item is revalidated at start',
   // Each moved section points to where it is written in full.
   'Full: `docs/repertoire-experience.md`',
   'Runbook and full: `docs/setar-archive.md`',

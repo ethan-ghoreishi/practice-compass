@@ -1130,6 +1130,7 @@ select.input {
    Below the desktop breakpoint every button, select, input, textarea,
    summary and button-styled link is at least one 44px tap tall, and a
    button-styled control at least one wide (an icon-only one included).
+   A checkbox is reached through its label, which gets the same floor.
    Rating stars, sized by their own row, and links inside running text are
    the two exceptions. */
 @media (max-width: 759.98px) {
@@ -1145,6 +1146,10 @@ select.input {
   .btn,
   .option {
     min-width: var(--tap);
+  }
+  /* A checkbox's tap is its label: the whole labelled row is one 44px target. */
+  label:has(> input[type='checkbox']) {
+    min-height: var(--tap);
   }
   button.link {
     display: inline-flex;

@@ -386,7 +386,7 @@ function PlanRunner() {
               </div>
               {isCurrent && (
                 <div className="row" style={{ gap: 6, flex: 'none' }}>
-                  <button className="btn btn-primary btn-sm" onClick={begin} aria-label={`Start ${seg.title}`}>
+                  <button className="btn btn-sm" onClick={begin} aria-label={`Start ${seg.title}`}>
                     <PlayIcon /> Start
                   </button>
                   <button className="btn btn-ghost btn-sm" onClick={skipPlanSegment} aria-label={`Skip ${seg.title}`}>

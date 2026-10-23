@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { closeDraftFor, closeDraftKey, dropCloseDraft, holdCloseDraft, type CloseDraft } from './closeDraft';
+import { closeDraftFor, closeDraftKey, dropCloseDraft, editHeldObservation, holdCloseDraft, type CloseDraft } from './closeDraft';
 
 const draft = (key: string, observation: string): CloseDraft => ({
   key,
-  sessionNote: undefined,
   result: 'same',
   observation,
   nextAction: '',
@@ -35,5 +34,17 @@ describe('the close draft', () => {
     expect(closeDraftFor(second)?.observation).toBe('newer');
     dropCloseDraft(second);
     expect(closeDraftFor(second)).toBeNull();
+  });
+
+  it('holds one observation: an edit while practising more replaces it for its own block only', () => {
+    const first = closeDraftKey({ startedAt: '2026-10-20T20:00:00.000Z', itemId: 'it' });
+    const second = closeDraftKey({ startedAt: '2026-10-20T20:30:00.000Z', itemId: 'it' });
+    holdCloseDraft(draft(first, 'First pass rushed'));
+    editHeldObservation(first, 'First pass rushed. Second pass steadier');
+    expect(closeDraftFor(first)?.observation).toBe('First pass rushed. Second pass steadier');
+    // Another block's editor never reaches it.
+    editHeldObservation(second, 'elsewhere');
+    expect(closeDraftFor(first)).toMatchObject({ observation: 'First pass rushed. Second pass steadier', result: 'same' });
+    dropCloseDraft(first);
   });
 });

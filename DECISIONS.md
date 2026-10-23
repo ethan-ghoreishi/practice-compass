@@ -87,10 +87,25 @@ what the base said:
   (`tests/ui-date-refresh.browser.test.ts`, consumers: Lessons page and open
   lesson, Repertoire's two views, StageDetail's "for class"); palette, ac-12;
   fixture: `tests/fixtures/ui-refresh.json` (clock 2026-10-20 21:00 local).
-- Owner packet: `UI_PACKET_DIR=<dir> npx vitest run
-  tests/ui-conformance.browser.test.ts -t "every route"` (add `UI_BASE_ROOT`
-  for "before") writes Today, Repertoire, an item, Close and Settings at
-  Chromium 390/1280 and WebKit 390, light and dark, from the same fixture.
+- Owner packet (local review artefact, owner's choice 2026-10-23; images have
+  no committed path in this lane). Folder:
+  `/private/tmp/claude-501/-Users-Ehsan-workspace-active-practice-compass-lanes-20261022-refresh-the-ui-consistently-fix-confirme-3b19/03f50edb-f7fd-4f8f-b3a6-d703467acf11/scratchpad/packet/page/img/`, each pair `<name>-before.png` (base 24a84be, served via
+  `UI_BASE_ROOT`) and `<name>-after.png` (this lane), same fixture, viewport
+  and theme. The full 30+30 set is in `../../before/` and `../../after/`.
+  It lives in a temporary directory: regenerate with `UI_PACKET_DIR=<dir> npx
+  vitest run tests/ui-conformance.browser.test.ts -t "every route"` (add
+  `UI_BASE_ROOT=<checkout of 24a84be>` for "before").
+  - `today-chromium-390-light`: section labels in sentence case; the "Then"
+    reason wraps instead of clipping beside a Farsi title; Details and row
+    play are outlined, Start the one filled action; Today's order unchanged.
+  - `repertoire-webkit-390-dark` (mixed-language list): "gusheh:" precedes its
+    Farsi value (was ":gusheh"); pills and selects meet the 44px floor.
+  - `item-chromium-1280-light` (mixed-language detail): "Study source:" keeps
+    its gap from a Farsi value (was fused); semibold sentence-case labels.
+  - `close-chromium-390-dark`: sans labels, 44px status pills and fields;
+    "Why this date?" now explains in place (not in this frame).
+  - `settings-chromium-1280-dark`: h2 sections, everyday controls first, prose
+    in closed disclosures below; Active/Hidden reads as a state.
 
 **AGENTS.md headroom (ac-17).** Base: AGENTS.md 31,880 bytes, profile with
 CLAUDE.md 32,745 (23 spare). Condensing every section in place while keeping
@@ -102,7 +117,22 @@ rule content. A first slim rewrite of the moved sections narrowed or dropped
 rules (unknown-provenance dates, the 10-minute work floor, Restore and commit
 steps, the branch-restriction wording, the Active alignment exception, among
 others); a clause-by-clause check against the base restored every one before
-this was final. Final: AGENTS.md 28,266, profile 29,131 (3,637 spare).
+this was final. Final at the first review: AGENTS.md 28,266, profile 29,131.
+The sealed review then compared the moved sections clause by clause and found
+binding constraints that had survived only in the docs; they are back in
+AGENTS.md (vibration best-effort; one catalogue resolver; never rewriting an
+instrument for a binding; a run freezes its segments; wall-clock elapsed;
+another term's spelling refused; Decisions/Skips/deletions persist; the NAS
+publisher token separate and only in the NAS runtime; no course graph, inbound
+door or schema change; eligibility = stable, due, not yet advanced today;
+build/swap share `isProactiveCandidate`/`candidatePool`; warm-up from familiar
+easy items; each item revalidated at start; reseeding never adds a stage to an
+EXISTING pathway, the slim wording having said "never adds a stage"). Paid for
+by wording only: the intro sentence, the budget line's parentheticals, the
+roadmap line's repeat of the do-not heading, the quick-add step titles and
+Today's routine labels (both in their code), the `digest` error quoted in
+short, and the reason after "never isolate the element a group resolves from".
+Final: AGENTS.md 28,304, profile 29,169 (3,599 spare).
 Disposition:
 - *Moved* under "Rules in full" (this lane's condensed wording of the base
   rules, every clause kept; hands-free practice keeps the base wording):
@@ -127,7 +157,35 @@ reworded and restored rule (and each pointer) is present;
 acceptance, not a standing budget: a later lane that needs the room revisits
 it with the owner.
 
-Follow-ups (release valve): `goTo`'s no-heading branch now has no live page to
+**After the sealed review (2026-10-23).** Five families, each closed at its
+choke point and proved by a seeded revert:
+- *One observation per block while Close is held.* Active's "Observation for
+  this block" now edits the held draft's observation (`editHeldObservation`)
+  instead of a second value Close chose between; ac-15 types on Close, edits
+  on Active, and saves both. Consumers checked: CloseBlock restore/Back/Save/
+  Discard, ActiveBlock's editor, `setSessionNote` (still used when no draft
+  is held). Ceiling: after Back those edits are in memory only, so a reload
+  loses them, where before they reached the persisted `active.note`; reload
+  recovery of the draft is outside this lane.
+- *The phone floor reaches every control.* A checkbox is tapped through its
+  label: `label:has(> input[type=checkbox])` gets 44px (the one unlabelled
+  site, Keeping fresh, now wraps its row in a label), InstallHint loses its
+  inline 28px. The sweep measures a checkbox's label and now visits the
+  install hint, routine fitting, a new routine's segment, a course's missing
+  levels and a shipped pathway's missing stages (two stage-less fixture
+  pathways); the Setar setup journey asserts its checkboxes. Revert: 14
+  failures across both phone engines.
+- *Row play buttons are outlined.* StageDetail unit and routine Start,
+  PathwayDetail routine Start, ItemDetail's suggested part, the running
+  plan's segment Start. The sweep fails any filled small play button and now
+  visits a running plan and a work with parts; revert: 15 failures. Exposed
+  on the way: ItemDetail's suggested-part reason truncated past main; it
+  wraps now.
+- *Rules stay loaded.* Above; every restored phrase joined `LANE_RULES`.
+- *The packet.* Above, as a local folder.
+
+Follow-ups (release valve): the plan picker reads "Your — session" when the
+session instrument is unresolved after Overview (pre-existing); `goTo`'s no-heading branch now has no live page to
 exercise (every route has an h1); many list titles still truncate rather than
 wrap (Elsewhere rows, routine names); Settings' `.toast` stays fixed.
 

@@ -49,12 +49,13 @@ export default function InstallHint() {
   if (dismissed || (!isIOS && !deferred)) return null;
 
   return (
-    <div className="card card-accent stack-sm" style={{ position: 'relative' }}>
+    <div className="card card-accent stack-sm" style={{ position: 'relative', paddingRight: 52 }}>
+      {/* No inline size: the shared phone floor makes it one 44px tap. */}
       <button
         className="btn btn-ghost btn-sm"
         onClick={dismiss}
         aria-label="Dismiss"
-        style={{ position: 'absolute', top: 6, right: 6, minHeight: 28, padding: 4 }}
+        style={{ position: 'absolute', top: 4, right: 4, padding: 4 }}
       >
         <XIcon width={16} height={16} />
       </button>

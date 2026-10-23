@@ -463,7 +463,7 @@ function RoutineRow({
           <button className="btn btn-ghost btn-sm" onClick={onEdit}>
             Edit
           </button>
-          <button className="btn btn-primary btn-sm" onClick={() => onStart(false)}>
+          <button className="btn btn-sm" onClick={() => onStart(false)}>
             <PlayIcon /> Start
           </button>
         </div>

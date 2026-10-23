@@ -87,10 +87,9 @@ export default function CloseBlock() {
   // Only a figure the owner typed is kept; otherwise the live proposal shows.
   const [correctedMinutes, setCorrectedMinutes] = useState<number | null>(restored?.correctedMinutes ?? null);
   const duration = correctedMinutes ?? proposed.minutes;
-  // The block's note wins only when it changed during the extra practice.
-  const [observation, setObservation] = useState(
-    restored && restored.sessionNote === active?.note ? restored.observation : (active?.note ?? ''),
-  );
+  // A held draft's observation is the block's observation: Active edited it
+  // in place while practising more (closeDraft.ts), so nothing here chooses.
+  const [observation, setObservation] = useState(restored ? restored.observation : (active?.note ?? ''));
   const [nextAction, setNextAction] = useState(restored?.nextAction ?? '');
   const [comeBack, setComeBack] = useState(restored?.comeBack ?? true);
   // A CORRECTION to the engine's plan, never a second copy of it. Held as an
@@ -289,7 +288,6 @@ export default function CloseBlock() {
   function practiseMore() {
     holdCloseDraft({
       key: draftKey,
-      sessionNote: active?.note,
       result,
       observation,
       nextAction,
