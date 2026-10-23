@@ -23,8 +23,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-14T17:52:01.450Z
-        commit: 23a8d974a98c8a8936b9989b727d64263ac7d8b0
+        at: 2026-10-23T13:34:41.150Z
+        commit: e20a1b8fc0091b03596776a7b3f25d54753939af
     - actor: The musician
       action: Or chooses 'Add practice item' for the full one-step form.
       shows: "A kind-first form: what you are adding (gusheh / composed piece / piece
@@ -33,8 +33,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-14T17:52:01.450Z
-        commit: 23a8d974a98c8a8936b9989b727d64263ac7d8b0
+        at: 2026-10-23T13:34:41.150Z
+        commit: e20a1b8fc0091b03596776a7b3f25d54753939af
     - actor: The musician
       action: Fills in identity, and optionally connects a study source (creatable
         inline), a pathway stage, a lesson and a parent work — all at creation.
@@ -47,8 +47,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-14T17:52:01.450Z
-        commit: 23a8d974a98c8a8936b9989b727d64263ac7d8b0
+        at: 2026-10-23T13:34:41.150Z
+        commit: e20a1b8fc0091b03596776a7b3f25d54753939af
     - actor: The musician
       action: Saves.
       shows: The item's own page, with a 'Connected to' summary near the top.
@@ -57,8 +57,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-14T17:52:01.450Z
-        commit: 23a8d974a98c8a8936b9989b727d64263ac7d8b0
+        at: 2026-10-23T13:34:41.150Z
+        commit: e20a1b8fc0091b03596776a7b3f25d54753939af
   endsWith: The thing to practise exists and can be started immediately; details
     can be filled in later, or never.
   variations:
