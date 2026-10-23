@@ -54,11 +54,12 @@ async function open(c: Config): Promise<PracticeApp> {
 /** Light and dark of what is on screen now, for the owner's packet only. */
 async function snap(app: PracticeApp, c: Config, name: string): Promise<void> {
   if (!PACKET) return;
+  // Reduced motion: a colour transition caught mid-way is not the page.
   for (const colorScheme of ['light', 'dark'] as const) {
-    await app.page.emulateMedia({ colorScheme });
+    await app.page.emulateMedia({ colorScheme, reducedMotion: 'reduce' });
     await app.page.screenshot({ path: `${PACKET}/${name}-${c.engine}-${c.width}-${colorScheme}.png` });
   }
-  await app.page.emulateMedia({ colorScheme: null });
+  await app.page.emulateMedia({ colorScheme: null, reducedMotion: null });
 }
 
 /**
@@ -169,6 +170,10 @@ async function sweep(c: Config): Promise<string[]> {
     await goTo(app, '/');
     await page.getByRole('navigation', { name: 'Which instrument are you practising?' }).getByRole('button', { name: 'Tar', exact: true }).click();
     await page.getByText('Due reviews').waitFor();
+    // The pill SHOWS the session it scopes: pressed, and styled as pressed.
+    const tarPill = page.getByRole('navigation', { name: 'Which instrument are you practising?' }).getByRole('button', { name: 'Tar', exact: true, pressed: true });
+    await tarPill.waitFor();
+    expect(await tarPill.getAttribute('class'), label(c)).toContain('selected');
     await check('Today (Tar session)');
     await snap(app, c, 'today');
     await page.getByRole('button', { name: /^Plan this session/ }).click();
