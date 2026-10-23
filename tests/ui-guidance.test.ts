@@ -6,7 +6,8 @@ import { expect, it } from 'vitest';
 // ---------------------------------------------------------------------------
 // ac-17 — the UI refresh condensed AGENTS.md so the always-loaded rules keep
 // working room: AGENTS.md alone and the CLAUDE.md import profile each stay at
-// least 4 KiB under the 32 KiB ceiling. Counted exactly as
+// least 3.5 KiB under the 32 KiB ceiling (owner amendment 2026-10-23: every
+// rule kept, subsystem mechanism moved to its doc). Counted exactly as
 // tests/agent-context.test.ts counts them (the file's bytes; CLAUDE.md plus
 // every `@path` it imports outside code, transitively, each once) — that
 // file's own budget, prohibition and path tests stay as they are.
@@ -15,7 +16,7 @@ import { expect, it } from 'vitest';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const AGENTS = join(ROOT, 'AGENTS.md');
 const CEILING = 32_768;
-const HEADROOM = 4_096;
+const HEADROOM = 3_584;
 
 const withoutCode = (text: string) => text.replace(/```[\s\S]*?```/g, '').replace(/`[^`\n]*`/g, '');
 
@@ -67,6 +68,30 @@ const LANE_RULES = [
   'Delete practice item is the only destructive action',
   'Fix the grammar or the door, never with a guard in a component',
   'never guess',
+  // Restored after a clause-by-clause check of the moved sections.
+  'A date the owner owns (or of unknown provenance) is protected until due',
+  'a whole work (`isWork`) gets at least 10',
+  'its branch restriction is never called credential isolation',
+  'Restore lifts one exact suppression',
+  'imported pieces arrive resting',
+  'The commit re-plans, validates, waits for IndexedDB',
+  'never a bare date compare',
+  'guidance is copied into notes once',
+  'diversity stays subordinate',
+  'A plan is stale when `rev` or the day moves',
+  'Skip clamps to elapsed; Short on time drops non-essentials',
+  'an unproven match is asked',
+  'excluding technique, exercise and study material',
+  "Active's title group is deliberately start-aligned",
+  'an independently authored value gets its own `dir="auto"`',
+  'only the owner changes it',
+  'edited in place only when a rule changes',
+  // Each moved section points to where it is written in full.
+  'Full: `docs/repertoire-experience.md`',
+  'Runbook and full: `docs/setar-archive.md`',
+  'Full: `docs/cgs-course.md`, `docs/khonyagar-course.md`',
+  'Numbers and full: `docs/scheduling-evidence.md`',
+  'Full: `docs/setar-practice-reliability.md`',
 ];
 
 it('UI refresh leaves instruction headroom without losing current prohibitions', () => {

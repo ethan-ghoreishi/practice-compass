@@ -325,3 +325,15 @@ node scripts/check-setar-practice-families.mjs --mutations  # each partial fix m
 
 A missing browser fails (`npx playwright install chromium webkit`); every page
 error is kept; each server has a private Vite cache (`tests/practiceBrowser.ts`).
+
+## Rules in full: hands-free practice
+
+Moved from `AGENTS.md` on 2026-10-22 to keep the always-loaded rules within
+their budget (UI refresh lane, owner amendment). `AGENTS.md` still states every
+rule below as a short binding line and points here; this section keeps the
+baseline (24a84be) wording with its mechanism and identifiers. Both bind;
+neither weakens the other. Change a rule in both places.
+
+- A running clock on a visible screen holds one Screen Wake Lock (`shouldKeepAwake`; one owner, `useScreenAwake`). `nextSignal` announces at most once per call, moving the ephemeral `signalledThrough` to the boundaries passed, never by one; routine boundaries are `segmentBoundaries`, never a second sum; Skip calls `acknowledgeThrough`. The guaranteed signal is visual (target ring, overtime figure; a routine boundary shows for a window, never one render); a block never auto-finishes; audio and vibration are best-effort, never asserted; every Start, Resume, Test sound or recovery tap closes the page's context and creates and resumes a fresh one in the tap (`practiceCue.ts`), never from render or an effect, and plays only on a granted marker claim (`claimSessionSignal`). A routine starts only from a tap, never an effect. None of this changes a minute.
+- The wake lock, `crypto.subtle` (`sha256Hex`) and the service worker need a secure context, which LAN `http://` is not: confirm `window.isSecureContext` on the device over HTTPS before judging an unmerged branch. The answer is a route, never a fallback hash: `parseSourceIndex` refuses first (`INSECURE_CONTEXT_REFUSAL`).
+- **Open gaps:** Sync over plain http still throws the raw `Cannot read properties of undefined (reading 'digest')` (a wording fix in its own lane, never a second hash); `readIndexFile` (`src/store/archiveIndex.ts`) has no production caller.

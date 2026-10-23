@@ -94,28 +94,38 @@ what the base said:
 
 **AGENTS.md headroom (ac-17).** Base: AGENTS.md 31,880 bytes, profile with
 CLAUDE.md 32,745 (23 spare). Condensing every section in place while keeping
-each clause reached only 31,597 with this lane's new rules (~1.4 KB), so the
-owner amended the lane (2026-10-23) to let mechanism, identifiers and examples
-move into the subsystem docs. Final: AGENTS.md 27,794, profile 28,659 (4,109
-under the ceiling). Disposition:
-- *Moved in full* (verbatim as AGENTS.md last said them, under "Rules in
-  full"): Pathways, routines and repertoire → `docs/repertoire-experience.md`;
-  the Setar archive → `docs/setar-archive.md`; Courses →
-  `docs/cgs-course.md` (Khonyagar's doc points there); Review scheduling and
-  the Session Plan → `docs/scheduling-evidence.md`. Each AGENTS.md section
-  keeps every prohibition as a short binding line and points to its doc.
+each clause reached only 31,597 with this lane's new rules (~1.4 KB). The
+owner then amended the lane twice (2026-10-23): mechanism, identifiers and
+examples may move into subsystem docs, and ac-17's headroom is 3,584 bytes
+(3.5 KiB) rather than 4,096, because nothing further could go without losing
+rule content. A first slim rewrite of the moved sections narrowed or dropped
+rules (unknown-provenance dates, the 10-minute work floor, Restore and commit
+steps, the branch-restriction wording, the Active alignment exception, among
+others); a clause-by-clause check against the base restored every one before
+this was final. Final: AGENTS.md 28,266, profile 29,131 (3,637 spare).
+Disposition:
+- *Moved* under "Rules in full" (this lane's condensed wording of the base
+  rules, every clause kept; hands-free practice keeps the base wording):
+  Pathways, routines and repertoire → `docs/repertoire-experience.md`; the
+  Setar archive → `docs/setar-archive.md`; Courses → `docs/cgs-course.md`
+  (Khonyagar's doc points there); Review scheduling and the Session Plan →
+  `docs/scheduling-evidence.md`; Hands-free practice →
+  `docs/setar-practice-reliability.md`. AGENTS.md states each of their rules
+  as a short binding line and points to the doc; identifiers that are only
+  mechanism live in the doc.
 - *Condensed in place* (wording only, every clause kept): every other section.
-  Merged: the hard do-nots' sync sentence, "How to change this file" (two
-  bullets), the doorways decision (it no longer repeats "only the owner
-  changes it"; "never re-derive or flip it" stands), the secure-context note
-  (the LAN example went; the HTTPS check and the no-fallback-hash rule stay).
+  Dropped as rationale, not rule: "(both orders fit above the fold)", the LAN
+  example of an insecure context, "(clock, block, result, review, SM-2)".
 - *Added*: `isolate`, the data-title/separator/one-isolate direction rules,
   instrument names in every file, `partRelationRefusal`,
   `dropUnshownIdentity`, `useDecisionNow` screens, in-place "Why this date?",
   the close draft, the UI conventions line; the closed Direction open-gaps
   bullet is gone (both gaps closed here).
-`tests/ui-guidance.test.ts` checks the headroom and that the added and
-reworded rules are present; `tests/agent-context.test.ts` is unchanged.
+`tests/ui-guidance.test.ts` checks the headroom and that every added,
+reworded and restored rule (and each pointer) is present;
+`tests/agent-context.test.ts` is unchanged. Its 3.5 KiB floor is this lane's
+acceptance, not a standing budget: a later lane that needs the room revisits
+it with the owner.
 
 Follow-ups (release valve): `goTo`'s no-heading branch now has no live page to
 exercise (every route has an h1); many list titles still truncate rather than

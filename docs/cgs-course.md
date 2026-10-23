@@ -352,8 +352,9 @@ reappears in a list — never in the pathway — and only if they choose it.
 Moved from `AGENTS.md` on 2026-10-22 to keep the always-loaded rules within
 their budget (UI refresh lane, owner amendment). `AGENTS.md` still states every
 rule below as a short binding line and points here; this section keeps the
-mechanism, identifiers and examples that go with them, exactly as AGENTS.md
-said them. Both bind; neither weakens the other. Change a rule in both places.
+mechanism, identifiers and examples that go with them, in the UI-refresh
+lane's condensed wording of the base rules, every clause kept. Both bind;
+neither weakens the other. Change a rule in both places.
 
 ### Courses are reference data in code (both courses)
 
