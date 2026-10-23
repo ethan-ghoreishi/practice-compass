@@ -1,34 +1,42 @@
 ---
 id: 20261023-make-practice-records-dependable-and-kee-34cc
 contractId: 20261023-make-practice-records-dependable-and-kee-34cc
-patchId: 89fc828ee3e5386153d2602cb21bdd0cd9f94bee
+patchId: 6f72700abead19f0b088a6057abcf902ba96f67d
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: notes-recovery-idempotence
-    summary: "P2: Overlapping note-save acknowledgements leave stale recovery bases
-      and can delete a newer draft by text alone (ItemNotes.tsx:167-175,241;
-      notesDrafts.ts:44-47; useStore.ts:2618-2626). Recovery must reproduce the
-      latest owner draft exactly once."
-    counterexample: "Both item and lesson owners: hold save A, type A plus more,
-      acknowledge A, refuse the automatically queued newer write, then reload.
-      The recovery copy still has the pre-A base, so replay appends A plus more
-      to A; a previously kept-both save duplicates both competing texts. Also
-      queue saves first then second, type first again before either
-      acknowledgement, acknowledge first then second, and refuse the resulting
-      third write. The old first acknowledgement drops the newest first draft;
-      disk holds second and reload loses the latest first edit. Affects
-      ItemDetail, ActiveBlock and RoutineRunner through ItemNotes, and Lessons
-      through LessonNotes/DurableNotes, plus hydration replay. Checked clean:
-      ordinary and conflicting save failure followed by successful Try again,
-      item/lesson id separation, and gone-record refusal. Extend the exact test
-      working note saves preserve newest text and refuse stale ownership across
-      failures and replacement with both acknowledgement/failure/reload
-      sequences for both owners; rework the entire recovery-base and draft-drop
-      family."
-createdAt: 2026-10-23T23:00:46.867Z
-sealedAt: 2026-10-23T23:08:48.464Z
+    summary: "P2: Recovery bases can lag or rewind across editor lifetimes and later
+      successful whole-state writes, so reload duplicates the latest notes
+      instead of recovering them exactly once (ItemNotes.tsx:163,171,238,248;
+      notesDrafts.ts:61-67; useStore.ts:1873-1900,2618-2639; idb.ts:106-120)."
+    counterexample: "Same HEAD 5ca41e2; one consolidated family. For both item and
+      lesson owners: (1) Hold write A over original; unmount/reopen, type A plus
+      more, acknowledge old A, then type A plus more again. The old callback
+      rebases shared recovery to A, but the new editor rewinds it to original;
+      reload before debounce or after refusing the newer write appends the
+      latest text to A. (2) Start hydration replay of A and open/type in its
+      editor before replay acknowledges; further typing after acknowledgement
+      causes the same rewind. (3) Refuse a note write A; restore storage and let
+      an ordinary store action persist the full state containing A; continue
+      editing, then reload before debounce. Disk holds A but recovery still uses
+      original, causing duplication. Repeat (3) with a refused kept-both
+      conflict save: replay duplicates both preserved texts. Item/Routine Pause
+      and linking a lesson item provide reachable ordinary persistence paths.
+      Current component, recovery, replay and save-decision code reproduced
+      these variants in memory for both owner kinds. Affected consumers:
+      ItemDetail, ActiveBlock, keyed RoutineRunner and Lessons; editor/hydration
+      acknowledgements, beginEdit/type, saveNotes conflict re-hold and
+      subsequent whole-state persistence. Checked clean within scope:
+      same-editor overlapping acknowledgements, token protection of newer
+      drafts, successful explicit retry, item/lesson separation and gone-record
+      refusal. Extend the exact test working note saves preserve newest text and
+      refuse stale ownership across failures and replacement with these
+      lifecycle cases for both owners and engines, including kept-both text.
+      Close this one recovery-base family rather than only the remount symptom."
+createdAt: 2026-10-23T23:31:17.241Z
+sealedAt: 2026-10-23T23:43:02.852Z
 ---
 
 # Review: Make practice records dependable and keep session choices aligned with the work being done
@@ -42,7 +50,7 @@ sealedAt: 2026-10-23T23:08:48.464Z
 - **Contract:** 20261023-make-practice-records-dependable-and-kee-34cc
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/56
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `89fc828ee3e5386153d2602cb21bdd0cd9f94bee`
+- **Diff patch-id:** `6f72700abead19f0b088a6057abcf902ba96f67d`
 - **Computed by:** prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified
 
 ## The Delta this change was framed from
@@ -100,394 +108,309 @@ still breaks it is not closed.
 
 **Findings from the previous review:**
 
-- **notes-recovery-idempotence** — P2: Successful retry after a failed conflicting-note save leaves a recovery draft which reload appends again (ItemNotes.tsx:156-163; notesDrafts.ts:44-47; useStore.ts:2614-2618).
-  _counterexample:_ Edit original to local draft; replace stored notes with remote words; fail autosave; repair storage; Try again; reload. Expected both texts once. Actual local draft appears twice. Reproduced for item and lesson owners. Affects ItemDetail, ActiveBlock, RoutineRunner and Lessons through DurableNotes; plain retry, owner typing and gone-record refusal checked clean. Extend exact test: working note saves preserve newest text and refuse stale ownership across failures and replacement.
-- **session-unused-time-accounting** — P2: planRunTime omits time freed by early completion from running and completed summaries (plan.ts:971-980; SessionPlan.tsx:391-393).
-  _counterexample:_ Start two 10-minute entries in a 20-minute Plan. Save the first after 2 minutes: remaining=10, recorded=2, unused=0 instead of 8. Save the second after 3 minutes: unused=0 instead of 15. Also affects partial completion followed by skip and restored runs. Preview removal, whole-entry skip and Routine move-on checked clean. Extend exact test: routine controls distinguish skipped time from partial practice across run transitions; cover the rendered ac-5 journey.
-- **parent-part-opportunity-exclusion** — P2: swapSegment omits the parent/part exclusion applied by build and Today (plan.ts:857-874).
-  _counterexample:_ Generate 30 minutes with usable technique items parent importance 5, child importance 4 bound to parent, and other importance 1; difficulty 3 each, no blocks/reviews. Build gives other warm-up 4 minutes plus parent focus 25. Swap other gives child plus parent without a separately due review. Reverse the importance values to reproduce the opposite direction. Shared swap eligibility is affected; build/regeneration, Today, move/remove and their due-review exception checked clean. Extend exact test: class preparation and shared recommendation pools return useful work without repetition noise.
+- **notes-recovery-idempotence** — P2: Overlapping note-save acknowledgements leave stale recovery bases and can delete a newer draft by text alone (ItemNotes.tsx:167-175,241; notesDrafts.ts:44-47; useStore.ts:2618-2626). Recovery must reproduce the latest owner draft exactly once.
+  _counterexample:_ Both item and lesson owners: hold save A, type A plus more, acknowledge A, refuse the automatically queued newer write, then reload. The recovery copy still has the pre-A base, so replay appends A plus more to A; a previously kept-both save duplicates both competing texts. Also queue saves first then second, type first again before either acknowledgement, acknowledge first then second, and refuse the resulting third write. The old first acknowledgement drops the newest first draft; disk holds second and reload loses the latest first edit. Affects ItemDetail, ActiveBlock and RoutineRunner through ItemNotes, and Lessons through LessonNotes/DurableNotes, plus hydration replay. Checked clean: ordinary and conflicting save failure followed by successful Try again, item/lesson id separation, and gone-record refusal. Extend the exact test working note saves preserve newest text and refuse stale ownership across failures and replacement with both acknowledgement/failure/reload sequences for both owners; rework the entire recovery-base and draft-drop family.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/docs/practice-session-model.md b/docs/practice-session-model.md
-index 76d658900ebe4f0353b55636a15d69cbf3e86bea..e38aed2075e586d4917a9d11c62b08b36c8d95f4 100644
+index e38aed2075e586d4917a9d11c62b08b36c8d95f4..0bd07c303410a89a89f18cf4ec88c0d479dd5d0b 100644
 --- a/docs/practice-session-model.md
 +++ b/docs/practice-session-model.md
-@@ -91,7 +91,8 @@ anything practised today — a routine's unassessed block included, a class
- commitment included — steps aside while anything else is eligible; with
- nothing else eligible the pool repeats today's work and every reason says so.
- A piece and its own part are one intended work (`sameWork`): one card or
--segment, unless the other has its own due review. Urgency outranks variety:
-+segment, unless the other has its own due review — a swap included, judged
-+against the segments that stay. Urgency outranks variety:
- diversity and the theory turn act only in a plan's middle picks.
- 
- ## 6. Theory / listening study
-@@ -131,7 +132,9 @@ target. An earlier real occurrence of a repeated routine item survives skipping
- a later one. A legacy run (no `skipped` flags) keeps its old skip credit.
- 
- Time figures, each separate: Plan `planRunTime` → available / planned /
--remaining / unused / recorded; Routine `routineRunTime` → planned / remaining /
-+remaining / unused / recorded (a done segment occupies what it actually took,
-+up to its target, so finishing early frees the rest as unused); Routine
-+`routineRunTime` → planned / remaining /
- unused (seconds), recorded = `aggregateItemMinutes`.
- 
- ## 8. Notes without a Done dependency
-@@ -148,7 +151,10 @@ same text → nothing; stored text unchanged since `base` → replaced; stored t
- changed underneath (sync, import, restore, another editor) → BOTH kept, stored
- first, then this text under `KEPT_DRAFT_HEADING`; record gone → nothing written,
- draft kept on the device. After a reload, held drafts replay through the same
--decision before the app opens. Item and lesson ids never share a draft.
-+decision before the app opens. Item and lesson ids never share a draft. When a
-+write kept both texts, the device copy becomes that kept-both text, based on
-+what the store held, so a retry or a reload never replays the old draft onto it
-+a second time.
+@@ -154,7 +154,12 @@ draft kept on the device. After a reload, held drafts replay through the same
+ decision before the app opens. Item and lesson ids never share a draft. When a
+ write kept both texts, the device copy becomes that kept-both text, based on
+ what the store held, so a retry or a reload never replays the old draft onto it
+-a second time.
++a second time. The copy always holds the latest words typed, based on what
++IndexedDB last acknowledged: every landed write (editor or replay, through
++`noteWriteIssued`/`settleNoteDraft`) re-bases it on the text that landed, and
++it is dropped only when that text IS its words and no later write of the record
++is in flight — never by text alone. Overlapping acknowledgements followed by a
++refused write therefore replay the newest words exactly once.
  
  ## 9. Data and compatibility
  
 diff --git a/src/components/ItemNotes.tsx b/src/components/ItemNotes.tsx
-index 7589c81007d69840895098d827e86fe0a91216a9..c6607f095843f52f59445251b572f9413fcfb9cc 100644
+index c6607f095843f52f59445251b572f9413fcfb9cc..1043f2b7045aeb7bf36bd07f944c3108e9b19d3c 100644
 --- a/src/components/ItemNotes.tsx
 +++ b/src/components/ItemNotes.tsx
-@@ -142,6 +142,7 @@ export function DurableNotes({
-       if (savedTimer.current) clearTimeout(savedTimer.current);
-       setState({ phase: 'saving' });
-     }
-+    const prior = storedNotes(d.owner);
-     const outcome: NoteSaveOutcome = saveNotes(d.owner, d.text, d.base);
-     if (outcome === 'gone') {
-       if (speak && saveSeq.current === seq) setState({ phase: 'failed', message: 'this record no longer exists, so nothing was written.' });
-@@ -154,13 +155,16 @@ export function DurableNotes({
+@@ -1,7 +1,7 @@
+ import { useEffect, useRef, useState } from 'react';
+ import { useStore, type NoteOwner, type NoteSaveOutcome } from '../store/useStore';
+ import { storageSettled } from '../store/idb';
+-import { dropNoteDraft, holdNoteDraft } from '../store/notesDrafts';
++import { heldNoteDraft, holdNoteDraft, noteWriteIssued, settleNoteDraft } from '../store/notesDrafts';
+ 
+ // ---------------------------------------------------------------------------
+ // Working notes — the item's ONE notebook, and the one editor for it (a
+@@ -116,12 +116,14 @@ export function DurableNotes({
+   /** Which write may still speak: only the latest acts on its outcome. */
+   const saveSeq = useRef(0);
+   /**
+-   * The text IndexedDB last acknowledged for this record — what the device
+-   * copy (`notesDrafts.ts`) is based on, so a replay after a reload compares
+-   * against what was really on disk. The in-memory draft's `base` moves
+-   * sooner: at each write, because the store holds that text from then on.
++   * The text IndexedDB last acknowledged for the record `key` — what the
++   * device copy (`notesDrafts.ts`) is based on, so a replay after a reload
++   * compares against what was really on disk. It moves on EVERY landed write
++   * of that record (they land in order), whoever issued it. The in-memory
++   * draft's `base` moves sooner: at each write, because the store holds that
++   * text from then on.
+    */
+-  const durable = useRef('');
++  const durable = useRef({ key: '', text: '' });
+ 
+   function applyDraft(next: Draft | null) {
+     draftRef.current = next;
+@@ -151,21 +153,22 @@ export function DurableNotes({
+     // Unchanged text writes nothing of its own — so a retry after a failed
+     // write still WRITES, rather than reporting the old failure again.
+     if (outcome === 'unchanged') persistAgain();
++    const token = noteWriteIssued(d.owner);
+     // From here the STORE holds this text, whatever IndexedDB says, so what is
      // typed next is based on it — and when both texts were kept, the editor
      // shows what the record now holds.
      const after = outcome === 'merged' ? storedNotes(d.owner) : d.text;
-+    // The store re-held the device copy as the kept-both text over `prior`;
-+    // what is typed next is held over the same base.
-+    if (outcome === 'merged') durable.current = prior;
+     // The store re-held the device copy as the kept-both text over `prior`;
+     // what is typed next is held over the same base.
+-    if (outcome === 'merged') durable.current = prior;
++    if (outcome === 'merged' && durable.current.key === keyOf(d.owner)) durable.current.text = prior;
      const current = draftRef.current;
      if (current && keyOf(current.owner) === keyOf(d.owner)) {
        applyDraft({ ...current, base: after, ...(outcome === 'merged' ? { text: after } : {}) });
      }
      void storageSettled().then(
        () => {
--        dropNoteDraft(d.owner, d.text);
-+        dropNoteDraft(d.owner, after);
-         if (speak && saveSeq.current === seq) durable.current = after;
+-        dropNoteDraft(d.owner, after);
+-        if (speak && saveSeq.current === seq) durable.current = after;
++        settleNoteDraft(d.owner, token, after);
++        if (durable.current.key === keyOf(d.owner)) durable.current.text = after;
          if (!speak || saveSeq.current !== seq) return;
          const now = draftRef.current;
-diff --git a/src/domain/plan.ts b/src/domain/plan.ts
-index 600a1db36dec447502c197949726912221a41c02..5ea9584ecf1605179b6d9101185d3686c540601d 100644
---- a/src/domain/plan.ts
-+++ b/src/domain/plan.ts
-@@ -835,6 +835,10 @@ export function swapSegment(
-   const { pool, isRepeatPool } = candidatePool(scored, blocks, args.now);
+         if (!now || keyOf(now.owner) !== keyOf(d.owner)) return;
+@@ -228,7 +231,11 @@ export function DurableNotes({
  
-   const inUse = new Set(plan.segments.map((s) => s.itemId));
-+  // The build's own rule: a piece and its own part are one intended work, so
-+  // a swap never brings in a relative of another segment unless its own
-+  // review is due.
-+  const kept = items.filter((i) => plan.segments.some((s, j) => j !== index && s.itemId === i.id));
-   const exclude = args.excludeIds ?? new Set<string>();
-   const dueById = new Map(
-     dueReviews(args.reviews, args.now)
-@@ -856,6 +860,7 @@ export function swapSegment(
-         : target.minutes;
-   const eligible = (s: ItemScore): boolean => {
-     if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
-+    if (kept.some((k) => sameWork(k, s.item)) && !hasDueReview(s.item, args.now)) return false;
-     if (plan.segments.length > 1 && segmentFloor(s.item) > room) return false;
-     switch (target.bucket) {
-       case 'warmup':
-@@ -963,19 +968,23 @@ export function skipPlanSegment(run: PlanRun, index = run.pointer): PlanRun {
+   function beginEdit() {
+     closing.current = false;
+-    durable.current = saved;
++    // A copy still describing the text shown is based on what is really on
++    // disk (a write of it may still be in flight); otherwise — none held, or
++    // the record replaced since — the stored text is.
++    const held = heldNoteDraft(owner);
++    durable.current = { key: ownerKey, text: held && held.text === saved ? held.base : saved };
+     setState({ phase: 'idle' });
+     applyDraft({ owner, text: saved, base: saved });
+   }
+@@ -238,7 +245,7 @@ export function DurableNotes({
+     if (!current || keyOf(current.owner) !== ownerKey) return;
+     const next = { ...current, text };
+     applyDraft(next);
+-    holdNoteDraft(next.owner, { text: next.text, base: durable.current });
++    holdNoteDraft(next.owner, { text: next.text, base: durable.current.text });
+     if (quietTimer.current) clearTimeout(quietTimer.current);
+     quietTimer.current = setTimeout(() => {
+       const d = draftRef.current;
+diff --git a/src/store/notesDrafts.ts b/src/store/notesDrafts.ts
+index 6a04b516f45292648f663343da88c37b89c32eb1..d45fde2d7e3c8d22dc655859770c14c6e92e725a 100644
+--- a/src/store/notesDrafts.ts
++++ b/src/store/notesDrafts.ts
+@@ -6,9 +6,9 @@ import type { NoteOwner } from './useStore';
+ // Canonical notes live ONLY in the item or lesson (`notes`, through the
+ // store). This is a temporary, owner-typed safety net for the gap before the
+ // canonical write is acknowledged by IndexedDB: written synchronously on every
+-// keystroke (localStorage acknowledges at once), dropped once the canonical
+-// write it describes has landed, and replayed through the store's ordinary
+-// `saveNotes` decision after a reload that interrupted it. It is never part of
++// keystroke (localStorage acknowledges at once), re-based on each canonical
++// write that lands, dropped once the latest one holds its words, and replayed
++// through the store's ordinary `saveNotes` decision after a reload that interrupted it. It is never part of
+ // PracticeDB, a backup, an export or sync, and it never decides anything on
+ // its own: `saveNotes` compares its `base` with what is stored, so a draft can
+ // never silently overwrite newer text or recreate a deleted record.
+@@ -40,16 +40,46 @@ export function holdNoteDraft(owner: NoteOwner, draft: NoteDraft): boolean {
+   }
+ }
  
- /**
-  * The run's time, each figure on its own: `available` is the budget chosen,
-- * `planned` what the segments still standing ask for, `remaining` what the
-- * pending ones ask for, `unused` what nothing asks for (removed, skipped or
-+ * `planned` what the segments still standing ask for (a done one: what it
-+ * actually took, up to its target), `remaining` what the pending ones ask
-+ * for, `unused` what nothing asks for (removed, skipped, finished early or
-  * never planned), `recorded` what was actually saved. Recorded is never
-- * inferred from a target.
-+ * inferred from a target, and overtime never borrows another segment's.
-  */
- export function planRunTime(run: PlanRun): { available: number; planned: number; remaining: number; unused: number; recorded: number } {
--  const sum = (status: PlanSegmentStatus[]) =>
--    run.segments.filter((s) => status.includes(s.status)).reduce((n, s) => n + s.minutes, 0);
--  const planned = sum(['pending', 'done']);
-+  const remaining = run.segments.filter((s) => s.status === 'pending').reduce((n, s) => n + s.minutes, 0);
-+  // A done segment from before `actualMinutes` was kept occupies its target: nothing is claimed freed.
-+  const taken = run.segments
-+    .filter((s) => s.status === 'done')
-+    .reduce((n, s) => n + Math.min(s.minutes, s.actualMinutes ?? s.minutes), 0);
-+  const planned = remaining + taken;
-   return {
-     available: run.budgetMinutes,
-     planned,
--    remaining: sum(['pending']),
-+    remaining,
-     unused: Math.max(0, run.budgetMinutes - planned),
-     recorded: run.segments.reduce((n, s) => n + (s.status === 'done' ? (s.actualMinutes ?? 0) : 0), 0),
-   };
+-/** Forget this owner's draft — only while it still holds `text`, so newer words typed meanwhile survive. */
+-export function dropNoteDraft(owner: NoteOwner, text: string): void {
++/** How many canonical writes of each owner's notes were issued — which one may drop the copy. */
++const issued = new Map<string, number>();
++
++/** A canonical write of this owner's notes was just issued; settle it with the returned token. */
++export function noteWriteIssued(owner: NoteOwner): number {
++  const n = (issued.get(keyFor(owner)) ?? 0) + 1;
++  issued.set(keyFor(owner), n);
++  return n;
++}
++
++/**
++ * The write `token` landed, so IndexedDB now holds `written` (writes land in
++ * order). The copy always holds the latest words typed: it is dropped only
++ * when those are exactly what landed AND no later write is still in flight —
++ * never by text alone — and otherwise re-based on what landed, so a replay
++ * compares against what is really on disk and reproduces the latest words
++ * exactly once.
++ */
++export function settleNoteDraft(owner: NoteOwner, token: number, written: string): void {
+   try {
+     const raw = localStorage.getItem(keyFor(owner));
+-    if (raw && (JSON.parse(raw) as NoteDraft).text === text) localStorage.removeItem(keyFor(owner));
++    if (!raw) return;
++    const held = JSON.parse(raw) as NoteDraft;
++    if (held.text === written && issued.get(keyFor(owner)) === token) localStorage.removeItem(keyFor(owner));
++    else if (held.base !== written) holdNoteDraft(owner, { text: held.text, base: written });
+   } catch {
+     /* the safety net is best-effort; the canonical write already landed */
+   }
+ }
+ 
++/** This owner's held draft, if any. */
++export function heldNoteDraft(owner: NoteOwner): NoteDraft | null {
++  try {
++    const draft = JSON.parse(localStorage.getItem(keyFor(owner)) ?? 'null') as NoteDraft | null;
++    return draft && typeof draft.text === 'string' && typeof draft.base === 'string' ? draft : null;
++  } catch {
++    return null;
++  }
++}
++
+ /** Every held draft, for replay after a reload. Unreadable entries are skipped, never thrown. */
+ export function heldNoteDrafts(): { owner: NoteOwner; draft: NoteDraft }[] {
+   const out: { owner: NoteOwner; draft: NoteDraft }[] = [];
 diff --git a/src/store/useStore.ts b/src/store/useStore.ts
-index e253f182f235a187cb3f472edb3e3aa6775dbf71..da347b37f995f796584fdfa45da8b100122d24b2 100644
+index da347b37f995f796584fdfa45da8b100122d24b2..8609dffedffcd2f34d759c2f8c570bbc95406313 100644
 --- a/src/store/useStore.ts
 +++ b/src/store/useStore.ts
 @@ -1,7 +1,7 @@
  import { create } from 'zustand';
  import { createJSONStorage, persist } from 'zustand/middleware';
  import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
--import { dropNoteDraft, heldNoteDrafts } from './notesDrafts';
-+import { dropNoteDraft, heldNoteDrafts, holdNoteDraft } from './notesDrafts';
+-import { dropNoteDraft, heldNoteDrafts, holdNoteDraft } from './notesDrafts';
++import { heldNoteDrafts, holdNoteDraft, noteWriteIssued, settleNoteDraft } from './notesDrafts';
  import { withRevision } from './revision';
  import { primePracticeSound } from '../components/practiceCue';
  import {
-@@ -1893,6 +1893,10 @@ export const useStore = create<StoreState>()(
-               : { lessons: s.db.lessons.map((l) => (l.id === owner.id ? touch({ ...l, notes: notes || undefined }, now) : l)) }),
-           },
-         }));
-+        // The competing text is now accounted for: the device copy becomes the
-+        // kept-both text, typed over what was stored, so neither a retry nor a
-+        // reload replays the old draft against it a second time.
-+        if (merged) holdNoteDraft(owner, { text: notes, base: record.notes ?? '' });
-         return merged ? 'merged' : 'written';
-       },
- 
-@@ -2613,9 +2617,13 @@ export const useHydrationStatus = create<HydrationStatus>(() => ({
+@@ -2612,8 +2612,8 @@ export const useHydrationStatus = create<HydrationStatus>(() => ({
+  * Notes typed before a reload interrupted their canonical write are replayed
+  * through the ordinary `saveNotes` decision — so a draft whose record is gone
+  * stays on the device and recreates nothing, and one whose stored text changed
+- * meanwhile keeps both. Each local copy is dropped once its write is
+- * acknowledged.
++ * meanwhile keeps both. Each local copy is settled by its write's
++ * acknowledgement (`settleNoteDraft`), exactly like the editor's.
   */
  function replayNoteDrafts() {
    for (const { owner, draft } of heldNoteDrafts()) {
--    if (useStore.getState().saveNotes(owner, draft.text, draft.base) === 'gone') continue;
-+    const outcome = useStore.getState().saveNotes(owner, draft.text, draft.base);
-+    if (outcome === 'gone') continue;
-+    const { db } = useStore.getState();
-+    const record = owner.kind === 'item' ? db.items.find((i) => i.id === owner.id) : db.lessons.find((l) => l.id === owner.id);
-+    const written = outcome === 'merged' ? (record?.notes ?? '') : draft.text;
+@@ -2622,8 +2622,9 @@ function replayNoteDrafts() {
+     const { db } = useStore.getState();
+     const record = owner.kind === 'item' ? db.items.find((i) => i.id === owner.id) : db.lessons.find((l) => l.id === owner.id);
+     const written = outcome === 'merged' ? (record?.notes ?? '') : draft.text;
++    const token = noteWriteIssued(owner);
      void storageSettled().then(
--      () => dropNoteDraft(owner, draft.text),
-+      () => dropNoteDraft(owner, written),
+-      () => dropNoteDraft(owner, written),
++      () => settleNoteDraft(owner, token, written),
        () => undefined,
      );
    }
-diff --git a/tests/practice-session-families.test.ts b/tests/practice-session-families.test.ts
-index 7ef521bab206889df576ea9e827af002b888fcfe..a2bbf36c24534bddafc01ca62a015bb02e31f665 100644
---- a/tests/practice-session-families.test.ts
-+++ b/tests/practice-session-families.test.ts
-@@ -347,6 +347,34 @@ describe('the shared session-control policy', () => {
-     useStore.getState().skipPlanSegment(0);
-     expect(useStore.getState().activePlan!.segments[0].status).toBe('done');
- 
-+    // EARLY COMPLETION frees the rest of that target: unused, never handed on.
-+    // 20′ available, two 10′ entries. Saved after 2′: 10 left, 2 recorded,
-+    // 20 − (2 + 10) = 8 unused. Saved after 3′: 20 − (2 + 3) = 15 unused.
-+    const twoTens: SessionPlan = { ...plan, budgetMinutes: 20, segments: [seg('warm', 10, 'warmup'), seg('chahar', 10, 'lesson')] };
-+    const closeAfter = (minutes: number) => {
-+      useStore.getState().beginPlanSegment();
-+      useStore.getState().closeSession({ result: 'same', durationMinutes: minutes, answer: 'scheduled', now: NOW });
-+    };
-+    seed(planDb);
-+    useStore.getState().startPlan(twoTens);
-+    closeAfter(2);
-+    expect(planRunTime(useStore.getState().activePlan!)).toEqual({ available: 20, planned: 12, remaining: 10, unused: 8, recorded: 2 });
-+    // A RESTORED run (the persisted shape, round-tripped) reads the same figures.
-+    const restored = JSON.parse(JSON.stringify(useStore.getState().activePlan)) as typeof run;
-+    expect(planRunTime(restored)).toEqual({ available: 20, planned: 12, remaining: 10, unused: 8, recorded: 2 });
-+    closeAfter(3);
-+    run = useStore.getState().activePlan!;
-+    expect([run.pointer, planRunTime(run)]).toEqual([2, { available: 20, planned: 5, remaining: 0, unused: 15, recorded: 5 }]);
-+    // Partial practice, then Skip the next: 20 − 2 = 18 unused, 2 recorded.
-+    seed(planDb);
-+    useStore.getState().startPlan(twoTens);
-+    closeAfter(2);
-+    useStore.getState().skipPlanSegment();
-+    expect(planRunTime(useStore.getState().activePlan!)).toEqual({ available: 20, planned: 2, remaining: 0, unused: 18, recorded: 2 });
-+    // A done segment with no recorded figure (an older run) claims nothing freed.
-+    const older = { ...restored, segments: restored.segments.map((x) => ({ ...x, actualMinutes: undefined })) };
-+    expect(planRunTime(older)).toEqual({ available: 20, planned: 20, remaining: 10, unused: 0, recorded: 0 });
-+
-     // Skip a LATER pending entry while running: the current one is untouched.
-     seed(planDb);
-     useStore.getState().startPlan(plan);
-@@ -728,6 +756,29 @@ describe('class preparation and the shared pool', () => {
-     expect([recs2.best, recs2.quickWin, recs2.maintenance].filter(Boolean).map((r) => r!.score.item.id).sort()).toEqual(['p', 'p-part']);
-     const planned = buildSessionPlan({ instrumentId: SETAR, budgetMinutes: 30, now: NOW, items: [P, part, Q, R], blocks: [], reviews: [], preparationDates: dates() });
-     expect(planned.segments.filter((s) => s.itemId === 'p' || s.itemId === 'p-part')).toHaveLength(1);
-+    // … and a SWAP keeps that rule, in both directions: swapping the other
-+    // entry never brings in the relative of the one that stays.
-+    for (const [parentImportance, childImportance] of [[5, 4], [4, 5]] as const) {
-+      const tech = (id: string, importance: number, over: Partial<PracticeItem> = {}) => item(id, id, { itemType: 'technique', importance, ...over });
-+      const family = [tech('parent', parentImportance), tech('child', childImportance, { parentItemId: 'parent' }), tech('other', 1)];
-+      const anchor = parentImportance > childImportance ? 'parent' : 'child';
-+      const args = { instrumentId: SETAR, now: NOW, items: family, blocks: [], reviews: [] };
-+      const built = buildSessionPlan({ ...args, budgetMinutes: 30 });
-+      expect(built.segments.map((x) => [x.itemId, x.minutes]), anchor).toEqual([['other', 4], [anchor, 25]]);
-+      // No other candidate: the slot keeps what it had rather than repeat the work.
-+      expect(swapSegment(built, 0, args).segments.map((x) => x.itemId), anchor).toEqual(['other', anchor]);
-+      // A relative whose OWN review is due is a distinct need: never spent as
-+      // a warm-up, but it may take a deep slot beside the work.
-+      const relative = anchor === 'parent' ? 'child' : 'parent';
-+      const dueFamily = family.map((i) => (i.id === relative ? { ...i, nextReviewDate: TODAY, nextReviewSource: 'auto' as const } : i));
-+      const dueRow = [{ id: 'due-row', practiceItemId: relative, dueDate: TODAY, reviewType: 'retention' as const, createdAt: T, updatedAt: T }];
-+      const due = { ...args, items: dueFamily, reviews: dueRow };
-+      expect(swapSegment(built, 0, due).segments.map((x) => x.itemId), anchor).toEqual(['other', anchor]);
-+      const deep = (itemId: string): PlanSegment => ({ itemId, title: itemId, minutes: 10, bucket: 'deep', core: false, mode: 'learn', focus: 'other', reason: '', floorMinutes: 2 });
-+      const twoDeep: SessionPlan = { instrumentId: SETAR, budgetMinutes: 20, segments: [deep(anchor), deep('other')], summary: '', generatedAt: T };
-+      expect(swapSegment(twoDeep, 1, args).segments.map((x) => x.itemId), anchor).toEqual([anchor, 'other']);
-+      expect(swapSegment(twoDeep, 1, due).segments.map((x) => x.itemId), anchor).toEqual([anchor, relative]);
-+    }
-     // Urgency first: the class anchor leads a short plan.
-     expect(buildSessionPlan({ instrumentId: SETAR, budgetMinutes: 10, now: NOW, items: [P, Q, R], blocks: [], reviews: [], preparationDates: dates() }).segments.map((s) => s.itemId)).toEqual(['p']);
-   });
 diff --git a/tests/practice-session.browser.test.ts b/tests/practice-session.browser.test.ts
-index 7db378d65f5d8569e9fee9de6aefe35b8aebe023..55ceefcf5db77d94f0bcb02b1e097c0001afc66e 100644
+index 55ceefcf5db77d94f0bcb02b1e097c0001afc66e..d3e68506e1ff652cde1cd2e1fac28aa0b6b870f5 100644
 --- a/tests/practice-session.browser.test.ts
 +++ b/tests/practice-session.browser.test.ts
-@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest';
- import type { Page } from 'playwright';
- import { buildSessionPlan, createItem, isWork, SCHEMA_VERSION, type PracticeBlock, type PracticeItem } from '../src/domain';
- import { RESULT_LABELS } from '../src/domain/labels';
-+import { hashState } from '../src/domain/canonical';
- import {
-+  connectSync,
-   goTo,
-   importBackup,
-+  installFakeGitHub,
-+  newFakeRemote,
-+  publishRemote,
-+  remoteStateText,
-   importOutcome,
-   openPracticeApp,
-   persistedDb,
-@@ -429,7 +435,12 @@ describe('plan and routine controls', () => {
-           await page.getByRole('button', { name: 'Finish' }).click();
-           await page.getByRole('button', { name: 'Save without a result' }).click();
-           await page.getByRole('button', { name: `Start ${moved[1]}` }).waitFor();
--          expect(await page.locator('main').innerText(), where).toContain('1 min recorded');
-+          // Finishing early frees the rest of that target as UNUSED: 1′ of
-+          // keptMinutes[0] taken, the others still ask for theirs.
-+          const left = keptMinutes.slice(1).reduce((n, m) => n + m, 0);
-+          expect(await page.locator('main').innerText(), where).toContain(
-+            `${left} min left of ${left + 1} planned · ${45 - left - 1} of 45 unused · 1 min recorded`,
-+          );
-           // Skip a LATER pending entry: it records nothing; the rest keep their minutes.
-           const running = moved.slice(0, -1);
-           await page.getByRole('button', { name: `Skip ${running.at(-1)}` }).click();
-@@ -440,6 +451,11 @@ describe('plan and routine controls', () => {
-           await page.getByRole('button', { name: 'Skip this one — save nothing' }).click();
-           await page.getByRole('button', { name: 'End the plan' }).waitFor();
-           expect((await db(app)).blocks.map((b) => [b.practiceItemId, b.durationMinutes]), where).toEqual([[await idOf(app, moved[0]), 1]]);
-+          // Only the entries between the skipped ones still ask for time.
-+          const leftEnd = keptMinutes.slice(2, -1).reduce((n, m) => n + m, 0);
-+          expect(await page.locator('main').innerText(), where).toContain(
-+            `${leftEnd} min left of ${leftEnd + 1} planned · ${45 - leftEnd - 1} of 45 unused · 1 min recorded`,
-+          );
-           await page.getByRole('button', { name: 'End the plan' }).click();
-           await page.getByRole('navigation', { name: 'Primary' }).waitFor();
- 
-@@ -743,6 +759,104 @@ describe('notes without a Done dependency', () => {
-         await writePersistedState(app, { ...beforeDelete, db: { ...beforeDelete.db, items: beforeDelete.db.items.filter((i) => i.id !== FRESH) } }, SCHEMA_VERSION);
-         await reload(app);
-         expect((await db(app)).items.map((i) => i.id).sort(), engine).toEqual([CHAHAR, CLASS_ITEM, PIECE, WARM, TWIN, DUE].sort());
+@@ -857,6 +857,94 @@ describe('notes without a Done dependency', () => {
+           (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes,
+           (n) => n === kept('their class words', 'my class words — and more'),
+         );
 +
-+        const kept = (theirs: string, mine: string) => `${theirs}\n\n— Also typed on this device (kept, not merged) —\n${mine}`;
-+
-+        // --- A REPLAYED draft kept both, its own write refused at load --------
-+        // A later ordinary write makes the kept-both text durable anyway; the
-+        // next reload must not replay the old draft onto it a second time.
-+        await page.addInitScript(() => {
-+          if (!localStorage.getItem('pc-test-refuse-writes')) return;
-+          const proto = IDBObjectStore.prototype as unknown as { put: unknown; __realPut?: unknown };
-+          proto.__realPut = proto.put;
-+          proto.put = function failing() {
-+            throw new DOMException('storage is full', 'QuotaExceededError');
-+          };
-+        });
-+        await goTo(app, `/items/${CLASS_ITEM}`);
-+        await editShownNotes(page);
-+        await breakStorage(page);
-+        await notesBox(page).fill('my class-item words');
-+        await goTo(app, '/repertoire');
-+        await repairStorage(page);
-+        const under = (await readPersistedState(app)).state as { db: Db };
-+        await writePersistedState(
-+          app,
-+          { ...under, db: { ...under.db, items: under.db.items.map((i) => (i.id === CLASS_ITEM ? { ...i, notes: 'their class-item words' } : i)) } },
-+          SCHEMA_VERSION,
-+        );
-+        await page.evaluate(() => localStorage.setItem('pc-test-refuse-writes', '1'));
-+        await reload(app);
-+        await repairStorage(page);
-+        await page.evaluate(() => localStorage.removeItem('pc-test-refuse-writes'));
-+        await goTo(app, `/items/${PIECE}`);
-+        await editShownNotes(page);
-+        await notesBox(page).fill('a later, ordinary save');
-+        await page.clock.runFor(1_000);
-+        await page.getByText('Saved.').waitFor();
-+        await notesOf(app, CLASS_ITEM, kept('their class-item words', 'my class-item words'));
-+        await reload(app);
-+        await show(app, `/items/${CLASS_ITEM}`);
-+        await page.getByText('their class-item words', { exact: false }).first().waitFor();
-+        expect((await page.locator('main').innerText()).split('my class-item words').length - 1, engine).toBe(1);
-+
-+        // --- PULLED UNDERNEATH A LIVE EDITOR, the kept-both write refused ------
-+        // A sync (the device coming back online) replaces the record while the
-+        // words are still unwritten; the kept-both write is then refused. Both
-+        // texts survive exactly ONCE — after Try again (item) and after a
-+        // reload with more typed and no retry (class) — never the old draft
-+        // replayed a second time on top of them.
-+        const remote = newFakeRemote();
-+        await installFakeGitHub(page, remote);
-+        await connectSync(app);
-+        const pullUnderneath = async (change: (d: Db) => Db, landed: () => Promise<unknown>) => {
-+          const theirs = change((await persistedDb(app)) as unknown as Db);
-+          publishRemote(remote, remoteStateText(theirs), await hashState(theirs), 60 + remote.calls.length);
-+          await page.evaluate(() => window.dispatchEvent(new Event('online')));
-+          await landed();
++        // --- OVERLAPPING acknowledgements, then the next write refused --------
++        // For an item and for a class alike, a reload reproduces the newest
++        // words exactly once: a landed write re-bases the device copy, and an
++        // older acknowledgement never drops words typed after it.
++        const replaceOnDisk = async (change: (d: Db) => Db) => {
++          const st = (await readPersistedState(app)).state as { db: Db };
++          await writePersistedState(app, { ...st, db: change(st.db) }, SCHEMA_VERSION);
 +        };
-+        const heldDrafts = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('pc-note-draft:')));
++        const owners = [
++          {
++            open: async () => {
++              await show(app, `/items/${PIECE}`);
++              await editShownNotes(page);
++              return notesBox(page);
++            },
++            landed: (want: string) => notesOf(app, PIECE, want),
++            replace: (theirs: string) =>
++              replaceOnDisk((d) => ({ ...d, items: d.items.map((i) => (i.id === PIECE ? { ...i, notes: theirs } : i)) })),
++          },
++          {
++            open: async () => {
++              await show(app, '/lessons');
++              const c = page.getByRole('article').filter({ hasText: 'Class 37' });
++              await c.getByRole('button', { name: /Class 37/ }).first().click();
++              await c.getByRole('button', { name: 'Edit Class notes' }).click();
++              return c.getByRole('textbox', { name: 'Class notes' });
++            },
++            landed: (want: string) =>
++              persistedUntil(app, (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes, (n) => n === want),
++            replace: (theirs: string) =>
++              replaceOnDisk((d) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: theirs } : l)) })),
++          },
++        ];
++        const refuseAfterRelease = async () => {
++          await breakStorage(page);
++          await releaseStorage(page);
++          await page.getByText(/Not saved/).waitFor();
++          await repairStorage(page);
++          await reload(app);
++        };
++        for (const [n, owner] of owners.entries()) {
++          // Held write A; more typed; A lands; the queued newer write refused.
++          let box = await owner.open();
++          await holdStorage(page);
++          await box.fill(`A${n}`);
++          await page.clock.runFor(1_000);
++          await page.getByText('Saving…').waitFor();
++          await box.fill(`A${n} — and more`);
++          await refuseAfterRelease();
++          await owner.landed(`A${n} — and more`);
 +
-+        await goTo(app, `/items/${WARM}`);
-+        await editShownNotes(page);
-+        await notesBox(page).fill('my words, while the other device synced');
-+        await pullUnderneath(
-+          (d) => ({ ...d, items: d.items.map((i) => (i.id === WARM ? { ...i, notes: 'their words, pulled while I typed' } : i)) }),
-+          () => notesOf(app, WARM, 'their words, pulled while I typed'),
-+        );
-+        await breakStorage(page);
-+        await page.clock.runFor(1_000);
-+        await page.getByText(/Not saved/).waitFor();
-+        await repairStorage(page);
-+        await page.getByRole('button', { name: 'Try again' }).click();
-+        await page.getByText('Saved.').waitFor();
-+        // (The deleted record's draft above stays on the device, recreating nothing.)
-+        expect(await heldDrafts(), engine).toEqual([`pc-note-draft:item:${FRESH}`]);
-+        await reload(app);
-+        await notesOf(app, WARM, kept('their words, pulled while I typed', 'my words, while the other device synced'));
++          // The same over a kept-both text: words refused, the record replaced
++          // underneath, the kept-both replay refused at load — then the overlap.
++          box = await owner.open();
++          await breakStorage(page);
++          await box.fill(`mine${n}`);
++          await page.clock.runFor(1_000);
++          await page.getByText(/Not saved/).waitFor();
++          await repairStorage(page);
++          await owner.replace(`theirs${n}`);
++          await page.evaluate(() => localStorage.setItem('pc-test-refuse-writes', '1'));
++          await reload(app);
++          await repairStorage(page);
++          await page.evaluate(() => localStorage.removeItem('pc-test-refuse-writes'));
++          box = await owner.open();
++          expect(await box.inputValue(), engine).toBe(kept(`theirs${n}`, `mine${n}`));
++          await holdStorage(page);
++          await box.fill(kept(`theirs${n}`, `mine${n} — and more`));
++          await page.clock.runFor(1_000);
++          await page.getByText('Saving…').waitFor();
++          await box.fill(kept(`theirs${n}`, `mine${n} — and more, still`));
++          await refuseAfterRelease();
++          await owner.landed(kept(`theirs${n}`, `mine${n} — and more, still`));
 +
-+        await goTo(app, '/lessons');
-+        const classCard = page.getByRole('article').filter({ hasText: 'Class 37' });
-+        await classCard.getByRole('button', { name: /Class 37/ }).first().click();
-+        await classCard.getByRole('button', { name: 'Edit Class notes' }).click();
-+        const classBox = classCard.getByRole('textbox', { name: 'Class notes' });
-+        await classBox.fill('my class words');
-+        await pullUnderneath(
-+          (d) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: 'their class words' } : l)) }),
-+          () => persistedUntil(app, (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes, (n) => n === 'their class words'),
-+        );
-+        await breakStorage(page);
-+        await page.clock.runFor(1_000);
-+        await classCard.getByText(/Not saved/).waitFor();
-+        expect(await classBox.inputValue(), engine).toBe(kept('their class words', 'my class words'));
-+        await classBox.fill(`${kept('their class words', 'my class words')} — and more`);
-+        await repairStorage(page);
-+        await reload(app);
-+        await persistedUntil(
-+          app,
-+          (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes,
-+          (n) => n === kept('their class words', 'my class words — and more'),
-+        );
++          // Two writes queued, the first words typed again before either lands;
++          // first lands, then second, and the write carrying them is refused.
++          box = await owner.open();
++          await holdStorage(page);
++          await box.fill(`first${n}`);
++          await page.clock.runFor(1_000);
++          await page.getByText('Saving…').waitFor();
++          await box.fill(`second${n}`);
++          await page.clock.runFor(1_000);
++          await box.fill(`first${n}`);
++          await refuseAfterRelease();
++          await owner.landed(`first${n}`);
++        }
          expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
        } finally {
          await app.close();
@@ -497,39 +420,46 @@ index 7db378d65f5d8569e9fee9de6aefe35b8aebe023..55ceefcf5db77d94f0bcb02b1e097c00
 
 - `docs/practice-session-model.md`
 - `src/components/ItemNotes.tsx`
-- `src/domain/plan.ts`
+- `src/store/notesDrafts.ts`
 - `src/store/useStore.ts`
-- `tests/practice-session-families.test.ts`
 - `tests/practice-session.browser.test.ts`
 
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
 
 ```
-050ba4e Rework review findings: kept-both note drafts, early-finish unused time, swap parent/part rule
+5ca41e2 Rework review findings: settle note recovery copies by write, never by text
 
-- notes-recovery-idempotence: after a kept-both write the device draft becomes
-  that text based on what the store held, and the drop matches what was written,
-  so a retry or reload never replays the old draft a second time (items and
-  lessons via DurableNotes).
-- session-unused-time-accounting: planRunTime counts a done segment as what it
-  actually took, up to its target, so finishing early frees the rest as unused.
-- parent-part-opportunity-exclusion: swapSegment applies the build's sameWork
-  exclusion against the segments that stay, keeping the due-review exception.
+notes-recovery-idempotence. Invariant: the device copy of notes being typed
+always holds the newest words, based on the text IndexedDB last acknowledged
+for that record; only the latest issued write of that record may drop it, and
+only when what landed is exactly those words. One choke point in
+notesDrafts.ts: every canonical notes write takes a per-owner token
+(noteWriteIssued); its acknowledgement (settleNoteDraft) drops the copy or
+re-bases it on the landed text. Writes land in order, so the last settle is
+what is on disk.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Consumers, each fixed or checked:
+- DurableNotes.write acknowledgement (ItemDetail, ActiveBlock, RoutineRunner
+  via ItemNotes; Lessons via LessonNotes/DurableNotes): fixed, settles by token;
+  the editor's own disk-text ref is now keyed by record and moves on every
+  landed write of it, not just the latest speaking one.
+- beginEdit seed: fixed, takes the held copy's base only while that copy still
+  describes the text shown (re-open while a write is in flight), else stored.
+- type() hold: reads the keyed disk text.
+- saveNotes kept-both re-hold: checked clean, based on record.notes.
+- replayNoteDrafts (hydration): fixed, same token and settle path.
+- dropNoteDraft: removed; no other hold/drop callers (grep, tsc).
 
-dc1f663 Rework review findings: share the kept-both draft rebase with reload replay
-
-- notes-recovery-idempotence: saveNotes itself re-holds the device draft as the
-  kept-both text, so the reload replay path and the editor share one rule; the
-  replay drops by what it actually wrote. Proven with a replay whose own write
-  is refused at load and a later ordinary save makes the text durable.
-- parent-part-opportunity-exclusion: the due-review exception is proven with a
-  coupled review row in a deep slot (never a warm-up).
-- session-unused-time-accounting: the rendered Plan header is checked at the
-  end of the run as well as mid-run.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Proof (family plan lives in the named browser test, both engines): "working
+note saves preserve newest text and refuse stale ownership across failures and
+replacement" now runs, for an item and for a class, (1) held write, more typed,
+ack, refused newer write, reload; (2) the same over a kept-both text produced
+by a refused replay at load; (3) two queued writes, first words retyped, acks
+in order, refused third write, reload — each asserting the newest words exactly
+once on disk. Mutation checks: on the previous code it fails with the
+duplicate; with the drop reverted to text alone it fails losing the retyped
+words. Limits: one competing writer per 
+… (truncated)
 ```
 
 ## Check against the contract
