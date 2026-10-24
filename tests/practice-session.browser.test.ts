@@ -923,6 +923,7 @@ describe('notes without a Done dependency', () => {
               return notesBox(page);
             },
             landed: (want: string) => notesOf(app, PIECE, want),
+            withNotes: (d: Db, theirs: string) => ({ ...d, items: d.items.map((i) => (i.id === PIECE ? { ...i, notes: theirs } : i)) }),
             replace: (theirs: string) =>
               replaceOnDisk((d) => ({ ...d, items: d.items.map((i) => (i.id === PIECE ? { ...i, notes: theirs } : i)) })),
           },
@@ -936,6 +937,7 @@ describe('notes without a Done dependency', () => {
             },
             landed: (want: string) =>
               persistedUntil(app, (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes, (n) => n === want),
+            withNotes: (d: Db, theirs: string) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: theirs } : l)) }),
             replace: (theirs: string) =>
               replaceOnDisk((d) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: theirs } : l)) })),
           },
@@ -1035,6 +1037,75 @@ describe('notes without a Done dependency', () => {
           await repairStorage(page);
           await reload(app);
           await owner.landed(`P${n} — typed while the replay was held, and after`);
+
+          // --- A REPLACEMENT THE EDITOR OPENS ON (an import here; a pull, Keep
+          // remote and a restore install the same way, with no reload). Words
+          // TYPED there are edited from what it showed — landed already, or
+          // still being written — so a reload replays them exactly once.
+          // Opening alone accounts for nothing: older refused words stay kept
+          // beside a replacement nobody typed over.
+          const refuseAndLeave = async (words: string) => {
+            const b = await owner.open();
+            await breakStorage(page);
+            await b.fill(words);
+            await page.clock.runFor(1_000);
+            await page.getByText(/Not saved/).waitFor();
+            await goTo(app, '/repertoire');
+            await repairStorage(page);
+          };
+          const importing = async (theirs: string) => {
+            const d = owner.withNotes((await persistedDb(app)) as unknown as Db, theirs);
+            return async () => {
+              await importBackup(app, 'replacement.json', JSON.stringify({ app: 'practice-compass', schemaVersion: SCHEMA_VERSION, exportedAt: T, data: d }));
+              expect(await importOutcome(app), engine).toContain('Imported');
+            };
+          };
+          // Opened on, never typed in, while the replacement lands.
+          await refuseAndLeave(`old${n}`);
+          let install = await importing(`unseen${n}`);
+          await holdStorage(page);
+          await install();
+          box = await owner.open();
+          expect(await box.inputValue(), engine).toBe(`unseen${n}`);
+          await releaseStorage(page);
+          await owner.landed(`unseen${n}`);
+          await goTo(app, '/repertoire');
+          await reload(app);
+          await owner.landed(kept(`unseen${n}`, `old${n}`));
+
+          for (const exit of ['before the quiet interval', 'after a refused autosave']) {
+            const leave = async () => {
+              if (exit === 'after a refused autosave') {
+                await breakStorage(page);
+                await page.clock.runFor(1_000);
+                await page.getByText(/Not saved/).waitFor();
+                await repairStorage(page);
+              }
+              await reload(app);
+            };
+            // Landed while the editor was away, over older refused words.
+            await refuseAndLeave(`old${n} ${exit}`);
+            install = await importing(`remote${n} ${exit}`);
+            await install();
+            await owner.landed(`remote${n} ${exit}`);
+            box = await owner.open();
+            expect(await box.inputValue(), engine).toBe(`remote${n} ${exit}`);
+            await box.fill(`remote${n} ${exit} — edited`);
+            await leave();
+            await owner.landed(`remote${n} ${exit} — edited`);
+
+            // Still being written when the editor opened on it; no older copy.
+            install = await importing(`pending${n} ${exit}`);
+            await holdStorage(page);
+            await install();
+            box = await owner.open();
+            expect(await box.inputValue(), engine).toBe(`pending${n} ${exit}`);
+            await box.fill(`pending${n} ${exit} — edited`);
+            await releaseStorage(page);
+            await owner.landed(`pending${n} ${exit}`);
+            await leave();
+            await owner.landed(`pending${n} ${exit} — edited`);
+          }
         }
 
         // --- AN ORDINARY WRITE by another action carries refused words -------

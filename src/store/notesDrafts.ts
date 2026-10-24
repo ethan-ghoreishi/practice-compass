@@ -17,9 +17,10 @@ import type { NoteOwner } from './useStore';
 // ONE owner of the base, for every editor lifetime, the reload replay and
 // every whole-state write: `notesLanded`, called as each persisted state lands
 // in IndexedDB. The base moves only to landed text this copy ACCOUNTS for —
-// text this device's `saveNotes` wrote, or the stored text it kept beside its
-// own — never to a replacement it has not seen (a sync, an import), so a
-// replay still keeps both. The copy is dropped only when the latest write has
+// text this device's `saveNotes` wrote, the stored text it kept beside its
+// own, or the text an editor showed once words are typed over it — never to a
+// replacement nobody typed over (a sync, an import), so a replay still keeps
+// both. The copy is dropped only when the latest write has
 // landed holding its words.
 //
 // Every access is wrapped: storage that is full, blocked or absent costs only
@@ -45,8 +46,16 @@ const norm = (t: string | undefined) => (t ?? '').trim();
 let landed: PracticeDB | null = null;
 /** Per owner: the base the held copy carries. */
 const bases = new Map<string, string>();
-/** Per owner: texts this device's `saveNotes` put in the store (normalised) since the copy began. */
+/** Per owner: texts this device's `saveNotes` put in the store, or an editor's words were typed over (normalised). */
 const accounted = new Map<string, Set<string>>();
+/** Per owner: what an open editor showed, until its first keystroke accounts for it. */
+const shownAtOpen = new Map<string, string>();
+
+function account(key: string, ...texts: string[]): void {
+  const set = accounted.get(key) ?? new Set<string>();
+  for (const t of texts) set.add(norm(t));
+  accounted.set(key, set);
+}
 
 function landedNotes(owner: NoteOwner): string | undefined {
   if (!landed) return undefined;
@@ -88,15 +97,18 @@ export function notesLanded(db: PracticeDB, latest: boolean): void {
 
 /** `saveNotes` put `written` in the store, over or beside `stored`: the copy accounts for both. */
 export function notesWritten(owner: NoteOwner, stored: string, written: string): void {
-  const key = keyFor(owner);
-  const set = accounted.get(key) ?? new Set<string>();
-  set.add(norm(stored)).add(norm(written));
-  accounted.set(key, set);
+  account(keyFor(owner), stored, written);
 }
 
-/** An editor opens on this owner: with no copy held, what is on disk is the base. */
+/**
+ * An editor opens on this owner, showing `shown`: with no copy held, what is on
+ * disk is the base. Opening alone accounts for nothing — a held copy's words
+ * were not typed over `shown` — but the first keystroke (`holdNoteDraft`) does:
+ * from then on the copy's words ARE edited from it, landed or still landing.
+ */
 export function noteEditBegins(owner: NoteOwner, shown: string): void {
   const key = keyFor(owner);
+  shownAtOpen.set(key, shown);
   const held = heldNoteDraft(owner);
   if (held) bases.set(key, bases.get(key) ?? held.base);
   else bases.set(key, landedNotes(owner) ?? shown);
@@ -113,6 +125,12 @@ function write(owner: NoteOwner, draft: NoteDraft): boolean {
 
 /** Keep the latest text for this owner. Returns false when the device refused it. */
 export function holdNoteDraft(owner: NoteOwner, text: string): boolean {
+  const key = keyFor(owner);
+  const shown = shownAtOpen.get(key);
+  if (shown !== undefined) {
+    shownAtOpen.delete(key);
+    account(key, shown);
+  }
   return write(owner, { text, base: baseFor(owner, heldNoteDraft(owner)?.base ?? landedNotes(owner) ?? '') });
 }
 

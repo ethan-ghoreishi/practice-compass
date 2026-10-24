@@ -158,12 +158,14 @@ a second time. The copy always holds the latest words typed. Its base has ONE
 owner for every editor lifetime, the replay and every action: as each
 whole-state persist lands, `notesLanded` (`notesDrafts.ts`, fed by the store's
 storage adapter) re-bases the copy on the landed text when the copy accounts
-for it — text this device's `saveNotes` wrote, or the stored text it kept
-beside its own — and never on a replacement it has not seen (a pull, an
-import), which a replay must still keep beside it. The copy is dropped only
-when the latest issued write has landed holding its words. A remount, a replay
-acknowledged under a live editor, or a Pause or link persisting refused words
-therefore replay the newest words exactly once.
+for it — text this device's `saveNotes` wrote, the stored text it kept
+beside its own, or the text an editor showed once words are typed in it
+(landed already or still landing) — and never on a replacement nobody typed
+over (a pull, an import), which a replay must still keep beside it. Opening an
+editor alone accounts for nothing. The copy is dropped only when the latest
+issued write has landed holding its words. A remount, a replay acknowledged
+under a live editor, a Pause or link persisting refused words, or typing in an
+editor opened on a replacement therefore replay the newest words exactly once.
 
 ## 9. Data and compatibility
 
