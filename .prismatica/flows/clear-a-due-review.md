@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:34:51.646Z
-        commit: 845a3ce733b48d680c0e68eb8175a9d620c3c9a8
+        at: 2026-10-24T02:14:04.929Z
+        commit: 92d6c3535c09cae99894483ab7f6f0e340d751e8
     - actor: The musician
       action: Taps ▶ to practise it.
       shows: The active block, seeded from the item's status and focus.
@@ -32,8 +32,9 @@ truth:
         leaves its check waiting)."
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-10-23T22:12:20.000Z
+        method: manual
+        at: 2026-10-24T02:14:04.929Z
+        commit: 92d6c3535c09cae99894483ab7f6f0e340d751e8
     - actor: The musician
       action: Or taps 'Not now'.
       shows: The row disappears for the rest of the day and returns tomorrow.
@@ -42,8 +43,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:34:51.646Z
-        commit: 845a3ce733b48d680c0e68eb8175a9d620c3c9a8
+        at: 2026-10-24T02:14:04.929Z
+        commit: 92d6c3535c09cae99894483ab7f6f0e340d751e8
     - actor: The musician
       action: Or taps '+2d' to genuinely move it.
       changes: The review's due date and the item's next review date both move to two
@@ -51,8 +52,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:34:51.646Z
-        commit: 845a3ce733b48d680c0e68eb8175a9d620c3c9a8
+        at: 2026-10-24T02:14:04.929Z
+        commit: 92d6c3535c09cae99894483ab7f6f0e340d751e8
   endsWith: Either the item was actually practised (and its next return decided),
     or the schedule was moved honestly — never both, never neither.
   variations:
@@ -145,4 +146,3 @@ Either the item was actually practised (and its next return decided), or the sch
 
 - The musician
 - The spaced-repetition scheduler
-
