@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:35:55.672Z
-        commit: ab1f59d7ead5209d8495c0def2036d5436896761
+        at: 2026-10-24T02:14:37.676Z
+        commit: a998c1ff98aea722ad6e57a28bafe3b61a19da07
     - actor: The musician
       action: Copies, downloads or prints the questions.
       shows: A numbered plain-text export that preserves mixed Farsi and English, or a
@@ -30,8 +30,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:35:55.672Z
-        commit: ab1f59d7ead5209d8495c0def2036d5436896761
+        at: 2026-10-24T02:14:37.676Z
+        commit: a998c1ff98aea722ad6e57a28bafe3b61a19da07
     - actor: The musician
       action: Opens the Teacher report and picks the instrument and a date range (last
         two weeks by default).
@@ -39,8 +39,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:35:55.672Z
-        commit: ab1f59d7ead5209d8495c0def2036d5436896761
+        at: 2026-10-24T02:14:37.676Z
+        commit: a998c1ff98aea722ad6e57a28bafe3b61a19da07
     - actor: The musician
       action: Taps 'Copy report'.
       shows: "'Copied ✓'."
@@ -48,8 +48,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:35:55.672Z
-        commit: ab1f59d7ead5209d8495c0def2036d5436896761
+        at: 2026-10-24T02:14:37.676Z
+        commit: a998c1ff98aea722ad6e57a28bafe3b61a19da07
   endsWith: The musician walks into the lesson with their real questions and a
     truthful summary, without having kept a separate notebook.
   variations:
