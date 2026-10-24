@@ -900,7 +900,7 @@ describe('notes without a Done dependency', () => {
             // released and idle.
             Object.defineProperty(this.transaction, 'commit', { value: () => undefined });
             const spin = () => {
-              if (!w.__releaseStorage) this.count().onsuccess = spin;
+              if (!w.__releaseStorage) this.get('practice-compass').onsuccess = spin;
             };
             spin();
             return req;
