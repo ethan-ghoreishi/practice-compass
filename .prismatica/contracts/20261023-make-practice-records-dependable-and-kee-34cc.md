@@ -5,7 +5,7 @@ title: Make practice records dependable and keep session choices aligned with
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/56
 intent: 20261023-make-practice-records-dependable-and-kee-34cc
 tier: heavy
-stage: accept
+stage: ship
 baseline:
   commit: dc964b3b7eeb4099e7536ee8ed1a67db9cd37940
   branch: main
