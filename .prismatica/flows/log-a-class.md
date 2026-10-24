@@ -22,8 +22,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:35:14.600Z
-        commit: a702cff1e6185fb386e822ebc82e3c82927a87d6
+        at: 2026-10-24T02:14:18.554Z
+        commit: 0de6b38143225b4ebc2b68dcaa1a656748b3726a
     - actor: The musician
       action: Rewatches the class and types the notes, in Farsi or English.
       shows: A direction-aware notes field; the list shows 'notes ✓' once there is
@@ -35,8 +35,9 @@ truth:
         texts.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-10-23T22:12:20.000Z
+        method: manual
+        at: 2026-10-24T02:14:18.554Z
+        commit: 0de6b38143225b4ebc2b68dcaa1a656748b3726a
     - actor: The musician
       action: Adds a link to the class recording and to any scores — a NAS path or a
         full https link.
@@ -47,8 +48,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:35:14.600Z
-        commit: a702cff1e6185fb386e822ebc82e3c82927a87d6
+        at: 2026-10-24T02:14:18.554Z
+        commit: 0de6b38143225b4ebc2b68dcaa1a656748b3726a
     - actor: The musician
       action: Taps 'Open' on a link.
       shows: The file opens in a new tab, resolved against the NAS base URL from
@@ -60,8 +61,8 @@ truth:
           device
       evidence:
         method: manual
-        at: 2026-10-23T13:35:14.600Z
-        commit: a702cff1e6185fb386e822ebc82e3c82927a87d6
+        at: 2026-10-24T02:14:18.554Z
+        commit: 0de6b38143225b4ebc2b68dcaa1a656748b3726a
     - actor: The musician
       action: Links or quick-adds the practice items that came out of the class, and
         flags the ones to be ready for next time.
@@ -76,8 +77,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:35:14.600Z
-        commit: a702cff1e6185fb386e822ebc82e3c82927a87d6
+        at: 2026-10-24T02:14:18.554Z
+        commit: 0de6b38143225b4ebc2b68dcaa1a656748b3726a
     - actor: The musician
       action: Optionally attaches small hand-outs (a PDF, a photo, a short audio).
       shows: Files over 10 MB and any video are warned about; over 40 MB is refused
@@ -86,8 +87,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-23T13:35:14.600Z
-        commit: a702cff1e6185fb386e822ebc82e3c82927a87d6
+        at: 2026-10-24T02:14:18.554Z
+        commit: 0de6b38143225b4ebc2b68dcaa1a656748b3726a
   endsWith: The class is on record, its material is real practice items, and the
     work due before the next class is prioritised automatically.
   variations:
@@ -231,4 +232,3 @@ The class is on record, its material is real practice items, and the work due be
 - The musician
 - The teacher (indirectly)
 - The NAS
-
