@@ -24,15 +24,19 @@ truth:
         at: 2026-10-23T13:35:45.701Z
         commit: 1d6f6b66de26e6646bd7d6f1da9bfee9256fc3a1
     - actor: Practice Compass
-      action: Scores every item of that instrument and shows the best one with a
-        one-sentence reason.
+      action: Scores every item of that instrument from the one candidate pool Today,
+        a plan's build, regeneration and swaps share — work already practised
+        today (class work and an unassessed routine block included) steps aside
+        while anything else waits — and shows the best one with a one-sentence
+        reason.
       shows: One 'Practise now' card above the fold, plus up to two quieter 'then, if
-        you have time' suggestions.
+        you have time' suggestions; a piece and its own part never take two
+        cards unless the other has its own due review, and a repeat says plainly
+        that nothing else is waiting.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:35:45.701Z
-        commit: 1d6f6b66de26e6646bd7d6f1da9bfee9256fc3a1
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
     - actor: The musician
       action: Taps 'Start · 10 min'.
       shows: "The active block screen: item title, mode and focus chips, a running
@@ -55,13 +59,14 @@ truth:
         elapsed time); pausing, finishing, discarding or navigating away
         releases it. Resume is a tap too and readies a fresh sound context
         again; if sound is paused or off on this page, a note says so and offers
-        'Turn on sound'.
+        'Turn on sound'. The item's Working notes save themselves after a short
+        pause and whenever the musician leaves them — Done is optional, and a
+        draft lands on the item it was typed for.
       changes: Elapsed seconds accumulate only while the timer runs.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:35:45.701Z
-        commit: 1d6f6b66de26e6646bd7d6f1da9bfee9256fc3a1
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
     - actor: The musician
       action: Taps 'Finish'.
       shows: The close screen, with the minutes already filled in.
@@ -72,31 +77,36 @@ truth:
         at: 2026-10-23T13:35:45.701Z
         commit: 1d6f6b66de26e6646bd7d6f1da9bfee9256fc3a1
     - actor: The musician
-      action: Picks one of the six results, optionally adds an observation, a next
-        action or a teacher question, and optionally revises the item behind one
-        collapsed 'Status · Primary focus · Current effort' line (Change) — an
-        engine-suggested status shows there pre-selected as the pending change.
-      shows: A preview of the next review date with the plain reason behind it, and a
-        'Why this date?' link; the date is decided from the item as practised,
-        so revising the item never moves it.
+      action: Says what the block covered — focused work on a part or one aspect (the
+        default) or an explicit whole-item check — picks one of the six results,
+        optionally adds an observation, a next action or a teacher question, and
+        optionally revises the item behind one collapsed 'Status · Primary focus
+        · Current effort · return' line (Change). A status suggestion or 'Keep
+        it fresh' is offered only after a whole-item check, never pre-selected.
+      shows: "One 'Next practice' line from the same decision that will be saved: an
+        item being worked on comes back in 1–3 days, a kept-fresh item's whole
+        check follows spaced repetition, and class preparation says when the
+        item is wanted before its class — beside a review date that stays as
+        stored. 'Why this date?' explains it in place."
       changes: Nothing until Save; untouched fields are never written.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:35:45.701Z
-        commit: 1d6f6b66de26e6646bd7d6f1da9bfee9256fc3a1
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
     - actor: The musician
       action: Taps 'Save block'.
       shows: Back to Today (or to the running plan), with the item's stats and status
         updated.
-      changes: A PracticeBlock is stored; the item's counters, status, saturation flag
-        and spaced-repetition state advance; any open review for the item is
-        completed and the next one is scheduled on the date that was shown.
+      changes: A PracticeBlock is stored with what it covered; the item's counters and
+        saturation flag update; its next date is the one shown — spaced
+        repetition advances only on a kept-fresh item's eligible whole-item
+        check — and the open review completes only when that decision writes a
+        date. Status and return intention change only when the musician chose
+        them.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:35:45.701Z
-        commit: 1d6f6b66de26e6646bd7d6f1da9bfee9256fc3a1
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
   endsWith: "The session is recorded honestly: one block, one result, one next
     action — and the item knows when it should come back."
   variations:
@@ -137,6 +147,9 @@ truth:
     - The review date shown before saving is exactly the date saved.
     - A recorded minute is never affected by whether the screen-wake-lock, sound
       or vibration succeeded — only the wall clock decides elapsed time.
+    - "A result describes only its block's scope: readiness (a status, Keep
+      fresh) changes only on the musician's tap, and focused work never moves a
+      whole-item check."
   involves:
     - The musician
     - The recommendation engine
@@ -155,6 +168,9 @@ mechanics:
     - src/domain/practiceSignal.ts
     - src/components/useScreenAwake.ts
     - src/components/screenAwake.ts
+    - src/domain/practiceSessionModel.ts
+    - src/components/ItemNotes.tsx
+    - src/store/notesDrafts.ts
   routes:
     - /
     - /start
@@ -193,10 +209,10 @@ mechanics:
       steps:
         - 4
 approval:
-  hash: 0f29a0f3566877c91c8628a651298fbf4a36d21606dad57c1b3650a3f2848166
-  at: 2026-10-14T17:50:32.248Z
+  hash: 6341a19ffe71e39ca792b8f6b304fd2e5908db6b2ef18880609cb84cb699e547
+  at: 2026-10-24T02:13:09.234Z
   by: owner
-  signature: bmvEbC2+1dTUCHRm0Lf/RLFEoGKFDn5ttIgQq0YFiCvePI/MDYuj+kCkjTbK7eaExmD3j417mEjOEgP1bWRFDQ==
+  signature: uxdFf2GXq11g6kkZhVXPPb+vb6/EGDqc4nNAWEqy7PXi/+5abGaclF0eury8EJojCL+4GL73P77tGVX3pPHYAQ==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -205,7 +221,7 @@ approval:
 
 # Practise what the app suggests
 
-_Works now · approved 2026-10-14T17:50:32.248Z by owner (signed)_
+_Works now · approved 2026-10-24T02:13:09.234Z by owner (signed)_
 
 ## Goal
 
@@ -225,28 +241,28 @@ _nothing extra required_
    - Shows: Everything below is scoped to that instrument: recommendation, class work, due reviews, pathway position.
    - Changes: The chosen instrument is remembered as the session instrument.
 
-2. **Practice Compass** Scores every item of that instrument and shows the best one with a one-sentence reason.
-   - Shows: One 'Practise now' card above the fold, plus up to two quieter 'then, if you have time' suggestions.
+2. **Practice Compass** Scores every item of that instrument from the one candidate pool Today, a plan's build, regeneration and swaps share — work already practised today (class work and an unassessed routine block included) steps aside while anything else waits — and shows the best one with a one-sentence reason.
+   - Shows: One 'Practise now' card above the fold, plus up to two quieter 'then, if you have time' suggestions; a piece and its own part never take two cards unless the other has its own due review, and a repeat says plainly that nothing else is waiting.
 
 3. **The musician** Taps 'Start · 10 min'.
    - Shows: The active block screen: item title, mode and focus chips, a running ring timer.
    - Changes: A practice block is opened in memory with mode, focus and a 10-minute target derived from the item. The same tap closes the page's sound context and creates and resumes a fresh one, so a context that died while the app sat idle never outlives this tap.
 
 4. **The musician** Practises, optionally opening 'About this piece' or jotting a passing note; pauses and resumes as needed.
-   - Shows: The elapsed clock, and the item's notes on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time); pausing, finishing, discarding or navigating away releases it. Resume is a tap too and readies a fresh sound context again; if sound is paused or off on this page, a note says so and offers 'Turn on sound'.
+   - Shows: The elapsed clock, and the item's notes on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time); pausing, finishing, discarding or navigating away releases it. Resume is a tap too and readies a fresh sound context again; if sound is paused or off on this page, a note says so and offers 'Turn on sound'. The item's Working notes save themselves after a short pause and whenever the musician leaves them — Done is optional, and a draft lands on the item it was typed for.
    - Changes: Elapsed seconds accumulate only while the timer runs.
 
 5. **The musician** Taps 'Finish'.
    - Shows: The close screen, with the minutes already filled in.
    - Changes: The clock is frozen first, so reflection time is not counted as practice.
 
-6. **The musician** Picks one of the six results, optionally adds an observation, a next action or a teacher question, and optionally revises the item behind one collapsed 'Status · Primary focus · Current effort' line (Change) — an engine-suggested status shows there pre-selected as the pending change.
-   - Shows: A preview of the next review date with the plain reason behind it, and a 'Why this date?' link; the date is decided from the item as practised, so revising the item never moves it.
+6. **The musician** Says what the block covered — focused work on a part or one aspect (the default) or an explicit whole-item check — picks one of the six results, optionally adds an observation, a next action or a teacher question, and optionally revises the item behind one collapsed 'Status · Primary focus · Current effort · return' line (Change). A status suggestion or 'Keep it fresh' is offered only after a whole-item check, never pre-selected.
+   - Shows: One 'Next practice' line from the same decision that will be saved: an item being worked on comes back in 1–3 days, a kept-fresh item's whole check follows spaced repetition, and class preparation says when the item is wanted before its class — beside a review date that stays as stored. 'Why this date?' explains it in place.
    - Changes: Nothing until Save; untouched fields are never written.
 
 7. **The musician** Taps 'Save block'.
    - Shows: Back to Today (or to the running plan), with the item's stats and status updated.
-   - Changes: A PracticeBlock is stored; the item's counters, status, saturation flag and spaced-repetition state advance; any open review for the item is completed and the next one is scheduled on the date that was shown.
+   - Changes: A PracticeBlock is stored with what it covered; the item's counters and saturation flag update; its next date is the one shown — spaced repetition advances only on a kept-fresh item's eligible whole-item check — and the open review completes only when that decision writes a date. Status and return intention change only when the musician chose them.
 
 ## Ends with
 
@@ -266,9 +282,11 @@ The session is recorded honestly: one block, one result, one next action — and
 - Practising is the only thing that completes a review and advances spaced repetition.
 - The review date shown before saving is exactly the date saved.
 - A recorded minute is never affected by whether the screen-wake-lock, sound or vibration succeeded — only the wall clock decides elapsed time.
+- A result describes only its block's scope: readiness (a status, Keep fresh) changes only on the musician's tap, and focused work never moves a whole-item check.
 
 ## Involves
 
 - The musician
 - The recommendation engine
 - The spaced-repetition scheduler
+

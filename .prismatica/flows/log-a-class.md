@@ -27,13 +27,16 @@ truth:
     - actor: The musician
       action: Rewatches the class and types the notes, in Farsi or English.
       shows: A direction-aware notes field; the list shows 'notes ✓' once there is
-        text.
-      changes: Notes are saved when the field loses focus.
+        text, and 'Saved.' only once the device has stored them.
+      changes: Notes save themselves after a short pause and whenever the musician
+        leaves the class — never merely because the field loses focus; Done is
+        optional. Words still unsaved when the page reloads are written to that
+        class afterwards, and a class whose notes changed meanwhile keeps both
+        texts.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:35:14.600Z
-        commit: a702cff1e6185fb386e822ebc82e3c82927a87d6
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
     - actor: The musician
       action: Adds a link to the class recording and to any scores — a NAS path or a
         full https link.
@@ -153,10 +156,10 @@ mechanics:
         - 1
         - 3
 approval:
-  hash: ffcf00fa4940c4336c39d75bfd6cd22b1914165ddf19068e470bf833154b0c6c
-  at: 2026-10-06T21:38:16.196Z
+  hash: 41ced7594e689bba9ced5062e8979a0c236a66e5173db812c4726381534a9762
+  at: 2026-10-24T02:13:09.223Z
   by: owner
-  signature: R7WNk6KgJk1PwourQMhH5JmCl1Cqu1exXL75I8VNKB1cYi+BDPwhaTITTseckrV8rdx7XXHHDTKAOXOZ9VdkDA==
+  signature: WZJAmxa4hh8nhxDFvyBTT3Mlm4Z7YDRQqG/ssBfp7ZAsz/SX/zPrkZIg6LF8nx3Z19XiS2r3R7iH4TAoZUgBAw==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -165,7 +168,7 @@ approval:
 
 # Log a class and its follow-up work
 
-_Works now · approved 2026-10-06T21:38:16.196Z by owner (signed)_
+_Works now · approved 2026-10-24T02:13:09.223Z by owner (signed)_
 
 ## Goal
 
@@ -186,8 +189,8 @@ The musician taps 'Add a class' on the Lessons screen for one instrument.
    - Changes: A Lesson is stored for that instrument; the number is optional and editable.
 
 2. **The musician** Rewatches the class and types the notes, in Farsi or English.
-   - Shows: A direction-aware notes field; the list shows 'notes ✓' once there is text.
-   - Changes: Notes are saved when the field loses focus.
+   - Shows: A direction-aware notes field; the list shows 'notes ✓' once there is text, and 'Saved.' only once the device has stored them.
+   - Changes: Notes save themselves after a short pause and whenever the musician leaves the class — never merely because the field loses focus; Done is optional. Words still unsaved when the page reloads are written to that class afterwards, and a class whose notes changed meanwhile keeps both texts.
 
 3. **The musician** Adds a link to the class recording and to any scores — a NAS path or a full https link.
    - Shows: The links listed video-first, then PDFs and documents, each with its kind icon and 'Stored on NAS'.
@@ -228,3 +231,4 @@ The class is on record, its material is real practice items, and the work due be
 - The musician
 - The teacher (indirectly)
 - The NAS
+

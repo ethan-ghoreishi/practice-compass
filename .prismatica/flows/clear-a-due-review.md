@@ -26,12 +26,14 @@ truth:
     - actor: The musician
       action: Taps ▶ to practise it.
       shows: The active block, seeded from the item's status and focus.
-      changes: Nothing yet — the review only completes when the block is closed.
+      changes: "Nothing yet — the review completes only when the close decides the
+        item's next date: an assessed close of an item being worked on, or a
+        whole-item check of a kept-fresh one (focused work on a kept-fresh item
+        leaves its check waiting)."
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:34:51.646Z
-        commit: 845a3ce733b48d680c0e68eb8175a9d620c3c9a8
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
     - actor: The musician
       action: Or taps 'Not now'.
       shows: The row disappears for the rest of the day and returns tomorrow.
@@ -51,8 +53,8 @@ truth:
         method: manual
         at: 2026-10-23T13:34:51.646Z
         commit: 845a3ce733b48d680c0e68eb8175a9d620c3c9a8
-  endsWith: Either the item was actually practised (and spaced repetition
-    advanced), or the schedule was moved honestly — never both, never neither.
+  endsWith: Either the item was actually practised (and its next return decided),
+    or the schedule was moved honestly — never both, never neither.
   variations:
     - name: Snoozed from a stale date
       differs: The new date is counted from today, not from the old overdue date, so a
@@ -84,10 +86,10 @@ mechanics:
       steps:
         - 4
 approval:
-  hash: c27230bdffa873db6ce0efd7a258cd0d87837e1a34ad7cd4c75792bc979552a2
-  at: 2026-08-28T13:30:17.861Z
-  by: Ethan
-  signature: ZGgL5lp7AkhMiwSWpFJRatuAquFsoZ7ojlPbmEFMw9q1QfVAzNS/FcUB1H9s+TV7SdikVAl8xxKZwPyFdkeGCw==
+  hash: 6987beaf5ea09a55a7a52bd8ba6e9269ee9d5bad1a38f05198bab85a810a220c
+  at: 2026-10-24T02:13:09.212Z
+  by: owner
+  signature: bTkZwWPNeSw21s23huvkJxqY3wWoeM9m+z5J42wFrndsYpOUN9CfVWD8d2rKth/wHscaNXS3H8FyDSLtffOoDA==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -96,7 +98,7 @@ approval:
 
 # Deal with a due review
 
-_Works now · approved 2026-08-28T13:30:17.861Z by Ethan (signed)_
+_Works now · approved 2026-10-24T02:13:09.212Z by owner (signed)_
 
 ## Goal
 
@@ -117,7 +119,7 @@ _nothing extra required_
 
 2. **The musician** Taps ▶ to practise it.
    - Shows: The active block, seeded from the item's status and focus.
-   - Changes: Nothing yet — the review only completes when the block is closed.
+   - Changes: Nothing yet — the review completes only when the close decides the item's next date: an assessed close of an item being worked on, or a whole-item check of a kept-fresh one (focused work on a kept-fresh item leaves its check waiting).
 
 3. **The musician** Or taps 'Not now'.
    - Shows: The row disappears for the rest of the day and returns tomorrow.
@@ -128,7 +130,7 @@ _nothing extra required_
 
 ## Ends with
 
-Either the item was actually practised (and spaced repetition advanced), or the schedule was moved honestly — never both, never neither.
+Either the item was actually practised (and its next return decided), or the schedule was moved honestly — never both, never neither.
 
 ## Variations
 
@@ -143,3 +145,4 @@ Either the item was actually practised (and spaced repetition advanced), or the 
 
 - The musician
 - The spaced-repetition scheduler
+

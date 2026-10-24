@@ -28,13 +28,13 @@ truth:
     - actor: The musician
       action: Or chooses 'Add practice item' for the full one-step form.
       shows: "A kind-first form: what you are adding (gusheh / composed piece / piece
-        / étude / passage / technique), then only that kind's identity fields,
-        then 'Connect it (optional)', then the first practice setup."
+        / étude / passage / technique / theory or listening study), then only
+        that kind's identity fields, then 'Connect it (optional)', then the
+        first practice setup."
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:34:41.150Z
-        commit: e20a1b8fc0091b03596776a7b3f25d54753939af
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
     - actor: The musician
       action: Fills in identity, and optionally connects a study source (creatable
         inline), a pathway stage, a lesson and a parent work — all at creation.
@@ -70,6 +70,13 @@ truth:
     - name: Edit later
       differs: The same kind-first form is the item's inline edit, so nothing needs a
         second creation path.
+      status: works
+    - name: A study idea
+      differs: An item with a dastgāh offers optional study ideas (Farsi questions
+        about that dastgāh, never facts); a tap opens 'Add practice item' as
+        theory or listening study with the title filled in — nothing exists
+        until it is saved. A study item is ordinary practice, in the Practice
+        list, never a work in My repertoire.
       status: works
   rules:
     - "Exactly two creation paths, both one-step: title-only quick add, and the
@@ -109,10 +116,10 @@ mechanics:
         - 2
         - 3
 approval:
-  hash: 64e9b2c017f17127e2dae4d4104855d8b8061e93832b45396d1d574f8421ab8b
-  at: 2026-10-06T21:38:16.173Z
+  hash: 42cd58fd38634a08a6c2d111247fee85e986e3336ed840b9582a88c16a8a679c
+  at: 2026-10-24T02:13:09.201Z
   by: owner
-  signature: M4cBc9k20fn4BV9oi4qWkvzrj0fRbFwh88vqFwbr8VoKEkkinOSRJhTcodGrD5+/JW/o/kxHaFAuRt/kEOzwAQ==
+  signature: tZ2oNWZtpJInSXKPXV/RTfLzsLIXb88uH/JYVYjP4aEmTwC3QdCtGjPab4irWvIxHUC69dH4Q1rvsnA+b7mnAA==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -121,7 +128,7 @@ approval:
 
 # Add a practice item
 
-_Works now · approved 2026-10-06T21:38:16.173Z by owner (signed)_
+_Works now · approved 2026-10-24T02:13:09.201Z by owner (signed)_
 
 ## Goal
 
@@ -142,7 +149,7 @@ _nothing extra required_
    - Changes: A practice item exists, with the instrument taken from context (stage's pathway, lesson, or the current session instrument) and sensible defaults for everything else. From a lesson it is linked to that lesson at the same time.
 
 2. **The musician** Or chooses 'Add practice item' for the full one-step form.
-   - Shows: A kind-first form: what you are adding (gusheh / composed piece / piece / étude / passage / technique), then only that kind's identity fields, then 'Connect it (optional)', then the first practice setup.
+   - Shows: A kind-first form: what you are adding (gusheh / composed piece / piece / étude / passage / technique / theory or listening study), then only that kind's identity fields, then 'Connect it (optional)', then the first practice setup.
 
 3. **The musician** Fills in identity, and optionally connects a study source (creatable inline), a pathway stage, a lesson and a parent work — all at creation.
    - Shows: Persian instruments are asked for dastgāh, gusheh, form and composer. While typing in dastgāh, form or composer, up to eight matching terms appear below the box as buttons — found from Farsi, Latin, an alias or a transliteration — beside an ‘All’ list and a clear control; a tap, click or Enter stores the shared term and returns focus to the box. A partial match is never accepted on its own, and free text always wins.
@@ -159,6 +166,7 @@ The thing to practise exists and can be started immediately; details can be fill
 
 - **Create while starting** — The Start screen's quick create takes a title only, then begins the block right away; a link opens the full form and returns with the item preselected. _(Works now)_
 - **Edit later** — The same kind-first form is the item's inline edit, so nothing needs a second creation path. _(Works now)_
+- **A study idea** — An item with a dastgāh offers optional study ideas (Farsi questions about that dastgāh, never facts); a tap opens 'Add practice item' as theory or listening study with the title filled in — nothing exists until it is saved. A study item is ordinary practice, in the Practice list, never a work in My repertoire. _(Works now)_
 
 ## Rules
 
@@ -169,3 +177,4 @@ The thing to practise exists and can be started immediately; details can be fill
 ## Involves
 
 - The musician
+

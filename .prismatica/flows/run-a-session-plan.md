@@ -30,25 +30,28 @@ truth:
         at: 2026-10-23T13:36:12.589Z
         commit: 564c0b9d553bc7d788d36bc21fc78d548b613a49
     - actor: The musician
-      action: Swaps, removes or regenerates segments until the shape looks right.
-      shows: A removal re-spreads the minutes under the same floors and shares; a swap
-        offers only material whose floor fits the slot.
+      action: Reorders (Move earlier / Move later, by keyboard or touch), swaps,
+        removes or regenerates segments until the shape looks right.
+      shows: A move carries the whole segment — item, minutes, role, reason — and
+        nothing else changes. A removal leaves every other segment's minutes as
+        they were and shows the freed minutes as unused; only Regenerate or a
+        new length reallocates. A swap keeps the slot's minutes and offers only
+        material whose floor fits it.
       changes: Only a local copy of the plan — nothing is saved yet.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:36:12.589Z
-        commit: 564c0b9d553bc7d788d36bc21fc78d548b613a49
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
     - actor: The musician
       action: Taps 'Start plan'.
-      shows: "The runner: the whole list with the current segment highlighted."
+      shows: "The runner: the whole list in the musician's order, the current segment
+        highlighted, with time left, unused and recorded shown separately."
       changes: The running plan is held in app state (never in the database, never
         synced), and the chosen length is remembered for this instrument.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:36:12.589Z
-        commit: 564c0b9d553bc7d788d36bc21fc78d548b613a49
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
     - actor: The musician
       action: Taps 'Start' on the current segment.
       shows: The ordinary active-block screen, with the segment's minutes as the
@@ -64,25 +67,29 @@ truth:
         commit: 564c0b9d553bc7d788d36bc21fc78d548b613a49
     - actor: The musician
       action: Finishes and saves the block as usual.
-      shows: Back on the plan, that segment reads 'done' and the pointer moves to the
-        next one.
+      shows: Back on the plan, that segment reads 'done' with the minutes actually
+        recorded, and the pointer moves to the next one; overtime is recorded as
+        practised and charged to no other segment.
       changes: The block, item stats and review schedule update exactly as in an
         unplanned block.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:36:12.589Z
-        commit: 564c0b9d553bc7d788d36bc21fc78d548b613a49
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
     - actor: The musician
-      action: Skips anything they do not want, or ends the plan at any time.
-      shows: "'Session complete' once the last segment is passed."
-      changes: A skipped segment logs nothing at all; ending the plan discards it and
-        leaves every logged block untouched.
+      action: Skips any segment not yet started, skips the running one with 'Skip this
+        one — save nothing', or ends the plan at any time; Finish (then Save,
+        with or without a result) is how a shortened segment keeps what was
+        practised.
+      shows: "'Session complete' once the last segment is passed — saying so plainly
+        when nothing was practised."
+      changes: A skipped segment logs nothing at all, even after time passed in it,
+        and lengthens nothing else; ending the plan discards it and leaves every
+        logged block untouched.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-23T13:36:12.589Z
-        commit: 564c0b9d553bc7d788d36bc21fc78d548b613a49
+        method: inferred
+        at: 2026-10-23T22:12:20.000Z
   endsWith: The available time was spent on real, logged practice in a sensible
     order — and the plan itself leaves no trace in the data.
   variations:
@@ -99,7 +106,8 @@ truth:
         count of finished segments.
       status: works
   rules:
-    - Segment minutes always sum to the chosen budget.
+    - Segment minutes never exceed the chosen budget; minutes freed by removing
+      or skipping stay unused until the musician deliberately rebuilds.
     - A plan is a view over real practice blocks — it is not a countdown and it
       is never persisted as data.
     - No scores, no 'optimal session' claims.
@@ -142,10 +150,10 @@ mechanics:
       steps:
         - 4
 approval:
-  hash: a8a7fc54ecce8312867d5235737937a1f5c6b4aee12a9a685b7c71326dae50b6
-  at: 2026-10-14T17:50:32.261Z
+  hash: a2473dc271e91978f4d4fcf2ed94c4b98c7c4a47f6160f46b4b6722c3a9532ea
+  at: 2026-10-24T02:13:09.247Z
   by: owner
-  signature: 1NZWf6uoYA1AJAd+ki5NO+wKp6CAIk5ll9llWZrQfLM2H4iTeCekPCx+2dZ2kYNNCd9BMxJYLEegB1iM55yqDA==
+  signature: ceJuqN7NRvm2v6qYol6ATkeeP+99Nb/kGB3f5QgV1e/J7fJ+AnM3+jEV0S7L2d1NAnWM9M5dmqg0SYkWy4bRCA==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -154,7 +162,7 @@ approval:
 
 # Run a time-budgeted session
 
-_Works now · approved 2026-10-14T17:50:32.261Z by owner (signed)_
+_Works now · approved 2026-10-24T02:13:09.247Z by owner (signed)_
 
 ## Goal
 
@@ -173,12 +181,12 @@ _nothing extra required_
 1. **Practice Compass** Builds a plan from the same priority numbers the recommendation uses, laid out as warm-up, class work, review, focus and cool-down segments; a whole work (gusheh, piece, anything with dastgāh/form/composer) gets at least the 10-minute standard block beside other work, drills at least 2, and a segment is seated only while every seated segment can still reach its floor.
    - Shows: The plan preview: each segment with its minutes, bucket, item and a one-sentence reason. The total equals the chosen budget unless every segment that may take minutes is at its 25-minute ceiling; the warm-up and cool-down never exceed their shares or take leftover minutes.
 
-2. **The musician** Swaps, removes or regenerates segments until the shape looks right.
-   - Shows: A removal re-spreads the minutes under the same floors and shares; a swap offers only material whose floor fits the slot.
+2. **The musician** Reorders (Move earlier / Move later, by keyboard or touch), swaps, removes or regenerates segments until the shape looks right.
+   - Shows: A move carries the whole segment — item, minutes, role, reason — and nothing else changes. A removal leaves every other segment's minutes as they were and shows the freed minutes as unused; only Regenerate or a new length reallocates. A swap keeps the slot's minutes and offers only material whose floor fits it.
    - Changes: Only a local copy of the plan — nothing is saved yet.
 
 3. **The musician** Taps 'Start plan'.
-   - Shows: The runner: the whole list with the current segment highlighted.
+   - Shows: The runner: the whole list in the musician's order, the current segment highlighted, with time left, unused and recorded shown separately.
    - Changes: The running plan is held in app state (never in the database, never synced), and the chosen length is remembered for this instrument.
 
 4. **The musician** Taps 'Start' on the current segment.
@@ -186,12 +194,12 @@ _nothing extra required_
    - Changes: A real practice block opens for that segment's item.
 
 5. **The musician** Finishes and saves the block as usual.
-   - Shows: Back on the plan, that segment reads 'done' and the pointer moves to the next one.
+   - Shows: Back on the plan, that segment reads 'done' with the minutes actually recorded, and the pointer moves to the next one; overtime is recorded as practised and charged to no other segment.
    - Changes: The block, item stats and review schedule update exactly as in an unplanned block.
 
-6. **The musician** Skips anything they do not want, or ends the plan at any time.
-   - Shows: 'Session complete' once the last segment is passed.
-   - Changes: A skipped segment logs nothing at all; ending the plan discards it and leaves every logged block untouched.
+6. **The musician** Skips any segment not yet started, skips the running one with 'Skip this one — save nothing', or ends the plan at any time; Finish (then Save, with or without a result) is how a shortened segment keeps what was practised.
+   - Shows: 'Session complete' once the last segment is passed — saying so plainly when nothing was practised.
+   - Changes: A skipped segment logs nothing at all, even after time passed in it, and lengthens nothing else; ending the plan discards it and leaves every logged block untouched.
 
 ## Ends with
 
@@ -205,7 +213,7 @@ The available time was spent on real, logged practice in a sensible order — an
 
 ## Rules
 
-- Segment minutes always sum to the chosen budget.
+- Segment minutes never exceed the chosen budget; minutes freed by removing or skipping stay unused until the musician deliberately rebuilds.
 - A plan is a view over real practice blocks — it is not a countdown and it is never persisted as data.
 - No scores, no 'optimal session' claims.
 
@@ -214,3 +222,4 @@ The available time was spent on real, logged practice in a sensible order — an
 - The musician
 - The plan builder
 - The recommendation engine
+
