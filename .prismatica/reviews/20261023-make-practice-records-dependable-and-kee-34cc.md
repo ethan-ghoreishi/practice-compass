@@ -1,51 +1,12 @@
 ---
 id: 20261023-make-practice-records-dependable-and-kee-34cc
 contractId: 20261023-make-practice-records-dependable-and-kee-34cc
-patchId: 64421752e1c2bd1ef9d7d8e5a7002bc4599f88f2
+patchId: 2f95aea325a7e33ba07800af92daedf68fc9a2da
 reviewer: codex
 state: sealed
-verdict: request_changes
-findings:
-  - family: notes-recovery-idempotence
-    summary: "P2: Opening an editor on replacement notes does not register the shown
-      text as accounted for, so recovery can append the newest edit to the text
-      it deliberately replaced (src/store/notesDrafts.ts:58-62,98-102,115-116;
-      src/components/ItemNotes.tsx:216-230)."
-    counterexample: "HEAD f4b6ae9; patch 64421752e1c2bd1ef9d7d8e5a7002bc4599f88f2.
-      Invariant: recovery replays the newest words exactly once against the
-      persisted text those words were actually edited from, while retaining
-      genuinely unseen competing text. For both item and lesson owners: (1) With
-      original on disk, refuse save A and leave the editor. Let a
-      pull/import/restore install and persist remote while the editor is absent.
-      Reopen: the editor shows remote and uses remote as its live base, but
-      noteEditBegins retains the old held base original. Type remote edited,
-      then reload before debounce, or refuse its autosave and reload. Recovery
-      merges remote plus KEPT_DRAFT_HEADING plus remote edited; expected remote
-      edited once. (2) With no older held copy, open an editor on remote while
-      its replacement write is pending. Type remote edited and let remote land
-      before reloading, before debounce or after a refused autosave.
-      noteEditBegins selected original from landedNotes and notesLanded cannot
-      account for remote, giving the same duplicate. In-memory execution of the
-      current notesDrafts module and AST-extracted saveNotes, resetting module
-      state at reload, reproduced all eight owner/timing/exit combinations.
-      Family sweep: ItemDetail, ActiveBlock and keyed RoutineRunner through
-      ItemNotes/DurableNotes; Lessons through LessonNotes/DurableNotes;
-      beginEdit/type, noteEditBegins/baseFor/holdNoteDraft,
-      notesWritten/notesLanded, landingStorage and replayNoteDrafts; importDB
-      and its sync pull, Keep remote, manual import and archive-restore callers
-      all share the affected boundary. Active practice replacement guards remain
-      intact; the stale draft can precede entry to practice. Checked clean
-      within this family: the previously rejected held-write remount, hydration
-      replay and ordinary whole-state persistence shapes, plain and kept-both;
-      unseen replacements still keep both; explicit retry, owner-kind separation
-      and gone-record refusal. Extend the uniquely named test working note saves
-      preserve newest text and refuse stale ownership across failures and
-      replacement at tests/practice-session.browser.test.ts:679 with both newly
-      seen replacement variants, both owners and both engines. Reused the
-      passing Check bound to this HEAD; no wholesale rerun or file/record
-      writes."
-createdAt: 2026-10-24T00:19:53.645Z
-sealedAt: 2026-10-24T00:27:37.023Z
+verdict: approve
+createdAt: 2026-10-24T00:48:42.582Z
+sealedAt: 2026-10-24T01:04:19.107Z
 ---
 
 # Review: Make practice records dependable and keep session choices aligned with the work being done
@@ -59,7 +20,7 @@ sealedAt: 2026-10-24T00:27:37.023Z
 - **Contract:** 20261023-make-practice-records-dependable-and-kee-34cc
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/56
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `64421752e1c2bd1ef9d7d8e5a7002bc4599f88f2`
+- **Diff patch-id:** `2f95aea325a7e33ba07800af92daedf68fc9a2da`
 - **Computed by:** prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified
 
 ## The Delta this change was framed from
@@ -117,658 +78,254 @@ still breaks it is not closed.
 
 **Findings from the previous review:**
 
-- **notes-recovery-idempotence** — P2: Recovery bases can lag or rewind across editor lifetimes and later successful whole-state writes, so reload duplicates the latest notes instead of recovering them exactly once (ItemNotes.tsx:163,171,238,248; notesDrafts.ts:61-67; useStore.ts:1873-1900,2618-2639; idb.ts:106-120).
-  _counterexample:_ Same HEAD 5ca41e2; one consolidated family. For both item and lesson owners: (1) Hold write A over original; unmount/reopen, type A plus more, acknowledge old A, then type A plus more again. The old callback rebases shared recovery to A, but the new editor rewinds it to original; reload before debounce or after refusing the newer write appends the latest text to A. (2) Start hydration replay of A and open/type in its editor before replay acknowledges; further typing after acknowledgement causes the same rewind. (3) Refuse a note write A; restore storage and let an ordinary store action persist the full state containing A; continue editing, then reload before debounce. Disk holds A but recovery still uses original, causing duplication. Repeat (3) with a refused kept-both conflict save: replay duplicates both preserved texts. Item/Routine Pause and linking a lesson item provide reachable ordinary persistence paths. Current component, recovery, replay and save-decision code reproduced these variants in memory for both owner kinds. Affected consumers: ItemDetail, ActiveBlock, keyed RoutineRunner and Lessons; editor/hydration acknowledgements, beginEdit/type, saveNotes conflict re-hold and subsequent whole-state persistence. Checked clean within scope: same-editor overlapping acknowledgements, token protection of newer drafts, successful explicit retry, item/lesson separation and gone-record refusal. Extend the exact test working note saves preserve newest text and refuse stale ownership across failures and replacement with these lifecycle cases for both owners and engines, including kept-both text. Close this one recovery-base family rather than only the remount symptom.
+- **notes-recovery-idempotence** — P2: Opening an editor on replacement notes does not register the shown text as accounted for, so recovery can append the newest edit to the text it deliberately replaced (src/store/notesDrafts.ts:58-62,98-102,115-116; src/components/ItemNotes.tsx:216-230).
+  _counterexample:_ HEAD f4b6ae9; patch 64421752e1c2bd1ef9d7d8e5a7002bc4599f88f2. Invariant: recovery replays the newest words exactly once against the persisted text those words were actually edited from, while retaining genuinely unseen competing text. For both item and lesson owners: (1) With original on disk, refuse save A and leave the editor. Let a pull/import/restore install and persist remote while the editor is absent. Reopen: the editor shows remote and uses remote as its live base, but noteEditBegins retains the old held base original. Type remote edited, then reload before debounce, or refuse its autosave and reload. Recovery merges remote plus KEPT_DRAFT_HEADING plus remote edited; expected remote edited once. (2) With no older held copy, open an editor on remote while its replacement write is pending. Type remote edited and let remote land before reloading, before debounce or after a refused autosave. noteEditBegins selected original from landedNotes and notesLanded cannot account for remote, giving the same duplicate. In-memory execution of the current notesDrafts module and AST-extracted saveNotes, resetting module state at reload, reproduced all eight owner/timing/exit combinations. Family sweep: ItemDetail, ActiveBlock and keyed RoutineRunner through ItemNotes/DurableNotes; Lessons through LessonNotes/DurableNotes; beginEdit/type, noteEditBegins/baseFor/holdNoteDraft, notesWritten/notesLanded, landingStorage and replayNoteDrafts; importDB and its sync pull, Keep remote, manual import and archive-restore callers all share the affected boundary. Active practice replacement guards remain intact; the stale draft can precede entry to practice. Checked clean within this family: the previously rejected held-write remount, hydration replay and ordinary whole-state persistence shapes, plain and kept-both; unseen replacements still keep both; explicit retry, owner-kind separation and gone-record refusal. Extend the uniquely named test working note saves preserve newest text and refuse stale ownership across failures and replacement at tests/practice-session.browser.test.ts:679 with both newly seen replacement variants, both owners and both engines. Reused the passing Check bound to this HEAD; no wholesale rerun or file/record writes.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/docs/practice-session-model.md b/docs/practice-session-model.md
-index 0bd07c303410a89a89f18cf4ec88c0d479dd5d0b..c374aaac35c220eb77a804ebb8a8f71fca05a310 100644
+index c374aaac35c220eb77a804ebb8a8f71fca05a310..7c9b09e041ea7efe5279d07f6f9bc109272a5140 100644
 --- a/docs/practice-session-model.md
 +++ b/docs/practice-session-model.md
-@@ -152,14 +152,18 @@ changed underneath (sync, import, restore, another editor) → BOTH kept, stored
- first, then this text under `KEPT_DRAFT_HEADING`; record gone → nothing written,
- draft kept on the device. After a reload, held drafts replay through the same
- decision before the app opens. Item and lesson ids never share a draft. When a
--write kept both texts, the device copy becomes that kept-both text, based on
--what the store held, so a retry or a reload never replays the old draft onto it
--a second time. The copy always holds the latest words typed, based on what
--IndexedDB last acknowledged: every landed write (editor or replay, through
--`noteWriteIssued`/`settleNoteDraft`) re-bases it on the text that landed, and
--it is dropped only when that text IS its words and no later write of the record
--is in flight — never by text alone. Overlapping acknowledgements followed by a
--refused write therefore replay the newest words exactly once.
-+write kept both texts, the device copy becomes that kept-both text,
-+so a retry or a reload never replays the old draft onto it
-+a second time. The copy always holds the latest words typed. Its base has ONE
-+owner for every editor lifetime, the replay and every action: as each
-+whole-state persist lands, `notesLanded` (`notesDrafts.ts`, fed by the store's
-+storage adapter) re-bases the copy on the landed text when the copy accounts
-+for it — text this device's `saveNotes` wrote, or the stored text it kept
-+beside its own — and never on a replacement it has not seen (a pull, an
-+import), which a replay must still keep beside it. The copy is dropped only
-+when the latest issued write has landed holding its words. A remount, a replay
-+acknowledged under a live editor, or a Pause or link persisting refused words
-+therefore replay the newest words exactly once.
+@@ -158,12 +158,14 @@ a second time. The copy always holds the latest words typed. Its base has ONE
+ owner for every editor lifetime, the replay and every action: as each
+ whole-state persist lands, `notesLanded` (`notesDrafts.ts`, fed by the store's
+ storage adapter) re-bases the copy on the landed text when the copy accounts
+-for it — text this device's `saveNotes` wrote, or the stored text it kept
+-beside its own — and never on a replacement it has not seen (a pull, an
+-import), which a replay must still keep beside it. The copy is dropped only
+-when the latest issued write has landed holding its words. A remount, a replay
+-acknowledged under a live editor, or a Pause or link persisting refused words
+-therefore replay the newest words exactly once.
++for it — text this device's `saveNotes` wrote, the stored text it kept
++beside its own, or the text an editor showed once words are typed in it
++(landed already or still landing) — and never on a replacement nobody typed
++over (a pull, an import), which a replay must still keep beside it. Opening an
++editor alone accounts for nothing. The copy is dropped only when the latest
++issued write has landed holding its words. A remount, a replay acknowledged
++under a live editor, a Pause or link persisting refused words, or typing in an
++editor opened on a replacement therefore replay the newest words exactly once.
  
  ## 9. Data and compatibility
  
-diff --git a/src/components/ItemNotes.tsx b/src/components/ItemNotes.tsx
-index 1043f2b7045aeb7bf36bd07f944c3108e9b19d3c..a43375c0b001c50b887b9f82a49ea3ff8fd8f302 100644
---- a/src/components/ItemNotes.tsx
-+++ b/src/components/ItemNotes.tsx
-@@ -1,7 +1,7 @@
- import { useEffect, useRef, useState } from 'react';
- import { useStore, type NoteOwner, type NoteSaveOutcome } from '../store/useStore';
- import { storageSettled } from '../store/idb';
--import { heldNoteDraft, holdNoteDraft, noteWriteIssued, settleNoteDraft } from '../store/notesDrafts';
-+import { holdNoteDraft, noteEditBegins } from '../store/notesDrafts';
- 
- // ---------------------------------------------------------------------------
- // Working notes — the item's ONE notebook, and the one editor for it (a
-@@ -115,15 +115,6 @@ export function DurableNotes({
-   const draftRef = useRef<Draft | null>(null);
-   /** Which write may still speak: only the latest acts on its outcome. */
-   const saveSeq = useRef(0);
--  /**
--   * The text IndexedDB last acknowledged for the record `key` — what the
--   * device copy (`notesDrafts.ts`) is based on, so a replay after a reload
--   * compares against what was really on disk. It moves on EVERY landed write
--   * of that record (they land in order), whoever issued it. The in-memory
--   * draft's `base` moves sooner: at each write, because the store holds that
--   * text from then on.
--   */
--  const durable = useRef({ key: '', text: '' });
- 
-   function applyDraft(next: Draft | null) {
-     draftRef.current = next;
-@@ -144,7 +135,6 @@ export function DurableNotes({
-       if (savedTimer.current) clearTimeout(savedTimer.current);
-       setState({ phase: 'saving' });
-     }
--    const prior = storedNotes(d.owner);
-     const outcome: NoteSaveOutcome = saveNotes(d.owner, d.text, d.base);
-     if (outcome === 'gone') {
-       if (speak && saveSeq.current === seq) setState({ phase: 'failed', message: 'this record no longer exists, so nothing was written.' });
-@@ -153,22 +143,16 @@ export function DurableNotes({
-     // Unchanged text writes nothing of its own — so a retry after a failed
-     // write still WRITES, rather than reporting the old failure again.
-     if (outcome === 'unchanged') persistAgain();
--    const token = noteWriteIssued(d.owner);
-     // From here the STORE holds this text, whatever IndexedDB says, so what is
-     // typed next is based on it — and when both texts were kept, the editor
-     // shows what the record now holds.
-     const after = outcome === 'merged' ? storedNotes(d.owner) : d.text;
--    // The store re-held the device copy as the kept-both text over `prior`;
--    // what is typed next is held over the same base.
--    if (outcome === 'merged' && durable.current.key === keyOf(d.owner)) durable.current.text = prior;
-     const current = draftRef.current;
-     if (current && keyOf(current.owner) === keyOf(d.owner)) {
-       applyDraft({ ...current, base: after, ...(outcome === 'merged' ? { text: after } : {}) });
-     }
-     void storageSettled().then(
-       () => {
--        settleNoteDraft(d.owner, token, after);
--        if (durable.current.key === keyOf(d.owner)) durable.current.text = after;
-         if (!speak || saveSeq.current !== seq) return;
-         const now = draftRef.current;
-         if (!now || keyOf(now.owner) !== keyOf(d.owner)) return;
-@@ -231,11 +215,9 @@ export function DurableNotes({
- 
-   function beginEdit() {
-     closing.current = false;
--    // A copy still describing the text shown is based on what is really on
--    // disk (a write of it may still be in flight); otherwise — none held, or
--    // the record replaced since — the stored text is.
--    const held = heldNoteDraft(owner);
--    durable.current = { key: ownerKey, text: held && held.text === saved ? held.base : saved };
-+    // The device copy's base is the store's to keep (`notesDrafts.ts`), the
-+    // same for every editor lifetime; a fresh copy starts from what is on disk.
-+    noteEditBegins(owner, saved);
-     setState({ phase: 'idle' });
-     applyDraft({ owner, text: saved, base: saved });
-   }
-@@ -245,7 +227,7 @@ export function DurableNotes({
-     if (!current || keyOf(current.owner) !== ownerKey) return;
-     const next = { ...current, text };
-     applyDraft(next);
--    holdNoteDraft(next.owner, { text: next.text, base: durable.current.text });
-+    holdNoteDraft(next.owner, next.text);
-     if (quietTimer.current) clearTimeout(quietTimer.current);
-     quietTimer.current = setTimeout(() => {
-       const d = draftRef.current;
 diff --git a/src/store/notesDrafts.ts b/src/store/notesDrafts.ts
-index d45fde2d7e3c8d22dc655859770c14c6e92e725a..e51b8d6aa5b83af4244a4e9c8076b38eb5976a28 100644
+index e51b8d6aa5b83af4244a4e9c8076b38eb5976a28..5efa987c598d4dd19a11f97fe4e20f6724665a7f 100644
 --- a/src/store/notesDrafts.ts
 +++ b/src/store/notesDrafts.ts
-@@ -1,3 +1,4 @@
-+import type { PracticeDB } from '../domain/types';
- import type { NoteOwner } from './useStore';
- 
- // ---------------------------------------------------------------------------
-@@ -6,12 +7,20 @@ import type { NoteOwner } from './useStore';
- // Canonical notes live ONLY in the item or lesson (`notes`, through the
- // store). This is a temporary, owner-typed safety net for the gap before the
- // canonical write is acknowledged by IndexedDB: written synchronously on every
--// keystroke (localStorage acknowledges at once), re-based on each canonical
--// write that lands, dropped once the latest one holds its words, and replayed
--// through the store's ordinary `saveNotes` decision after a reload that interrupted it. It is never part of
--// PracticeDB, a backup, an export or sync, and it never decides anything on
--// its own: `saveNotes` compares its `base` with what is stored, so a draft can
--// never silently overwrite newer text or recreate a deleted record.
-+// keystroke (localStorage acknowledges at once) and replayed through the
-+// store's ordinary `saveNotes` decision after a reload that interrupted it. It
-+// is never part of PracticeDB, a backup, an export or sync, and it never
-+// decides anything on its own: `saveNotes` compares its `base` with what is
-+// stored, so a draft can never silently overwrite newer text or recreate a
-+// deleted record.
-+//
-+// ONE owner of the base, for every editor lifetime, the reload replay and
-+// every whole-state write: `notesLanded`, called as each persisted state lands
-+// in IndexedDB. The base moves only to landed text this copy ACCOUNTS for —
-+// text this device's `saveNotes` wrote, or the stored text it kept beside its
-+// own — never to a replacement it has not seen (a sync, an import), so a
-+// replay still keeps both. The copy is dropped only when the latest write has
-+// landed holding its words.
+@@ -17,9 +17,10 @@ import type { NoteOwner } from './useStore';
+ // ONE owner of the base, for every editor lifetime, the reload replay and
+ // every whole-state write: `notesLanded`, called as each persisted state lands
+ // in IndexedDB. The base moves only to landed text this copy ACCOUNTS for —
+-// text this device's `saveNotes` wrote, or the stored text it kept beside its
+-// own — never to a replacement it has not seen (a sync, an import), so a
+-// replay still keeps both. The copy is dropped only when the latest write has
++// text this device's `saveNotes` wrote, the stored text it kept beside its
++// own, or the text an editor showed once words are typed over it — never to a
++// replacement nobody typed over (a sync, an import), so a replay still keeps
++// both. The copy is dropped only when the latest write has
+ // landed holding its words.
  //
  // Every access is wrapped: storage that is full, blocked or absent costs only
- // this safety net, never the edit itself.
-@@ -22,7 +31,7 @@ const PREFIX = 'pc-note-draft:';
- export interface NoteDraft {
-   /** The words on screen. */
-   text: string;
--  /** The stored notes this text was typed over — how a competing change is recognised. */
-+  /** The text on disk these words account for — how a competing change is recognised. */
-   base: string;
- }
- 
-@@ -30,8 +39,70 @@ function keyFor(owner: NoteOwner): string {
-   return `${PREFIX}${owner.kind}:${owner.id}`;
- }
- 
--/** Keep the latest text for this owner. Returns false when the device refused it. */
--export function holdNoteDraft(owner: NoteOwner, draft: NoteDraft): boolean {
-+const norm = (t: string | undefined) => (t ?? '').trim();
+@@ -45,8 +46,16 @@ const norm = (t: string | undefined) => (t ?? '').trim();
+ let landed: PracticeDB | null = null;
+ /** Per owner: the base the held copy carries. */
+ const bases = new Map<string, string>();
+-/** Per owner: texts this device's `saveNotes` put in the store (normalised) since the copy began. */
++/** Per owner: texts this device's `saveNotes` put in the store, or an editor's words were typed over (normalised). */
+ const accounted = new Map<string, Set<string>>();
++/** Per owner: what an open editor showed, until its first keystroke accounts for it. */
++const shownAtOpen = new Map<string, string>();
 +
-+/** The state IndexedDB last acknowledged (the hydrated one until a write lands). */
-+let landed: PracticeDB | null = null;
-+/** Per owner: the base the held copy carries. */
-+const bases = new Map<string, string>();
-+/** Per owner: texts this device's `saveNotes` put in the store (normalised) since the copy began. */
-+const accounted = new Map<string, Set<string>>();
-+
-+function landedNotes(owner: NoteOwner): string | undefined {
-+  if (!landed) return undefined;
-+  const rec = owner.kind === 'item' ? landed.items.find((i) => i.id === owner.id) : landed.lessons.find((l) => l.id === owner.id);
-+  return rec ? (rec.notes ?? '') : undefined;
-+}
-+
-+/** The base for this owner's copy: landed text it accounts for, else what it already had. */
-+function baseFor(owner: NoteOwner, fallback: string): string {
-+  const key = keyFor(owner);
-+  const disk = landedNotes(owner);
-+  if (disk !== undefined && accounted.get(key)?.has(norm(disk))) bases.set(key, disk);
-+  return bases.get(key) ?? fallback;
-+}
-+
-+/** The persisted state as hydrated: what is on disk before this session writes. */
-+export function notesHydrated(db: PracticeDB): void {
-+  landed = db;
-+}
-+
-+/**
-+ * A whole persisted state just landed. Each held copy re-bases onto it when
-+ * it accounts for the landed text, and is dropped when `latest` (no later
-+ * write issued) and the landed text holds its words.
-+ */
-+export function notesLanded(db: PracticeDB, latest: boolean): void {
-+  landed = db;
-+  for (const { owner, draft } of heldNoteDrafts()) {
-+    const disk = landedNotes(owner);
-+    if (disk === undefined) continue; // a gone record: the copy stays, recreating nothing
-+    if (latest && norm(disk) === norm(draft.text)) {
-+      dropNoteDraft(owner);
-+      continue;
-+    }
-+    const base = baseFor(owner, draft.base);
-+    if (base !== draft.base) write(owner, { text: draft.text, base });
-+  }
-+}
-+
-+/** `saveNotes` put `written` in the store, over or beside `stored`: the copy accounts for both. */
-+export function notesWritten(owner: NoteOwner, stored: string, written: string): void {
-+  const key = keyFor(owner);
++function account(key: string, ...texts: string[]): void {
 +  const set = accounted.get(key) ?? new Set<string>();
-+  set.add(norm(stored)).add(norm(written));
++  for (const t of texts) set.add(norm(t));
 +  accounted.set(key, set);
 +}
-+
-+/** An editor opens on this owner: with no copy held, what is on disk is the base. */
-+export function noteEditBegins(owner: NoteOwner, shown: string): void {
-+  const key = keyFor(owner);
-+  const held = heldNoteDraft(owner);
-+  if (held) bases.set(key, bases.get(key) ?? held.base);
-+  else bases.set(key, landedNotes(owner) ?? shown);
-+}
-+
-+function write(owner: NoteOwner, draft: NoteDraft): boolean {
-   try {
-     localStorage.setItem(keyFor(owner), JSON.stringify(draft));
-     return true;
-@@ -40,33 +111,19 @@ export function holdNoteDraft(owner: NoteOwner, draft: NoteDraft): boolean {
-   }
+ 
+ function landedNotes(owner: NoteOwner): string | undefined {
+   if (!landed) return undefined;
+@@ -88,15 +97,18 @@ export function notesLanded(db: PracticeDB, latest: boolean): void {
+ 
+ /** `saveNotes` put `written` in the store, over or beside `stored`: the copy accounts for both. */
+ export function notesWritten(owner: NoteOwner, stored: string, written: string): void {
+-  const key = keyFor(owner);
+-  const set = accounted.get(key) ?? new Set<string>();
+-  set.add(norm(stored)).add(norm(written));
+-  accounted.set(key, set);
++  account(keyFor(owner), stored, written);
  }
  
--/** How many canonical writes of each owner's notes were issued — which one may drop the copy. */
--const issued = new Map<string, number>();
--
--/** A canonical write of this owner's notes was just issued; settle it with the returned token. */
--export function noteWriteIssued(owner: NoteOwner): number {
--  const n = (issued.get(keyFor(owner)) ?? 0) + 1;
--  issued.set(keyFor(owner), n);
--  return n;
-+/** Keep the latest text for this owner. Returns false when the device refused it. */
-+export function holdNoteDraft(owner: NoteOwner, text: string): boolean {
-+  return write(owner, { text, base: baseFor(owner, heldNoteDraft(owner)?.base ?? landedNotes(owner) ?? '') });
- }
- 
--/**
-- * The write `token` landed, so IndexedDB now holds `written` (writes land in
-- * order). The copy always holds the latest words typed: it is dropped only
-- * when those are exactly what landed AND no later write is still in flight —
-- * never by text alone — and otherwise re-based on what landed, so a replay
-- * compares against what is really on disk and reproduces the latest words
-- * exactly once.
-- */
--export function settleNoteDraft(owner: NoteOwner, token: number, written: string): void {
-+/** Forget this owner's copy: its words are on disk. */
-+export function dropNoteDraft(owner: NoteOwner): void {
-+  bases.delete(keyFor(owner));
-+  accounted.delete(keyFor(owner));
-   try {
--    const raw = localStorage.getItem(keyFor(owner));
--    if (!raw) return;
--    const held = JSON.parse(raw) as NoteDraft;
--    if (held.text === written && issued.get(keyFor(owner)) === token) localStorage.removeItem(keyFor(owner));
--    else if (held.base !== written) holdNoteDraft(owner, { text: held.text, base: written });
-+    localStorage.removeItem(keyFor(owner));
-   } catch {
--    /* the safety net is best-effort; the canonical write already landed */
-+    /* best-effort */
-   }
- }
- 
-diff --git a/src/store/useStore.ts b/src/store/useStore.ts
-index 8609dffedffcd2f34d759c2f8c570bbc95406313..0f4d7469774c129d4650c0471b37cac97af29deb 100644
---- a/src/store/useStore.ts
-+++ b/src/store/useStore.ts
-@@ -1,7 +1,7 @@
- import { create } from 'zustand';
- import { createJSONStorage, persist } from 'zustand/middleware';
- import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
--import { heldNoteDrafts, holdNoteDraft, noteWriteIssued, settleNoteDraft } from './notesDrafts';
-+import { dropNoteDraft, heldNoteDrafts, holdNoteDraft, notesHydrated, notesLanded, notesWritten } from './notesDrafts';
- import { withRevision } from './revision';
- import { primePracticeSound } from '../components/practiceCue';
- import {
-@@ -696,6 +696,25 @@ function identityRefusal(db: PracticeDB): string | null {
-   return bindingClash(db.items) ?? sourceKeyClash(db.materials) ?? validateReferences(db) ?? validateStudySources(db, COURSES);
- }
- 
+-/** An editor opens on this owner: with no copy held, what is on disk is the base. */
 +/**
-+ * The persisted state goes to IndexedDB as JSON; as each write LANDS, the
-+ * notes recovery copies learn what is on disk (`notesLanded`) — the one place
-+ * their base moves, whoever wrote the notes and whatever action persisted them.
-+ * `idbStorage.setItem` assigns its write synchronously, so `storageSettled()`
-+ * right after it is this write's own acknowledgement.
++ * An editor opens on this owner, showing `shown`: with no copy held, what is on
++ * disk is the base. Opening alone accounts for nothing — a held copy's words
++ * were not typed over `shown` — but the first keystroke (`holdNoteDraft`) does:
++ * from then on the copy's words ARE edited from it, landed or still landing.
 + */
-+const jsonStorage = createJSONStorage(() => idbStorage)!;
-+const landingStorage: typeof jsonStorage = {
-+  ...jsonStorage,
-+  setItem: (name, value) => {
-+    const result = jsonStorage.setItem(name, value);
-+    const written = storageSettled();
-+    const db = (value.state as { db?: PracticeDB }).db;
-+    if (db) void written.then(() => notesLanded(db, written === storageSettled()), () => undefined);
-+    return result;
-+  },
-+};
-+
- export const useStore = create<StoreState>()(
-   persist(
-     withRevision((set, get) => ({
-@@ -1893,10 +1912,11 @@ export const useStore = create<StoreState>()(
-               : { lessons: s.db.lessons.map((l) => (l.id === owner.id ? touch({ ...l, notes: notes || undefined }, now) : l)) }),
-           },
-         }));
--        // The competing text is now accounted for: the device copy becomes the
--        // kept-both text, typed over what was stored, so neither a retry nor a
-+        // The device copy now accounts for this text and for what was stored;
-+        // after a merge it becomes the kept-both text, so neither a retry nor a
-         // reload replays the old draft against it a second time.
--        if (merged) holdNoteDraft(owner, { text: notes, base: record.notes ?? '' });
-+        notesWritten(owner, record.notes ?? '', notes);
-+        if (merged) holdNoteDraft(owner, notes);
-         return merged ? 'merged' : 'written';
-       },
+ export function noteEditBegins(owner: NoteOwner, shown: string): void {
+   const key = keyFor(owner);
++  shownAtOpen.set(key, shown);
+   const held = heldNoteDraft(owner);
+   if (held) bases.set(key, bases.get(key) ?? held.base);
+   else bases.set(key, landedNotes(owner) ?? shown);
+@@ -113,6 +125,12 @@ function write(owner: NoteOwner, draft: NoteDraft): boolean {
  
-@@ -2413,7 +2433,7 @@ export const useStore = create<StoreState>()(
-     {
-       name: 'practice-compass',
-       version: SCHEMA_VERSION,
--      storage: createJSONStorage(() => idbStorage),
-+      storage: landingStorage,
-       partialize: (s) => ({
-         db: s.db,
-         rev: s.rev,
-@@ -2612,26 +2632,19 @@ export const useHydrationStatus = create<HydrationStatus>(() => ({
-  * Notes typed before a reload interrupted their canonical write are replayed
-  * through the ordinary `saveNotes` decision — so a draft whose record is gone
-  * stays on the device and recreates nothing, and one whose stored text changed
-- * meanwhile keeps both. Each local copy is settled by its write's
-- * acknowledgement (`settleNoteDraft`), exactly like the editor's.
-+ * meanwhile keeps both. A copy the disk already holds is simply dropped; the
-+ * rest settle as their write lands (`notesLanded`), like every other write.
-  */
- function replayNoteDrafts() {
-   for (const { owner, draft } of heldNoteDrafts()) {
-     const outcome = useStore.getState().saveNotes(owner, draft.text, draft.base);
--    if (outcome === 'gone') continue;
--    const { db } = useStore.getState();
--    const record = owner.kind === 'item' ? db.items.find((i) => i.id === owner.id) : db.lessons.find((l) => l.id === owner.id);
--    const written = outcome === 'merged' ? (record?.notes ?? '') : draft.text;
--    const token = noteWriteIssued(owner);
--    void storageSettled().then(
--      () => settleNoteDraft(owner, token, written),
--      () => undefined,
--    );
-+    if (outcome === 'unchanged') dropNoteDraft(owner);
-   }
+ /** Keep the latest text for this owner. Returns false when the device refused it. */
+ export function holdNoteDraft(owner: NoteOwner, text: string): boolean {
++  const key = keyFor(owner);
++  const shown = shownAtOpen.get(key);
++  if (shown !== undefined) {
++    shownAtOpen.delete(key);
++    account(key, shown);
++  }
+   return write(owner, { text, base: baseFor(owner, heldNoteDraft(owner)?.base ?? landedNotes(owner) ?? '') });
  }
  
- // Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
- function finishHydration() {
-+  notesHydrated(useStore.getState().db);
-   if (storageWasEmpty && useStore.getState().db.pathways.length === 0) {
-     useStore.setState({ db: createSeedDB() });
-   }
 diff --git a/tests/practice-session.browser.test.ts b/tests/practice-session.browser.test.ts
-index d3e68506e1ff652cde1cd2e1fac28aa0b6b870f5..3533eeac7f449a7605d2297ec80851bcd3fedcd8 100644
+index 3533eeac7f449a7605d2297ec80851bcd3fedcd8..7ef28d68cbfc2d9752fc8a408710a4a027101269 100644
 --- a/tests/practice-session.browser.test.ts
 +++ b/tests/practice-session.browser.test.ts
-@@ -1,5 +1,5 @@
- import { describe, expect, it } from 'vitest';
--import type { Page } from 'playwright';
-+import type { Locator, Page } from 'playwright';
- import { buildSessionPlan, createItem, isWork, SCHEMA_VERSION, type PracticeBlock, type PracticeItem } from '../src/domain';
- import { RESULT_LABELS } from '../src/domain/labels';
- import { hashState } from '../src/domain/canonical';
-@@ -817,6 +817,33 @@ describe('notes without a Done dependency', () => {
-         };
-         const heldDrafts = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('pc-note-draft:')));
- 
-+        // A replacement landing through the app (a pull) under words not yet
-+        // written never becomes their base: a reload keeps both, once.
-+        await goTo(app, `/items/${PIECE}`);
-+        await editShownNotes(page);
-+        await notesBox(page).fill('mine, unwritten when the pull landed');
-+        await pullUnderneath(
-+          (d) => ({ ...d, items: d.items.map((i) => (i.id === PIECE ? { ...i, notes: 'theirs, pulled under an open editor' } : i)) }),
-+          () => notesOf(app, PIECE, 'theirs, pulled under an open editor'),
-+        );
-+        await reload(app);
-+        await notesOf(app, PIECE, kept('theirs, pulled under an open editor', 'mine, unwritten when the pull landed'));
-+        await goTo(app, '/lessons');
-+        const pulledCard = page.getByRole('article').filter({ hasText: 'Class 37' });
-+        await pulledCard.getByRole('button', { name: /Class 37/ }).first().click();
-+        await pulledCard.getByRole('button', { name: 'Edit Class notes' }).click();
-+        await pulledCard.getByRole('textbox', { name: 'Class notes' }).fill('class words, unwritten when the pull landed');
-+        await pullUnderneath(
-+          (d) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: 'their class words, pulled under an open editor' } : l)) }),
-+          () => persistedUntil(app, (st) => (st.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes, (v) => v === 'their class words, pulled under an open editor'),
-+        );
-+        await reload(app);
-+        await persistedUntil(
-+          app,
-+          (st) => (st.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes,
-+          (v) => v === kept('their class words, pulled under an open editor', 'class words, unwritten when the pull landed'),
-+        );
+@@ -923,6 +923,7 @@ describe('notes without a Done dependency', () => {
+               return notesBox(page);
+             },
+             landed: (want: string) => notesOf(app, PIECE, want),
++            withNotes: (d: Db, theirs: string) => ({ ...d, items: d.items.map((i) => (i.id === PIECE ? { ...i, notes: theirs } : i)) }),
+             replace: (theirs: string) =>
+               replaceOnDisk((d) => ({ ...d, items: d.items.map((i) => (i.id === PIECE ? { ...i, notes: theirs } : i)) })),
+           },
+@@ -936,6 +937,7 @@ describe('notes without a Done dependency', () => {
+             },
+             landed: (want: string) =>
+               persistedUntil(app, (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes, (n) => n === want),
++            withNotes: (d: Db, theirs: string) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: theirs } : l)) }),
+             replace: (theirs: string) =>
+               replaceOnDisk((d) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: theirs } : l)) })),
+           },
+@@ -1035,6 +1037,75 @@ describe('notes without a Done dependency', () => {
+           await repairStorage(page);
+           await reload(app);
+           await owner.landed(`P${n} — typed while the replay was held, and after`);
 +
-         await goTo(app, `/items/${WARM}`);
-         await editShownNotes(page);
-         await notesBox(page).fill('my words, while the other device synced');
-@@ -858,6 +885,28 @@ describe('notes without a Done dependency', () => {
-           (n) => n === kept('their class words', 'my class words — and more'),
-         );
- 
-+        // Hold the first write after a load (the replay's) until released.
-+        await page.addInitScript(() => {
-+          if (!localStorage.getItem('pc-test-hold-first-write')) return;
-+          localStorage.removeItem('pc-test-hold-first-write');
-+          const w = window as unknown as { __releaseStorage?: boolean };
-+          w.__releaseStorage = false;
-+          const proto = IDBObjectStore.prototype;
-+          const realPut = proto.put;
-+          proto.put = function holding(this: IDBObjectStore, ...args: Parameters<IDBObjectStore['put']>) {
-+            proto.put = realPut;
-+            const req = realPut.apply(this, args);
-+            // Dexie commits explicitly; held, the transaction ends only once
-+            // released and idle.
-+            Object.defineProperty(this.transaction, 'commit', { value: () => undefined });
-+            const spin = () => {
-+              if (!w.__releaseStorage) this.get('practice-compass').onsuccess = spin;
-+            };
-+            spin();
-+            return req;
++          // --- A REPLACEMENT THE EDITOR OPENS ON (an import here; a pull, Keep
++          // remote and a restore install the same way, with no reload). Words
++          // TYPED there are edited from what it showed — landed already, or
++          // still being written — so a reload replays them exactly once.
++          // Opening alone accounts for nothing: older refused words stay kept
++          // beside a replacement nobody typed over.
++          const refuseAndLeave = async (words: string) => {
++            const b = await owner.open();
++            await breakStorage(page);
++            await b.fill(words);
++            await page.clock.runFor(1_000);
++            await page.getByText(/Not saved/).waitFor();
++            await goTo(app, '/repertoire');
++            await repairStorage(page);
 +          };
-+        });
-+
-         // --- OVERLAPPING acknowledgements, then the next write refused --------
-         // For an item and for a class alike, a reload reproduces the newest
-         // words exactly once: a landed write re-bases the device copy, and an
-@@ -944,7 +993,143 @@ describe('notes without a Done dependency', () => {
-           await box.fill(`first${n}`);
-           await refuseAfterRelease();
-           await owner.landed(`first${n}`);
-+
-+          // ACROSS EDITOR LIFETIMES: a held write, the editor left and opened
-+          // again, more typed; the old write lands, more typed, reload.
-+          box = await owner.open();
++          const importing = async (theirs: string) => {
++            const d = owner.withNotes((await persistedDb(app)) as unknown as Db, theirs);
++            return async () => {
++              await importBackup(app, 'replacement.json', JSON.stringify({ app: 'practice-compass', schemaVersion: SCHEMA_VERSION, exportedAt: T, data: d }));
++              expect(await importOutcome(app), engine).toContain('Imported');
++            };
++          };
++          // Opened on, never typed in, while the replacement lands.
++          await refuseAndLeave(`old${n}`);
++          let install = await importing(`unseen${n}`);
 +          await holdStorage(page);
-+          await box.fill(`R${n}`);
-+          await page.clock.runFor(1_000);
-+          await page.getByText('Saving…').waitFor();
++          await install();
++          box = await owner.open();
++          expect(await box.inputValue(), engine).toBe(`unseen${n}`);
++          await releaseStorage(page);
++          await owner.landed(`unseen${n}`);
 +          await goTo(app, '/repertoire');
-+          await breakStorage(page);
-+          box = await owner.open();
-+          await box.fill(`R${n} — reopened`);
-+          await releaseStorage(page);
-+          await owner.landed(`R${n}`);
-+          await box.fill(`R${n} — reopened, then more`);
-+          await page.clock.runFor(1_000);
-+          await page.getByText(/Not saved/).waitFor();
-+          await repairStorage(page);
 +          await reload(app);
-+          await owner.landed(`R${n} — reopened, then more`);
++          await owner.landed(kept(`unseen${n}`, `old${n}`));
 +
-+          // A REPLAY held at load while its editor is open and typed in.
-+          box = await owner.open();
-+          await breakStorage(page);
-+          await box.fill(`P${n}`);
-+          await page.clock.runFor(1_000);
-+          await page.getByText(/Not saved/).waitFor();
-+          await repairStorage(page);
-+          await page.evaluate(() => localStorage.setItem('pc-test-hold-first-write', '1'));
-+          await reload(app);
-+          box = await owner.open();
-+          expect(await box.inputValue(), engine).toBe(`P${n}`);
-+          await breakStorage(page);
-+          await box.fill(`P${n} — typed while the replay was held`);
-+          await releaseStorage(page);
-+          await owner.landed(`P${n}`);
-+          await box.fill(`P${n} — typed while the replay was held, and after`);
-+          await page.clock.runFor(1_000);
-+          await page.getByText(/Not saved/).waitFor();
-+          await repairStorage(page);
-+          await reload(app);
-+          await owner.landed(`P${n} — typed while the replay was held, and after`);
++          for (const exit of ['before the quiet interval', 'after a refused autosave']) {
++            const leave = async () => {
++              if (exit === 'after a refused autosave') {
++                await breakStorage(page);
++                await page.clock.runFor(1_000);
++                await page.getByText(/Not saved/).waitFor();
++                await repairStorage(page);
++              }
++              await reload(app);
++            };
++            // Landed while the editor was away, over older refused words.
++            await refuseAndLeave(`old${n} ${exit}`);
++            install = await importing(`remote${n} ${exit}`);
++            await install();
++            await owner.landed(`remote${n} ${exit}`);
++            box = await owner.open();
++            expect(await box.inputValue(), engine).toBe(`remote${n} ${exit}`);
++            await box.fill(`remote${n} ${exit} — edited`);
++            await leave();
++            await owner.landed(`remote${n} ${exit} — edited`);
++
++            // Still being written when the editor opened on it; no older copy.
++            install = await importing(`pending${n} ${exit}`);
++            await holdStorage(page);
++            await install();
++            box = await owner.open();
++            expect(await box.inputValue(), engine).toBe(`pending${n} ${exit}`);
++            await box.fill(`pending${n} ${exit} — edited`);
++            await releaseStorage(page);
++            await owner.landed(`pending${n} ${exit}`);
++            await leave();
++            await owner.landed(`pending${n} ${exit} — edited`);
++          }
          }
-+
-+        // --- AN ORDINARY WRITE by another action carries refused words -------
-+        // (a Pause on the practice screen, linking an item to a class). It
-+        // lands them, so the next reload replays only what came after — for
-+        // plain words and for a refused kept-both text alike.
-+        const refusedThenReplaced = async (open: () => Promise<Locator>, words: string, replace: (theirs: string) => Promise<void>, theirs: string) => {
-+          const box = await open();
-+          await breakStorage(page);
-+          await box.fill(words);
-+          await page.clock.runFor(1_000);
-+          await page.getByText(/Not saved/).waitFor();
-+          await repairStorage(page);
-+          await replace(theirs);
-+          await page.evaluate(() => localStorage.setItem('pc-test-refuse-writes', '1'));
-+          await reload(app);
-+          await repairStorage(page);
-+          await page.evaluate(() => localStorage.removeItem('pc-test-refuse-writes'));
-+        };
-+        const finishBlock = async () => {
-+          await page.getByRole('button', { name: 'Finish' }).click();
-+          await page.getByRole('button', { name: 'Save without a result' }).click();
-+          await page.getByRole('navigation', { name: 'Primary' }).waitFor();
-+        };
-+        // The item, on the practice screen.
-+        const [itemOwner, classOwner] = owners;
-+        await show(app, `/items/${PIECE}`);
-+        await page.getByRole('button', { name: 'Start a block' }).click();
-+        await page.getByRole('button', { name: 'Finish' }).waitFor();
-+        await editCollapsedNotes(page);
-+        await breakStorage(page);
-+        await notesBox(page).fill('W0');
-+        await page.clock.runFor(1_000);
-+        await page.getByText(/Not saved/).waitFor();
-+        await repairStorage(page);
-+        await page.getByRole('button', { name: 'Pause' }).click();
-+        await itemOwner.landed('W0');
-+        await breakStorage(page);
-+        await notesBox(page).fill('W0 — and more');
-+        await page.clock.runFor(1_000);
-+        await page.getByText(/Not saved/).waitFor();
-+        await repairStorage(page);
-+        await reload(app);
-+        await itemOwner.landed('W0 — and more');
-+        await finishBlock();
-+
-+        await refusedThenReplaced(itemOwner.open, 'mine W0', itemOwner.replace, 'theirs W0');
-+        await show(app, `/items/${PIECE}`);
-+        await page.getByRole('button', { name: 'Start a block' }).click();
-+        await itemOwner.landed(kept('theirs W0', 'mine W0'));
-+        await editCollapsedNotes(page);
-+        expect(await notesBox(page).inputValue(), engine).toBe(kept('theirs W0', 'mine W0'));
-+        await breakStorage(page);
-+        await notesBox(page).fill(kept('theirs W0', 'mine W0 — and more'));
-+        await page.clock.runFor(1_000);
-+        await page.getByText(/Not saved/).waitFor();
-+        await repairStorage(page);
-+        await reload(app);
-+        await itemOwner.landed(kept('theirs W0', 'mine W0 — and more'));
-+        await finishBlock();
-+
-+        // The class, linking an item while its notes are open.
-+        const linkAnItem = async () => {
-+          const c = page.getByRole('article').filter({ hasText: 'Class 37' });
-+          await c.getByRole('button', { name: 'Link existing…' }).click();
-+          await c.getByRole('combobox', { name: 'Link an existing item to this lesson' }).selectOption({ index: 1 });
-+        };
-+        let classBox2 = await classOwner.open();
-+        await breakStorage(page);
-+        await classBox2.fill('W1');
-+        await page.clock.runFor(1_000);
-+        await page.getByText(/Not saved/).waitFor();
-+        await repairStorage(page);
-+        await linkAnItem();
-+        await classOwner.landed('W1');
-+        await breakStorage(page);
-+        await classBox2.fill('W1 — and more');
-+        await page.clock.runFor(1_000);
-+        await page.getByText(/Not saved/).waitFor();
-+        await repairStorage(page);
-+        await reload(app);
-+        await classOwner.landed('W1 — and more');
-+
-+        await refusedThenReplaced(classOwner.open, 'mine W1', classOwner.replace, 'theirs W1');
-+        classBox2 = await classOwner.open();
-+        expect(await classBox2.inputValue(), engine).toBe(kept('theirs W1', 'mine W1'));
-+        await linkAnItem();
-+        await classOwner.landed(kept('theirs W1', 'mine W1'));
-+        await breakStorage(page);
-+        await classBox2.fill(kept('theirs W1', 'mine W1 — and more'));
-+        await page.clock.runFor(1_000);
-+        await page.getByText(/Not saved/).waitFor();
-+        await repairStorage(page);
-+        await reload(app);
-+        await classOwner.landed(kept('theirs W1', 'mine W1 — and more'));
-         expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
-       } finally {
-         await app.close();
+ 
+         // --- AN ORDINARY WRITE by another action carries refused words -------
 ```
 
 **Paths the rework touched:**
 
 - `docs/practice-session-model.md`
-- `src/components/ItemNotes.tsx`
 - `src/store/notesDrafts.ts`
-- `src/store/useStore.ts`
 - `tests/practice-session.browser.test.ts`
 
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
 
 ```
-7616d01 Rework review findings: one owner for the notes recovery base, moved by landed writes
+0c1d41e Rework review findings: typing in an editor accounts for the text it showed
 
-Invariant (notes recovery idempotence): the device copy of unwritten notes is
-based on the text on disk that its words already account for, whoever wrote
-that text and whatever action persisted it, so a reload replays the newest
-words exactly once - and never on a replacement it has not seen, so a pull or
-import underneath still keeps both.
+Family: notes recovery idempotence. Invariant: after a reload, the device
+copy replays the newest words exactly once against the persisted text they
+were edited from, and still keeps beside them any replacement nobody typed
+over.
 
-Root cause: the base lived in each editor instance and moved only on that
-editor's own note-write acknowledgement, so it rewound across editor
-lifetimes, never saw the hydration replay land, and never saw ordinary
-whole-state writes carry the words.
+The gap: an editor opened on replacement notes (already landed, or still
+being written) gave its words a base the copy never moved off, because the
+shown text was never counted as accounted for. Now `noteEditBegins` records
+what the editor showed, and the first keystroke (`holdNoteDraft`) counts it as
+accounted for. From then on `baseFor`/`notesLanded` re-base onto it as soon
+as it is on disk. Opening alone counts for nothing, so a held copy's older
+words are still kept beside a replacement the owner only looked at.
 
-Fix at the shared choke point: the store's persist storage adapter reports
-every landed whole state to notesDrafts.notesLanded. The copy re-bases onto
-landed text it accounts for (text saveNotes wrote, or the stored text a
-kept-both write kept beside it) and is dropped only when the latest issued
-write has landed holding its words. Per-editor base tracking, write tokens and
-the replay's own settle are deleted.
+Consumers, one choke point (notesDrafts.ts):
+- ItemDetail, ActiveBlock, keyed RoutineRunner (ItemNotes -> DurableNotes)
+  and Lessons (LessonNotes -> DurableNotes): every editor lifetime starts in
+  beginEdit -> noteEditBegins and types through holdNoteDraft. Fixed there.
+- saveNotes kept-both re-hold (holdNoteDraft): it only follows typing, or the
+  hydration replay, which has no editor open. Checked clean.
+- notesWritten / notesLanded / landingStorage / replayNoteDrafts: unchanged;
+  they read the same accounted set. Checked clean.
+- importDB and its callers (sync pull, Keep remote, manual import, archive
+  restore) all install with no reload and land through landingStorage, so the
+  fix does not depend on which one replaced the notes. Proven through manual
+  import.
 
-Consumers, each fixed or checked:
-- ItemDetail, ActiveBlock, keyed RoutineRunner (ItemNotes) and Lessons
-  (LessonNotes/DurableNotes): beginEdit/type now take the base from the module
-  (noteEditBegins/holdNoteDraft); no instance state left to rewind.
-- Hydration replay: plain saveNotes; an unchanged copy is dropped; its write
-  settles through notesLanded like any other.
-- saveNotes kept-both re-hold: records both texts as accounted, base from the
-  module.
-- Whole-state persistence by any action (Pause, linking a lesson item, sync
-  install, import): through the adapter; foreign text never becomes a base.
-- Checked clean: same-editor overlapping acknowledgements, item/lesson
-  separation, gone-record copies kept, explicit retry.
-
-Proof: the named test "working note saves preserve newest text and refuse
-stale ownership across failures and replacement" gains, for item and lesson
-own
+Proof, in the named test "working note saves preserve newest text and refuse
+stale ownership across failures and replacement", for item and lesson, in
+Chromium and WebKit:
+- Replacement landed while the editor was away (over older refused words),
+  then typed in.
+- Replacement still being written when the editor opened on it, then typed
+  in.
+- Each of those exits two ways: a r
 … (truncated)
-
-f4b6ae9 Keep the held-replay hook within the journey-waits rules
-
-The test's load-time write hold kept its transaction alive with count(),
-which the journey-waits scanner reads as a presence read; it now uses the
-same get() spin as holdStorage.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ## Check against the contract
