@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore, type NoteOwner, type NoteSaveOutcome } from '../store/useStore';
 import { storageSettled } from '../store/idb';
-import { heldNoteDraft, holdNoteDraft, noteWriteIssued, settleNoteDraft } from '../store/notesDrafts';
+import { holdNoteDraft, noteEditBegins } from '../store/notesDrafts';
 
 // ---------------------------------------------------------------------------
 // Working notes — the item's ONE notebook, and the one editor for it (a
@@ -115,15 +115,6 @@ export function DurableNotes({
   const draftRef = useRef<Draft | null>(null);
   /** Which write may still speak: only the latest acts on its outcome. */
   const saveSeq = useRef(0);
-  /**
-   * The text IndexedDB last acknowledged for the record `key` — what the
-   * device copy (`notesDrafts.ts`) is based on, so a replay after a reload
-   * compares against what was really on disk. It moves on EVERY landed write
-   * of that record (they land in order), whoever issued it. The in-memory
-   * draft's `base` moves sooner: at each write, because the store holds that
-   * text from then on.
-   */
-  const durable = useRef({ key: '', text: '' });
 
   function applyDraft(next: Draft | null) {
     draftRef.current = next;
@@ -144,7 +135,6 @@ export function DurableNotes({
       if (savedTimer.current) clearTimeout(savedTimer.current);
       setState({ phase: 'saving' });
     }
-    const prior = storedNotes(d.owner);
     const outcome: NoteSaveOutcome = saveNotes(d.owner, d.text, d.base);
     if (outcome === 'gone') {
       if (speak && saveSeq.current === seq) setState({ phase: 'failed', message: 'this record no longer exists, so nothing was written.' });
@@ -153,22 +143,16 @@ export function DurableNotes({
     // Unchanged text writes nothing of its own — so a retry after a failed
     // write still WRITES, rather than reporting the old failure again.
     if (outcome === 'unchanged') persistAgain();
-    const token = noteWriteIssued(d.owner);
     // From here the STORE holds this text, whatever IndexedDB says, so what is
     // typed next is based on it — and when both texts were kept, the editor
     // shows what the record now holds.
     const after = outcome === 'merged' ? storedNotes(d.owner) : d.text;
-    // The store re-held the device copy as the kept-both text over `prior`;
-    // what is typed next is held over the same base.
-    if (outcome === 'merged' && durable.current.key === keyOf(d.owner)) durable.current.text = prior;
     const current = draftRef.current;
     if (current && keyOf(current.owner) === keyOf(d.owner)) {
       applyDraft({ ...current, base: after, ...(outcome === 'merged' ? { text: after } : {}) });
     }
     void storageSettled().then(
       () => {
-        settleNoteDraft(d.owner, token, after);
-        if (durable.current.key === keyOf(d.owner)) durable.current.text = after;
         if (!speak || saveSeq.current !== seq) return;
         const now = draftRef.current;
         if (!now || keyOf(now.owner) !== keyOf(d.owner)) return;
@@ -231,11 +215,9 @@ export function DurableNotes({
 
   function beginEdit() {
     closing.current = false;
-    // A copy still describing the text shown is based on what is really on
-    // disk (a write of it may still be in flight); otherwise — none held, or
-    // the record replaced since — the stored text is.
-    const held = heldNoteDraft(owner);
-    durable.current = { key: ownerKey, text: held && held.text === saved ? held.base : saved };
+    // The device copy's base is the store's to keep (`notesDrafts.ts`), the
+    // same for every editor lifetime; a fresh copy starts from what is on disk.
+    noteEditBegins(owner, saved);
     setState({ phase: 'idle' });
     applyDraft({ owner, text: saved, base: saved });
   }
@@ -245,7 +227,7 @@ export function DurableNotes({
     if (!current || keyOf(current.owner) !== ownerKey) return;
     const next = { ...current, text };
     applyDraft(next);
-    holdNoteDraft(next.owner, { text: next.text, base: durable.current.text });
+    holdNoteDraft(next.owner, next.text);
     if (quietTimer.current) clearTimeout(quietTimer.current);
     quietTimer.current = setTimeout(() => {
       const d = draftRef.current;

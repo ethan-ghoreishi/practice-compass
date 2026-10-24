@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { clearBlobs, deleteBlob, idbStorage, storageSettled, storageWasEmpty } from './idb';
-import { heldNoteDrafts, holdNoteDraft, noteWriteIssued, settleNoteDraft } from './notesDrafts';
+import { dropNoteDraft, heldNoteDrafts, holdNoteDraft, notesHydrated, notesLanded, notesWritten } from './notesDrafts';
 import { withRevision } from './revision';
 import { primePracticeSound } from '../components/practiceCue';
 import {
@@ -695,6 +695,25 @@ const IDENTITY_FIELDS = ['instrumentId', 'stageId', 'catalogKey', 'catalogRefs']
 function identityRefusal(db: PracticeDB): string | null {
   return bindingClash(db.items) ?? sourceKeyClash(db.materials) ?? validateReferences(db) ?? validateStudySources(db, COURSES);
 }
+
+/**
+ * The persisted state goes to IndexedDB as JSON; as each write LANDS, the
+ * notes recovery copies learn what is on disk (`notesLanded`) — the one place
+ * their base moves, whoever wrote the notes and whatever action persisted them.
+ * `idbStorage.setItem` assigns its write synchronously, so `storageSettled()`
+ * right after it is this write's own acknowledgement.
+ */
+const jsonStorage = createJSONStorage(() => idbStorage)!;
+const landingStorage: typeof jsonStorage = {
+  ...jsonStorage,
+  setItem: (name, value) => {
+    const result = jsonStorage.setItem(name, value);
+    const written = storageSettled();
+    const db = (value.state as { db?: PracticeDB }).db;
+    if (db) void written.then(() => notesLanded(db, written === storageSettled()), () => undefined);
+    return result;
+  },
+};
 
 export const useStore = create<StoreState>()(
   persist(
@@ -1893,10 +1912,11 @@ export const useStore = create<StoreState>()(
               : { lessons: s.db.lessons.map((l) => (l.id === owner.id ? touch({ ...l, notes: notes || undefined }, now) : l)) }),
           },
         }));
-        // The competing text is now accounted for: the device copy becomes the
-        // kept-both text, typed over what was stored, so neither a retry nor a
+        // The device copy now accounts for this text and for what was stored;
+        // after a merge it becomes the kept-both text, so neither a retry nor a
         // reload replays the old draft against it a second time.
-        if (merged) holdNoteDraft(owner, { text: notes, base: record.notes ?? '' });
+        notesWritten(owner, record.notes ?? '', notes);
+        if (merged) holdNoteDraft(owner, notes);
         return merged ? 'merged' : 'written';
       },
 
@@ -2413,7 +2433,7 @@ export const useStore = create<StoreState>()(
     {
       name: 'practice-compass',
       version: SCHEMA_VERSION,
-      storage: createJSONStorage(() => idbStorage),
+      storage: landingStorage,
       partialize: (s) => ({
         db: s.db,
         rev: s.rev,
@@ -2612,26 +2632,19 @@ export const useHydrationStatus = create<HydrationStatus>(() => ({
  * Notes typed before a reload interrupted their canonical write are replayed
  * through the ordinary `saveNotes` decision — so a draft whose record is gone
  * stays on the device and recreates nothing, and one whose stored text changed
- * meanwhile keeps both. Each local copy is settled by its write's
- * acknowledgement (`settleNoteDraft`), exactly like the editor's.
+ * meanwhile keeps both. A copy the disk already holds is simply dropped; the
+ * rest settle as their write lands (`notesLanded`), like every other write.
  */
 function replayNoteDrafts() {
   for (const { owner, draft } of heldNoteDrafts()) {
     const outcome = useStore.getState().saveNotes(owner, draft.text, draft.base);
-    if (outcome === 'gone') continue;
-    const { db } = useStore.getState();
-    const record = owner.kind === 'item' ? db.items.find((i) => i.id === owner.id) : db.lessons.find((l) => l.id === owner.id);
-    const written = outcome === 'merged' ? (record?.notes ?? '') : draft.text;
-    const token = noteWriteIssued(owner);
-    void storageSettled().then(
-      () => settleNoteDraft(owner, token, written),
-      () => undefined,
-    );
+    if (outcome === 'unchanged') dropNoteDraft(owner);
   }
 }
 
 // Async IndexedDB hydration: flip the gate when done, and seed a fresh install.
 function finishHydration() {
+  notesHydrated(useStore.getState().db);
   if (storageWasEmpty && useStore.getState().db.pathways.length === 0) {
     useStore.setState({ db: createSeedDB() });
   }

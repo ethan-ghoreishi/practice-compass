@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Page } from 'playwright';
+import type { Locator, Page } from 'playwright';
 import { buildSessionPlan, createItem, isWork, SCHEMA_VERSION, type PracticeBlock, type PracticeItem } from '../src/domain';
 import { RESULT_LABELS } from '../src/domain/labels';
 import { hashState } from '../src/domain/canonical';
@@ -817,6 +817,33 @@ describe('notes without a Done dependency', () => {
         };
         const heldDrafts = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('pc-note-draft:')));
 
+        // A replacement landing through the app (a pull) under words not yet
+        // written never becomes their base: a reload keeps both, once.
+        await goTo(app, `/items/${PIECE}`);
+        await editShownNotes(page);
+        await notesBox(page).fill('mine, unwritten when the pull landed');
+        await pullUnderneath(
+          (d) => ({ ...d, items: d.items.map((i) => (i.id === PIECE ? { ...i, notes: 'theirs, pulled under an open editor' } : i)) }),
+          () => notesOf(app, PIECE, 'theirs, pulled under an open editor'),
+        );
+        await reload(app);
+        await notesOf(app, PIECE, kept('theirs, pulled under an open editor', 'mine, unwritten when the pull landed'));
+        await goTo(app, '/lessons');
+        const pulledCard = page.getByRole('article').filter({ hasText: 'Class 37' });
+        await pulledCard.getByRole('button', { name: /Class 37/ }).first().click();
+        await pulledCard.getByRole('button', { name: 'Edit Class notes' }).click();
+        await pulledCard.getByRole('textbox', { name: 'Class notes' }).fill('class words, unwritten when the pull landed');
+        await pullUnderneath(
+          (d) => ({ ...d, lessons: d.lessons.map((l) => (l.id === TWIN ? { ...l, notes: 'their class words, pulled under an open editor' } : l)) }),
+          () => persistedUntil(app, (st) => (st.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes, (v) => v === 'their class words, pulled under an open editor'),
+        );
+        await reload(app);
+        await persistedUntil(
+          app,
+          (st) => (st.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes,
+          (v) => v === kept('their class words, pulled under an open editor', 'class words, unwritten when the pull landed'),
+        );
+
         await goTo(app, `/items/${WARM}`);
         await editShownNotes(page);
         await notesBox(page).fill('my words, while the other device synced');
@@ -857,6 +884,28 @@ describe('notes without a Done dependency', () => {
           (s) => (s.state as { db: Db }).db.lessons.find((l) => l.id === TWIN)?.notes,
           (n) => n === kept('their class words', 'my class words — and more'),
         );
+
+        // Hold the first write after a load (the replay's) until released.
+        await page.addInitScript(() => {
+          if (!localStorage.getItem('pc-test-hold-first-write')) return;
+          localStorage.removeItem('pc-test-hold-first-write');
+          const w = window as unknown as { __releaseStorage?: boolean };
+          w.__releaseStorage = false;
+          const proto = IDBObjectStore.prototype;
+          const realPut = proto.put;
+          proto.put = function holding(this: IDBObjectStore, ...args: Parameters<IDBObjectStore['put']>) {
+            proto.put = realPut;
+            const req = realPut.apply(this, args);
+            // Dexie commits explicitly; held, the transaction ends only once
+            // released and idle.
+            Object.defineProperty(this.transaction, 'commit', { value: () => undefined });
+            const spin = () => {
+              if (!w.__releaseStorage) this.count().onsuccess = spin;
+            };
+            spin();
+            return req;
+          };
+        });
 
         // --- OVERLAPPING acknowledgements, then the next write refused --------
         // For an item and for a class alike, a reload reproduces the newest
@@ -944,7 +993,143 @@ describe('notes without a Done dependency', () => {
           await box.fill(`first${n}`);
           await refuseAfterRelease();
           await owner.landed(`first${n}`);
+
+          // ACROSS EDITOR LIFETIMES: a held write, the editor left and opened
+          // again, more typed; the old write lands, more typed, reload.
+          box = await owner.open();
+          await holdStorage(page);
+          await box.fill(`R${n}`);
+          await page.clock.runFor(1_000);
+          await page.getByText('Saving…').waitFor();
+          await goTo(app, '/repertoire');
+          await breakStorage(page);
+          box = await owner.open();
+          await box.fill(`R${n} — reopened`);
+          await releaseStorage(page);
+          await owner.landed(`R${n}`);
+          await box.fill(`R${n} — reopened, then more`);
+          await page.clock.runFor(1_000);
+          await page.getByText(/Not saved/).waitFor();
+          await repairStorage(page);
+          await reload(app);
+          await owner.landed(`R${n} — reopened, then more`);
+
+          // A REPLAY held at load while its editor is open and typed in.
+          box = await owner.open();
+          await breakStorage(page);
+          await box.fill(`P${n}`);
+          await page.clock.runFor(1_000);
+          await page.getByText(/Not saved/).waitFor();
+          await repairStorage(page);
+          await page.evaluate(() => localStorage.setItem('pc-test-hold-first-write', '1'));
+          await reload(app);
+          box = await owner.open();
+          expect(await box.inputValue(), engine).toBe(`P${n}`);
+          await breakStorage(page);
+          await box.fill(`P${n} — typed while the replay was held`);
+          await releaseStorage(page);
+          await owner.landed(`P${n}`);
+          await box.fill(`P${n} — typed while the replay was held, and after`);
+          await page.clock.runFor(1_000);
+          await page.getByText(/Not saved/).waitFor();
+          await repairStorage(page);
+          await reload(app);
+          await owner.landed(`P${n} — typed while the replay was held, and after`);
         }
+
+        // --- AN ORDINARY WRITE by another action carries refused words -------
+        // (a Pause on the practice screen, linking an item to a class). It
+        // lands them, so the next reload replays only what came after — for
+        // plain words and for a refused kept-both text alike.
+        const refusedThenReplaced = async (open: () => Promise<Locator>, words: string, replace: (theirs: string) => Promise<void>, theirs: string) => {
+          const box = await open();
+          await breakStorage(page);
+          await box.fill(words);
+          await page.clock.runFor(1_000);
+          await page.getByText(/Not saved/).waitFor();
+          await repairStorage(page);
+          await replace(theirs);
+          await page.evaluate(() => localStorage.setItem('pc-test-refuse-writes', '1'));
+          await reload(app);
+          await repairStorage(page);
+          await page.evaluate(() => localStorage.removeItem('pc-test-refuse-writes'));
+        };
+        const finishBlock = async () => {
+          await page.getByRole('button', { name: 'Finish' }).click();
+          await page.getByRole('button', { name: 'Save without a result' }).click();
+          await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+        };
+        // The item, on the practice screen.
+        const [itemOwner, classOwner] = owners;
+        await show(app, `/items/${PIECE}`);
+        await page.getByRole('button', { name: 'Start a block' }).click();
+        await page.getByRole('button', { name: 'Finish' }).waitFor();
+        await editCollapsedNotes(page);
+        await breakStorage(page);
+        await notesBox(page).fill('W0');
+        await page.clock.runFor(1_000);
+        await page.getByText(/Not saved/).waitFor();
+        await repairStorage(page);
+        await page.getByRole('button', { name: 'Pause' }).click();
+        await itemOwner.landed('W0');
+        await breakStorage(page);
+        await notesBox(page).fill('W0 — and more');
+        await page.clock.runFor(1_000);
+        await page.getByText(/Not saved/).waitFor();
+        await repairStorage(page);
+        await reload(app);
+        await itemOwner.landed('W0 — and more');
+        await finishBlock();
+
+        await refusedThenReplaced(itemOwner.open, 'mine W0', itemOwner.replace, 'theirs W0');
+        await show(app, `/items/${PIECE}`);
+        await page.getByRole('button', { name: 'Start a block' }).click();
+        await itemOwner.landed(kept('theirs W0', 'mine W0'));
+        await editCollapsedNotes(page);
+        expect(await notesBox(page).inputValue(), engine).toBe(kept('theirs W0', 'mine W0'));
+        await breakStorage(page);
+        await notesBox(page).fill(kept('theirs W0', 'mine W0 — and more'));
+        await page.clock.runFor(1_000);
+        await page.getByText(/Not saved/).waitFor();
+        await repairStorage(page);
+        await reload(app);
+        await itemOwner.landed(kept('theirs W0', 'mine W0 — and more'));
+        await finishBlock();
+
+        // The class, linking an item while its notes are open.
+        const linkAnItem = async () => {
+          const c = page.getByRole('article').filter({ hasText: 'Class 37' });
+          await c.getByRole('button', { name: 'Link existing…' }).click();
+          await c.getByRole('combobox', { name: 'Link an existing item to this lesson' }).selectOption({ index: 1 });
+        };
+        let classBox2 = await classOwner.open();
+        await breakStorage(page);
+        await classBox2.fill('W1');
+        await page.clock.runFor(1_000);
+        await page.getByText(/Not saved/).waitFor();
+        await repairStorage(page);
+        await linkAnItem();
+        await classOwner.landed('W1');
+        await breakStorage(page);
+        await classBox2.fill('W1 — and more');
+        await page.clock.runFor(1_000);
+        await page.getByText(/Not saved/).waitFor();
+        await repairStorage(page);
+        await reload(app);
+        await classOwner.landed('W1 — and more');
+
+        await refusedThenReplaced(classOwner.open, 'mine W1', classOwner.replace, 'theirs W1');
+        classBox2 = await classOwner.open();
+        expect(await classBox2.inputValue(), engine).toBe(kept('theirs W1', 'mine W1'));
+        await linkAnItem();
+        await classOwner.landed(kept('theirs W1', 'mine W1'));
+        await breakStorage(page);
+        await classBox2.fill(kept('theirs W1', 'mine W1 — and more'));
+        await page.clock.runFor(1_000);
+        await page.getByText(/Not saved/).waitFor();
+        await repairStorage(page);
+        await reload(app);
+        await classOwner.landed(kept('theirs W1', 'mine W1 — and more'));
         expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
       } finally {
         await app.close();

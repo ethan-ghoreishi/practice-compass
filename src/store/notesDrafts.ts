@@ -1,3 +1,4 @@
+import type { PracticeDB } from '../domain/types';
 import type { NoteOwner } from './useStore';
 
 // ---------------------------------------------------------------------------
@@ -6,12 +7,20 @@ import type { NoteOwner } from './useStore';
 // Canonical notes live ONLY in the item or lesson (`notes`, through the
 // store). This is a temporary, owner-typed safety net for the gap before the
 // canonical write is acknowledged by IndexedDB: written synchronously on every
-// keystroke (localStorage acknowledges at once), re-based on each canonical
-// write that lands, dropped once the latest one holds its words, and replayed
-// through the store's ordinary `saveNotes` decision after a reload that interrupted it. It is never part of
-// PracticeDB, a backup, an export or sync, and it never decides anything on
-// its own: `saveNotes` compares its `base` with what is stored, so a draft can
-// never silently overwrite newer text or recreate a deleted record.
+// keystroke (localStorage acknowledges at once) and replayed through the
+// store's ordinary `saveNotes` decision after a reload that interrupted it. It
+// is never part of PracticeDB, a backup, an export or sync, and it never
+// decides anything on its own: `saveNotes` compares its `base` with what is
+// stored, so a draft can never silently overwrite newer text or recreate a
+// deleted record.
+//
+// ONE owner of the base, for every editor lifetime, the reload replay and
+// every whole-state write: `notesLanded`, called as each persisted state lands
+// in IndexedDB. The base moves only to landed text this copy ACCOUNTS for —
+// text this device's `saveNotes` wrote, or the stored text it kept beside its
+// own — never to a replacement it has not seen (a sync, an import), so a
+// replay still keeps both. The copy is dropped only when the latest write has
+// landed holding its words.
 //
 // Every access is wrapped: storage that is full, blocked or absent costs only
 // this safety net, never the edit itself.
@@ -22,7 +31,7 @@ const PREFIX = 'pc-note-draft:';
 export interface NoteDraft {
   /** The words on screen. */
   text: string;
-  /** The stored notes this text was typed over — how a competing change is recognised. */
+  /** The text on disk these words account for — how a competing change is recognised. */
   base: string;
 }
 
@@ -30,8 +39,70 @@ function keyFor(owner: NoteOwner): string {
   return `${PREFIX}${owner.kind}:${owner.id}`;
 }
 
-/** Keep the latest text for this owner. Returns false when the device refused it. */
-export function holdNoteDraft(owner: NoteOwner, draft: NoteDraft): boolean {
+const norm = (t: string | undefined) => (t ?? '').trim();
+
+/** The state IndexedDB last acknowledged (the hydrated one until a write lands). */
+let landed: PracticeDB | null = null;
+/** Per owner: the base the held copy carries. */
+const bases = new Map<string, string>();
+/** Per owner: texts this device's `saveNotes` put in the store (normalised) since the copy began. */
+const accounted = new Map<string, Set<string>>();
+
+function landedNotes(owner: NoteOwner): string | undefined {
+  if (!landed) return undefined;
+  const rec = owner.kind === 'item' ? landed.items.find((i) => i.id === owner.id) : landed.lessons.find((l) => l.id === owner.id);
+  return rec ? (rec.notes ?? '') : undefined;
+}
+
+/** The base for this owner's copy: landed text it accounts for, else what it already had. */
+function baseFor(owner: NoteOwner, fallback: string): string {
+  const key = keyFor(owner);
+  const disk = landedNotes(owner);
+  if (disk !== undefined && accounted.get(key)?.has(norm(disk))) bases.set(key, disk);
+  return bases.get(key) ?? fallback;
+}
+
+/** The persisted state as hydrated: what is on disk before this session writes. */
+export function notesHydrated(db: PracticeDB): void {
+  landed = db;
+}
+
+/**
+ * A whole persisted state just landed. Each held copy re-bases onto it when
+ * it accounts for the landed text, and is dropped when `latest` (no later
+ * write issued) and the landed text holds its words.
+ */
+export function notesLanded(db: PracticeDB, latest: boolean): void {
+  landed = db;
+  for (const { owner, draft } of heldNoteDrafts()) {
+    const disk = landedNotes(owner);
+    if (disk === undefined) continue; // a gone record: the copy stays, recreating nothing
+    if (latest && norm(disk) === norm(draft.text)) {
+      dropNoteDraft(owner);
+      continue;
+    }
+    const base = baseFor(owner, draft.base);
+    if (base !== draft.base) write(owner, { text: draft.text, base });
+  }
+}
+
+/** `saveNotes` put `written` in the store, over or beside `stored`: the copy accounts for both. */
+export function notesWritten(owner: NoteOwner, stored: string, written: string): void {
+  const key = keyFor(owner);
+  const set = accounted.get(key) ?? new Set<string>();
+  set.add(norm(stored)).add(norm(written));
+  accounted.set(key, set);
+}
+
+/** An editor opens on this owner: with no copy held, what is on disk is the base. */
+export function noteEditBegins(owner: NoteOwner, shown: string): void {
+  const key = keyFor(owner);
+  const held = heldNoteDraft(owner);
+  if (held) bases.set(key, bases.get(key) ?? held.base);
+  else bases.set(key, landedNotes(owner) ?? shown);
+}
+
+function write(owner: NoteOwner, draft: NoteDraft): boolean {
   try {
     localStorage.setItem(keyFor(owner), JSON.stringify(draft));
     return true;
@@ -40,33 +111,19 @@ export function holdNoteDraft(owner: NoteOwner, draft: NoteDraft): boolean {
   }
 }
 
-/** How many canonical writes of each owner's notes were issued — which one may drop the copy. */
-const issued = new Map<string, number>();
-
-/** A canonical write of this owner's notes was just issued; settle it with the returned token. */
-export function noteWriteIssued(owner: NoteOwner): number {
-  const n = (issued.get(keyFor(owner)) ?? 0) + 1;
-  issued.set(keyFor(owner), n);
-  return n;
+/** Keep the latest text for this owner. Returns false when the device refused it. */
+export function holdNoteDraft(owner: NoteOwner, text: string): boolean {
+  return write(owner, { text, base: baseFor(owner, heldNoteDraft(owner)?.base ?? landedNotes(owner) ?? '') });
 }
 
-/**
- * The write `token` landed, so IndexedDB now holds `written` (writes land in
- * order). The copy always holds the latest words typed: it is dropped only
- * when those are exactly what landed AND no later write is still in flight —
- * never by text alone — and otherwise re-based on what landed, so a replay
- * compares against what is really on disk and reproduces the latest words
- * exactly once.
- */
-export function settleNoteDraft(owner: NoteOwner, token: number, written: string): void {
+/** Forget this owner's copy: its words are on disk. */
+export function dropNoteDraft(owner: NoteOwner): void {
+  bases.delete(keyFor(owner));
+  accounted.delete(keyFor(owner));
   try {
-    const raw = localStorage.getItem(keyFor(owner));
-    if (!raw) return;
-    const held = JSON.parse(raw) as NoteDraft;
-    if (held.text === written && issued.get(keyFor(owner)) === token) localStorage.removeItem(keyFor(owner));
-    else if (held.base !== written) holdNoteDraft(owner, { text: held.text, base: written });
+    localStorage.removeItem(keyFor(owner));
   } catch {
-    /* the safety net is best-effort; the canonical write already landed */
+    /* best-effort */
   }
 }
 
