@@ -23,7 +23,12 @@ import {
   type PersianFields,
   type PracticeItem,
   pendingScheduleConflict,
+  nextPractice,
+  preparationDatesByItem,
+  returnIntentOf,
+  studyPromptsFor,
   todayISODate,
+  type ReturnIntent,
   type ISODate,
   type PracticeItem as PracticeItemT,
   type Review,
@@ -34,6 +39,7 @@ import { getMaterial, instrumentName, itemBlocks, materialLabel } from '../store
 import { defaultStartInput } from '../store/sessionHelpers';
 import { addAttachment, formatBytes, removeAttachment } from '../store/attachments';
 import ItemForm from '../components/ItemForm';
+import { strandForKind, type ItemKind } from '../components/itemKinds';
 import { ItemAgenda } from '../components/LessonAgenda';
 import { itemToValues, valuesToCreateInput, type ItemFormValues } from '../components/itemFormValues';
 import { GUITAR_FIELDS, PERSIAN_FIELDS } from '../components/itemFields';
@@ -124,9 +130,12 @@ export default function ItemDetail() {
     navigate('/active');
   }
 
-  function handleEdit(values: ItemFormValues) {
+  function handleEdit(values: ItemFormValues, kind: ItemKind) {
     if (!item) return;
-    const refusal = updateItem(item.id, valuesToCreateInput(values));
+    // Theory / listening study carries its strand; leaving that kind clears
+    // it, and any other strand the item already had is left alone.
+    const strand = strandForKind(kind) ?? (item.strand === 'reading_theory' ? undefined : item.strand);
+    const refusal = updateItem(item.id, { ...valuesToCreateInput(values), strand });
     setSaveRefusal(refusal);
     if (!refusal) setEditing(false);
   }
@@ -236,6 +245,8 @@ export default function ItemDetail() {
               : 'Reviews: spaced repetition (auto).'}
       </div>
 
+      <NextPracticeCard item={item} now={now} />
+
       <ScheduleAgain
         item={item}
         today={todayISODate(now)}
@@ -260,6 +271,8 @@ export default function ItemDetail() {
       <ConnectionsSection item={item} />
 
       <ItemNotes itemId={item.id} />
+
+      <StudyIdeas item={item} />
 
       <MaterialSection item={item} />
 
@@ -317,6 +330,83 @@ export default function ItemDetail() {
         Delete item
       </button>
     </div>
+  );
+}
+
+const INTENT_OPTIONS: { value: ReturnIntent; label: string }[] = [
+  { value: 'working', label: 'Working on this' },
+  { value: 'keep_fresh', label: 'Keep fresh' },
+];
+
+/**
+ * NEXT PRACTICE — why and when this item comes back, from the one derivation
+ * the close screen and the suggestions read (`nextPractice`). Its stored
+ * review date is shown as KEPT when the answer is earlier, never as replaced.
+ * "Comes back as" is the owner's own return intention: switching it records
+ * no practice and moves no date.
+ */
+function NextPracticeCard({ item, now }: { item: PracticeItem; now: Date }) {
+  const db = useStore((s) => s.db);
+  const setReturnIntent = useStore((s) => s.setReturnIntent);
+  const preparationDate = useMemo(
+    () => preparationDatesByItem(db.lessonAgenda, db.lessons, now).get(item.id),
+    [db.lessonAgenda, db.lessons, item.id, now],
+  );
+  const next = nextPractice({ item, preparationDate, now });
+  return (
+    <section className="card card-quiet stack-sm" aria-label="Next practice">
+      <div className="section-label">Next practice</div>
+      <div className="small">
+        <span dir="ltr">
+          {next.date ? `${relativeDay(next.date, now)} · ` : ''}
+          {next.sentence}
+        </span>
+      </div>
+      {next.keptNote && (
+        <div className="tiny faint">
+          <span dir="ltr">{next.keptNote}</span>
+        </div>
+      )}
+      <OptionPills
+        ariaLabel="Comes back as"
+        value={returnIntentOf(item)}
+        onChange={(v) => setReturnIntent(item.id, v)}
+        options={INTENT_OPTIONS}
+      />
+    </section>
+  );
+}
+
+/**
+ * Optional study ideas about this item's dastgāh — questions to take to your
+ * teacher's recording or your own source, never facts. A tap opens Add
+ * practice item as Theory / listening study with the title filled in; nothing
+ * is created until you save it there.
+ */
+function StudyIdeas({ item }: { item: PracticeItem }) {
+  const db = useStore((s) => s.db);
+  if (item.strand === 'reading_theory') return null;
+  const dastgah = item.persian?.dastgahAvaz;
+  const prompts = studyPromptsFor(dastgah ? valueLabel(dastgah, vocabulary(db.musicTerms)) : undefined);
+  if (prompts.length === 0) return null;
+  return (
+    <details className="disclosure">
+      <summary className="small">Study ideas (optional)</summary>
+      <ul className="stack-sm" role="list" style={{ listStyle: 'none', padding: 0, margin: '8px 0 0' }}>
+        {prompts.map((p) => (
+          <li key={p.id}>
+            <Link
+              className="link small"
+              dir="auto"
+              to={`/items/new?kind=theory&instrument=${encodeURIComponent(item.instrumentId)}&title=${encodeURIComponent(p.title)}`}
+              state={{ from: `/items/${item.id}` }}
+            >
+              {p.title}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -765,6 +855,7 @@ function BlockHistory({ blocks }: { blocks: PracticeItemBlocks }) {
                   <div className="small">
                     <span dir="ltr">
                       {BLOCK_MODE_LABELS[b.mode]} · {FOCUS_LABELS[b.focus]}
+                      {b.scope === 'whole' ? ' · whole-item check' : b.scope === 'focused' ? ' · focused work' : ''}
                     </span>
                   </div>
                   {b.observation && (

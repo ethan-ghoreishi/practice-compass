@@ -1345,7 +1345,7 @@ describe('study provenance at every reader (v16)', () => {
       try {
         const once = validateDB(JSON.parse(JSON.stringify(v15)));
         const twice = validateDB(JSON.parse(JSON.stringify(once)));
-        expect(once.schemaVersion).toBe(16);
+        expect(once.schemaVersion).toBe(SCHEMA_VERSION);
         expect(twice).toEqual(once);
         // Missing evidence stays missing — never guessed as "none".
         expect(once.archiveSources[0]!.pieces.every((p) => !('studySource' in p))).toBe(true);

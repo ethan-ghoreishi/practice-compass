@@ -211,6 +211,8 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/Insights.tsx", tagName: "div", classValue: "" },
   { file: "pages/ItemDetail.tsx", tagName: "header", classValue: "stack-sm" },
   { file: "pages/ItemDetail.tsx", tagName: "span", classValue: "" },
+  // A study-focus prompt: built-in Farsi wording around the item's own dastgāh (2026-10-23).
+  { file: "pages/ItemDetail.tsx", tagName: "link", classValue: "link small" },
   { file: "pages/ItemDetail.tsx", tagName: "div", classValue: "" },
   { file: "pages/ItemDetail.tsx", tagName: "link", classValue: "list-row card-link" },
   { file: "pages/ItemDetail.tsx", tagName: "div", classValue: "list-row" },
@@ -271,6 +273,10 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "" },
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "tiny faint" },
   { file: "pages/RoutineRunner.tsx", tagName: "span", classValue: "" },
+  // The run's contents, before Start and while running: each segment's own
+  // name leads its row, its bound item's title an authored value of its own (2026-10-23).
+  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "grow" },
+  { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "tiny faint" },
   // Routine complete's capture: each recorded item's own title heads its
   // result pills and one-line observation (2026-10-14).
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "small" },
@@ -658,7 +664,7 @@ const ISOLATED_VALUE_SITES: { file: string; snippet: string }[] = [
   { file: 'pages/PathwayDetail.tsx', snippet: 'card-quiet small dim" dir="auto" style={{ marginTop: 4 }}' },
   { file: 'pages/PathwayDetail.tsx', snippet: '<span dir="auto">{pathway.source}</span>' },
   { file: 'pages/RoutineRunner.tsx', snippet: '<div className="tiny faint" dir="auto">' },
-  { file: 'pages/RoutineRunner.tsx', snippet: 'Next: <span dir="auto">{next.label}</span>' },
+  { file: 'pages/RoutineRunner.tsx', snippet: 'Next: <span dir="auto">{segmentTitle(db, next)}</span>' },
   // Form and composer render through the ONE vocabulary reader (`valueLabel`):
   // a term's current name or the owner's own text, never the stored object.
   { file: 'pages/Repertoire.tsx', snippet: '<span dir="auto">{form}</span>' },

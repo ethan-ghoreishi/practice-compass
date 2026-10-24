@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-do
 import { vocabulary } from '../domain';
 import { useStore } from '../store/useStore';
 import ItemForm from '../components/ItemForm';
+import { strandForKind, type ItemKind } from '../components/itemKinds';
 import { emptyItemValues, valuesToCreateInput, type ItemFormValues } from '../components/itemFormValues';
 import { ArrowLeftIcon } from '../components/icons';
 
@@ -49,6 +50,12 @@ export default function NewItem() {
     const pathway = db.pathways.find((p) => p.id === stage.pathwayId);
     if (pathway?.instrumentId) initial.instrumentId = pathway.instrumentId;
   }
+  // A study-focus prompt opens Theory / listening study with its title
+  // filled in — still this one creation path, still saved only on a tap.
+  const initialKind: ItemKind | undefined = params.get('kind') === 'theory' ? 'theory' : undefined;
+  const titleParam = params.get('title');
+  if (titleParam) initial.title = titleParam;
+  if (initialKind === 'theory') initial.itemType = 'other';
   const lessonParam = params.get('lesson');
   if (lessonParam && db.lessons.some((l) => l.id === lessonParam)) {
     const lesson = db.lessons.find((l) => l.id === lessonParam)!;
@@ -56,8 +63,9 @@ export default function NewItem() {
     initial.instrumentId = lesson.instrumentId;
   }
 
-  function create(v: ItemFormValues) {
-    const id = addItem(valuesToCreateInput(v));
+  function create(v: ItemFormValues, kind: ItemKind) {
+    const strand = strandForKind(kind);
+    const id = addItem({ ...valuesToCreateInput(v), ...(strand ? { strand } : {}) });
     // The form offers only parents it may have; a parent that changed since
     // (deleted, made a part) is refused by the store and said here.
     if (typeof id !== 'string') {
@@ -88,7 +96,7 @@ export default function NewItem() {
           <span dir="ltr">{refusal}</span>
         </div>
       )}
-      <ItemForm initial={initial} submitLabel="Add practice item" showLessonLink onSubmit={create} onCancel={() => navigate(from)} />
+      <ItemForm initial={initial} initialKind={initialKind} submitLabel="Add practice item" showLessonLink onSubmit={create} onCancel={() => navigate(from)} />
     </div>
   );
 }

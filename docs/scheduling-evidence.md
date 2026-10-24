@@ -7,7 +7,9 @@ calculate any answer by hand and disagree with a specific number rather than
 with a black box.
 
 Sources: `src/domain/scoring.ts`, `src/domain/plan.ts`, `src/domain/scheduling.ts`,
-`src/domain/lessonAgenda.ts`.
+`src/domain/lessonAgenda.ts`, `src/domain/practiceSessionModel.ts`. The session
+model these numbers serve (scope, return intention, controls) is in
+`docs/practice-session-model.md`.
 
 ---
 
@@ -23,7 +25,7 @@ priority = importance×2 + difficulty + fragility + overdue + neglected
 | importance×2 | 2 – 10 | the item's own 1–5 rating |
 | difficulty | 1 – 5 | the item's own 1–5 rating |
 | fragility | 0 – 5 | `FRAGILITY_BY_STATUS` (fragile/repairing 5, usable 3, new 2, maintenance/integrated 1, performance-ready 0, resting 2) |
-| overdue | 0 – 5 | days past `nextReviewDate`: due today 1, 1–2 days 2, 3–6 days 3, 7–13 days 4, 14+ days 5 |
+| overdue | 0 – 5 | days past `effectiveReturnDate` — the stored `nextReviewDate`, but for a Working item never later than `WORKING_MAX_GAP_DAYS` (3) after its last practice: due today 1, 1–2 days 2, 3–6 days 3, 7–13 days 4, 14+ days 5 |
 | neglected | 0 – 4 | days since last touched: ≤3 → 0, ≤7 → 1, ≤14 → 2, ≤30 → 3, 31+ → 4 |
 | lessonUrgency | 0 – 8 | see §2 |
 | exposurePenalty | 0 – 8 | see §3 |
@@ -46,13 +48,18 @@ resting ("dormant") material never surfaces in a suggestion. It stays fully
 practisable by choosing it directly, keeps its review data, and comes straight
 back with a status change.
 
-A swap draws from the SAME candidate pool as the build, not just the same
-eligibility test: `candidatePool` (`plan.ts`) computes the practised-today
-exclusion (§below) and its honest repeat fallback once, and both
-`buildSessionPlan` and `swapSegment` read it — a swap can never hand back
-material the build itself deliberately stepped past, and a warm-up swap
-excludes a due-for-review or lesson-committed candidate exactly as the
-build's own warm-up pool does.
+Today's cards, a build, a regeneration and a swap all draw from the SAME
+candidate pool, not just the same eligibility test: `candidatePool`
+(`scoring.ts`) steps aside anything practised today — a routine's unassessed
+block and a class commitment included — while anything else is eligible, and
+falls back to repeating today's work only when nothing else is, saying so in
+every reason. A class commitment practised today therefore returns the next
+day, still before its class; nothing about it was completed. A swap can never
+hand back material the build itself stepped past, and a warm-up swap excludes
+a due-for-review or lesson-committed candidate exactly as the build's own
+warm-up pool does. A piece and its own part are one intended work
+(`sameWork`): suggestions show one of them, unless the other has its own due
+review.
 
 ## 2. Lesson urgency — from the commitment's own class
 
@@ -113,6 +120,14 @@ Maximum 2 points, against a priority that runs to the high twenties: real needs
 always win. There are no mandatory category counts, no round-robin calendar, no
 randomness, and nothing for the owner to maintain.
 
+**A turn for study.** A Theory / listening study item (strand `reading_theory`)
+not practised for `THEORY_TURN_GAP_DAYS` (4) local days gains
+`THEORY_TURN_POINTS` (3) in the plan's MIDDLE picks only — never the anchor, the
+warm-up or the cool-down (study is not playing) — so it surfaces once the
+urgent work is seated and there is room, and its reason says so. A study item
+is never a work (`isWork`), so it never takes a whole work's 10-minute floor.
+No study item means no filler.
+
 ## 5. The session — spending the minutes
 
 | constant | value | meaning |
@@ -149,8 +164,7 @@ Order of decisions:
    the lowest-priority work; the anchor always stays. One seated segment takes
    the whole budget, up to 25.
 
-Minutes (`allocateMinutes`, the one allocator a build, a Remove and a Swap
-share): the warm-up gets its share; everything else splits the rest by bucket
+Minutes (`allocateMinutes`, the one allocator a build and a Swap share): the warm-up gets its share; everything else splits the rest by bucket
 weight (deep 2.6, lesson 1.8, review 1.2, cool-down 0.9), lifted to its floor
 and trimmed back from the lowest priority if the floors push past the budget,
 plus one rounding pass. Review segments are then held inside the slot window —
@@ -161,7 +175,11 @@ its split plus one rounding minute. Anything left is an honest remainder — and
 stated in the summary — which therefore appears only when every segment that
 may take minutes is at 25.
 
-Remove re-spreads under the same rules; Swap offers only material whose floor
+Remove (`removePlanSegment`) leaves every other segment's minutes exactly as
+built: the freed minutes stay UNUSED, and the summary says so, until Regenerate
+or a new length — the deliberate reallocations. Move earlier / later
+(`movePlanSegment`) reorders whole segments and nothing else; Start runs the
+owner's order. Swap offers only material whose floor
 fits the slot — in a warm-up or cool-down, the role's share, never the minutes a
 rounding pass lifted above it (a whole work cools down only on a share of 10).
 The floor is fixed on each segment when it is planned
@@ -171,6 +189,11 @@ warm-up or cool-down absorbed overflow and nothing reached 25
 (`src/domain/plan.test.ts` holds the earlier allocator's literal outputs).
 
 ### Representative outputs
+
+Computed before schema 17. Since then a Working item's overdue term reads
+`effectiveReturnDate` (§1), which can raise an item whose stored date lies
+further out than three days after its last practice; the shape below is
+unchanged.
 
 The same five items every time: a familiar darāmad, a phrase committed to a
 class two days away, a new chahār-mezrāb, a fragile riz drill practised for
@@ -239,6 +262,31 @@ The commitment is the difference, and it disappears the day after that class.
 
 The whole decision is one pure function, `decideReview`, and the close screen,
 the store and the preview are three renderings of its single result.
+
+### 6a. Which engine decides: return intention and scope (schema 17)
+
+A result describes its block's `scope` — `focused` (a chunk or one aspect, the
+default) or an explicit `whole`-item check — and the item comes back under a
+return intention, `working` or `keep_fresh` (derived from the old maintenance
+status when absent; never from a result). Before the table below:
+
+| case | date | spacing |
+|---|---|---|
+| no result, or manual mode | unchanged | unchanged |
+| Working, a protected future date | unchanged | unchanged |
+| Working, fixed cadence due or unscheduled | today + the configured interval | untouched |
+| Working, otherwise (an engine-owned date, due, or none) | today + `WORKING_RETURN_DAYS[result]`: worse 1, same 1, slightly better 2, stable alone 2, stable in context 3, performable 3 — may bring a long engine date FORWARD; the same date again is a keep | untouched |
+| Keep fresh, focused evidence (any result) | unchanged — the whole-item check is still to come | unchanged |
+| Keep fresh, whole-item check | the table below | the table below |
+
+Worked example: an unfinished piece with 8 good reviews and a 90-day gap closes
+a focused `stable_in_context` → back in 3 days, spacing untouched (it used to
+expand to 90 × ease). The class opportunity and the Working gap are DERIVED by
+`nextPractice` for the explanation and the ranking, never written over a
+stored date. Readiness (a status suggestion, Keep fresh) is offered only for a
+whole-item check and applies only when tapped.
+
+### 6b. Keep fresh, whole-item check — the spaced-retention engine
 
 | situation | date | spacing |
 |---|---|---|
@@ -343,10 +391,10 @@ neither weakens the other. Change a rule in both places.
 
 Numbers: `docs/scheduling-evidence.md`. One pure decision, `decideReview` (`scheduling.ts`), which preview, write and screen render.
 
-- Practice is exposure; only eligible retention evidence (a stable result, due, not yet advanced today: `srLastProgressDay`) advances spacing. `same` is not failure; only `worse` may bring an automatic date forward, never later; nothing else reads as failure. A future date the owner owns (or of unknown provenance) is protected until due, and manual mode with no new date keeps it. A keep completes nothing.
+- Practice is exposure. Working (`returnIntentOf`) returns in 1-3 days (`WORKING_RETURN_DAYS`), ignoring spacing, and may bring an engine-owned date forward; only a Keep-fresh WHOLE check's eligible retention evidence (a stable result, due, not yet advanced today: `srLastProgressDay`) advances spacing, and there only `worse` may bring an automatic date forward, never later. `same` is not failure; nothing else reads as failure. Class and Working-gap returns are derived (`nextPractice`), never written. A future date the owner owns (or of unknown provenance) is protected until due, and manual mode with no new date keeps it. A keep completes nothing.
 - An open date editor is bound to its item and date (`reviewDateDraftFor`, reconciled each render, never from an effect). "Schedule again", "Use automatic scheduling" (`transferToAutomaticReview`, keeps the date) and "Review today" (day read at the tap) are administration and record no practice; an ordinary item save never releases a protected date; ambiguous schedules are refused, never guessed; never describe a retained date as a new calculation.
 - Bounded params (`SchedulingParams`, `clampSchedulingParams`) are threaded wherever a date is shown or saved. The published priority formula, `importance*2 + difficulty + fragility + overdue + neglected + lessonUrgency - exposurePenalty`, is what the code computes (`src/domain/scoring.test.ts`) and Settings shows with live values; keep it deterministic, never an opaque model. Status enum keys stay stable; change only labels (`labels.ts`).
 
 ### The Session Plan is a view over real blocks
 
-`plan.ts` reuses the same `scoreItems` priorities, never a second ranking: no scores, no "optimal" claims, its evidence never dressed up as an optimum. Minutes never exceed the budget; a whole work (`isWork`) gets at least 10 beside other work; warm-up and cool-down never exceed their shares or take overflow (`allocateMinutes`); a budget outside 5-120 is rejected, never clamped (`validateBudgetMinutes`); one `isProactiveCandidate` policy and one `candidatePool` serve build and swap; resting material never surfaces, even by fallback; warm-up is for familiar easy items, never a due review or class commitment; diversity stays subordinate to real needs. A plan is stale when `rev` or the local day moves; Start rechecks the day and refuses visibly. It runs real blocks, each segment's item revalidated at start; skipping logs nothing. The running plan (`activePlan`, `planMinutesByInstrument`) is store state, never in `PracticeDB`, sync or a backup.
+`plan.ts` reuses the same `scoreItems` priorities, never a second ranking: no scores, no "optimal" claims, its evidence never dressed up as an optimum. Minutes never exceed the budget; a whole work (`isWork`) gets at least 10 beside other work; warm-up and cool-down never exceed their shares or take overflow (`allocateMinutes`); a budget outside 5-120 is rejected, never clamped (`validateBudgetMinutes`); one `isProactiveCandidate` policy and one `candidatePool` serve build and swap; resting material never surfaces, even by fallback; warm-up is for familiar easy items, never a due review or class commitment; diversity stays subordinate to real needs; a study item (`reading_theory`) gets a bounded middle-pick turn, never a work's floor, a warm-up or a cool-down. Remove leaves the freed minutes unused until Regenerate or a new length; Move earlier/later reorders whole segments only, and Start runs the owner's order. A plan is stale when `rev` or the local day moves; Start rechecks the day and refuses visibly. It runs real blocks, each segment's item revalidated at start; skipping logs nothing. The running plan (`activePlan`, `planMinutesByInstrument`) is store state, never in `PracticeDB`, sync or a backup.

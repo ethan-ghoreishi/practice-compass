@@ -164,6 +164,15 @@ export type ReviewMode = 'auto' | 'interval' | 'manual';
  */
 export type ReviewDateSource = 'auto' | 'user';
 
+/**
+ * Why an item comes back (schema v17), separate from WHO owns its date.
+ * `working` — unfinished material: short, useful returns. `keep_fresh` — the
+ * owner judged the WHOLE item ready: spaced retention checks. Absent is
+ * derived (`returnIntentOf`): an explicit maintenance status keeps its old
+ * meaning, everything else is Working. Never inferred from results.
+ */
+export type ReturnIntent = 'working' | 'keep_fresh';
+
 export type ItemStatus =
   | 'new'
   | 'fragile'
@@ -299,6 +308,8 @@ export interface PracticeItem {
    * after a reload or sync) cannot advance spacing twice (§A2).
    */
   srLastProgressDay?: ISODate;
+  /** Working on this / Keep fresh (schema v17). Absent = derived, see `ReturnIntent`. */
+  returnIntent?: ReturnIntent;
   lastPractisedAt?: ISODateTime;
   timesPractised: number;
   totalMinutes: number;
@@ -363,6 +374,13 @@ export type BlockResult =
   | 'performable'
   | 'not_logged';
 
+/**
+ * What a block's result is ABOUT (schema v17): `focused` — a chunk or an
+ * aspect, the default; `whole` — an explicit whole-item check. Absent on a
+ * legacy block, whose scope stays unknown and is never backfilled.
+ */
+export type EvidenceScope = 'focused' | 'whole';
+
 export interface PracticeBlock {
   id: ID;
   practiceItemId: ID;
@@ -375,6 +393,8 @@ export interface PracticeBlock {
   focus: FocusArea;
   constraint?: string;
   result: BlockResult;
+  /** What the result describes (schema v17); absent = legacy unknown. */
+  scope?: EvidenceScope;
   observation?: string;
   nextAction?: string;
   createdReview: boolean;
@@ -641,7 +661,7 @@ export interface SchedulingParams {
 
 // --- Persisted database -----------------------------------------------------
 
-export const SCHEMA_VERSION = 16;
+export const SCHEMA_VERSION = 17;
 
 export interface PracticeDB {
   schemaVersion: number;

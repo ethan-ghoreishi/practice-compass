@@ -160,8 +160,14 @@ export function routinesForInstrument(routines: PathwayRoutine[], instrumentId: 
 
 export interface RunSegment {
   itemId?: ID;
-  /** Effective seconds for this run: authored minutes, or Skip-shortened. */
+  /** Effective seconds for this run: authored minutes, or shortened by Move on / Skip / Remove. */
   seconds: number;
+  /**
+   * Skipped or removed in this run: whatever time passed in it is NOT
+   * practice and credits nothing. Absent on a legacy run, whose old skip kept
+   * its elapsed time — never reinterpreted.
+   */
+  skipped?: boolean;
 }
 
 export function toRunSegments(segments: RoutineSegment[]): RunSegment[] {
@@ -223,12 +229,51 @@ export function locateClock(segments: RunSegment[], elapsedSeconds: number): Rou
   return { segIndex: segments.length, segElapsedSeconds: 0, secondsLeft: 0, finished: true };
 }
 
-/** Cut the CURRENT segment short: clamp its effective duration to what has actually elapsed, so the unused remainder is never credited and the next segment starts fresh. A no-op once the run has already finished. */
+/** MOVE ON: cut the CURRENT segment short and KEEP what was practised — clamp its effective duration to what has actually elapsed, so the unused remainder is never credited (nor handed to another segment) and the next segment starts fresh. A no-op once the run has already finished. */
 export function skipCurrentSegment(segments: RunSegment[], elapsedSeconds: number): RunSegment[] {
   const bounds = cumulativeStarts(segments);
   const clock = locateClock(segments, elapsedSeconds);
   if (clock.finished) return segments;
   return segments.map((s, i) => (i === clock.segIndex ? { ...s, seconds: elapsedSeconds - bounds[i] } : s));
+}
+
+/** SKIP without practising: end the CURRENT segment where it stands AND record nothing for this occurrence, however long it ran. Earlier occurrences of the same item keep their time. */
+export function skipSegmentUnpractised(segments: RunSegment[], elapsedSeconds: number): RunSegment[] {
+  const clock = locateClock(segments, elapsedSeconds);
+  if (clock.finished) return segments;
+  return skipCurrentSegment(segments, elapsedSeconds).map((s, i) => (i === clock.segIndex ? { ...s, skipped: true } : s));
+}
+
+/** REMOVE a segment the run has not reached yet: it takes no time and records nothing; every other segment keeps its minutes. The current or an earlier segment is never removed here. */
+export function removePendingSegment(segments: RunSegment[], index: number, elapsedSeconds: number): RunSegment[] {
+  const clock = locateClock(segments, elapsedSeconds);
+  if (clock.finished || index <= clock.segIndex || !segments[index]) return segments;
+  return segments.map((s, i) => (i === index ? { ...s, seconds: 0, skipped: true } : s));
+}
+
+export type RunSegmentState = 'done' | 'moved_on' | 'skipped' | 'current' | 'pending';
+
+/** Each segment's state in a run, for the full list shown while it runs. */
+export function runSegmentStates(authored: RoutineSegment[], segments: RunSegment[], elapsedSeconds: number): RunSegmentState[] {
+  const clock = locateClock(segments, elapsedSeconds);
+  return segments.map((s, i) => {
+    if (s.skipped) return 'skipped';
+    if (i < clock.segIndex) return s.seconds < Math.round((authored[i]?.minutes ?? 0) * 60) ? 'moved_on' : 'done';
+    if (i === clock.segIndex) return 'current';
+    return 'pending';
+  });
+}
+
+/**
+ * The run's time, each figure on its own, in seconds: `planned` is what the
+ * frozen run asked for at start, `remaining` what is still ahead of the clock,
+ * `unused` what Move on, Skip and Remove freed — never handed to another
+ * segment. Practised time is `aggregateItemMinutes`, never a target.
+ */
+export function routineRunTime(authored: RoutineSegment[], segments: RunSegment[], elapsedSeconds: number): { planned: number; remaining: number; unused: number } {
+  const planned = authored.reduce((n, s) => n + Math.max(0, Math.round(s.minutes * 60)), 0);
+  const effective = segments.reduce((n, s) => n + s.seconds, 0);
+  return { planned, remaining: Math.max(0, effective - Math.max(0, elapsedSeconds)), unused: Math.max(0, planned - effective) };
 }
 
 /** Seconds actually spent in one segment given the run's total elapsed E — 0 before it starts, its full effective duration once fully passed, partial while current. */
@@ -250,7 +295,7 @@ export function aggregateItemMinutes(segments: RunSegment[], elapsedSeconds: num
   const bounds = cumulativeStarts(segments);
   const secondsByItem = new Map<ID, number>();
   segments.forEach((seg, i) => {
-    if (!seg.itemId) return;
+    if (!seg.itemId || seg.skipped) return;
     const secs = segmentElapsed(seg, bounds[i], elapsedSeconds);
     secondsByItem.set(seg.itemId, (secondsByItem.get(seg.itemId) ?? 0) + secs);
   });
@@ -301,6 +346,8 @@ export function applyRoutineRun(
         durationMinutes: minutes,
         mode: defaultModeForStatus(item.status),
         focus: focusForItem(item),
+        // Practice inside a routine is never a whole-item check.
+        scope: 'focused',
       },
       now,
     );

@@ -28,6 +28,9 @@ import {
 
 export function isWork(item: PracticeItem): boolean {
   if (item.parentItemId) return false; // parts live under their parent
+  // Theory / listening study is ordinary practice about the music, never a
+  // work — even when it names the dastgāh it studies.
+  if (item.strand === 'reading_theory') return false;
   return hasPersianIdentity(item) || item.itemType === 'full_piece' || item.itemType === 'gusheh';
 }
 

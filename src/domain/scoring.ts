@@ -1,5 +1,5 @@
-import type { BlockResult, ID, ISODate, ItemStatus, PracticeBlock, PracticeItem } from './types';
-import { dayDiff, daysSince, parseISODate, toISODate, todayISODate } from './util';
+import type { BlockResult, ID, ISODate, ItemStatus, PracticeBlock, PracticeItem, ReturnIntent } from './types';
+import { addDaysISODate, dayDiff, daysSince, parseISODate, toISODate, todayISODate } from './util';
 
 // ---------------------------------------------------------------------------
 // Deterministic priority scoring.
@@ -36,13 +36,40 @@ export function fragilityScore(status: ItemStatus): number {
   return FRAGILITY_BY_STATUS[status];
 }
 
+/** The intention an item returns under: its own, or the derived legacy one (`ReturnIntent`). */
+export function returnIntentOf(item: Pick<PracticeItem, 'returnIntent' | 'status'>): ReturnIntent {
+  return item.returnIntent ?? (item.status === 'maintenance' ? 'keep_fresh' : 'working');
+}
+
 /**
- * Whole days a review is overdue: `today − nextReviewDate`.
- * Negative when the review is still in the future; `null` when unscheduled.
+ * The longest a Working item's stored date may hold it back from the ranking:
+ * a long date it carries (a legacy automatic one, an unknown-provenance one)
+ * stays exactly as stored, but the item ranks as due this many days after it
+ * was last practised. Derived on every read, never written.
+ */
+export const WORKING_MAX_GAP_DAYS = 3;
+
+/**
+ * When the item next wants practice, for RANKING — never a stored value.
+ * Keep fresh: its stored date. Working: the earlier of its stored date and
+ * `WORKING_MAX_GAP_DAYS` after its last practice. No stored date, no return
+ * date: an unscheduled item surfaces through neglect, as it always has.
+ */
+export function effectiveReturnDate(item: PracticeItem): ISODate | undefined {
+  const stored = item.nextReviewDate;
+  if (!stored || returnIntentOf(item) !== 'working' || !item.lastPractisedAt) return stored;
+  const gap = addDaysISODate(toISODate(new Date(item.lastPractisedAt)), WORKING_MAX_GAP_DAYS);
+  return gap < stored ? gap : stored;
+}
+
+/**
+ * Whole days the item's return is overdue: `today − effectiveReturnDate`.
+ * Negative when still in the future; `null` when unscheduled.
  */
 export function overdueDays(item: PracticeItem, now: Date): number | null {
-  if (!item.nextReviewDate) return null;
-  return dayDiff(parseISODate(item.nextReviewDate), now);
+  const date = effectiveReturnDate(item);
+  if (!date) return null;
+  return dayDiff(parseISODate(date), now);
 }
 
 export function overdueScore(item: PracticeItem, now: Date): number {
@@ -282,6 +309,43 @@ export function scoreItems(
   return items
     .map((item) => scoreItem(item, blocksByItem.get(item.id) ?? [], now, preparationDates?.get(item.id)))
     .sort((a, b) => b.total - a.total || a.item.id.localeCompare(b.item.id));
+}
+
+/**
+ * THE ONE CANDIDATE POOL every automatic suggestion draws from — Today's
+ * cards, a plan's build, its regeneration and its swaps. Material practised
+ * today (any genuine block, a routine's unassessed one included) steps aside
+ * while anything else is eligible — a class commitment too: today's practice
+ * did not complete the preparation, and it returns on a later day until its
+ * class. Only when nothing fresh remains does the pool fall back to repeating
+ * today's own work, and says so (`isRepeatPool`).
+ */
+export function candidatePool(
+  scored: ItemScore[],
+  blocks: PracticeBlock[],
+  now: Date,
+): { pool: ItemScore[]; isRepeatPool: boolean; practisedToday: Set<string> } {
+  const today = todayISODate(now);
+  const practisedToday = new Set(
+    blocks.filter((b) => toISODate(new Date(b.startedAt)) === today).map((b) => b.practiceItemId),
+  );
+  const fresh = scored.filter((s) => !practisedToday.has(s.item.id));
+  return { pool: fresh.length > 0 ? fresh : scored, isRepeatPool: fresh.length === 0, practisedToday };
+}
+
+/**
+ * Do two items stand for the same intended work — a piece and one of its own
+ * parts? Suggestions show one of them, never both, unless the other has its
+ * own review due (a whole-work check is a distinct need). Evidence is never
+ * shared between them.
+ */
+export function sameWork(a: PracticeItem, b: PracticeItem): boolean {
+  return a.parentItemId === b.id || b.parentItemId === a.id;
+}
+
+/** A stored review date that is due today or earlier — a need of its own. */
+export function hasDueReview(item: PracticeItem, now: Date): boolean {
+  return !!item.nextReviewDate && item.nextReviewDate <= todayISODate(now);
 }
 
 export function groupBlocksByItem(blocks: PracticeBlock[]): Map<string, PracticeBlock[]> {

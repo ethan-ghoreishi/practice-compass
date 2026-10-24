@@ -1,4 +1,4 @@
-import type { BlockResult, FocusArea, ItemStatus, Rating, ReviewType } from '../domain';
+import type { BlockResult, EvidenceScope, FocusArea, ItemStatus, Rating, ReturnIntent, ReviewType } from '../domain';
 
 /**
  * What the owner had typed and chosen on the close screen when they went Back
@@ -32,6 +32,10 @@ export interface CloseDraft {
   effortPick: Rating | null;
   becomeTeacherQ: boolean;
   teacherQText: string;
+  /** What the block covered; absent reads as focused. */
+  scope?: EvidenceScope;
+  /** Working on this / Keep fresh as chosen here; absent = untouched. */
+  intentPick?: ReturnIntent | null;
 }
 
 let held: CloseDraft | null = null;

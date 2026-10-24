@@ -233,7 +233,7 @@ export type RunnerAudit = {
     nodeVersion: string | null
     /** The browser-install step's own bound, null if it has none. */
     installTimeout: number | null
-    /** A step BEFORE the browser install that probes the image's mirror+file list with a bounded fetch. */
+    /** A step BEFORE the browser install that runs the shared apt routing script. */
     failoverBeforeInstall: boolean
     /** A dispatch-only drill that blackholes the Azure mirror before the install. */
     drill: boolean
@@ -242,8 +242,13 @@ export type RunnerAudit = {
   }[]
 }
 
-/** The probe reads the image's own mirror list; an apt timeout alone was disproved by the drill. */
-const MIRROR_PROBE = /mirror\\?\+file:/
+/**
+ * The ONE routing step every suite workflow runs before its install — the
+ * script that bypasses the alive-but-slow mirror and leaves dead ones out
+ * (executed below, not read). An apt timeout alone was disproved by the drill,
+ * and a hand-written probe in a workflow is a second copy that can drift.
+ */
+const ROUTE_STEP = /\bbash\s+scripts\/prepare-ci-browsers\.sh\b/
 
 export function auditRunner(rawText: string): RunnerAudit {
   const top = children(meaningful(rawText))
@@ -294,7 +299,7 @@ export function auditRunner(rawText: string): RunnerAudit {
       timeoutMinutes: minutes(fields),
       nodeVersion: setupNode ? (scalar(body(child(setupNode, 'with')), 'node-version') ?? null) : null,
       installTimeout: install < 0 ? null : minutes(stepList[install]),
-      failoverBeforeInstall: before.some((t) => MIRROR_PROBE.test(t) && /\bcurl\b[^\n]*--max-time \d+/.test(t)),
+      failoverBeforeInstall: before.some((t) => ROUTE_STEP.test(t)),
       drill: before.some(
         (t) =>
           /if:.*github\.event_name == 'workflow_dispatch'.*inputs\.\w+/.test(t) &&
@@ -331,7 +336,7 @@ function boundsProblems(w: RunnerAudit & { name: string }): string[] {
   ])
 }
 
-const PROBE_STEP = `      - run: grep -rhoE 'mirror\\+file:[^ ]+' /etc/apt/sources.list.d/ && curl -fsS --max-time 5 "$url"`
+const PROBE_STEP = `      - run: bash scripts/prepare-ci-browsers.sh`
 
 const SUITE_JOB = (extra: { top?: string; job?: string; before?: string; node?: string } = {}) => `
 name: synthetic
@@ -372,10 +377,11 @@ describe('the runner around the suite', () => {
     expect(
       problems(SUITE_JOB({ before: `      - run: printf 'Acquire::http::Timeout "10";' | sudo tee /etc/apt/apt.conf.d/99-mirror-failover` })),
     ).toEqual(['synthetic.yml/check: no apt mirror failover before the browser install'])
-    // A probe with no bound of its own could hang where apt did.
-    expect(problems(SUITE_JOB({ before: PROBE_STEP.replace('--max-time 5 ', '') }))).toEqual([
-      'synthetic.yml/check: no apt mirror failover before the browser install',
-    ])
+    // A hand-written liveness probe is not the shared routing: it cannot see a
+    // fast index in front of crawling packages, and it drifts from the others.
+    expect(
+      problems(SUITE_JOB({ before: `      - run: grep -rhoE 'mirror\\+file:[^ ]+' /etc/apt/sources.list.d/ && curl -fsS --max-time 5 "$url"` })),
+    ).toEqual(['synthetic.yml/check: no apt mirror failover before the browser install'])
     expect(
       problems(SUITE_JOB().replace('install --with-deps chromium webkit\n        timeout-minutes: 10', 'install --with-deps chromium webkit')),
     ).toEqual(['synthetic.yml/check: browser install has no timeout-minutes'])
@@ -458,104 +464,245 @@ describe('the runner around the suite', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The probe itself, RUN: the one step every suite workflow carries, executed by
-// bash against mirrors on this machine — one that accepts a connection and never
-// answers (the drill's blackhole, and the 2026-10-07 incident), one that refuses,
-// one without the suite, and live ones. Every /etc path is redirected into a
-// scratch root and `sudo` is a shim, so running it here or inside CI changes
-// nothing real.
+// The release paths, as one invariant: every suite workflow provisions both
+// pinned engines after the shared routing and before its checks, runs its
+// checks unconditionally, and publishes nothing before they pass.
+// ---------------------------------------------------------------------------
+
+/** What would let a red check through, or publish before one: empty when nothing would. */
+function releaseProblems(name: string, rawText: string): string[] {
+  const runner = auditRunner(rawText)
+  const audit = auditWorkflow(rawText)
+  const out: string[] = []
+  if (!runner.runsSuite) return out
+  if (audit.missing.length) out.push(`${name}: missing ${audit.missing.join(', ')} before the suite`)
+  if (audit.versionedInstalls.length) out.push(`${name}: an independently versioned browser install`)
+  for (const job of runner.suiteJobs) {
+    const suiteAt = job.steps.findIndex((t) => SUITE_COMMANDS.some((re) => re.test(t)))
+    const installAt = job.steps.findIndex((t) => /\bplaywright(@\S+)?\s+install\b/.test(t))
+    const routeAt = job.steps.findIndex((t) => ROUTE_STEP.test(t))
+    if (routeAt < 0 || routeAt > installAt) out.push(`${name}/${job.name}: apt routing is not before the browser install`)
+    if (installAt > suiteAt) out.push(`${name}/${job.name}: browsers installed after the checks`)
+    if (job.installTimeout !== 10) out.push(`${name}/${job.name}: the browser install is not bounded at 10 minutes`)
+    if (job.timeoutMinutes !== 20) out.push(`${name}/${job.name}: the job is not bounded at 20 minutes`)
+    // A check that can be skipped or ignored is not a check.
+    for (const t of job.steps.filter((x) => SUITE_COMMANDS.some((re) => re.test(x)) || /npm run (lint|build)/.test(x))) {
+      if (/^\s*(if|continue-on-error):/m.test(t)) out.push(`${name}/${job.name}: a check step can be bypassed`)
+    }
+    const publishAt = job.steps.findIndex((t) => /upload-pages-artifact|deploy-pages/.test(t))
+    const buildAt = job.steps.findIndex((t) => /npm run build/.test(t))
+    if (publishAt >= 0 && (publishAt < suiteAt || publishAt < buildAt)) out.push(`${name}/${job.name}: publishes before the checks pass`)
+  }
+  return out
+}
+
+describe('the release paths', () => {
+  it('ci release paths retain pinned dual engine provisioning and tests before publishing', () => {
+    const files = readdirSync(WORKFLOW_DIR).filter((f) => f.endsWith('.yml')).sort()
+    const texts = Object.fromEntries(files.map((f) => [f, readFileSync(join(WORKFLOW_DIR, f), 'utf8')]))
+    const suite = files.filter((f) => auditRunner(texts[f]).runsSuite)
+    // All three real suite workflows, and none of them has a problem.
+    expect(suite).toEqual(['ci.yml', 'deploy.yml', 'prismatica-gate.yml'])
+    expect(suite.flatMap((f) => releaseProblems(f, texts[f]))).toEqual([])
+    // The SAME routing step in each, word for word.
+    const routes = suite.flatMap((f) => auditRunner(texts[f]).suiteJobs.map((j) => j.steps.find((t) => ROUTE_STEP.test(t))))
+    expect(new Set(routes).size).toBe(1)
+    // Deploy publishes only from a job that needs the passing check.
+    expect(texts['deploy.yml']).toContain('\n  deploy:\n    needs: check\n')
+    // The Gate runs on pull requests only; CI and deploy keep their parity
+    // (asserted step for step in 'the deploy check runs exactly the steps CI proves on every push').
+    expect(auditRunner(texts['prismatica-gate.yml']).refKinds).toEqual(['pull_request'])
+    for (const f of suite) expect(auditRunner(texts[f]).concurrency?.cancels, f).toBe(true)
+
+    // Negative fixtures: each defect is reported, so the check is not vacuous.
+    const base = texts['ci.yml']
+    const bad = (text: string) => releaseProblems('synthetic.yml', text)
+    expect(bad(base.replace('install --with-deps chromium webkit', 'install --with-deps chromium'))).toEqual(['synthetic.yml: missing webkit before the suite'])
+    const late = base.replace(`      - name: route apt around stalling mirrors\n        run: bash scripts/prepare-ci-browsers.sh\n`, '').replace('      - run: npm run lint\n', `      - name: route apt around stalling mirrors\n        run: bash scripts/prepare-ci-browsers.sh\n      - run: npm run lint\n`)
+    expect(late).not.toBe(base)
+    expect(bad(late)).toEqual(['synthetic.yml/check: apt routing is not before the browser install'])
+    expect(bad(base.replace('      - run: npm test\n', '      - run: npm test\n        continue-on-error: true\n'))).toEqual(['synthetic.yml/check: a check step can be bypassed'])
+    expect(bad(base.replace('timeout-minutes: 10', 'timeout-minutes: 30'))).toEqual(['synthetic.yml/check: the browser install is not bounded at 10 minutes'])
+    const publishFirst = texts['deploy.yml'].replace(
+      '      - run: npm test\n      - run: npm run build\n      - uses: actions/upload-pages-artifact@v3\n        with:\n          path: dist\n',
+      '      - uses: actions/upload-pages-artifact@v3\n        with:\n          path: dist\n      - run: npm test\n      - run: npm run build\n',
+    )
+    expect(publishFirst).not.toBe(texts['deploy.yml'])
+    expect(bad(publishFirst)).toEqual(['synthetic.yml/check: publishes before the checks pass'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The routing script itself, RUN: the one step every suite workflow carries,
+// executed by bash against apt layouts in a scratch root and mirrors on this
+// machine — a stand-in for the Azure route whose small index answers at once
+// while its packages never arrive, one that accepts a connection and never
+// answers (the 2026-10-07 incident), one that refuses, one without the suite,
+// and live ones. `sudo` is a shim and every path sits under the scratch root,
+// so running it here or inside CI changes nothing real.
 // ---------------------------------------------------------------------------
 
 const execFileAsync = promisify(execFile)
+const SCRIPT = join(process.cwd(), 'scripts', 'prepare-ci-browsers.sh')
 
-describe('the apt mirror probe', () => {
-  it('leaves an unreachable mirror out within its own bound and keeps every other line exactly', async () => {
-    const probes = runners().flatMap((w) => w.suiteJobs.map((j) => j.steps.find((s) => MIRROR_PROBE.test(s))))
-    // One probe, word for word, in every suite workflow, so running it once runs them all.
-    expect(probes.length).toBeGreaterThan(2)
-    expect(new Set(probes).size).toBe(1)
-    const step = probes[0]!.split('\n')
-    const script = step.slice(step.findIndex((l) => /^\s*run: \|$/.test(l)) + 1)
-    const bound = Number(/--max-time (\d+)/.exec(probes[0]!)?.[1])
-    expect(bound).toBeGreaterThan(0)
+describe('the apt routing script', () => {
+  it('ci browser setup avoids a fast index slow package mirror within the existing bounds', async () => {
+    // The script's own defaults are the bounds CI runs with.
+    const source = readFileSync(SCRIPT, 'utf8')
+    expect(source).toMatch(/APT_PROBE_SECONDS:-5\}/)
+    expect(source).toMatch(/APT_BYPASS_HOSTS-azure\.archive\.ubuntu\.com\}/)
+    expect(source).toMatch(/APT_FALLBACK_URI:-http:\/\/archive\.ubuntu\.com\/ubuntu\/\}/)
 
-    const root = mkdtempSync(join(tmpdir(), 'mirror-probe-'))
+    const root = mkdtempSync(join(tmpdir(), 'apt-route-'))
     const etc = join(root, 'etc')
-    const list = join(etc, 'apt', 'apt-mirrors.txt')
-    const code = script
-      .map((l) => l.slice(indentOf(script[0])))
-      .join('\n')
-      .replaceAll('/etc/', `${etc}/`)
-    expect(code.replaceAll(`${etc}/`, '')).not.toContain('/etc/')
     const bin = join(root, 'bin')
     mkdirSync(bin)
     writeFileSync(join(bin, 'sudo'), '#!/bin/sh\nexec "$@"\n')
     chmodSync(join(bin, 'sudo'), 0o755)
-    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
-    const bash = (source: string) => execFileAsync('bash', ['-e', '-c', source], { env })
-    expect((await bash('command -v sudo')).stdout.trim()).toBe(join(bin, 'sudo'))
+    const BOUND = 2
 
+    // live: the archive and a mirror; /missing has no suite.
     const live = createHttpServer((req, res) => {
       res.statusCode = /^\/(ubuntu|mirror)\/dists\/noble\/InRelease$/.test(req.url ?? '') ? 200 : 404
       res.end()
     })
+    // The slow route: its index answers at once, its packages never finish.
     const held: Socket[] = []
+    const slow = createHttpServer((req, res) => {
+      if (/\/dists\/noble\/InRelease$/.test(req.url ?? '')) {
+        res.statusCode = 200
+        res.end()
+        return
+      }
+      res.writeHead(200, { 'content-length': '1048576' })
+      res.write('x') // one byte, then nothing: a crawling package download
+      held.push(req.socket)
+    })
     const hung = createNetServer((socket) => void held.push(socket))
     const refused = createNetServer()
-    const listen = (s: Server) =>
-      new Promise<number>((resolve) => s.listen(0, '127.0.0.1', () => resolve((s.address() as AddressInfo).port)))
-    const [livePort, hungPort, refusedPort] = await Promise.all([listen(live), listen(hung), listen(refused)])
+    const listen = (srv: Server) =>
+      new Promise<number>((resolve) => srv.listen(0, '127.0.0.1', () => resolve((srv.address() as AddressInfo).port)))
+    const [livePort, slowPort, hungPort, refusedPort] = await Promise.all([listen(live), listen(slow), listen(hung), listen(refused)])
     await new Promise((resolve) => refused.close(resolve))
+    // The slow route is reached by NAME (localhost) — the way the real one is
+    // named — while every other mirror is reached by address.
+    const SLOW = `http://localhost:${slowPort}/ubuntu/`
     const at = (port: number, path: string) => `http://127.0.0.1:${port}/${path}/`
-
-    const fixture = (mirrors: string, uris = `mirror+file:${list}`) => {
+    const ARCHIVE = at(livePort, 'ubuntu')
+    const run = async (env: Record<string, string> = {}) => {
+      const started = Date.now()
+      try {
+        const out = await execFileAsync('bash', [SCRIPT], {
+          env: {
+            ...process.env,
+            PATH: `${bin}:${process.env.PATH}`,
+            APT_PREP_ROOT: root,
+            APT_BYPASS_HOSTS: 'localhost',
+            APT_FALLBACK_URI: ARCHIVE,
+            APT_PROBE_SECONDS: String(BOUND),
+            ...env,
+          },
+        })
+        return { code: 0, stdout: out.stdout, ms: Date.now() - started }
+      } catch (e) {
+        const err = e as { code: number; stdout: string }
+        return { code: err.code, stdout: err.stdout, ms: Date.now() - started }
+      }
+    }
+    const THIRD_PARTY = 'deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main\n'
+    const layout = (files: Record<string, string>) => {
       rmSync(etc, { recursive: true, force: true })
       mkdirSync(join(etc, 'apt', 'sources.list.d'), { recursive: true })
       writeFileSync(join(etc, 'os-release'), 'NAME="Ubuntu"\nVERSION_CODENAME=noble\n')
-      writeFileSync(list, mirrors)
-      // Two stanzas naming one list, as the image's ubuntu.sources does.
-      for (const suites of ['noble noble-updates', 'noble-security'])
-        writeFileSync(join(etc, 'apt', 'sources.list.d', `${suites.split(' ')[0]}.sources`), `Types: deb\nURIs: ${uris}\nSuites: ${suites}\n`)
+      writeFileSync(join(etc, 'apt', 'sources.list.d', 'microsoft-prod.list'), THIRD_PARTY)
+      for (const [path, text] of Object.entries(files)) writeFileSync(join(etc, 'apt', path), text)
     }
+    const read = (path: string) => readFileSync(join(etc, 'apt', path), 'utf8')
+    const deb822 = (uris: string) =>
+      `Types: deb\nURIs: ${uris}\nSuites: noble noble-updates noble-backports\nComponents: main universe restricted multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n`
 
     try {
-      fixture(
-        [
-          "# the image's own comment",
-          `${at(hungPort, 'ubuntu')}\tpriority:1`,
-          `${at(livePort, 'ubuntu')}\tpriority:2`,
-          at(refusedPort, 'ubuntu'),
-          at(livePort, 'missing'),
-          at(livePort, 'mirror'),
-          '',
-        ].join('\n'),
-      )
-      const started = Date.now()
-      const { stdout } = await bash(code)
-      const elapsed = Date.now() - started
-      expect(readFileSync(list, 'utf8')).toBe(
-        ["# the image's own comment", `${at(livePort, 'ubuntu')}\tpriority:2`, at(livePort, 'mirror'), ''].join('\n'),
-      )
-      for (const dead of [at(hungPort, 'ubuntu'), at(refusedPort, 'ubuntu'), at(livePort, 'missing')])
-        expect(stdout).toContain(`::warning::apt mirror ${dead} did not answer within ${bound} s; left out of ${list}`)
-      // The hung mirror really hung (the fixture is the blackhole, not a refusal) and cost
-      // one bounded wait, never two: the ceiling sits just under a second wait, which
-      // leaves bash and the four other fetches seconds of room on a loaded runner.
-      expect(elapsed).toBeGreaterThanOrEqual((bound - 0.5) * 1000)
-      expect(elapsed).toBeLessThan((2 * bound - 0.5) * 1000)
+      // The fixture really is the incident's shape: a quick index, a package that never finishes.
+      const curl = (url: string) => execFileAsync('curl', ['-fsS', '--max-time', '1', '-o', '/dev/null', url]).then(() => true, () => false)
+      expect(await curl(`${SLOW}dists/noble/InRelease`)).toBe(true)
+      expect(await curl(`${SLOW}pool/main/libfoo.deb`)).toBe(false)
 
-      // When no mirror answers, the list stays as it was: the step bound, not an empty list, is the guarantee.
-      const deadOnly = `${at(refusedPort, 'ubuntu')}\tpriority:1\n`
-      fixture(deadOnly)
-      expect((await bash(code)).stdout).toContain(`::warning::no mirror in ${list} answered; it is left as it was`)
-      expect(readFileSync(list, 'utf8')).toBe(deadOnly)
+      // --- MIRROR LIST: the slow route bypassed by name, dead ones left out ---
+      const MIRRORS = [
+        "# the image's own comment",
+        `${SLOW}\tpriority:1`,
+        `${at(hungPort, 'ubuntu')}\tpriority:2`,
+        `${at(livePort, 'ubuntu')}\tpriority:3`,
+        at(refusedPort, 'ubuntu'),
+        at(livePort, 'missing'),
+        at(livePort, 'mirror'),
+        '',
+      ].join('\n')
+      layout({ 'apt-mirrors.txt': MIRRORS, 'sources.list.d/ubuntu.sources': deb822('mirror+file:/etc/apt/apt-mirrors.txt') })
+      const routed = await run()
+      expect(routed.code).toBe(0)
+      expect(read('apt-mirrors.txt')).toBe(["# the image's own comment", `${at(livePort, 'ubuntu')}\tpriority:3`, at(livePort, 'mirror'), ''].join('\n'))
+      expect(routed.stdout).toContain(`::notice::apt mirror ${SLOW} bypassed (known to stall package downloads)`)
+      for (const dead of [at(hungPort, 'ubuntu'), at(refusedPort, 'ubuntu'), at(livePort, 'missing')]) {
+        expect(routed.stdout).toContain(`::warning::apt mirror ${dead} did not answer within ${BOUND} s`)
+      }
+      // Suites, components, the signing key and the third-party source: untouched.
+      expect(read('sources.list.d/ubuntu.sources')).toBe(deb822('mirror+file:/etc/apt/apt-mirrors.txt'))
+      expect(read('sources.list.d/microsoft-prod.list')).toBe(THIRD_PARTY)
+      // ONE bounded wait (the hung mirror), never one per mirror and never the install's ten minutes.
+      expect(routed.ms).toBeGreaterThanOrEqual((BOUND - 0.5) * 1000)
+      expect(routed.ms).toBeLessThan((2 * BOUND - 0.5) * 1000)
 
-      // An image without a mirror list is reported, never failed.
-      fixture(`${at(livePort, 'ubuntu')}\n`, 'http://archive.ubuntu.com/ubuntu/')
-      expect((await bash(code)).stdout).toContain('::warning::apt sources list no mirror+file failover on this image')
+      // A liveness probe alone KEEPS the slow route — its index answers. That
+      // is why it is bypassed by name rather than probed.
+      layout({ 'apt-mirrors.txt': `${SLOW}\tpriority:1\n`, 'sources.list.d/ubuntu.sources': deb822('mirror+file:/etc/apt/apt-mirrors.txt') })
+      expect((await run({ APT_BYPASS_HOSTS: '' })).code).toBe(0)
+      expect(read('apt-mirrors.txt')).toBe(`${SLOW}\tpriority:1\n`)
+      // With the bypass, a list holding only that route falls back to the archive.
+      const fellBack = await run()
+      expect([fellBack.code, read('apt-mirrors.txt')]).toEqual([0, `${ARCHIVE}\n`])
+      expect(fellBack.stdout).toContain(`the Ubuntu archive ${ARCHIVE} is used instead`)
+
+      // --- DIRECT SOURCES: only the scheme and host change ---------------------
+      layout({
+        'sources.list': `deb http://localhost:${slowPort}/ubuntu noble main restricted\ndeb-src http://localhost:${slowPort}/ubuntu noble main\n${THIRD_PARTY}`,
+        'sources.list.d/ubuntu.sources': deb822(SLOW),
+      })
+      const direct = await run()
+      expect(direct.code).toBe(0)
+      const origin = `http://127.0.0.1:${livePort}`
+      expect(read('sources.list')).toBe(`deb ${origin}/ubuntu noble main restricted\ndeb-src ${origin}/ubuntu noble main\n${THIRD_PARTY}`)
+      expect(read('sources.list.d/ubuntu.sources')).toBe(deb822(`${origin}/ubuntu/`))
+      expect(read('sources.list.d/microsoft-prod.list')).toBe(THIRD_PARTY)
+
+      // --- NOTHING TO BYPASS: a healthy image is left exactly as it is ----------
+      const healthy = [`${at(livePort, 'ubuntu')}\tpriority:1`, ''].join('\n')
+      layout({ 'apt-mirrors.txt': healthy, 'sources.list.d/ubuntu.sources': deb822('mirror+file:/etc/apt/apt-mirrors.txt') })
+      expect((await run()).code).toBe(0)
+      expect(read('apt-mirrors.txt')).toBe(healthy)
+      layout({ 'sources.list.d/ubuntu.sources': deb822(ARCHIVE) })
+      expect((await run()).code).toBe(0)
+      expect(read('sources.list.d/ubuntu.sources')).toBe(deb822(ARCHIVE))
+
+      // --- A MISSING LIST is reported, never failed ----------------------------
+      layout({ 'sources.list.d/ubuntu.sources': deb822('mirror+file:/etc/apt/apt-mirrors.txt') })
+      const missing = await run()
+      expect(missing.code).toBe(0)
+      expect(missing.stdout).toContain('which does not exist; nothing to route')
+
+      // --- ALL UNAVAILABLE: a clear failure within the bound, not a hung install --
+      layout({ 'apt-mirrors.txt': `${SLOW}\tpriority:1\n${at(refusedPort, 'ubuntu')}\n${at(livePort, 'missing')}\n`, 'sources.list.d/ubuntu.sources': deb822('mirror+file:/etc/apt/apt-mirrors.txt') })
+      const none = await run({ APT_FALLBACK_URI: at(refusedPort, 'ubuntu') })
+      expect(none.code).toBe(1)
+      expect(none.stdout).toContain('::error::no apt mirror in')
+      expect(none.ms).toBeLessThan(2 * BOUND * 1000)
+      layout({ 'sources.list.d/ubuntu.sources': deb822(SLOW) })
+      const deadArchive = await run({ APT_FALLBACK_URI: at(refusedPort, 'ubuntu') })
+      expect([deadArchive.code, read('sources.list.d/ubuntu.sources')]).toEqual([1, deb822(SLOW)])
+      expect(deadArchive.stdout).toContain('::error::')
     } finally {
       for (const socket of held) socket.destroy()
-      await Promise.all([live, hung].map((s) => new Promise((resolve) => s.close(resolve))))
+      await Promise.all([live, slow, hung].map((srv) => new Promise((resolve) => srv.close(resolve))))
       rmSync(root, { recursive: true, force: true })
     }
   })

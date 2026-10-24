@@ -1,6 +1,7 @@
 import type {
   BlockMode,
   BlockResult,
+  EvidenceScope,
   CatalogEntry,
   FocusArea,
   GuitarFields,
@@ -142,6 +143,8 @@ export interface CreateBlockInput {
   focus: FocusArea;
   constraint?: string;
   result?: BlockResult;
+  /** What the result describes; omitted only by callers that predate v17. */
+  scope?: EvidenceScope;
   observation?: string;
   nextAction?: string;
   createdReview?: boolean;
@@ -161,6 +164,7 @@ export function createBlock(input: CreateBlockInput, now: Date = new Date()): Pr
     focus: input.focus,
     constraint: input.constraint?.trim() || undefined,
     result: input.result ?? 'not_logged',
+    ...(input.scope ? { scope: input.scope } : {}),
     observation: input.observation?.trim() || undefined,
     nextAction: input.nextAction?.trim() || undefined,
     createdReview: input.createdReview ?? false,

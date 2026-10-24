@@ -1,53 +1,60 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore } from '../store/useStore';
+import { useStore, type NoteOwner, type NoteSaveOutcome } from '../store/useStore';
 import { storageSettled } from '../store/idb';
+import { holdNoteDraft, noteEditBegins } from '../store/notesDrafts';
 
 // ---------------------------------------------------------------------------
-// Working notes — the item's ONE notebook, and the one editor for it.
+// Working notes — the item's ONE notebook, and the one editor for it (a
+// lesson's class notes use the very same editor, `DurableNotes`).
 //
 // The same component on Item Detail, on the practice screen and inside a bound
 // routine segment, so there is never a second copy of this text or a second
 // way to edit it. What it must get right:
 //
-//   • It belongs to the ITEM, not to the block. Finishing, discarding,
+//   • It belongs to the RECORD, not to the block. Finishing, discarding,
 //     navigating away or reloading never disturbs it, and editing it never
 //     touches the clock, the elapsed figure, a block, a review or SM-2 state.
-//   • It never saves A's text onto B. A timer tick, a store update from
-//     elsewhere, or a routine crossing a segment boundary re-renders this
-//     component constantly; the draft therefore carries the item it was typed
-//     for, and is dropped rather than written when that changes.
-//   • Saving is EXPLICIT (Done), never blur-only — blur-only saving makes a
-//     stale copy authoritative the moment anything else steals focus — and it
-//     never claims success before IndexedDB has acknowledged the write. A
-//     failed write keeps the text on screen with retry and copy: losing what
-//     someone just wrote is the one outcome this must never produce.
-//   • AN IN-FLIGHT WRITE NEVER OWNS THE EDITOR. The textarea stays live while
-//     IndexedDB is acknowledging, so the words typed during that window are
-//     NEWER than the ones being written. A settling write may therefore only
-//     speak for the text it actually carried: it clears the draft and says
-//     "Saved." when the draft is still exactly that text, and otherwise
-//     re-issues the write for what is on screen now. Clearing the draft on
-//     whatever settles — which is what this did — drops those words and puts
-//     "Saved." over the older ones. Only the LATEST save may act at all
-//     (`saveSeq`, bumped by a retry AND by switching item), so neither a slow
-//     first write nor one issued for the previous notebook can overrule what
-//     replaced it, and the draft is read through a REF rather than a closure
-//     or an effect-mirrored copy: `storageSettled()` resolves in a microtask
-//     that can land between a keystroke's `setDraft` and the next effect.
+//   • NOTHING DEPENDS ON DONE. Every keystroke is held at once on this device
+//     (`notesDrafts.ts`, acknowledged synchronously); after a short quiet
+//     interval the text is written to the record; leaving — another route, a
+//     collapse, Finish, a routine boundary, a different item — writes it
+//     straight away. Done only flushes and closes. Never on blur alone.
+//   • It never saves A's text onto B. The draft carries the record it was
+//     typed for, and every write — a flush on the way out included — goes to
+//     THAT record through the store's `saveNotes`, which also refuses to
+//     recreate a deleted record and keeps both texts when the stored notes
+//     changed underneath (a sync, an import, another editor).
+//   • "Saved." waits for IndexedDB, never a timer or the store; a failed write
+//     keeps the text on screen with Try again (which always writes) and Copy.
+//   • AN IN-FLIGHT WRITE NEVER OWNS THE EDITOR. The textarea stays live while a
+//     write settles; only the LATEST write may speak (`saveSeq`), and the
+//     draft is read through a REF, never a closure or a ref an effect mirrors.
 // ---------------------------------------------------------------------------
 
 const PLACEHOLDER =
   'What this piece is, what to watch for, what your teacher said — anything you want in front of you next time.';
 
+/** The quiet interval after the last keystroke before the text is written. */
+export const AUTOSAVE_QUIET_MS = 800;
+
 type SaveState = { phase: 'idle' | 'saving' | 'saved' } | { phase: 'failed'; message: string };
 
-/** The text being edited, together with the RECORD it was typed for. */
-type Draft = { forItem: string; text: string };
+/** The text being edited, together with the RECORD it was typed for and the stored text it was typed over. */
+type Draft = { owner: NoteOwner; text: string; base: string };
+
+const keyOf = (o: NoteOwner) => `${o.kind}:${o.id}`;
+
+/** What the store holds for this record right now. */
+function storedNotes(owner: NoteOwner): string {
+  const db = useStore.getState().db;
+  const rec = owner.kind === 'item' ? db.items.find((i) => i.id === owner.id) : db.lessons.find((l) => l.id === owner.id);
+  return rec?.notes ?? '';
+}
 
 /**
  * The item's notebook. A thin wrapper over {@link DurableNotes} — the
- * durability model below is identical for an item and for a lesson, and a
- * second copy of it is exactly how one of the two ends up subtly different.
+ * durability model is identical for an item and for a lesson, and a second
+ * copy of it is exactly how one of the two ends up subtly different.
  */
 export default function ItemNotes({
   itemId,
@@ -60,13 +67,11 @@ export default function ItemNotes({
   label?: string;
 }) {
   const item = useStore((s) => s.db.items.find((i) => i.id === itemId));
-  const updateItem = useStore((s) => s.updateItem);
   if (!item) return null;
   return (
     <DurableNotes
-      ownerId={itemId}
+      owner={{ kind: 'item', id: itemId }}
       saved={item.notes ?? ''}
-      onSave={(text) => updateItem(itemId, { notes: text })}
       label={label}
       placeholder={PLACEHOLDER}
       startExpanded={startExpanded}
@@ -75,58 +80,40 @@ export default function ItemNotes({
 }
 
 /**
- * The durable free-text editor: explicit save, tagged draft, acknowledged
- * persistence, retry, and an in-flight write that never owns the textarea.
- *
- * `onSave` receives the text ALREADY normalised to `undefined` when empty, and
- * must write it to the store synchronously — `storageSettled()` is captured
- * immediately afterwards, so an asynchronous write would hand this the wrong
- * promise.
+ * The durable free-text editor: autosave, a device-local draft, a draft tagged
+ * with its record, acknowledged persistence, retry, and an in-flight write
+ * that never owns the textarea.
  */
 export function DurableNotes({
-  ownerId,
+  owner,
   saved,
-  onSave,
   label,
   placeholder,
   startExpanded = true,
 }: {
-  ownerId: string;
+  owner: NoteOwner;
   saved: string;
-  onSave: (text: string | undefined) => void;
   label: string;
   placeholder: string;
   startExpanded?: boolean;
 }) {
-
+  const saveNotes = useStore((s) => s.saveNotes);
+  const persistAgain = useStore((s) => s.persistAgain);
+  const ownerKey = keyOf(owner);
   const [expanded, setExpanded] = useState(startExpanded);
-  /**
-   * The draft, TAGGED with the item it was typed for. Keeping the tag in the
-   * same state value as the text is what makes a stale editor impossible to
-   * commit: there is no window in which one has been re-pointed at a new item
-   * while the other still names the old one.
-   */
   const [draft, setDraft] = useState<Draft | null>(null);
   const [state, setState] = useState<SaveState>({ phase: 'idle' });
   const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const quietTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** Close the editor once the write Done asked for has landed. */
+  const closing = useRef(false);
   /**
-   * The same draft, readable from a settling write's callback. A microtask can
-   * land between a keystroke's `setDraft` and React's next render, so neither
-   * the closure the write was issued in nor a ref mirrored by an effect is
-   * sound here: both can be a keystroke behind the textarea. Every write of
-   * `draft` goes through `applyDraft`, so the two cannot drift apart — and the
-   * unmount cleanup deliberately does NOT clear it, so leaving the screen
-   * ENTIRELY (a different route) still saves words typed while the write was
-   * settling. Switching ITEM is the opposite case and is disowned instead: the
-   * effect below bumps `saveSeq`, because those words were typed for a
-   * notebook that is no longer the one on screen.
+   * The same draft, readable from a settling write's callback and from the
+   * flush on the way out. Every write of `draft` goes through `applyDraft`, so
+   * the two cannot drift apart.
    */
   const draftRef = useRef<Draft | null>(null);
-  /**
-   * Which save may still speak. Only the LATEST one acts on its outcome: a slow
-   * first write settling after a retry replaced it must not clear a draft, show
-   * "Saved." or re-issue anything on behalf of text that has been superseded.
-   */
+  /** Which write may still speak: only the latest acts on its outcome. */
   const saveSeq = useRef(0);
 
   function applyDraft(next: Draft | null) {
@@ -134,97 +121,138 @@ export function DurableNotes({
     setDraft(next);
   }
 
-  // Switching record — an Item Detail route change, a routine crossing into
-  // the next bound segment, tapping a different class — abandons the draft
-  // rather than carrying it across. Any write still in flight for the previous
-  // record is disowned with it, so it can never land on this one.
-  useEffect(() => {
-    saveSeq.current += 1;
-    applyDraft(null);
-    setState({ phase: 'idle' });
-  }, [ownerId]);
-
-  useEffect(
-    () => () => {
-      if (savedTimer.current) clearTimeout(savedTimer.current);
-    },
-    [],
-  );
-
-  const editing = draft !== null && draft.forItem === ownerId;
-  const shown = editing ? draft.text : saved;
-
-  function beginEdit() {
-    setState({ phase: 'idle' });
-    applyDraft({ forItem: ownerId, text: saved });
-  }
-
   /**
-   * Write ONE known text, and let only that text's own outcome speak for it.
-   *
-   * `text` is captured here rather than read back in the callback on purpose:
-   * it is what this write actually carries, and the comparison against the
-   * live draft when it settles is the whole difference between "the editor is
-   * saved" and "an older write finished while you were still typing".
+   * Write ONE known text to the record it was typed for, and let only that
+   * write's own outcome speak for it. Called by the quiet timer, by Done, by
+   * a collapse and — through `flushRef` — on the way out, where `speak` is
+   * false: nobody is left to tell, but the write and the clean-up still run.
    */
-  function write(text: string, forItem: string) {
+  function write(d: Draft, speak = true) {
+    if (quietTimer.current) clearTimeout(quietTimer.current);
+    quietTimer.current = null;
     const seq = (saveSeq.current += 1);
-    // A "Saved." from the PREVIOUS write is still counting down to idle; left
-    // running it would clear this write's own state four seconds in.
-    if (savedTimer.current) clearTimeout(savedTimer.current);
-    // Emptying the notebook is deliberate and must persist — `undefined` IS a
-    // saved value here, never a reason to keep what was there.
-    setState({ phase: 'saving' });
-    if (forItem !== ownerId) return;
-    onSave(text.trim() || undefined);
-    // The store's persist middleware has queued the IndexedDB write by now.
-    // "Saved." waits for THAT, not for a timer.
+    if (speak) {
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+      setState({ phase: 'saving' });
+    }
+    const outcome: NoteSaveOutcome = saveNotes(d.owner, d.text, d.base);
+    if (outcome === 'gone') {
+      if (speak && saveSeq.current === seq) setState({ phase: 'failed', message: 'this record no longer exists, so nothing was written.' });
+      return;
+    }
+    // Unchanged text writes nothing of its own — so a retry after a failed
+    // write still WRITES, rather than reporting the old failure again.
+    if (outcome === 'unchanged') persistAgain();
+    // From here the STORE holds this text, whatever IndexedDB says, so what is
+    // typed next is based on it — and when both texts were kept, the editor
+    // shows what the record now holds.
+    const after = outcome === 'merged' ? storedNotes(d.owner) : d.text;
+    const current = draftRef.current;
+    if (current && keyOf(current.owner) === keyOf(d.owner)) {
+      applyDraft({ ...current, base: after, ...(outcome === 'merged' ? { text: after } : {}) });
+    }
     void storageSettled().then(
       () => {
-        // ONE ownership test, not two: the item-change effect above bumps
-        // `saveSeq`, so a write issued for a previous item — or superseded by
-        // a retry — fails this and says nothing at all. A second `forItem`
-        // comparison here would be untestable, because there is no state in
-        // which it and this disagree.
-        if (saveSeq.current !== seq) return;
+        if (!speak || saveSeq.current !== seq) return;
         const now = draftRef.current;
-        // Newer words arrived while IndexedDB was acknowledging. They are not
-        // saved, so they are neither cleared nor called saved — they are
-        // written, which is what pressing Done asked for in the first place.
-        if (now && now.text !== text) {
-          write(now.text, forItem);
+        if (!now || keyOf(now.owner) !== keyOf(d.owner)) return;
+        if (now.text !== after) {
+          // Newer words arrived meanwhile: they are not saved yet, so they are
+          // neither cleared nor called saved — the next write carries them.
+          write(now);
           return;
         }
-        applyDraft(null);
+        if (closing.current) {
+          closing.current = false;
+          applyDraft(null);
+        }
         setState({ phase: 'saved' });
         savedTimer.current = setTimeout(() => setState({ phase: 'idle' }), 4000);
       },
       (e: unknown) => {
-        if (saveSeq.current !== seq) return;
+        if (!speak || saveSeq.current !== seq) return;
         // The text stays exactly where it is, still editable, with a way out.
+        // A Done already pressed still stands: a retry that lands closes.
         setState({ phase: 'failed', message: e instanceof Error ? e.message : 'the device refused the write.' });
       },
     );
   }
 
-  function save() {
-    // Re-read the draft at the instant of saving and check its tag again: the
-    // click that reaches here is the only thing that writes, and it must be
-    // writing THIS item's own words. The REF, not the render's copy: a
-    // keystroke that has not been painted yet is still the newest text.
+  /** Write whatever is still unwritten, now. */
+  function flush(speak = true) {
+    const d = draftRef.current;
+    if (!d) return;
+    if (d.text === d.base && state.phase !== 'failed') {
+      if (quietTimer.current) clearTimeout(quietTimer.current);
+      quietTimer.current = null;
+      return;
+    }
+    write(d, speak);
+  }
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
+
+  // Leaving THIS record — a route change, the routine crossing into the next
+  // bound segment, another class tapped, the editor unmounting — writes its
+  // draft to the record it was typed for, then starts the next one clean.
+  useEffect(() => {
+    saveSeq.current += 1;
+    applyDraft(null);
+    setState({ phase: 'idle' });
+    return () => flushRef.current(false);
+  }, [ownerKey]);
+
+  useEffect(
+    () => () => {
+      if (savedTimer.current) clearTimeout(savedTimer.current);
+      if (quietTimer.current) clearTimeout(quietTimer.current);
+    },
+    [],
+  );
+
+  const editing = draft !== null && keyOf(draft.owner) === ownerKey;
+  const shown = editing ? draft.text : saved;
+
+  function beginEdit() {
+    closing.current = false;
+    // The device copy's base is the store's to keep (`notesDrafts.ts`), the
+    // same for every editor lifetime; a fresh copy starts from what is on disk.
+    noteEditBegins(owner, saved);
+    setState({ phase: 'idle' });
+    applyDraft({ owner, text: saved, base: saved });
+  }
+
+  function type(text: string) {
     const current = draftRef.current;
-    if (!current || current.forItem !== ownerId) return;
-    // The store already holds the new text after a FAILED attempt (the write
-    // that failed was to storage, not to memory), so this "nothing changed"
-    // short-circuit would make Try again a silent no-op: the person would see
-    // the failure clear with their words still only in RAM. A retry therefore
-    // always re-issues the write.
-    if (state.phase !== 'failed' && (saved || undefined) === (current.text.trim() || undefined)) {
+    if (!current || keyOf(current.owner) !== ownerKey) return;
+    const next = { ...current, text };
+    applyDraft(next);
+    holdNoteDraft(next.owner, next.text);
+    if (quietTimer.current) clearTimeout(quietTimer.current);
+    quietTimer.current = setTimeout(() => {
+      const d = draftRef.current;
+      if (d && keyOf(d.owner) === ownerKey) write(d);
+    }, AUTOSAVE_QUIET_MS);
+  }
+
+  function done() {
+    const current = draftRef.current;
+    if (!current || keyOf(current.owner) !== ownerKey) return;
+    if (current.text === current.base && state.phase !== 'failed') {
+      if (quietTimer.current) clearTimeout(quietTimer.current);
       applyDraft(null);
       setState({ phase: 'idle' });
       return;
     }
-    write(current.text, ownerId);
+    closing.current = true;
+    write(current);
+  }
+
+  function toggle() {
+    // Collapsing is a Done: the words go to the record, and the editor closes
+    // once they have landed (a failure keeps it open, with its way out).
+    if (expanded && draftRef.current) done();
+    setExpanded((o) => !o);
   }
 
   return (
@@ -235,7 +263,7 @@ export function DurableNotes({
           className="row"
           aria-expanded={expanded}
           aria-label={expanded ? `Hide ${label}` : `Show ${label}`}
-          onClick={() => setExpanded((o) => !o)}
+          onClick={toggle}
           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, gap: 6 }}
         >
           <span className="section-label" style={{ marginBottom: 0 }}>
@@ -245,14 +273,8 @@ export function DurableNotes({
         </button>
         {expanded &&
           (editing ? (
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
-              aria-label={`Done editing ${label}`}
-              onClick={save}
-              disabled={state.phase === 'saving'}
-            >
-              {state.phase === 'saving' ? 'Saving…' : 'Done'}
+            <button type="button" className="btn btn-sm btn-primary" aria-label={`Done editing ${label}`} onClick={done}>
+              Done
             </button>
           ) : (
             <button type="button" className="btn btn-sm" aria-label={`Edit ${label}`} onClick={beginEdit}>
@@ -270,7 +292,7 @@ export function DurableNotes({
               style={{ minHeight: 120 }}
               placeholder={placeholder}
               value={draft.text}
-              onChange={(e) => applyDraft({ forItem: ownerId, text: e.target.value })}
+              onChange={(e) => type(e.target.value)}
             />
           ) : shown ? (
             <div className="small notes-read" dir="auto" style={{ whiteSpace: 'pre-wrap', textAlign: 'start' }}>
@@ -283,6 +305,11 @@ export function DurableNotes({
           )}
 
           <div className="tiny" aria-live="polite" style={{ textAlign: 'start' }}>
+            {state.phase === 'saving' && (
+              <span className="faint">
+                <span dir="ltr">Saving…</span>
+              </span>
+            )}
             {state.phase === 'saved' && (
               <span className="faint">
                 <span dir="ltr">Saved.</span>
@@ -291,7 +318,15 @@ export function DurableNotes({
             {state.phase === 'failed' && (
               <span style={{ color: 'var(--tone-alert)' }}>
                 <span dir="ltr">Not saved — {state.message} Your text is still here.</span>{' '}
-                <button type="button" className="link tiny" style={LINK_BTN} onClick={save}>
+                <button
+                  type="button"
+                  className="link tiny"
+                  style={LINK_BTN}
+                  onClick={() => {
+                    const d = draftRef.current;
+                    if (d) write(d);
+                  }}
+                >
                   Try again
                 </button>{' '}
                 <button

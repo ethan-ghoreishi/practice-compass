@@ -88,9 +88,13 @@ export default function RoutineEdit() {
     });
   }
 
+  // A segment bound to an item is kept even with no label of its own — the
+  // runner shows the item's title. Dropping it here silently removed the
+  // second item from a routine whose owner bound it without typing a label,
+  // so it was never practised or logged. Only a row with neither goes.
   const cleanSegments = () =>
     segments
-      .filter((s) => s.label.trim())
+      .filter((s) => s.label.trim() || s.itemId)
       .map((s) => ({ ...s, label: s.label.trim(), minutes: Math.max(1, Math.round(s.minutes) || 1) }));
 
   // A brand-new routine requires an instrument; editing an already-unscoped

@@ -282,7 +282,7 @@ describe('the item notebook, while you are playing', () => {
         await blockStorage(page);
         await doneButton(page).click();
         // Genuinely in flight: the app is waiting on storage, not on a timer.
-        await expect.poll(() => doneButton(page).isDisabled(), { timeout: 10_000 }).toBe(true);
+        await expect.poll(() => page.getByText('Saving…').isVisible(), { timeout: 10_000 }).toBe(true);
         expect(await page.getByText('Saved.').count(), where).toBe(0);
         await notesBox(page).fill(NEWER);
         await releaseStorage(page);
@@ -311,7 +311,7 @@ describe('the item notebook, while you are playing', () => {
         const farsiNotesBefore = await savedNotes(app, FARSI_ITEM);
         await blockStorage(page);
         await doneButton(page).click();
-        await expect.poll(() => doneButton(page).isDisabled(), { timeout: 10_000 }).toBe(true);
+        await expect.poll(() => page.getByText('Saving…').isVisible(), { timeout: 10_000 }).toBe(true);
         await goTo(app, `/items/${FARSI_ITEM}`);
         await releaseStorage(page);
         // Wait for the write itself to land, so the claim below is about a
@@ -338,7 +338,7 @@ describe('the item notebook, while you are playing', () => {
         await notesBox(page).fill('typed before walking away');
         await blockStorage(page);
         await doneButton(page).click();
-        await expect.poll(() => doneButton(page).isDisabled(), { timeout: 10_000 }).toBe(true);
+        await expect.poll(() => page.getByText('Saving…').isVisible(), { timeout: 10_000 }).toBe(true);
         await notesBox(page).fill('typed before walking away — and one more line after');
         await goTo(app, '/repertoire');
         await releaseStorage(page);
@@ -402,9 +402,13 @@ describe('a notebook belongs to ITS item, never to whatever is on screen', () =>
       // skip: exactly the race an open editor has to survive.
       await page.clock.runFor(70_000);
       await expect.poll(() => page.locator('main').innerText()).toContain('Segment B');
-      // The editor re-pointed at B and ABANDONED A's draft rather than
-      // carrying it across. Neither item has been written to.
-      expect(await savedNotes(app, FARSI_ITEM)).toBe(FARSI_NOTES);
+      // The editor re-pointed at B, and A's draft went to A — never carried
+      // across to B, and never lost for want of a Done.
+      await persistedUntil(
+        app,
+        (s) => (s.state as { db: { items: { id: string; notes?: string }[] } }).db.items.find((i) => i.id === FARSI_ITEM)?.notes,
+        (n) => n === 'typed against segment A',
+      );
       expect(await savedNotes(app, 'i-auto-due')).toBeUndefined();
       // And the run itself is unharmed: still one routine, no extra blocks.
       const state = (await readPersistedState(app)).state as { activeRoutine: { routineId: string } | null };
@@ -415,7 +419,7 @@ describe('a notebook belongs to ITS item, never to whatever is on screen', () =>
       await page.getByRole('button', { name: /^Show Working notes$/ }).click().catch(() => {});
       await editNotes(page, 'notes for the second item');
       expect(await savedNotes(app, 'i-auto-due')).toBe('notes for the second item');
-      expect(await savedNotes(app, FARSI_ITEM)).toBe(FARSI_NOTES);
+      expect(await savedNotes(app, FARSI_ITEM)).toBe('typed against segment A');
 
       // --- SKIP into the unbound segment: no fictitious notebook ----------
       await page.getByRole('button', { name: 'Skip' }).click();
@@ -440,11 +444,11 @@ describe('a notebook belongs to ITS item, never to whatever is on screen', () =>
       await page.getByRole('button', { name: 'Edit Working notes' }).click();
       await notesBox(page).fill('a draft typed on the Farsi item');
       await goTo(app, `/items/${ENGLISH_ITEM}`);
-      // B opens on B's own text — never A's draft.
+      // B opens on B's own text — never A's draft, which went to A.
       expect(await page.locator('main').innerText()).toContain('No notes yet.');
       await editNotes(page, 'notes that belong to the English item');
       expect(await savedNotes(app, ENGLISH_ITEM)).toBe('notes that belong to the English item');
-      expect(await savedNotes(app, FARSI_ITEM)).toBe(FARSI_NOTES);
+      expect(await savedNotes(app, FARSI_ITEM)).toBe('a draft typed on the Farsi item');
 
       // --- A STALE editor must not overwrite newer content ----------------
       // The panel is open with an old draft while the SAME item's data is
@@ -833,9 +837,10 @@ describe('clearer wording, identical decisions', () => {
     expect(isWarmupSuitable(item({ difficulty: 4, status: 'integrated', timesPractised: 5 }))).toBe(false);
     // Same versus Worse, at the same due date, still decide differently — and
     // `same` is still not a slip.
-    const due = item({ nextReviewDate: '2027-01-15', nextReviewSource: 'auto', srReps: 2, srEase: 2.5, srIntervalDays: 6 });
-    const sameOutcome = decideReview({ item: due, result: 'same', now: CLOCK });
-    const worseOutcome = decideReview({ item: due, result: 'worse', now: CLOCK });
+    // (Spacing decides a Keep-fresh item's whole-item check — the case these numbers pin.)
+    const due = item({ nextReviewDate: '2027-01-15', nextReviewSource: 'auto', srReps: 2, srEase: 2.5, srIntervalDays: 6, returnIntent: 'keep_fresh' });
+    const sameOutcome = decideReview({ item: due, result: 'same', now: CLOCK, scope: 'whole' });
+    const worseOutcome = decideReview({ item: due, result: 'worse', now: CLOCK, scope: 'whole' });
     expect(sameOutcome.sr?.srReps).toBe(2);
     expect(sameOutcome.rationale).not.toMatch(/slip/i);
     expect(worseOutcome.sr?.srReps).toBe(0);

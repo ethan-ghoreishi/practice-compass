@@ -1,0 +1,334 @@
+{
+  "app": "practice-compass",
+  "schemaVersion": 16,
+  "exportedAt": "2026-10-22T09:00:00.000Z",
+  "data": {
+    "schemaVersion": 16,
+    "instruments": [
+      {
+        "id": "inst-setar",
+        "name": "Setar",
+        "family": "Persian",
+        "active": true,
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z"
+      }
+    ],
+    "materials": [],
+    "items": [
+      {
+        "id": "i-unfinished",
+        "instrumentId": "inst-setar",
+        "title": "چهارمضراب شور",
+        "itemType": "full_piece",
+        "status": "integrated",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 31,
+        "totalMinutes": 412,
+        "saturationWarning": false,
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z",
+        "notes": "بند دوم هنوز لنگ می‌زند",
+        "srReps": 8,
+        "srEase": 2.5,
+        "srIntervalDays": 90,
+        "nextReviewDate": "2027-01-21",
+        "lastPractisedAt": "2026-10-18T19:00:00.000Z",
+        "lastResult": "stable_in_context",
+        "persian": {
+          "dastgahAvaz": "Shur",
+          "form": "chahar-mezrab"
+        }
+      },
+      {
+        "id": "i-auto",
+        "instrumentId": "inst-setar",
+        "title": "درآمد شور",
+        "itemType": "gusheh",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 12,
+        "totalMinutes": 120,
+        "saturationWarning": false,
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z",
+        "srReps": 3,
+        "srEase": 2.6,
+        "srIntervalDays": 15,
+        "nextReviewDate": "2026-11-02",
+        "nextReviewSource": "auto",
+        "srLastProgressDay": "2026-10-18",
+        "lastPractisedAt": "2026-10-18T19:00:00.000Z",
+        "lastResult": "performable"
+      },
+      {
+        "id": "i-user",
+        "instrumentId": "inst-setar",
+        "title": "Kereshme",
+        "itemType": "technique",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 4,
+        "totalMinutes": 30,
+        "saturationWarning": false,
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z",
+        "nextReviewDate": "2026-10-30",
+        "nextReviewSource": "user",
+        "lastPractisedAt": "2026-10-20T19:00:00.000Z",
+        "lastResult": "same"
+      },
+      {
+        "id": "i-maint",
+        "instrumentId": "inst-setar",
+        "title": "Masnavi",
+        "itemType": "gusheh",
+        "status": "maintenance",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 20,
+        "totalMinutes": 300,
+        "saturationWarning": false,
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z",
+        "srReps": 5,
+        "srEase": 2.5,
+        "srIntervalDays": 40,
+        "nextReviewDate": "2026-11-20",
+        "nextReviewSource": "auto",
+        "lastPractisedAt": "2026-10-10T19:00:00.000Z",
+        "lastResult": "stable_alone"
+      },
+      {
+        "id": "i-interval",
+        "instrumentId": "inst-setar",
+        "title": "Open strings",
+        "itemType": "exercise",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 40,
+        "totalMinutes": 200,
+        "saturationWarning": false,
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z",
+        "reviewMode": "interval",
+        "reviewIntervalDays": 3,
+        "nextReviewDate": "2026-10-24",
+        "nextReviewSource": "auto",
+        "lastPractisedAt": "2026-10-21T08:00:00.000Z",
+        "references": [
+          {
+            "id": "ref-1",
+            "title": "Class 12 video",
+            "path": "setar-classes/12.mp4",
+            "kind": "video",
+            "createdAt": "2026-09-01T10:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "id": "i-part",
+        "instrumentId": "inst-setar",
+        "title": "Bars 1–8",
+        "itemType": "section",
+        "status": "usable",
+        "importance": 3,
+        "difficulty": 3,
+        "timesPractised": 6,
+        "totalMinutes": 48,
+        "saturationWarning": false,
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z",
+        "parentItemId": "i-unfinished",
+        "lastPractisedAt": "2026-10-21T08:00:00.000Z",
+        "lastResult": "stable_alone"
+      }
+    ],
+    "blocks": [
+      {
+        "id": "b-1",
+        "practiceItemId": "i-unfinished",
+        "instrumentId": "inst-setar",
+        "startedAt": "2026-10-18T19:00:00.000Z",
+        "endedAt": "2026-10-18T19:00:00.000Z",
+        "durationMinutes": 25,
+        "mode": "integrate",
+        "focus": "rhythm",
+        "result": "stable_in_context",
+        "createdReview": true,
+        "createdAt": "2026-10-18T19:00:00.000Z",
+        "updatedAt": "2026-10-18T19:00:00.000Z",
+        "observation": "بند اول محکم شد",
+        "nextAction": "بند دوم آهسته"
+      },
+      {
+        "id": "b-2",
+        "practiceItemId": "i-auto",
+        "instrumentId": "inst-setar",
+        "startedAt": "2026-10-18T19:30:00.000Z",
+        "endedAt": "2026-10-18T19:30:00.000Z",
+        "durationMinutes": 10,
+        "mode": "integrate",
+        "focus": "rhythm",
+        "result": "performable",
+        "createdReview": true,
+        "createdAt": "2026-10-18T19:30:00.000Z",
+        "updatedAt": "2026-10-18T19:30:00.000Z"
+      },
+      {
+        "id": "b-3",
+        "practiceItemId": "i-user",
+        "instrumentId": "inst-setar",
+        "startedAt": "2026-10-20T19:00:00.000Z",
+        "endedAt": "2026-10-20T19:00:00.000Z",
+        "durationMinutes": 8,
+        "mode": "integrate",
+        "focus": "rhythm",
+        "result": "same",
+        "createdReview": true,
+        "createdAt": "2026-10-20T19:00:00.000Z",
+        "updatedAt": "2026-10-20T19:00:00.000Z",
+        "constraint": "metronome 60"
+      },
+      {
+        "id": "b-4",
+        "practiceItemId": "i-interval",
+        "instrumentId": "inst-setar",
+        "startedAt": "2026-10-21T08:00:00.000Z",
+        "endedAt": "2026-10-21T08:00:00.000Z",
+        "durationMinutes": 3,
+        "mode": "maintain",
+        "focus": "other",
+        "result": "not_logged",
+        "createdReview": false,
+        "createdAt": "2026-10-21T08:00:00.000Z",
+        "updatedAt": "2026-10-21T08:00:00.000Z"
+      },
+      {
+        "id": "b-5",
+        "practiceItemId": "i-part",
+        "instrumentId": "inst-setar",
+        "startedAt": "2026-10-21T08:03:00.000Z",
+        "endedAt": "2026-10-21T08:03:00.000Z",
+        "durationMinutes": 4,
+        "mode": "maintain",
+        "focus": "other",
+        "result": "not_logged",
+        "createdReview": false,
+        "createdAt": "2026-10-21T08:03:00.000Z",
+        "updatedAt": "2026-10-21T08:03:00.000Z"
+      }
+    ],
+    "reviews": [
+      {
+        "id": "r-1",
+        "practiceItemId": "i-unfinished",
+        "dueDate": "2027-01-21",
+        "reviewType": "integration",
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z"
+      },
+      {
+        "id": "r-2",
+        "practiceItemId": "i-auto",
+        "dueDate": "2026-11-02",
+        "reviewType": "retention",
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z"
+      },
+      {
+        "id": "r-3",
+        "practiceItemId": "i-auto",
+        "dueDate": "2026-10-18",
+        "reviewType": "retention",
+        "completedAt": "2026-10-18T19:40:00.000Z",
+        "result": "performable",
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-10-18T19:40:00.000Z"
+      }
+    ],
+    "pathways": [],
+    "pathwayStages": [],
+    "pathwayRoutines": [
+      {
+        "id": "rt-warm",
+        "instrumentId": "inst-setar",
+        "name": "Warm up",
+        "segments": [
+          {
+            "label": "Open strings",
+            "minutes": 3,
+            "itemId": "i-interval",
+            "essential": true
+          },
+          {
+            "label": "Bars 1–8 slowly",
+            "minutes": 4,
+            "itemId": "i-part"
+          },
+          {
+            "label": "Breathe",
+            "minutes": 1
+          }
+        ],
+        "order": 0,
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z"
+      }
+    ],
+    "attachments": [
+      {
+        "id": "att-1",
+        "ownerType": "item",
+        "ownerId": "i-unfinished",
+        "name": "score.png",
+        "mime": "image/png",
+        "size": 67,
+        "kind": "image",
+        "createdAt": "2026-09-01T10:00:00.000Z"
+      }
+    ],
+    "lessons": [
+      {
+        "id": "l-next",
+        "instrumentId": "inst-setar",
+        "date": "2026-10-27",
+        "number": 38,
+        "notes": "گوشه‌های شور",
+        "itemIds": [
+          "i-unfinished"
+        ],
+        "recordings": [],
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z"
+      }
+    ],
+    "lessonAgenda": [
+      {
+        "id": "prep-1",
+        "kind": "preparation",
+        "itemId": "i-unfinished",
+        "instrumentId": "inst-setar",
+        "lessonId": "l-next",
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z"
+      },
+      {
+        "id": "q-1",
+        "kind": "question",
+        "text": "Which fingering at bar 9?",
+        "itemId": "i-unfinished",
+        "instrumentId": "inst-setar",
+        "lessonId": "l-next",
+        "createdAt": "2026-09-01T10:00:00.000Z",
+        "updatedAt": "2026-09-01T10:00:00.000Z"
+      }
+    ],
+    "archiveSources": [],
+    "musicTerms": []
+  }
+}

@@ -1,0 +1,137 @@
+{
+  "items": {
+    "i-unfinished": {
+      "srReps": 8,
+      "srEase": 2.5,
+      "srIntervalDays": 90,
+      "nextReviewDate": "2027-01-21",
+      "timesPractised": 31,
+      "totalMinutes": 412,
+      "notes": "بند دوم هنوز لنگ می‌زند",
+      "lastResult": "stable_in_context"
+    },
+    "i-auto": {
+      "nextReviewDate": "2026-11-02",
+      "nextReviewSource": "auto",
+      "srLastProgressDay": "2026-10-18",
+      "srReps": 3
+    },
+    "i-user": {
+      "nextReviewDate": "2026-10-30",
+      "nextReviewSource": "user"
+    },
+    "i-maint": {
+      "status": "maintenance",
+      "srIntervalDays": 40
+    },
+    "i-interval": {
+      "reviewMode": "interval",
+      "reviewIntervalDays": 3,
+      "references": [
+        {
+          "id": "ref-1",
+          "title": "Class 12 video",
+          "path": "setar-classes/12.mp4",
+          "kind": "video",
+          "createdAt": "2026-09-01T10:00:00.000Z"
+        }
+      ]
+    },
+    "i-part": {
+      "parentItemId": "i-unfinished"
+    }
+  },
+  "blockIds": [
+    "b-1",
+    "b-2",
+    "b-3",
+    "b-4",
+    "b-5"
+  ],
+  "reviews": [
+    {
+      "id": "r-1",
+      "practiceItemId": "i-unfinished",
+      "dueDate": "2027-01-21",
+      "reviewType": "integration",
+      "createdAt": "2026-09-01T10:00:00.000Z",
+      "updatedAt": "2026-09-01T10:00:00.000Z"
+    },
+    {
+      "id": "r-2",
+      "practiceItemId": "i-auto",
+      "dueDate": "2026-11-02",
+      "reviewType": "retention",
+      "createdAt": "2026-09-01T10:00:00.000Z",
+      "updatedAt": "2026-09-01T10:00:00.000Z"
+    },
+    {
+      "id": "r-3",
+      "practiceItemId": "i-auto",
+      "dueDate": "2026-10-18",
+      "reviewType": "retention",
+      "completedAt": "2026-10-18T19:40:00.000Z",
+      "result": "performable",
+      "createdAt": "2026-09-01T10:00:00.000Z",
+      "updatedAt": "2026-10-18T19:40:00.000Z"
+    }
+  ],
+  "lessonAgenda": [
+    {
+      "id": "prep-1",
+      "kind": "preparation",
+      "itemId": "i-unfinished",
+      "instrumentId": "inst-setar",
+      "lessonId": "l-next",
+      "createdAt": "2026-09-01T10:00:00.000Z",
+      "updatedAt": "2026-09-01T10:00:00.000Z"
+    },
+    {
+      "id": "q-1",
+      "kind": "question",
+      "text": "Which fingering at bar 9?",
+      "itemId": "i-unfinished",
+      "instrumentId": "inst-setar",
+      "lessonId": "l-next",
+      "createdAt": "2026-09-01T10:00:00.000Z",
+      "updatedAt": "2026-09-01T10:00:00.000Z"
+    }
+  ],
+  "attachments": [
+    {
+      "id": "att-1",
+      "ownerType": "item",
+      "ownerId": "i-unfinished",
+      "name": "score.png",
+      "mime": "image/png",
+      "size": 67,
+      "kind": "image",
+      "createdAt": "2026-09-01T10:00:00.000Z"
+    }
+  ],
+  "routineSegments": [
+    {
+      "label": "Open strings",
+      "minutes": 3,
+      "itemId": "i-interval",
+      "essential": true
+    },
+    {
+      "label": "Bars 1–8 slowly",
+      "minutes": 4,
+      "itemId": "i-part"
+    },
+    {
+      "label": "Breathe",
+      "minutes": 1
+    }
+  ],
+  "derivedIntent": {
+    "i-unfinished": "working",
+    "i-auto": "working",
+    "i-user": "working",
+    "i-maint": "keep_fresh",
+    "i-interval": "working",
+    "i-part": "working"
+  }
+}

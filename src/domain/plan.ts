@@ -10,9 +10,12 @@ import type {
 } from './types';
 import { DEFAULT_SCHEDULING_PARAMS, clampSchedulingParams } from './scheduling';
 import {
+  candidatePool,
   EXPOSURE_WINDOW_DAYS,
   groupBlocksByItem,
+  hasDueReview,
   isProactiveCandidate,
+  sameWork,
   scoreItems,
   type ItemScore,
 } from './scoring';
@@ -78,6 +81,12 @@ export interface SessionPlan {
   segments: PlanSegment[];
   summary: string;
   generatedAt: string;
+  /**
+   * Minutes the owner removed from this preview. They stay UNUSED — never
+   * spread over the remaining work — until a deliberate Regenerate or a new
+   * budget rebuilds the allocation.
+   */
+  removedMinutes?: number;
 }
 
 export interface BuildPlanArgs {
@@ -135,6 +144,26 @@ export const DIVERSITY_RECENT_DAYS_PENALTY = 1;
 const DIVERSITY_RECENT_WINDOW_DAYS = 2;
 
 /**
+ * Theory / listening study gets a turn: a `reading_theory` item not practised
+ * for this many local days (or never) is waiting for one.
+ */
+export const THEORY_TURN_GAP_DAYS = 4;
+/**
+ * Points a waiting study item gains in the plan's MIDDLE picks only — never
+ * the anchor, the warm-up or the cool-down — so it surfaces once urgent work
+ * is seated and there is room, and never displaces it. A preference, not a
+ * slot: no candidate means no filler.
+ */
+export const THEORY_TURN_POINTS = 3;
+
+/** Is this study item waiting for a turn? Ordinary blocks are the only evidence. */
+export function theoryTurnDue(item: PracticeItem, blocks: PracticeBlock[], now: Date): boolean {
+  if (item.strand !== 'reading_theory') return false;
+  const since = addDaysBack(todayISODate(now), THEORY_TURN_GAP_DAYS - 1);
+  return !blocks.some((b) => b.practiceItemId === item.id && toISODate(new Date(b.startedAt)) >= since);
+}
+
+/**
  * Accept a whole-minute budget, or reject it. Non-finite, fractional-only
  * rubbish, zero and out-of-range values are refused AT THE BOUNDARY rather
  * than clamped into something the owner did not ask for or looped over.
@@ -147,29 +176,6 @@ export function validateBudgetMinutes(value: unknown): number | null {
 }
 
 /**
- * The candidate pool a build OR a swap picks from: practised-today material
- * steps aside — unless it is committed to a class, a commitment the day's
- * earlier session did not discharge — falling back to repeating today's own
- * work only when nothing fresh remains eligible. Shared so a swap can never
- * reach material the build itself deliberately set aside (§B3/B7): a swap
- * used to run this filter over `scored` directly, so it could hand back an
- * item the build had excluded as already practised while a fresher,
- * untouched candidate sat right behind it.
- */
-function candidatePool(
-  scored: ItemScore[],
-  blocks: PracticeBlock[],
-  now: Date,
-): { pool: ItemScore[]; isRepeatPool: boolean; practisedToday: Set<string> } {
-  const today = todayISODate(now);
-  const practisedToday = new Set(
-    blocks.filter((b) => toISODate(new Date(b.startedAt)) === today).map((b) => b.practiceItemId),
-  );
-  const fresh = scored.filter((s) => !practisedToday.has(s.item.id) || s.parts.lesson > 0);
-  return { pool: fresh.length > 0 ? fresh : scored, isRepeatPool: fresh.length === 0, practisedToday };
-}
-
-/**
  * Is this item suitable as a warm-up? A role, not a label.
  *
  * Two things together: LOW DEMAND (difficulty ≤ 3) and evidence of
@@ -179,6 +185,8 @@ function candidatePool(
  * omits the warm-up honestly rather than promoting the least-bad candidate.
  */
 export function isWarmupSuitable(item: PracticeItem): boolean {
+  // Study is not playing: it never warms the hands up (nor cools them down).
+  if (item.strand === 'reading_theory') return false;
   if (item.difficulty >= 4) return false;
   if (item.status === 'new' || item.status === 'dormant') return false;
   return item.timesPractised >= 3 || FAMILIAR_STATUSES.has(item.status);
@@ -221,10 +229,13 @@ function plural(n: number, word: string): string {
 export function planSegmentReason(
   bucket: PlanBucket,
   score: ItemScore,
-  context: { repeat?: boolean; yieldedTo?: string; dueDate?: ISODate } = {},
+  context: { repeat?: boolean; yieldedTo?: string; dueDate?: ISODate; studyTurn?: boolean } = {},
 ): string {
   if (context.repeat) {
     return 'Practised earlier today — chosen again because nothing else eligible is waiting.';
+  }
+  if (context.studyTurn && bucket === 'deep') {
+    return 'Study time — it has not had a turn for a few days, and the urgent work is already in.';
   }
   switch (bucket) {
     case 'warmup':
@@ -247,7 +258,7 @@ export function planSegmentReason(
         return `Fresh work — you have already spent time on ${context.yieldedTo} lately.`;
       }
       if (p.fragility >= 4) return 'Focused work — it’s still shaky and needs rebuilding.';
-      if (score.overdueDays && score.overdueDays > 0) return 'Focused work — its review is overdue.';
+      if (score.overdueDays && score.overdueDays > 0) return 'Focused work — its next practice is overdue.';
       if (p.neglected >= 3) return 'Focused work — it’s been a while since you touched it.';
       if (p.importance >= 8) return 'Focused work — it matters most right now.';
       if (p.exposurePenalty > 0) {
@@ -337,8 +348,14 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
   const pick = (
     from: ItemScore[],
     applyDiversity: boolean,
-  ): { score: ItemScore; yieldedTo?: string } | undefined => {
-    const open = from.filter((s) => !used.has(s.item.id));
+  ): { score: ItemScore; yieldedTo?: string; studyTurn?: boolean } | undefined => {
+    // A piece and its own part are one intended work: never both, unless the
+    // other carries a review that is due in its own right.
+    const open = from.filter(
+      (s) =>
+        !used.has(s.item.id) &&
+        !(selected.some((c) => sameWork(c.score.item, s.item)) && !hasDueReview(s.item, now)),
+    );
     if (open.length === 0) return undefined;
     const adjusted = open.map((s) => {
       const dim = itemDimension(s.item);
@@ -346,6 +363,7 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
       if (applyDiversity) {
         if (selectedDimensions.has(dim)) penalty += DIVERSITY_SAME_SESSION_PENALTY;
         if (recentDimensions.has(dim)) penalty += DIVERSITY_RECENT_DAYS_PENALTY;
+        if (theoryTurnDue(s.item, blocks, now)) penalty -= THEORY_TURN_POINTS;
       }
       return { s, adjusted: s.total - penalty, penalty };
     });
@@ -359,12 +377,13 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
     const best = adjusted[0];
     // Name the trade only when diversity ACTUALLY changed the order.
     const top = open.slice().sort((a, b) => b.total - a.total || a.item.id.localeCompare(b.item.id))[0];
-    const yieldedTo = top && top.item.id !== best.s.item.id ? top.item.title : undefined;
-    return { score: best.s, yieldedTo };
+    const studyTurn = applyDiversity && theoryTurnDue(best.s.item, blocks, now);
+    const yieldedTo = top && top.item.id !== best.s.item.id && !studyTurn ? top.item.title : undefined;
+    return { score: best.s, yieldedTo, studyTurn };
   };
 
   const add = (
-    chosen: { score: ItemScore; yieldedTo?: string } | undefined,
+    chosen: { score: ItemScore; yieldedTo?: string; studyTurn?: boolean } | undefined,
     bucket: PlanBucket,
     extra: { repeat?: boolean } = {},
   ): Candidate | undefined => {
@@ -378,6 +397,7 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
         repeat: extra.repeat,
         yieldedTo: bucket === 'deep' ? chosen.yieldedTo : undefined,
         dueDate: dueById.get(chosen.score.item.id),
+        studyTurn: chosen.studyTurn,
       }),
     };
     selected.push(candidate);
@@ -432,7 +452,7 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
       );
       add(
         pick(
-          pool.filter((s) => COOLDOWN_STATUSES.has(s.item.status) && segmentFloor(s.item) <= share),
+          pool.filter((s) => COOLDOWN_STATUSES.has(s.item.status) && s.item.strand !== 'reading_theory' && segmentFloor(s.item) <= share),
           false,
         ),
         'cooldown',
@@ -714,7 +734,7 @@ function weightFor(bucket: PlanBucket, params: SchedulingParams): number {
   return BUCKET_WEIGHT[bucket];
 }
 
-function buildSummary(segments: PlanSegment[], B: number, skippedTitles: string[]): string {
+function buildSummary(segments: PlanSegment[], B: number, skippedTitles: string[], removedMinutes = 0): string {
   if (segments.length === 0) return `${B} min free — add an item and the plan fills in.`;
   const counts = new Map<PlanBucket, number>();
   for (const s of segments) counts.set(s.bucket, (counts.get(s.bucket) ?? 0) + 1);
@@ -727,7 +747,10 @@ function buildSummary(segments: PlanSegment[], B: number, skippedTitles: string[
   const planned = segments.reduce((a, s) => a + s.minutes, 0);
   let out = `${planned} min · ${joinList(parts)}.`;
   if (planned < B) {
-    out += ` ${B - planned} of your ${B} minutes are unplanned — there isn’t more useful work waiting.`;
+    out +=
+      removedMinutes > 0
+        ? ` ${B - planned} of your ${B} minutes are unused — removing work leaves its time free; Regenerate to plan it again.`
+        : ` ${B - planned} of your ${B} minutes are unplanned — there isn’t more useful work waiting.`;
   }
   if (skippedTitles.length > 0) {
     const shown = skippedTitles.slice(0, 2).join(', ');
@@ -744,25 +767,32 @@ function joinList(parts: string[]): string {
 }
 
 /**
- * Re-spread minutes across the remaining segments after one was removed. Item
- * identity, bucket and reason are untouched — redistribution moves minutes,
- * never work: attaching one role's minutes and reason to another item is the
- * failure this preserves against.
+ * Remove one segment from the PREVIEW. The other segments keep their order,
+ * minutes, roles and reasons exactly: the freed minutes stay visibly unused,
+ * never spread over untouched work (that would quietly change what each of
+ * them asks of you). Regenerate or a new budget is the deliberate way to
+ * allocate again. Records nothing.
  */
-export function redistributePlan(plan: SessionPlan, params?: SchedulingParams): SessionPlan {
-  if (plan.segments.length === 0) {
-    return { ...plan, summary: buildSummary([], plan.budgetMinutes, []) };
-  }
-  // The SAME allocator and floors as the build: a removal frees minutes, so
-  // nothing normally drops — a segment it cannot seat is left out, in order.
-  const minutes = allocateMinutes(
-    plan.segments.map((s) => s.bucket),
-    plan.budgetMinutes,
-    params,
-    plan.segments.map((s) => s.floorMinutes ?? MIN_SEGMENT_MINUTES),
-  );
-  const segments = plan.segments.map((s, i) => ({ ...s, minutes: minutes[i] })).filter((s) => s.minutes > 0);
-  return { ...plan, segments, summary: buildSummary(segments, plan.budgetMinutes, []) };
+export function removePlanSegment(plan: SessionPlan, index: number): SessionPlan {
+  const target = plan.segments[index];
+  if (!target) return plan;
+  const segments = plan.segments.filter((_, i) => i !== index);
+  const removedMinutes = (plan.removedMinutes ?? 0) + target.minutes;
+  return { ...plan, segments, removedMinutes, summary: buildSummary(segments, plan.budgetMinutes, [], removedMinutes) };
+}
+
+/**
+ * Move one segment one place earlier (-1) or later (+1) in the PREVIEW. The
+ * whole segment moves — item, minutes, role, reason, focus — and nothing else
+ * changes: no ranking, budget, review or database. A move off either end is a
+ * no-op. Starting runs the segments in exactly this order.
+ */
+export function movePlanSegment(plan: SessionPlan, index: number, dir: -1 | 1): SessionPlan {
+  const to = index + dir;
+  if (!plan.segments[index] || to < 0 || to >= plan.segments.length) return plan;
+  const segments = [...plan.segments];
+  [segments[index], segments[to]] = [segments[to], segments[index]];
+  return { ...plan, segments };
 }
 
 /**
@@ -805,6 +835,10 @@ export function swapSegment(
   const { pool, isRepeatPool } = candidatePool(scored, blocks, args.now);
 
   const inUse = new Set(plan.segments.map((s) => s.itemId));
+  // The build's own rule: a piece and its own part are one intended work, so
+  // a swap never brings in a relative of another segment unless its own
+  // review is due.
+  const kept = items.filter((i) => plan.segments.some((s, j) => j !== index && s.itemId === i.id));
   const exclude = args.excludeIds ?? new Set<string>();
   const dueById = new Map(
     dueReviews(args.reviews, args.now)
@@ -826,6 +860,7 @@ export function swapSegment(
         : target.minutes;
   const eligible = (s: ItemScore): boolean => {
     if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
+    if (kept.some((k) => sameWork(k, s.item)) && !hasDueReview(s.item, args.now)) return false;
     if (plan.segments.length > 1 && segmentFloor(s.item) > room) return false;
     switch (target.bucket) {
       case 'warmup':
@@ -838,7 +873,7 @@ export function swapSegment(
       case 'review':
         return dueById.has(s.item.id);
       case 'cooldown':
-        return COOLDOWN_STATUSES.has(s.item.status);
+        return COOLDOWN_STATUSES.has(s.item.status) && s.item.strand !== 'reading_theory';
       case 'deep':
         return true;
     }
@@ -859,7 +894,7 @@ export function swapSegment(
     floorMinutes: segmentFloor(pick.item),
   };
   const segments = plan.segments.map((s, i) => (i === index ? replacement : s));
-  return { ...plan, segments, summary: buildSummary(segments, plan.budgetMinutes, []) };
+  return { ...plan, segments, summary: buildSummary(segments, plan.budgetMinutes, [], plan.removedMinutes) };
 }
 
 /** Exposure window this planner reasons over, re-exported for the docs table. */
@@ -876,6 +911,8 @@ export type PlanSegmentStatus = 'pending' | 'done' | 'skipped';
 
 export interface PlanRunSegment extends PlanSegment {
   status: PlanSegmentStatus;
+  /** Minutes actually saved for this segment's block — set only when done. */
+  actualMinutes?: number;
 }
 
 export interface PlanRun {
@@ -907,19 +944,50 @@ export function advancePlanPointer(segments: PlanRunSegment[], from: number): nu
  * done and the pointer moves on; anything else leaves the run untouched —
  * practising something off-plan is ordinary, not plan progress.
  */
-export function completePlanSegment(run: PlanRun, itemId: string): PlanRun {
+export function completePlanSegment(run: PlanRun, itemId: string, actualMinutes?: number): PlanRun {
   const seg = run.segments[run.pointer];
   if (!seg || seg.itemId !== itemId || seg.status !== 'pending') return run;
-  const segments = run.segments.map((s, i) => (i === run.pointer ? { ...s, status: 'done' as const } : s));
+  const segments = run.segments.map((s, i) =>
+    i === run.pointer ? { ...s, status: 'done' as const, ...(actualMinutes !== undefined ? { actualMinutes } : {}) } : s,
+  );
   return { ...run, segments, pointer: advancePlanPointer(segments, run.pointer) };
 }
 
-/** Skip the current segment. Records nothing: a skipped segment is not practice. */
-export function skipPlanSegment(run: PlanRun): PlanRun {
-  const seg = run.segments[run.pointer];
+/**
+ * Skip a still-PENDING segment — the current one, or (`index`) any later one
+ * removed from this run. Records nothing: a skipped segment is not practice,
+ * and the other segments keep their minutes. A done segment, and its saved
+ * block, are never touched.
+ */
+export function skipPlanSegment(run: PlanRun, index = run.pointer): PlanRun {
+  const seg = run.segments[index];
   if (!seg || seg.status !== 'pending') return run;
-  const segments = run.segments.map((s, i) => (i === run.pointer ? { ...s, status: 'skipped' as const } : s));
-  return { ...run, segments, pointer: advancePlanPointer(segments, run.pointer) };
+  const segments = run.segments.map((s, i) => (i === index ? { ...s, status: 'skipped' as const } : s));
+  return { ...run, segments, pointer: index === run.pointer ? advancePlanPointer(segments, run.pointer) : run.pointer };
+}
+
+/**
+ * The run's time, each figure on its own: `available` is the budget chosen,
+ * `planned` what the segments still standing ask for (a done one: what it
+ * actually took, up to its target), `remaining` what the pending ones ask
+ * for, `unused` what nothing asks for (removed, skipped, finished early or
+ * never planned), `recorded` what was actually saved. Recorded is never
+ * inferred from a target, and overtime never borrows another segment's.
+ */
+export function planRunTime(run: PlanRun): { available: number; planned: number; remaining: number; unused: number; recorded: number } {
+  const remaining = run.segments.filter((s) => s.status === 'pending').reduce((n, s) => n + s.minutes, 0);
+  // A done segment from before `actualMinutes` was kept occupies its target: nothing is claimed freed.
+  const taken = run.segments
+    .filter((s) => s.status === 'done')
+    .reduce((n, s) => n + Math.min(s.minutes, s.actualMinutes ?? s.minutes), 0);
+  const planned = remaining + taken;
+  return {
+    available: run.budgetMinutes,
+    planned,
+    remaining,
+    unused: Math.max(0, run.budgetMinutes - planned),
+    recorded: run.segments.reduce((n, s) => n + (s.status === 'done' ? (s.actualMinutes ?? 0) : 0), 0),
+  };
 }
 
 /**

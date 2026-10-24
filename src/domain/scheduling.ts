@@ -1,5 +1,6 @@
 import type {
   BlockResult,
+  EvidenceScope,
   ID,
   ISODate,
   ItemStatus,
@@ -7,12 +8,13 @@ import type {
   PracticeDB,
   Review,
   ReviewDateSource,
+  ReturnIntent,
   ReviewMode,
   ReviewType,
   SchedulingParams,
 } from './types';
 import { addDaysISODate, dayDiff, nowISO, parseISODate, todayISODate } from './util';
-import { daysSinceTouched } from './scoring';
+import { daysSinceTouched, returnIntentOf } from './scoring';
 
 // ---------------------------------------------------------------------------
 // Review scheduling — a spaced-repetition engine (SM-2, the algorithm behind
@@ -180,10 +182,48 @@ export function isProtectedPendingDate(item: PracticeItem, now: Date): boolean {
   return item.nextReviewSource !== 'auto';
 }
 
+// --- Why an item comes back (schema v17) -------------------------------------
+//
+// WORKING ON THIS and KEEP FRESH are two return intentions, separate from who
+// owns the date. Unfinished work comes back after a short, useful gap however
+// many good chunks it has had; only an item the owner has judged ready AS A
+// WHOLE is spaced out by retention checks. Neither is ever inferred from a
+// result, a mode, a title or a status label other than the old explicit
+// maintenance status.
+
+/**
+ * Days until a Working item returns after an assessed close. A fixed,
+ * published table — never multiplied by spaced-repetition state — so a chunk
+ * that went well can never push an unfinished piece out by weeks. Weaker
+ * evidence never returns later than stronger evidence.
+ */
+export const WORKING_RETURN_DAYS: Record<Exclude<BlockResult, 'not_logged'>, number> = {
+  worse: 1,
+  same: 1,
+  slightly_better: 2,
+  stable_alone: 2,
+  stable_in_context: 3,
+  performable: 3,
+};
+
 /**
  * The whole scheduling decision behind one closed block. Pure; `now` explicit.
  *
- * The permitted and forbidden cases, in the order they are decided:
+ * `scope` is what the result describes (default `focused`); `intent` is the
+ * item's return intention as this close leaves it (default: the item's own).
+ * Cases 1 and 2 below come first for every item; then Working, and Keep fresh
+ * with FOCUSED evidence:
+ *
+ *  W. Working — a protected future date (owner's, fixed cadence, unknown
+ *     provenance) stands; a fixed cadence that is due keeps its own gap;
+ *     otherwise the date becomes today + `WORKING_RETURN_DAYS[result]`, which
+ *     may bring an engine-owned long date FORWARD. Spacing state is never
+ *     read or written.
+ *  F. Keep fresh, focused work — the whole-item check is not what happened:
+ *     nothing moves, nothing completes, spacing untouched, whatever the result.
+ *
+ * What remains — Keep fresh with an explicit WHOLE-item check — is the
+ * spaced-retention engine, in the order its cases are decided:
  *
  *  1. No logged result (`not_logged`, or none at all) — nothing about the
  *     schedule was judged, so nothing moves. Routine runs land here: a routine
@@ -211,9 +251,13 @@ export function decideReview(args: {
   result: BlockResult | undefined;
   now: Date;
   params?: SchedulingParams;
+  scope?: EvidenceScope;
+  intent?: ReturnIntent;
 }): ReviewDecision {
   const { item, result, now } = args;
   const params = args.params ?? DEFAULT_SCHEDULING_PARAMS;
+  const scope = args.scope ?? 'focused';
+  const intent = args.intent ?? returnIntentOf(item);
   const today = todayISODate(now);
   const existing = item.nextReviewDate;
   const mode = item.reviewMode ?? 'auto';
@@ -257,6 +301,31 @@ export function decideReview(args: {
   // 2. The owner sets this item's dates by hand.
   if (mode === 'manual') {
     return keep('You choose this item’s dates — the existing one stands.');
+  }
+
+  // W. Working on this: short useful returns, spacing state never touched.
+  if (intent === 'working') {
+    if (isProtectedPendingDate(item, now)) {
+      return keep('Your own date for this item stands — the next practice comes from your work on it.');
+    }
+    if (mode === 'interval') {
+      const interval = clamp(Math.round(item.reviewIntervalDays ?? DEFAULT_REVIEW_INTERVAL_DAYS), 1, 365);
+      return set(addDaysISODate(today, interval), `Fixed cadence: every ${plural(interval, 'day')}.`);
+    }
+    const days = WORKING_RETURN_DAYS[result];
+    const dueDate = addDaysISODate(today, days);
+    const rationale = `Working on this: back in ${plural(days, 'day')}.`;
+    // The same date again (a second close today) is not a new decision.
+    return existing === dueDate ? keep(rationale) : set(dueDate, rationale);
+  }
+
+  // F. Keep fresh, focused work: not the whole-item check it is waiting for.
+  if (scope === 'focused') {
+    return keep(
+      existing
+        ? 'Focused practice — the whole-item check stays as scheduled.'
+        : 'Focused practice — no whole-item check is scheduled.',
+    );
   }
 
   const reps0 = item.srReps ?? 0;
@@ -373,12 +442,16 @@ export function planNextReview(args: {
   result?: BlockResult;
   now?: Date;
   params?: SchedulingParams;
+  scope?: EvidenceScope;
+  intent?: ReturnIntent;
 }): ReviewPlan | null {
   const d = decideReview({
     item: args.item,
     result: args.result,
     now: args.now ?? new Date(),
     params: args.params,
+    scope: args.scope,
+    intent: args.intent,
   });
   if (!d.effectiveDate) return null;
   return {
@@ -400,12 +473,15 @@ export function suggestStatusAfterBlock(args: {
   item: PracticeItem;
   result: BlockResult;
   last3AllSame: boolean;
+  /** Readiness is a claim about the WHOLE item: focused work suggests none. */
+  scope?: EvidenceScope;
 }): StatusSuggestion {
   const { item, result, last3AllSame } = args;
 
   if (last3AllSame) {
     return { message: 'Three “same” results in a row — try a different strategy rather than changing status.' };
   }
+  if ((args.scope ?? 'focused') !== 'whole') return {};
   if (result === 'stable_alone' && (item.status === 'fragile' || item.status === 'repairing')) {
     return { suggestedStatus: 'usable', message: 'Holds together on its own — move it on to “Coming together”?' };
   }
@@ -580,8 +656,10 @@ export function computeReviewOutcome(args: {
   /** Required — this decision must never fall back to the wall clock. */
   now: Date;
   params?: SchedulingParams;
+  scope?: EvidenceScope;
+  intent?: ReturnIntent;
 }): ReviewOutcome {
-  const { item, result, answer, now, params } = args;
+  const { item, result, answer, now, params, scope, intent } = args;
 
   // Nothing was decided about the schedule, so nothing about the schedule
   // moves — neither the item's date nor its open row. This is the one branch
@@ -594,7 +672,7 @@ export function computeReviewOutcome(args: {
     return { nextReviewDate: null, nextReviewSource: null, completeOpenReviews: true };
   }
 
-  const decision = decideReview({ item, result, now, params });
+  const decision = decideReview({ item, result, now, params, scope, intent });
 
   // An explicit date the owner chose overrides the engine's own proposal —
   // in either direction — and is stamped as theirs.
@@ -899,6 +977,9 @@ export function validateSchedulingFields(db: Pick<PracticeDB, 'items' | 'reviews
     }
     if (i.nextReviewSource !== undefined && i.nextReviewSource !== 'auto' && i.nextReviewSource !== 'user') {
       return `Item "${i.title ?? i.id}" has an unknown review-date source.`;
+    }
+    if (i.returnIntent !== undefined && i.returnIntent !== 'working' && i.returnIntent !== 'keep_fresh') {
+      return `Item "${i.title ?? i.id}" has an unknown return intention.`;
     }
     if (i.srLastProgressDay !== undefined && !isValidISODate(String(i.srLastProgressDay))) {
       return `Item "${i.title ?? i.id}" has an unreadable spacing-progress day.`;

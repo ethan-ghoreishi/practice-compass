@@ -11,7 +11,7 @@ import {
   MIN_SEGMENT_MINUTES,
   planPreviewDayHasPassed,
   planSegmentStartable,
-  redistributePlan,
+  removePlanSegment,
   skipPlanSegment,
   swapSegment,
   validateBudgetMinutes,
@@ -378,17 +378,15 @@ describe('building, swapping and redistributing keep identity and honest reasons
     // REGENERATE is the same function with the same inputs: same answer.
     expect(JSON.stringify(buildSessionPlan(args).segments)).toBe(JSON.stringify(plan.segments));
 
-    // REMOVE + redistribute: totals stay within budget, and no segment gains
-    // another role's reason.
-    const trimmed = redistributePlan({ ...plan, segments: plan.segments.slice(1) });
-    expect(sum(trimmed.segments.map((s) => s.minutes))).toBeLessThanOrEqual(plan.budgetMinutes);
-    trimmed.segments.forEach((seg, i) => {
-      const original = plan.segments[i + 1];
-      expect(seg.itemId).toBe(original.itemId);
-      expect(seg.bucket).toBe(original.bucket);
-      expect(seg.reason).toBe(original.reason);
-    });
-    expect(redistributePlan({ ...plan, segments: [] }).segments).toEqual([]);
+    // REMOVE: the rest keep exactly what they had — item, role, reason AND
+    // minutes — and the freed minutes stay unused, said so in the summary.
+    const trimmed = removePlanSegment(plan, 0);
+    expect(trimmed.segments).toEqual(plan.segments.slice(1));
+    expect(trimmed.removedMinutes).toBe(plan.segments[0].minutes);
+    expect(trimmed.summary).toContain('unused');
+    const emptied = plan.segments.reduce((p) => removePlanSegment(p, 0), plan);
+    expect(emptied.segments).toEqual([]);
+    expect(removePlanSegment(plan, 99)).toBe(plan);
 
     // ALL-PRACTISED fallback: an item chosen is never described as skipped.
     const practisedToday = items
@@ -926,6 +924,9 @@ const render = (plan: SessionPlan) => plan.segments.map((x) => `${x.itemId}:${x.
  * the floors and role shares but not re-judged against the review ceiling.
  */
 function expectFloorsAndShares(plan: SessionPlan, f: Fixture, B: number, share: number, max: number, label: string, swapped = false) {
+  // Removed work leaves its minutes UNUSED by design: the generator's
+  // "remainder only once everything is full" rule is about what it built.
+  const removed = (plan.removedMinutes ?? 0) > 0;
   const items = new Map(f.items.map((i) => [i.id, i]));
   const segs = plan.segments;
   const buckets = segs.map((x) => x.bucket);
@@ -950,12 +951,12 @@ function expectFloorsAndShares(plan: SessionPlan, f: Fixture, B: number, share: 
   }
   const work = segs.filter((x) => x.bucket === 'deep' || x.bucket === 'lesson');
   // The review ceiling holds while deep or lesson work could take the minutes.
-  for (const r of swapped ? [] : segs.filter((x) => x.bucket === 'review')) {
+  for (const r of swapped || removed ? [] : segs.filter((x) => x.bucket === 'review')) {
     const ceiling = Math.max(max, expectWork(items.get(r.itemId)!) ? 10 : MIN_SEGMENT_MINUTES);
     if (r.minutes > ceiling) expect(work.every((x) => x.minutes === MAX_SEGMENT_MINUTES), `${label} review over its ceiling`).toBe(true);
   }
   // An honest remainder only once everything that may take overflow is full.
-  if (total < B) {
+  if (total < B && !removed) {
     expect(segs.filter((x) => x.bucket !== 'warmup' && x.bucket !== 'cooldown').every((x) => x.minutes === MAX_SEGMENT_MINUTES), `${label} remainder`).toBe(true);
   }
 }
@@ -1004,8 +1005,9 @@ describe('whole works keep the standard block', () => {
                 expectFloorsAndShares(swapped, f, B, share, window[1], `${at} swap ${i}`, true);
               });
             expectSwaps(plan, label);
-            // REMOVE re-allocates under the same rules, twice over.
-            const remove = (p: SessionPlan, i: number) => redistributePlan({ ...p, segments: p.segments.filter((__, j) => j !== i) }, args.params);
+            // REMOVE leaves every other allocation as built, twice over, so
+            // floors and shares still hold and Swap still respects them.
+            const remove = (p: SessionPlan, i: number) => removePlanSegment(p, i);
             if (plan.segments.length > 1) {
               plan.segments.forEach((_, i) => {
                 const removed = remove(plan, i);
@@ -1056,20 +1058,23 @@ describe('whole works keep the standard block', () => {
     // only on its own weighted split — never on leftovers.
     expect(render(buildSessionPlan(sweepArgs(reviewDay, 90, 0.12, [3, 7])))).toMatch(/^s-shahnaz:warmup:11 .* s-daramad:cooldown:10$/);
 
-    // The reviewer's case: two Removes leave the drill cool-down at 10 minutes
-    // on a share of 9; Swap may not hand that role the settled work.
+    // Two Removes leave every remaining allocation exactly as built — the
+    // cool-down keeps its own minutes — and Swap still may not hand that role
+    // the settled work.
     const tarWork = fixtures()[5];
     const twArgs = sweepArgs(tarWork, 45, 0.15, [3, 7]);
-    const drop1 = (p: SessionPlan) => redistributePlan({ ...p, segments: p.segments.filter((_, j) => j !== 1) }, twArgs.params);
-    const trimmed = drop1(drop1(buildSessionPlan(twArgs)));
-    expect([render(trimmed), coolShare(45, 0.15, trimmed.segments.map((x) => x.bucket))]).toEqual(['t-scale:warmup:7 t-frag:deep:25 t-tremolo:cooldown:10', 9]);
-    expect(swapSegment(trimmed, 2, twArgs).segments[2].itemId).not.toBe('t-work');
+    const builtTar = buildSessionPlan(twArgs);
+    const trimmed = removePlanSegment(removePlanSegment(builtTar, 1), 1);
+    expect(trimmed.segments).toEqual([builtTar.segments[0], ...builtTar.segments.slice(3)]);
+    expect(sum(trimmed.segments.map((x) => x.minutes)) + (trimmed.removedMinutes ?? 0)).toBe(sum(builtTar.segments.map((x) => x.minutes)));
+    const cool = trimmed.segments.findIndex((x) => x.bucket === 'cooldown');
+    if (cool >= 0) expect(swapSegment(trimmed, cool, twArgs).segments[cool].itemId).not.toBe('t-work');
 
-    // A RUNNING PLAN persisted before floors existed still re-spreads and starts.
+    // A RUNNING PLAN persisted before floors existed still edits and starts.
     const [setar] = fixtures();
     const built = buildSessionPlan(sweepArgs(setar, 45, 0.12, [3, 7]));
     const legacy: SessionPlan = { ...built, segments: built.segments.map(({ floorMinutes: _f, ...seg }) => (void _f, seg)) };
-    expect(sum(redistributePlan(legacy).segments.map((x) => x.minutes))).toBeLessThanOrEqual(45);
+    expect(sum(removePlanSegment(legacy, 0).segments.map((x) => x.minutes))).toBeLessThanOrEqual(45);
     const run: PlanRun = {
       instrumentId: legacy.instrumentId,
       budgetMinutes: legacy.budgetMinutes,

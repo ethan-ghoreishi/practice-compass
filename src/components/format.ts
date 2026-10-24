@@ -4,7 +4,9 @@ import {
   planNextReview,
   REVIEW_TYPE_LABELS,
   type BlockResult,
+  type EvidenceScope,
   type PracticeItem,
+  type ReturnIntent,
   type ReviewAnswer,
   type ReviewPlan,
   type SchedulingParams,
@@ -110,9 +112,11 @@ export function reviewOverrideSurvivesResultChange(
   item: PracticeItem,
   now: Date,
   params?: SchedulingParams,
+  /** The scope and intention the close screen is deciding under — the same inputs as its preview. */
+  under: { scope?: EvidenceScope; intent?: ReturnIntent } = {},
 ): boolean {
   const dates = RESULTS_FOR_OVERRIDE_CHECK.map(
-    (result) => planNextReview({ item, result, now, params })?.dueDate ?? null,
+    (result) => planNextReview({ item, result, now, params, ...under })?.dueDate ?? null,
   );
   return new Set(dates).size === 1;
 }

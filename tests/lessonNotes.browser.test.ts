@@ -82,12 +82,16 @@ describe('class notes', () => {
       await card.getByText('Saved.').waitFor({ timeout: 20_000 });
       expect(await persistedNotes(app, 'L-38-upcoming')).toBe('دست راست را سبک‌تر بگیر.');
 
-      // An UNSAVED draft is exactly that: reloading keeps the SAVED text and
-      // silently commits nothing.
+      // A draft never Done is NOT lost: it is held on the device as it is
+      // typed and lands on ITS class after an ordinary reload.
       await card.getByRole('button', { name: 'Edit Class notes' }).click();
       await card.getByRole('textbox', { name: 'Class notes' }).fill('half a thought I never finished');
       await reload(app);
-      expect(await persistedNotes(app, 'L-38-upcoming')).toBe('دست راست را سبک‌تر بگیر.');
+      await persistedUntil(
+        app,
+        (s) => (s.state as { db: { lessons: { id: string; notes?: string }[] } }).db.lessons.find((l) => l.id === 'L-38-upcoming')?.notes ?? '',
+        (v) => v === 'half a thought I never finished',
+      );
 
       // --- THE DRAFT IS TAGGED WITH ITS OWN CLASS --------------------------
       // Typing into one class and then opening another must not carry the text
@@ -103,9 +107,16 @@ describe('class notes', () => {
         'Started the first chahārmezrāb.',
       );
       await card.getByRole('button', { name: 'Done editing Class notes' }).click();
-      // Neither class was written with the other's words.
+      // Neither class was written with the other's words …
       expect(await persistedNotes(app, 'L-1')).toBe('Started the first chahārmezrāb.');
-      expect(await persistedNotes(app, 'L-38-upcoming')).toBe('دست راست را سبک‌تر بگیر.');
+      // … and leaving the page writes class 38's draft to class 38, with no Done.
+      await goTo(app, '/today');
+      await persistedUntil(
+        app,
+        (s) => (s.state as { db: { lessons: { id: string; notes?: string }[] } }).db.lessons.find((l) => l.id === 'L-38-upcoming')?.notes ?? '',
+        (v) => v === 'typed for class 38 only',
+      );
+      expect(await persistedNotes(app, 'L-1')).toBe('Started the first chahārmezrāb.');
 
       // --- LEAVING THE SCREEN entirely still saves what was typed ----------
       card = await openLesson(app, 'Class 1 · 2023-09-26');

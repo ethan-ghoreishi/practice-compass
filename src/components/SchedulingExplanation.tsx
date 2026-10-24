@@ -1,4 +1,4 @@
-import { clampSchedulingParams } from '../domain';
+import { clampSchedulingParams, WORKING_MAX_GAP_DAYS, WORKING_RETURN_DAYS } from '../domain';
 import { useStore } from '../store/useStore';
 
 /**
@@ -23,10 +23,21 @@ export default function SchedulingExplanation() {
         </div>
       </div>
       <div>
+        <div style={{ fontWeight: 600 }}>When it comes back</div>
+        <div className="dim">
+          <b>Working on this</b> — unfinished material comes back soon, however well a chunk went: after worse or same
+          in {WORKING_RETURN_DAYS.worse} day, after slightly better or stable alone in {WORKING_RETURN_DAYS.stable_alone}{' '}
+          days, after stable in context or performable in {WORKING_RETURN_DAYS.performable} days. A longer date it
+          already carries stays as it is, but it is suggested again {WORKING_MAX_GAP_DAYS} days after you last practised
+          it. Work committed to a class comes back before that class whatever its review date says.
+        </div>
+      </div>
+      <div>
         <div style={{ fontWeight: 600 }}>When to revisit (spaced repetition)</div>
         <div className="dim">
-          Practising early is real practice, but it is not the review: before the date, a good session records the
-          minutes and leaves the date alone. AT the review, “stable” results widen the gap
+          <b>Keep fresh</b> — once you judge the whole item ready, only a whole-item check moves its date; focused work
+          on a part leaves it alone. Practising early is real practice, but it is not the check: before the date, a good
+          session records the minutes and leaves the date alone. AT the check, “stable” results widen the gap
           (≈ {p.sm2FirstIntervalDays} → {p.sm2SecondIntervalDays} days → gap × ease), at most once a day; “same” and
           “slightly better” hold the same gap again without counting as a slip; only “worse” brings the date forward —
           to {p.sm2SlipResetDays === 1 ? 'the next day' : `${p.sm2SlipResetDays} days`} — and never pushes it back.

@@ -4,18 +4,18 @@ import {
   applyReviewDateToRows,
   clampSchedulingParams,
   completeOpenReviewsFor,
-  computeReviewOutcome,
-  decideReview,
+  computeReviewOutcome as computeOutcome,
+  decideReview as decide,
   DEFAULT_SCHEDULING_PARAMS,
   isProtectedPendingDate,
   pendingScheduleConflict,
-  planNextReview,
+  planNextReview as planNext,
   resolveReviewDate,
   SCHEDULING_BOUNDS,
   scheduleAgainPlan,
   shouldSuggestDormant,
   snoozePlan,
-  suggestStatusAfterBlock,
+  suggestStatusAfterBlock as suggestStatus,
   transferToAutomaticReview,
   AUTOMATIC_TRANSFER_REASON,
   validateSchedulingFields,
@@ -25,6 +25,19 @@ import { applyBlockStats } from './blocks';
 import { createBlock, createItem, createReview } from './factories';
 import { addDays, toISODate } from './util';
 import type { ItemStatus, Rating } from './types';
+
+// ---------------------------------------------------------------------------
+// THE KEEP-FRESH RETENTION ENGINE. Every decision in this file is an explicit
+// WHOLE-item check on an item the owner keeps fresh — the only case spaced
+// repetition decides (schema v17). Working returns, focused evidence and the
+// scope/intent decision table are proved in
+// tests/practice-session-families.test.ts; these keep every protection the
+// retention engine already had.
+// ---------------------------------------------------------------------------
+const decideReview = (args: Parameters<typeof decide>[0]) => decide({ scope: 'whole', ...args });
+const computeReviewOutcome = (args: Parameters<typeof computeOutcome>[0]) => computeOutcome({ scope: 'whole', ...args });
+const planNextReview = (args: Parameters<typeof planNext>[0]) => planNext({ scope: 'whole', ...args });
+const suggestStatusAfterBlock = (args: Parameters<typeof suggestStatus>[0]) => suggestStatus({ scope: 'whole', ...args });
 
 const NOW = new Date('2026-06-18T12:00:00.000Z');
 const TODAY = toISODate(NOW);
@@ -43,7 +56,7 @@ function item(o: Partial<PracticeItem> & { status?: ItemStatus; importance?: Rat
     { instrumentId: 'i', title: 't', status: o.status ?? 'usable', importance: o.importance ?? 3, difficulty: o.difficulty ?? 3 },
     NOW,
   );
-  return { ...base, id: 'item-1', ...o };
+  return { ...base, id: 'item-1', returnIntent: 'keep_fresh', ...o };
 }
 
 const STABLE: BlockResult[] = ['stable_alone', 'stable_in_context', 'performable'];
