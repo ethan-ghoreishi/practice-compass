@@ -1,44 +1,48 @@
 ---
 id: 20261028-make-live-practice-easier-to-shape-prepa-1934
 contractId: 20261028-make-live-practice-easier-to-shape-prepa-1934
-patchId: 5c35bb1b92d23bdb2905c25e6d22212d47cb1f1d
+patchId: 89070aa4eecb11f686d4baa34dea7c4228003e1c
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: routine-feedback-retry-durability
-    summary: "Routine feedback retries must persist the retained capture even when
-      its values already match memory. Save and Try again both repeat
-      recordRoutineCapture, whose unchanged branch performs no write.
-      Assessment, observation and clear edits share the failure. Checked clean:
-      teacher-question retries, item/lesson notes and Routine Finish retries
-      explicitly reissue persistence. Extend the named test routine feedback can
-      be cleared without changing practice or retention through the actual UI
-      retry; its current persistAgain call bypasses the defect."
-    counterexample: "Save an assessment, clear it, reject the clear's IndexedDB
-      write, restore storage, then tap Try again without editing. Expected:
-      another write durably clears the assessment while preserving observation,
-      minutes and retention. Actual: the write count remains one and
-      storageSettled still rejects; reload can restore the previous assessment.
-      Reproduced using actual captureRoutineResults and the AST-extracted store
-      action with an in-memory failing persistence port."
-  - family: cue-priority-across-metronome-starts
-    summary: "Cue priority must survive metronome starts and restarts during the
-      active cue window. onPracticeCue discards the window without an existing
-      duck gain, while begin creates a new gain at full volume. Ordinary, Plan
-      and Routine screens share this defect, including recovery-cue then Start
-      beat. Checked clean: already-running ducking, context replacement,
-      pause/hidden/unmount stops and claim-once boundary callers. Extend the
-      named test metronome scheduling and cue priority survive sound lifecycle
-      changes with cue-before-start and stop/restart-during-cue cases."
-    counterexample: "On a running context, play the cue at audio time 10.00, ending
-      at 10.56, then start the metronome at 10.10. Expected: ticks remain muted
-      until 10.56. Actual: an unmuted 1600 Hz tick is scheduled at 10.15 through
-      a new gain at one. Stopping and restarting an already-ducked metronome
-      during the cue also loses the window. Reproduced against the actual sound
-      modules with a controlled audio port."
-createdAt: 2026-10-28T19:45:24.842Z
-sealedAt: 2026-10-28T22:58:09.157Z
+  - family: required-class-useful-floors-through-preview-and-start
+    summary: Required class work must reach its useful floor after preview edits and
+      at Start.
+    counterexample: "Prepare one full_piece and one technique item for the same
+      upcoming class. Build at 5 minutes: the drill is seated and the whole work
+      omitted. Swap the only row. plan.ts:912 skips the floor check, producing
+      the whole work at 5 minutes with floorMinutes 10. Coverage at 1063-1067
+      counts it seated and planStartRefusal accepts the displayed partial-start
+      key. Expected: no sub-floor class slot may start. Sweep single-row swaps,
+      coverage, preview/live Start and run installation; extend class plan
+      capacity exceptions name omissions before any partial start."
+  - family: live-question-draft-survives-automatic-routine-completion
+    summary: Automatic Routine completion must preserve an open question draft and
+      its Save/Cancel controls.
+    counterexample: Open Ask teacher during the final Routine segment, type and
+      leave it unsaved. Let the final boundary pass. RoutineRunner.tsx:202-205
+      finishes automatically; its result branch at 224 removes
+      TeacherQuestionCapture at 463. The local draft disappears and no agenda
+      question exists, without Save or Cancel. This affects bound/unbound final
+      segments and background catch-up to completion. Preserve the capture
+      without changing elapsed logging; extend live teacher questions retain
+      capture ownership while practice continues through final completion in
+      both engines.
+  - family: live-question-save-acknowledgement-always-settles
+    summary: A completed question write must leave Saving when the live text becomes
+      blank during persistence.
+    counterexample: Type Which finger?, Save, then clear the input before the write
+      settles. Resolve the successful write. useAcknowledgedSaves calls again
+      because the draft changed; TeacherQuestionCapture.tsx:80 returns on blank
+      text. Actual component/hook probe leaves the original question stored, an
+      empty input, disabled Save and ack.status saving indefinitely. The shared
+      component exposes this on ordinary, Plan and Routine screens. Settle
+      acknowledgement truthfully without a blank append; extend live teacher
+      questions retain capture ownership while practice continues with
+      pending-write blank/whitespace edits.
+createdAt: 2026-10-28T23:24:25.309Z
+sealedAt: 2026-10-28T23:43:53.254Z
 ---
 
 # Review: Make live practice easier to shape, prepare for class and keep in time
@@ -52,7 +56,7 @@ sealedAt: 2026-10-28T22:58:09.157Z
 - **Contract:** 20261028-make-live-practice-easier-to-shape-prepa-1934
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/58
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `5c35bb1b92d23bdb2905c25e6d22212d47cb1f1d`
+- **Diff patch-id:** `89070aa4eecb11f686d4baa34dea7c4228003e1c`
 - **Computed by:** prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified
 
 ## The plan the owner approved
@@ -349,6 +353,7 @@ Prove the named acceptance families against committed fixed-clock fixtures, incl
 - src/pages/RoutineRunner.tsx
 - src/pages/SessionPlan.tsx
 - src/pages/Settings.tsx
+- src/store/useStore.ts
 - tests/fixtures/live-practice-expectations.json
 - tests/live-practice-families.test.ts
 - tests/live-practice.browser.test.ts
@@ -371,22 +376,22 @@ Prove the named acceptance families against committed fixed-clock fixtures, incl
 
 **Detected from the diff:**
 
-- **adjust-how-scheduling-works** — touched via src/pages/Settings.tsx, src/domain/plan.ts
-- **back-up-and-restore** — touched via src/pages/Settings.tsx
+- **adjust-how-scheduling-works** — touched via src/pages/Settings.tsx, src/domain/plan.ts, src/store/useStore.ts
+- **back-up-and-restore** — touched via src/pages/Settings.tsx, src/store/useStore.ts
+- **capture-a-practice-item** — touched via src/store/useStore.ts
+- **clear-a-due-review** — touched via src/store/useStore.ts
 - **install-the-app-and-keep-it-current** — touched via src/pages/Settings.tsx
+- **log-a-class** — touched via src/store/useStore.ts
 - **point-this-device-at-the-nas** — touched via src/pages/Settings.tsx
-- **practise-todays-recommendation** — touched via src/pages/ActiveBlock.tsx, src/domain/recommend.ts, src/domain/scoring.ts, src/domain/practiceSessionModel.ts
+- **practise-todays-recommendation** — touched via src/pages/ActiveBlock.tsx, src/store/useStore.ts, src/domain/recommend.ts, src/domain/scoring.ts, src/domain/practiceSessionModel.ts
 - **prepare-for-the-next-class** — touched via src/domain/questions.ts
-- **run-a-session-plan** — touched via src/pages/SessionPlan.tsx, src/pages/ActiveBlock.tsx, src/domain/plan.ts
+- **run-a-session-plan** — touched via src/pages/SessionPlan.tsx, src/pages/ActiveBlock.tsx, src/domain/plan.ts, src/store/useStore.ts
 - **sync-devices-via-github** — touched via src/pages/Settings.tsx
-- **work-a-pathway-stage** — touched via src/pages/RoutineRunner.tsx, src/domain/routines.ts
+- **work-a-pathway-stage** — touched via src/pages/RoutineRunner.tsx, src/domain/routines.ts, src/store/useStore.ts
 
 **Possibly affected (shares a mechanic with a detected flow):**
 
 - **browse-my-repertoire** — shares entity "PracticeItem" with "adjust-how-scheduling-works"
-- **capture-a-practice-item** — shares entity "PracticeItem" with "adjust-how-scheduling-works"
-- **clear-a-due-review** — shares entity "Review" with "adjust-how-scheduling-works"
-- **log-a-class** — shares entity "PracticeItem" with "adjust-how-scheduling-works"
 - **see-practice-patterns** — shares entity "PracticeItem" with "adjust-how-scheduling-works"
 
 **What the agent reported:**
@@ -481,11 +486,29 @@ Touchpoints: src/store/backup.ts, src/store/idb.ts, src/domain/io.ts, src/pages/
 
 Evidence: 5 steps: 5 manually verified
 
+### capture-a-practice-item — Works now
+
+Touchpoints: src/components/QuickAdd.tsx, src/components/ItemForm.tsx, src/components/itemKinds.ts, src/pages/NewItem.tsx, src/pages/ItemDetail.tsx, src/store/useStore.ts, src/domain/factories.ts
+
+Evidence: 4 steps: 4 manually verified
+
+### clear-a-due-review — Works now
+
+Touchpoints: src/pages/Today.tsx, src/store/useStore.ts, src/domain/scheduling.ts, src/domain/selectors.ts
+
+Evidence: 4 steps: 4 manually verified
+
 ### install-the-app-and-keep-it-current — Works now
 
 Touchpoints: src/components/Layout.tsx, src/pages/Settings.tsx, vite.config.ts
 
 Evidence: 4 steps: 4 manually verified
+
+### log-a-class — Works now
+
+Touchpoints: src/pages/Lessons.tsx, src/components/Attachments.tsx, src/domain/recordings.ts, src/domain/setarClasses.ts, src/domain/files.ts, src/domain/selectors.ts, src/store/useStore.ts
+
+Evidence: 6 steps: 6 manually verified
 
 ### point-this-device-at-the-nas — Works now
 
