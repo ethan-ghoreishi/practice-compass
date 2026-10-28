@@ -311,26 +311,33 @@ export function scoreItems(
     .sort((a, b) => b.total - a.total || a.item.id.localeCompare(b.item.id));
 }
 
+/** Is this item live-committed to an upcoming class (`preparationDatesByItem`)? */
+export function isClassCommitted(s: ItemScore): boolean {
+  return s.lessonDate !== null;
+}
+
 /**
  * THE ONE CANDIDATE POOL every automatic suggestion draws from — Today's
  * cards, a plan's build, its regeneration and its swaps. Material practised
  * today (any genuine block, a routine's unassessed one included) steps aside
- * while anything else is eligible — a class commitment too: today's practice
- * did not complete the preparation, and it returns on a later day until its
- * class. Only when nothing fresh remains does the pool fall back to repeating
- * today's own work, and says so (`isRepeatPool`).
+ * while anything else is eligible — EXCEPT a live class commitment: today's
+ * practice did not complete the preparation, so it stays available in every
+ * session until its class (`classRepeats` names those, for honest reasons).
+ * Only when nothing else remains does the pool fall back to repeating today's
+ * own work, and says so (`isRepeatPool`).
  */
 export function candidatePool(
   scored: ItemScore[],
   blocks: PracticeBlock[],
   now: Date,
-): { pool: ItemScore[]; isRepeatPool: boolean; practisedToday: Set<string> } {
+): { pool: ItemScore[]; isRepeatPool: boolean; practisedToday: Set<string>; classRepeats: Set<string> } {
   const today = todayISODate(now);
   const practisedToday = new Set(
     blocks.filter((b) => toISODate(new Date(b.startedAt)) === today).map((b) => b.practiceItemId),
   );
-  const fresh = scored.filter((s) => !practisedToday.has(s.item.id));
-  return { pool: fresh.length > 0 ? fresh : scored, isRepeatPool: fresh.length === 0, practisedToday };
+  const classRepeats = new Set(scored.filter((s) => practisedToday.has(s.item.id) && isClassCommitted(s)).map((s) => s.item.id));
+  const fresh = scored.filter((s) => !practisedToday.has(s.item.id) || classRepeats.has(s.item.id));
+  return { pool: fresh.length > 0 ? fresh : scored, isRepeatPool: fresh.length === 0, practisedToday, classRepeats };
 }
 
 /**

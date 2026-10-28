@@ -74,7 +74,7 @@ to the relearn gap; a stable result advances SM-2 at most once per local day
 
 | kind | when | date | stored review date |
 |---|---|---|---|
-| `class` | a LIVE preparation names this item (`preparationDatesByItem`: an upcoming, same-instrument, non-archive lesson) | today; tomorrow when already practised today and the class is later | reported as kept, never overwritten |
+| `class` | a LIVE preparation names this item (`preparationDatesByItem`: an upcoming, same-instrument, non-archive lesson) | today until its class — practised earlier today included ("still available this session"), never "back tomorrow" for having been played | reported as kept, never overwritten |
 | `working` | Working intent | `effectiveReturnDate`: the earlier of the stored date and `WORKING_MAX_GAP_DAYS` (**3**) after the last practice | reported as kept when later |
 | `retention` | Keep fresh with a date | the stored date | — |
 
@@ -87,9 +87,30 @@ contributes nothing.
 ## 5. One candidate pool (`candidatePool`)
 
 Today's cards, a plan's build, regeneration and swaps all draw from it:
-anything practised today — a routine's unassessed block included, a class
-commitment included — steps aside while anything else is eligible; with
-nothing else eligible the pool repeats today's work and every reason says so.
+anything practised today — a routine's unassessed block included — steps
+aside while anything else is eligible, EXCEPT live class work
+(`classRepeats`: a preparation for an upcoming class), which stays available
+in every session until its class and says so ("Practised earlier today —
+class work stays…"). With nothing else eligible the pool repeats today's work
+and every reason says so; it never claims that while fresh work or class
+repeats are waiting.
+
+**Reserved class work (Plan only).** `requiredClassWork` names the items
+explicitly prepared for the NEAREST upcoming non-archive class on the session
+instrument (every class tied on that date); non-resting ones are seated by
+`buildSessionPlan` before the anchor, warm-up, middle picks, cool-down,
+diversity and the study turn, each at its floor (10 for a whole work, 2
+otherwise), counting toward the segment target but never removed by it, and
+protected from the allocator's seating cuts. A later class keeps only its
+bounded urgency. When the floors do not fit, the useful subset is taken in
+ranking order (each item whose floor still fits), the plan holds class work
+only, the rest are named (`classOmitted`), and nothing starts without a
+choice made against that exact coverage (`planClassCoverage`,
+`planStartRefusal`): "Start without N class items". Nothing fits → nothing to
+start, with the minimum ("Use N min", or "more than one plan holds" past 120).
+A manual remove or swap is an override the coverage shows, never repaired.
+Resting commitments are listed as resting, never seated. Today shows a small
+ranked suggestion from the same pool, never every commitment.
 A piece and its own part are one intended work (`sameWork`): one card or
 segment, unless the other has its own due review — a swap included, judged
 against the segments that stay. Urgency outranks variety:
@@ -111,12 +132,22 @@ questions not facts) that only pre-fill Add practice item.
 ## 7. Plan and Routine controls — one policy
 
 Selected time is CAPACITY. Removing, skipping or moving on never lengthens
-another entry; freed time stays visibly unused until the owner deliberately
-reallocates (Regenerate or a new Plan length; a routine length choice).
+another entry by itself; freed time stays visibly unused until the owner
+deliberately reallocates. Before Start, that can be an explicit preview edit
+(`reuseFreedMinutes` / `reuseFreedRoutineMinutes`, offered by `FreedTime`):
+"Spread over the rest" or "Give to one…" — the Plan's to work then reviews,
+each up to its ceiling (25; a warm-up its share, a cool-down its split + 1,
+and spread never to either), the Routine's in its authored proportions
+(`fitRoutineToMinutes`) or all to one entry. Only freed minutes are spent,
+once; a prior unplanned remainder stays unplanned; identity and order never
+change; nothing regenerates; the saved routine is untouched; a recipient that
+cannot take a minute is never offered. Regenerate / a new length / a new
+routine length replace the preview. While RUNNING nothing reallocates.
 
 | state | Plan | Routine | records |
 |---|---|---|---|
-| before start: remove an entry | `removePlanSegment` — others keep minutes; summary says unused | preview Remove — the run starts without it; the saved routine is untouched | nothing |
+| before start: remove an entry | `removePlanSegment` — others keep minutes; summary says unused | `removeFromPreview` — the run starts without it; the saved routine is untouched | nothing |
+| before start: reuse freed time | `reuseFreedMinutes` (spread / one entry) | `reuseFreedRoutineMinutes` (spread / one entry) | nothing |
 | before start: reorder | Move earlier / Move later (`movePlanSegment`) — the whole segment moves | (order is the routine's own) | nothing |
 | before start: reallocate | Regenerate / new length → `buildSessionPlan` | "Run it for a different length" → `fitRoutineToMinutes` | nothing |
 | running: a later entry | Skip (`skipPlanSegment(run, i)`) | Remove (`removePendingSegment`) | nothing |
@@ -184,8 +215,8 @@ sync as usual.
 | `closeSession` | `decideReview` via `computeReviewOutcome` (scope, intent) | ac-8, ac-9 |
 | CloseBlock line / "Why this date?" | `planNextReview` + `nextPractice`, same inputs | ac-11 |
 | ItemDetail Next practice, Comes back as | `nextPractice`, `setReturnIntent` | ac-9, ac-11 |
-| Today cards | `recommend` → `candidatePool`, `sameWork`, `effectiveReturnDate` | ac-10 |
-| Plan build / regenerate / swap | `buildSessionPlan` / `swapSegment` → `candidatePool`, theory turn | ac-10, ac-12 |
+| Today cards | `recommend` → `candidatePool` (class repeats), `sameWork`, `effectiveReturnDate` | ac-10; 2026-10-28 ac-2 |
+| Plan build / regenerate / swap | `buildSessionPlan` / `swapSegment` → `candidatePool`, `requiredClassWork`, theory turn | ac-10, ac-12; 2026-10-28 ac-2, ac-3 |
 | Plan preview / run controls | `removePlanSegment`, `movePlanSegment`, `skipPlanSegment`, `planRunTime` | ac-2, ac-4, ac-5 |
 | Routine preview / run controls | `fitRoutineToMinutes`, `skipCurrentSegment`, `skipSegmentUnpractised`, `removePendingSegment` | ac-1, ac-2, ac-3 |
 | Item and lesson notes | `DurableNotes`, `saveNotes`, `notesDrafts` | ac-6, ac-7 |
@@ -216,3 +247,42 @@ ever practised or logged. Fixed at that choke point: a bound segment is kept
 and shows its item's title. Checked clean: the run's aggregation, Finish before
 capture, capture omitted, reload after finish, and history (which never
 filtered `not_logged`).
+
+## 12. Live practice — family proof map (2026-10-28, issue #58)
+
+One session model: freed preview time is an explicit choice, the next class's
+work is reserved in every Plan, optional routine feedback clears honestly, a
+question can be asked without stopping, and an opt-in metronome shares the
+one practice sound. Fixtures are fixed LOCAL clocks (2026-10-28 08:00 and
+19:00; next class 2026-10-30) and every expected minute, id, date and record
+is a literal in `tests/fixtures/live-practice-expectations.json`, worked out
+by hand from the rules above.
+
+| family (named test) | invariants | consumers swept |
+|---|---|---|
+| ac-1 `preview time choices preserve identity order capacity and unused remainders` | kept + freed = previewed; only freed time is spent, once; identity, role, reason, floor and order unchanged; ceilings (25, warm-up share, cool-down split + 1; spread never to an optional role); prior remainder stays; saved routine untouched; Start = preview; running Skip / Move on / early Finish keep their accounting | SessionPlan preview, `startPlan`, `planRunTime`; RoutineRunner preview (content, fitted length, short on time, every start door via `startRoutineRun`), `routineRunTime`, `aggregateItemMinutes` |
+| ac-2 `next class work survives morning practice in every evening plan` | required = nearest class's non-resting preparations; seated in every build / regeneration / length change (12–120) whatever exposure or same-day practice, once each; class reasons honest, never "nothing else eligible"; stored dates and spacing untouched; counterexamples: uncommitted morning item, later / passed / archive / unassigned / question-only / other-instrument / resting | `candidatePool` → Today (`recommend`), build, swap; `nextPractice` → ItemDetail, CloseBlock; `planSegmentReason`, summary |
+| ac-3 `class plan capacity exceptions name omissions before any partial start` | floors 10 / 2; 20 → both works, 15 → one + named omission + minimum 20, 5 → nothing to start (needs 10); parts past the old segment count; parent + child both seated when both prepared, uncommitted relatives only with their own due review, siblings distinct; > 120 → partial, no impossible increase; tied classes; remove / swap → `edited` omission; a choice is bound to budget + subset + omissions + revision + day | SessionPlan coverage card, Start ("Start without…", live recheck), `planStartRefusal` |
+| ac-4 `routine feedback can be cleared without changing practice or retention` | Clear → `not_logged`, observation kept; `lastResult` = newest remaining assessment, absent when none, a newer one left alone; idempotent; foreign / deleted block refuses all; minutes, scope, reviews, dates, spacing, status unchanged | RoutineCapture, `captureRoutineResults`, history (`recentResults`), Insights (`generateInsights`), report (`buildReportData`) |
+| ac-5 `live teacher questions retain capture ownership while practice continues` | owner frozen at open (`openQuestionCapture`); invalid target refused with words kept (`captureTargetProblem`); one question per save, a retry rewrites it, never a second; Saved waits for the device; clock, notes draft, markers, preparations and ranking untouched | ActiveBlock (ordinary, Plan), RoutineRunner (bound, unbound, boundary), CloseBlock's own question, ItemDetail agenda, TeacherReport (by lesson id) |
+| ac-6 `metronome scheduling and cue priority survive sound lifecycle changes` | beats on the audio clock (`LOOKAHEAD_SECONDS`), one scheduler, tempo 40–240 from the next unplaced beat, late timer skips to the grid; stop cancels placed beats; context replacement, lost readiness, hidden, paused, left → stopped, never restarted; resume denied / rejected / never settled or landing late → no beat; cue ducks the beat for `CUE.totalSeconds`, claims once | `practiceCue` (`onContextReplaced`, `onPracticeCue`, `onSoundState`), `metronome.ts`, store start / resume doors |
+| ac-7 `live practice tools preserve clocks notes records and mobile controls` | the same, through real screens in Chromium and WebKit: tempo / level controls, question across a boundary and keyboard dismissal, notes durable, ring + cue at the target, freed-time cancel / spread then Start = preview, no extra blocks after a finished run and a reload | ActiveBlock, SessionPlan, RoutineRunner, Settings' test sound (unchanged), conformance sweep (`/active`, running routine) |
+
+Checked clean, unchanged: `SchedulingExplanation` (its class sentence already
+holds), Insights and the teacher report (read results, never `not_logged` as
+one), `closeSession`'s question (a separate entry), StartBlock (no allocation
+list), sync / backup / migrations (no new persisted field: tempo and level are
+module memory, the preview and coverage are component state).
+
+Route:
+
+```
+npx vitest run tests/live-practice-families.test.ts tests/live-practice.browser.test.ts tests/practice-cues.browser.test.ts tests/practice-session-families.test.ts tests/practice-session.browser.test.ts
+```
+
+Limits: the audio port records what is scheduled, not what a speaker plays;
+a mobile keyboard is approximated by focus and blur; changes underneath an
+open question field that only sync could make (a deleted class or item) are
+proved on `captureTargetProblem`, while midnight passing under it is proved
+through the real screen. Real audibility beside the Setar, BPM comfort and
+keyboard return are the owner's walkthrough (ac-8).

@@ -6,7 +6,11 @@ import {
   fitRoutineToMinutes,
   locateClock,
   nextSignal,
+  previewRoutine,
+  previewRunSegments,
+  removeFromPreview,
   RESULT_LABELS,
+  reuseFreedRoutineMinutes,
   routineRunTime,
   runElapsedSeconds,
   runSegmentStates,
@@ -16,6 +20,7 @@ import {
   type BlockResult,
   type ID,
   type PracticeDB,
+  type RoutinePreview,
   type RoutineSegment,
   type RunSegment,
   type RunSegmentState,
@@ -24,12 +29,13 @@ import { useStore } from '../store/useStore';
 import { storageSettled } from '../store/idb';
 import { getItem } from '../store/lookups';
 import { formatClock } from '../components/format';
-import { OptionPills, SaveStatus, useAcknowledgedSaves } from '../components/ui';
+import { FreedTime, OptionPills, SaveStatus, useAcknowledgedSaves } from '../components/ui';
 import ItemNotes from '../components/ItemNotes';
 import { CheckIcon, PauseIcon, PlayIcon } from '../components/icons';
 import { useScreenAwake } from '../components/useScreenAwake';
 import { playPracticeCue, usePracticeSound } from '../components/practiceCue';
-import { SoundNote } from './ActiveBlock';
+import TeacherQuestionCapture from '../components/TeacherQuestionCapture';
+import { Metronome, SoundNote } from './ActiveBlock';
 
 /** How long the "just arrived" cue stays visible after a segment boundary — long enough that glancing up a few seconds later still shows it, never a single-render flash. */
 const SEGMENT_ARRIVAL_WINDOW_SECONDS = 8;
@@ -75,9 +81,6 @@ export default function RoutineRunner() {
   // then. A failed write keeps the run's outcome in memory (no second credit)
   // and Try again writes it again.
   const [saved, setSaved] = useState<'saving' | 'saved' | 'failed' | null>(null);
-  // Before the start tap: what this run will contain. Removing an entry here
-  // drops it and its minutes from THIS run only — never from the routine.
-  const [removed, setRemoved] = useState<Set<number>>(() => new Set());
   const [, setTick] = useState(0);
 
   const isMine = !!routineId && activeRoutine?.routineId === routineId;
@@ -134,11 +137,17 @@ export default function RoutineRunner() {
   };
   // The contents the preview shows ARE the run a Start begins: the content
   // choice (essentials only), then any chosen length (proportional fit), then
-  // whatever was removed here — nothing refills the time removal frees.
+  // the owner's edits here — a removal frees its minutes, which stay unused
+  // unless the owner explicitly hands them back. None of it touches the
+  // saved routine, and a new content or length choice starts the preview over.
   const fitMinutes = validateBudgetMinutes(Number(searchParams.get('minutes') ?? ''));
   const content = routine ? segmentsForRun(routine.segments, shortOnTime) : [];
   const previewed = fitMinutes === null ? content : fitRoutineToMinutes(content, fitMinutes);
-  const chosen = previewed.filter((_, i) => !removed.has(i));
+  const previewKey = `${routineId}|${shortOnTime}|${fitMinutes}|${routine?.updatedAt}`;
+  const [preview, setPreview] = useState<{ key: string; p: RoutinePreview } | null>(null);
+  const edits = preview?.key === previewKey ? preview.p : previewRoutine(previewed);
+  const edit = (p: RoutinePreview) => setPreview({ key: previewKey, p });
+  const chosen = previewRunSegments(edits);
   const beginChosen = () => {
     if (routine && routineId && chosen.length > 0) startRoutineRun(routineId, shortOnTime, chosen);
   };
@@ -280,7 +289,6 @@ export default function RoutineRunner() {
 
   if (!isMine && !otherActive && !active) {
     const chosenMinutes = chosen.reduce((n, x) => n + x.minutes, 0);
-    const removedMinutes = previewed.reduce((n, x, i) => n + (removed.has(i) ? x.minutes : 0), 0);
     const dropped = fitMinutes === null ? null : describeFitDrop(content, previewed);
     return (
       <div className="stack-lg" style={{ paddingTop: 'var(--space-6)' }}>
@@ -294,7 +302,7 @@ export default function RoutineRunner() {
               <span dir="ltr">
                 {chosen.length} segments · {chosenMinutes} min{shortOnTime ? ' · short on time' : ''}
                 {fitMinutes !== null ? ` · fitted to ${fitMinutes} min` : ''}
-                {removedMinutes > 0 ? ` · ${removedMinutes} min removed, left unused` : ''}
+                {edits.freedMinutes > 0 ? ` · ${edits.freedMinutes} min removed, left unused` : ''}
                 {dropped ? ` · ${dropped}` : ''}
               </span>
             </div>
@@ -302,11 +310,17 @@ export default function RoutineRunner() {
         </header>
         <RunContents
           db={db}
-          segments={previewed}
+          segments={edits.segments}
           label="What this run will contain"
-          rowState={(i) => (removed.has(i) ? 'skipped' : 'pending')}
-          onRemove={(i) => setRemoved((r) => new Set(r).add(i))}
+          rowState={(i) => (edits.removed.includes(i) ? 'skipped' : 'pending')}
+          onRemove={(i) => edit(removeFromPreview(edits, i))}
           removeLabel="Remove from this session"
+        />
+        <FreedTime
+          minutes={edits.freedMinutes}
+          recipients={edits.segments.map((seg, i) => ({ index: i, title: segmentTitle(db, seg) })).filter((r) => !edits.removed.includes(r.index))}
+          onSpread={chosen.length > 0 ? () => edit(reuseFreedRoutineMinutes(edits, 'spread')) : undefined}
+          onGive={(i) => edit(reuseFreedRoutineMinutes(edits, i))}
         />
         {chosen.length === 0 ? (
           <p className="small faint" style={{ textAlign: 'center' }}>
@@ -316,7 +330,7 @@ export default function RoutineRunner() {
         <button
           className="btn btn-primary btn-lg"
           disabled={chosen.length === 0}
-          onClick={fitMinutes === null && removed.size === 0 ? begin : beginChosen}
+          onClick={fitMinutes === null && edits.removed.length === 0 ? begin : beginChosen}
         >
           <PlayIcon /> Start
         </button>
@@ -344,6 +358,8 @@ export default function RoutineRunner() {
   // suppresses only the announcement, via acknowledgeThrough) — deliberately: it describes
   // the segment you are now on, not a re-announcement of the one you just chose to end.
   const justArrived = clock.segIndex > 0 && clock.segElapsedSeconds < SEGMENT_ARRIVAL_WINDOW_SECONDS;
+  // A question's instrument: the routine's own, else its bound item's — never invented.
+  const captureInstrument = routine.instrumentId ?? (seg.itemId ? getItem(db, seg.itemId)?.instrumentId : undefined);
 
   return (
     <div className="stack-lg" style={{ paddingTop: 'var(--space-4)', textAlign: 'center' }}>
@@ -441,6 +457,10 @@ export default function RoutineRunner() {
       </p>
 
       <SoundNote state={sound} />
+
+      <Metronome running={activeRoutine.running} />
+
+      {captureInstrument && <TeacherQuestionCapture instrumentId={captureInstrument} itemId={seg.itemId && getItem(db, seg.itemId) ? seg.itemId : undefined} />}
 
       <details className="disclosure" style={{ textAlign: 'start' }}>
         <summary className="small">
@@ -550,8 +570,9 @@ const CAPTURE_RESULTS: BlockResult[] = ['worse', 'same', 'slightly_better', 'sta
  * The lighter variant of a close, after the clock has stopped: for each item
  * this run recorded, optionally one of the six results and one line, written
  * onto the run's OWN blocks. Nothing is required — the minutes are already
- * saved, and leaving forgoes only the capture. It never schedules a review,
- * moves a date or changes a status.
+ * saved, and leaving forgoes only the capture. A chosen result can be cleared
+ * back to "Not assessed" (`not_logged`), before or after saving. It never
+ * schedules a review, moves a date or changes a status.
  */
 function RoutineCapture({ blockIds }: { blockIds: ID[] }) {
   const db = useStore((s) => s.db);
@@ -588,6 +609,18 @@ function RoutineCapture({ blockIds }: { blockIds: ID[] }) {
               onChange={(r) => set({ result: r })}
               options={CAPTURE_RESULTS.map((r) => ({ value: r, label: RESULT_LABELS[r] }))}
             />
+            {/* Back to "Not assessed" — before or after saving; the line below stays. */}
+            {v.result !== 'not_logged' && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ minHeight: 44, alignSelf: 'flex-start' }}
+                aria-label={`Clear the result for ${title}`}
+                onClick={() => set({ result: 'not_logged' })}
+              >
+                Clear result
+              </button>
+            )}
             <input
               className="input"
               dir="auto"

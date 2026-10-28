@@ -36,6 +36,27 @@ let context: AudioContext | null = null;
 let refused = false;
 let state: PracticeSoundState = 'off';
 const listeners = new Set<() => void>();
+/** Told BEFORE a readying tap replaces the context, so nothing scheduled on the old one outlives it. */
+const replacing = new Set<() => void>();
+/** Told when a boundary cue is scheduled: the window [from, to] it sounds in, on that context. */
+const cueing = new Set<(c: AudioContext, from: number, to: number) => void>();
+
+/** The page's current context, for the metronome to schedule on — never created or resumed here. */
+export function practiceContext(): AudioContext | null {
+  return context;
+}
+
+/** Subscribe to context replacement (every readying tap); returns the unsubscribe. */
+export function onContextReplaced(fn: () => void): () => void {
+  replacing.add(fn);
+  return () => replacing.delete(fn);
+}
+
+/** Subscribe to boundary cues, so other sound can yield to them; returns the unsubscribe. */
+export function onPracticeCue(fn: (c: AudioContext, from: number, to: number) => void): () => void {
+  cueing.add(fn);
+  return () => cueing.delete(fn);
+}
 
 function audioCtor(): Ctor | undefined {
   if (typeof window === 'undefined') return undefined;
@@ -74,6 +95,7 @@ export function primePracticeSound(): Promise<void> | undefined {
     update();
     return undefined;
   }
+  for (const fn of replacing) fn();
   const old = context;
   context = null;
   if (old && old.state !== 'closed') {
@@ -104,8 +126,28 @@ export function primePracticeSound(): Promise<void> | undefined {
   return resumed;
 }
 
-/** The cue's shape, in one place: two short 880 Hz pulses. */
-export const CUE = { hz: 880, gain: 0.2, pulseSeconds: 0.3, starts: [0, 0.45] } as const;
+/**
+ * The cue's shape, in one place: two short RISING pulses (B5 then E6), so it
+ * reads as "a boundary" and never as a metronome tick. A triangle wave carries
+ * odd harmonics a phone speaker reproduces better than a bare sine; a fast
+ * linear attack (no click), a short hold at the peak and an exponential decay
+ * put more energy in each pulse than the old instant-decay 880 Hz sine at 0.2,
+ * without simply maximising the level. `totalSeconds` is the window the
+ * metronome is ducked for.
+ */
+export const CUE = {
+  wave: 'triangle',
+  pulses: [
+    { start: 0, hz: 988 },
+    { start: 0.3, hz: 1319 },
+  ],
+  peak: 0.36,
+  floor: 0.0001,
+  attackSeconds: 0.01,
+  holdSeconds: 0.08,
+  pulseSeconds: 0.26,
+  totalSeconds: 0.56,
+} as const;
 
 /**
  * The boundary cue. Plays only through the page's CURRENT running context —
@@ -123,20 +165,26 @@ export function playPracticeCue(): void {
   if (!c || c.state !== 'running') return;
   try {
     const t0 = c.currentTime;
-    for (const offset of CUE.starts) {
+    // Other sound (the metronome) yields first, for exactly this window.
+    for (const fn of cueing) fn(c, t0, t0 + CUE.totalSeconds);
+    for (const { start, hz } of CUE.pulses) {
+      const t = t0 + start;
       const osc = c.createOscillator();
       const gain = c.createGain();
-      osc.frequency.value = CUE.hz;
-      gain.gain.setValueAtTime(CUE.gain, t0 + offset);
-      gain.gain.exponentialRampToValueAtTime(0.001, t0 + offset + CUE.pulseSeconds);
+      osc.type = CUE.wave;
+      osc.frequency.value = hz;
+      gain.gain.setValueAtTime(CUE.floor, t);
+      gain.gain.linearRampToValueAtTime(CUE.peak, t + CUE.attackSeconds);
+      gain.gain.setValueAtTime(CUE.peak, t + CUE.holdSeconds);
+      gain.gain.exponentialRampToValueAtTime(CUE.floor, t + CUE.pulseSeconds);
       osc.connect(gain).connect(c.destination);
       // Short-lived nodes are let go once they have played; the context stays until the next tap.
       osc.onended = () => {
         osc.disconnect();
         gain.disconnect();
       };
-      osc.start(t0 + offset);
-      osc.stop(t0 + offset + CUE.pulseSeconds);
+      osc.start(t);
+      osc.stop(t + CUE.pulseSeconds);
     }
   } catch {
     // best-effort only — the visual signal stands
@@ -166,12 +214,13 @@ export function testPracticeSound(): void {
   });
 }
 
-function subscribe(fn: () => void): () => void {
+/** Subscribe to the page's sound state (a context running, paused, closed); returns the unsubscribe. */
+export function onSoundState(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
 
 /** The page's sound state, for an indication on screen. */
 export function usePracticeSound(): PracticeSoundState {
-  return useSyncExternalStore(subscribe, read, () => 'off');
+  return useSyncExternalStore(onSoundState, read, () => 'off');
 }

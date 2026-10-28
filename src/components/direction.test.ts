@@ -201,6 +201,10 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "" },
   { file: "components/SetarSetupReview.tsx", tagName: "span", classValue: "small grow" },
   { file: "components/SetarSetupReview.tsx", tagName: "div", classValue: "card card-quiet stack-sm" },
+  // "Ask teacher": the item a live question is about, inside its generated line.
+  { file: "components/TeacherQuestionCapture.tsx", tagName: "span", classValue: "" },
+  // Freed preview time: a recipient's own title inside its "Give to" button.
+  { file: "components/ui.tsx", tagName: "span", classValue: "" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "eyebrow" },
   { file: "pages/ActiveBlock.tsx", tagName: "div", classValue: "stack-sm" },
   { file: "pages/ActiveBlock.tsx", tagName: "span", classValue: "" },
@@ -282,6 +286,10 @@ const GROUP_SITE_INVENTORY: { file: string; tagName: string; classValue: string 
   { file: "pages/RoutineRunner.tsx", tagName: "div", classValue: "small" },
   { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
+  { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
+  // Class coverage: an omitted class item's own title, and a resting one's
+  // title nested in its generated line.
+  { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "span", classValue: "" },
   { file: "pages/SessionPlan.tsx", tagName: "div", classValue: "" },
   // The stage header: its title leads the group, its intro resolves its own (2026-10-22).

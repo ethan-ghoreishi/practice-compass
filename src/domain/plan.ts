@@ -82,11 +82,18 @@ export interface SessionPlan {
   summary: string;
   generatedAt: string;
   /**
-   * Minutes the owner removed from this preview. They stay UNUSED — never
-   * spread over the remaining work — until a deliberate Regenerate or a new
-   * budget rebuilds the allocation.
+   * Minutes the owner removed from this preview and has not handed out again.
+   * They stay UNUSED until the owner deliberately spreads them or gives them
+   * to one entry (`reuseFreedMinutes`), or a Regenerate / new budget rebuilds
+   * the allocation — never automatically.
    */
   removedMinutes?: number;
+  /**
+   * Required class work (`requiredClassWork`) this build could not seat
+   * because the floors did not fit the budget. Coverage names them; a start
+   * without them is an explicit choice.
+   */
+  classOmitted?: ID[];
 }
 
 export interface BuildPlanArgs {
@@ -100,6 +107,11 @@ export interface BuildPlanArgs {
   preparationDates?: Map<ID, ISODate>;
   /** Ids of items sitting in the current pathway stage — a tie-break only. */
   stageItemIds?: Set<string>;
+  /**
+   * The next class's required work (`requiredClassWork(...).itemIds`): seated
+   * before every optional role and heuristic whenever its floors fit.
+   */
+  requiredItemIds?: ID[];
   params?: SchedulingParams;
 }
 
@@ -229,7 +241,7 @@ function plural(n: number, word: string): string {
 export function planSegmentReason(
   bucket: PlanBucket,
   score: ItemScore,
-  context: { repeat?: boolean; yieldedTo?: string; dueDate?: ISODate; studyTurn?: boolean } = {},
+  context: { repeat?: boolean; yieldedTo?: string; dueDate?: ISODate; studyTurn?: boolean; classRepeat?: boolean } = {},
 ): string {
   if (context.repeat) {
     return 'Practised earlier today — chosen again because nothing else eligible is waiting.';
@@ -240,10 +252,13 @@ export function planSegmentReason(
   switch (bucket) {
     case 'warmup':
       return 'Warm up on something you already know before the harder work.';
-    case 'lesson':
-      return score.daysToLesson === 0
-        ? `For today’s class (${score.lessonDate}).`
-        : `For your class on ${score.lessonDate} — ${plural(score.daysToLesson ?? 0, 'day')} away.`;
+    case 'lesson': {
+      const base =
+        score.daysToLesson === 0
+          ? `For today’s class (${score.lessonDate}).`
+          : `For your class on ${score.lessonDate} — ${plural(score.daysToLesson ?? 0, 'day')} away.`;
+      return context.classRepeat ? `${base} Practised earlier today — class work stays in until the class.` : base;
+    }
     case 'review': {
       const when = context.dueDate ? ` (due ${context.dueDate})` : '';
       return score.overdueDays != null && score.overdueDays > 0
@@ -309,7 +324,7 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
   }
 
   const today = todayISODate(now);
-  const { pool, isRepeatPool, practisedToday } = candidatePool(scored, blocks, now);
+  const { pool, isRepeatPool, practisedToday, classRepeats } = candidatePool(scored, blocks, now);
 
   const dueById = new Map(
     dueReviews(args.reviews, now)
@@ -398,18 +413,46 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
         yieldedTo: bucket === 'deep' ? chosen.yieldedTo : undefined,
         dueDate: dueById.get(chosen.score.item.id),
         studyTurn: chosen.studyTurn,
+        classRepeat: classRepeats.has(chosen.score.item.id),
       }),
     };
     selected.push(candidate);
     return candidate;
   };
 
+  // ---- 0. the next class's work, RESERVED before anything else -------------
+  // Every required item gets a seat at its floor whenever the floors fit,
+  // whatever it scored, however much it was practised today, and before any
+  // optional role, variety, study turn, anchor preference or segment count.
+  // When they cannot all fit, the useful subset is taken in ranking order
+  // (each item whose floor still fits), the rest are named as omitted, and the
+  // plan holds class work only — never optional padding beside an omission.
+  const required = new Set(args.requiredItemIds ?? []);
+  const reserved: Candidate[] = [];
+  const classOmitted: ID[] = [];
+  let room = B;
+  for (const s of scored.filter((x) => required.has(x.item.id))) {
+    if (segmentFloor(s.item) > room) {
+      classOmitted.push(s.item.id);
+      continue;
+    }
+    room -= segmentFloor(s.item);
+    reserved.push(add({ score: s }, bucketFor(s))!);
+  }
+  const partial = classOmitted.length > 0;
+  if (partial && reserved.length === 0) {
+    return {
+      ...empty('Your next class’s work needs a longer session than this — choose more minutes to plan it.'),
+      classOmitted,
+    };
+  }
+
   // ---- 1. the anchor: the most useful work, before any role decoration ----
-  const anchorPick = pick(pool, false);
-  const anchor = add(anchorPick, anchorPick ? bucketFor(anchorPick.score) : 'deep', { repeat: isRepeatPool });
+  const anchorPick = reserved.length > 0 ? undefined : pick(pool, false);
+  const anchor = reserved[0] ?? add(anchorPick, anchorPick ? bucketFor(anchorPick.score) : 'deep', { repeat: isRepeatPool });
   if (!anchor) return empty('Nothing eligible to practise right now.');
 
-  if (B >= SHORT_SESSION_MINUTES) {
+  if (!partial && B >= SHORT_SESSION_MINUTES) {
     // ---- 2. warm-up: optional, real minutes, never at the cost of the work --
     // Its minutes are its pinned share and nothing more, so a role whose share
     // is under a material's floor is filled by material that fits it — a
@@ -475,13 +518,14 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
     .map(({ c }) => c);
 
   // Seating and minutes in one step: a segment stays only while every seated
-  // segment can still reach its floor, and the anchor always stays.
+  // segment can still reach its floor, and the anchor and every reserved
+  // class item always stay.
   const minutes = allocateMinutes(
     ordered.map((c) => c.bucket),
     B,
     params,
     ordered.map((c) => segmentFloor(c.score.item)),
-    ordered.indexOf(anchor),
+    [anchor, ...reserved].map((c) => ordered.indexOf(c)),
   );
   const kept = ordered.filter((_, i) => minutes[i] > 0);
   const keptMinutes = minutes.filter((m) => m > 0);
@@ -509,7 +553,7 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
   // choose — a plan describing its own segment as skipped.
   const chosen = new Set(segments.map((s) => s.itemId));
   const skippedTitles = scored
-    .filter((s) => practisedToday.has(s.item.id) && !chosen.has(s.item.id))
+    .filter((s) => practisedToday.has(s.item.id) && !classRepeats.has(s.item.id) && !chosen.has(s.item.id))
     .map((s) => s.item.title);
 
   return {
@@ -518,6 +562,7 @@ export function buildSessionPlan(args: BuildPlanArgs): SessionPlan {
     segments,
     summary: buildSummary(segments, B, skippedTitles),
     generatedAt,
+    ...(partial ? { classOmitted } : {}),
   };
 }
 
@@ -565,8 +610,9 @@ export function cooldownShareMinutes(budget: number, params: SchedulingParams, o
  * SEATING. A segment stays only while every seated segment can still reach
  * its floor (`floors`, default MIN_SEGMENT_MINUTES; a whole work's is the
  * standard block): the optional roles go first — cool-down, then warm-up —
- * then the lowest-priority work (the last), never `anchor` (default: the
- * first that is not an optional role). One seated segment takes the whole
+ * then the lowest-priority work (the last), never an `anchor` (one index or
+ * several — the reserved class work; default: the first that is not an
+ * optional role). One seated segment takes the whole
  * budget up to MAX_SEGMENT_MINUTES, floors aside.
  *
  * OPTIONAL ROLES NEVER CARRY OVERFLOW. The warm-up gets exactly its pinned
@@ -587,7 +633,7 @@ export function allocateMinutes(
   budget: number,
   params?: SchedulingParams,
   floors?: number[],
-  anchor?: number,
+  anchor?: number | number[],
 ): number[] {
   const B = Math.max(MIN_SEGMENT_MINUTES, Math.round(budget));
   const p = clampSchedulingParams(params);
@@ -596,7 +642,8 @@ export function allocateMinutes(
   if (n === 0) return alloc;
   const floorOf = (i: number) => Math.max(MIN_SEGMENT_MINUTES, floors?.[i] ?? MIN_SEGMENT_MINUTES);
   const optional = (i: number) => buckets[i] === 'warmup' || buckets[i] === 'cooldown';
-  const protectedIdx = anchor !== undefined && anchor >= 0 && anchor < n ? anchor : buckets.findIndex((_, i) => !optional(i));
+  const kept = new Set((Array.isArray(anchor) ? anchor : anchor === undefined ? [] : [anchor]).filter((i) => i >= 0 && i < n));
+  if (kept.size === 0) kept.add(buckets.findIndex((_, i) => !optional(i)));
 
   // ---- seating ----------------------------------------------------------------
   const seated = new Set(buckets.map((_, i) => i));
@@ -618,7 +665,7 @@ export function allocateMinutes(
     const drop =
       list.find((i) => buckets[i] === 'cooldown') ??
       list.find((i) => buckets[i] === 'warmup') ??
-      list.filter((i) => i !== protectedIdx).at(-1);
+      list.filter((i) => !kept.has(i)).at(-1);
     if (drop === undefined) break;
     seated.delete(drop);
   }
@@ -749,7 +796,7 @@ function buildSummary(segments: PlanSegment[], B: number, skippedTitles: string[
   if (planned < B) {
     out +=
       removedMinutes > 0
-        ? ` ${B - planned} of your ${B} minutes are unused — removing work leaves its time free; Regenerate to plan it again.`
+        ? ` ${B - planned} of your ${B} minutes are unused — removing work leaves its time free until you give it to the rest or Regenerate.`
         : ` ${B - planned} of your ${B} minutes are unplanned — there isn’t more useful work waiting.`;
   }
   if (skippedTitles.length > 0) {
@@ -769,9 +816,10 @@ function joinList(parts: string[]): string {
 /**
  * Remove one segment from the PREVIEW. The other segments keep their order,
  * minutes, roles and reasons exactly: the freed minutes stay visibly unused,
- * never spread over untouched work (that would quietly change what each of
- * them asks of you). Regenerate or a new budget is the deliberate way to
- * allocate again. Records nothing.
+ * never spread automatically (that would quietly change what each of them
+ * asks of you). Handing them out is a separate, explicit preview edit
+ * (`reuseFreedMinutes`); Regenerate or a new budget allocates afresh.
+ * Records nothing.
  */
 export function removePlanSegment(plan: SessionPlan, index: number): SessionPlan {
   const target = plan.segments[index];
@@ -832,7 +880,7 @@ export function swapSegment(
   // material stays excluded here too, unless nothing fresh is eligible for
   // this bucket, in which case the honest repeat fallback applies exactly as
   // it does on a build (§B3/B7).
-  const { pool, isRepeatPool } = candidatePool(scored, blocks, args.now);
+  const { pool, isRepeatPool, classRepeats } = candidatePool(scored, blocks, args.now);
 
   const inUse = new Set(plan.segments.map((s) => s.itemId));
   // The build's own rule: a piece and its own part are one intended work, so
@@ -890,11 +938,159 @@ export function swapSegment(
     core: target.core,
     mode: defaultModeForStatus(pick.item.status),
     focus: focusFor(pick.item),
-    reason: planSegmentReason(target.bucket, pick, { dueDate: dueById.get(pick.item.id), repeat: isRepeatPool }),
+    reason: planSegmentReason(target.bucket, pick, {
+      dueDate: dueById.get(pick.item.id),
+      repeat: isRepeatPool,
+      classRepeat: classRepeats.has(pick.item.id),
+    }),
     floorMinutes: segmentFloor(pick.item),
   };
   const segments = plan.segments.map((s, i) => (i === index ? replacement : s));
   return { ...plan, segments, summary: buildSummary(segments, plan.budgetMinutes, [], plan.removedMinutes) };
+}
+
+// --- Freed preview time: an explicit edit, never automatic --------------------
+
+/** Removed minutes not yet handed out — the only time a reuse may spend. */
+export function freedMinutes(plan: SessionPlan): number {
+  const planned = plan.segments.reduce((n, s) => n + s.minutes, 0);
+  return Math.max(0, Math.min(plan.removedMinutes ?? 0, plan.budgetMinutes - planned));
+}
+
+/**
+ * How many more minutes segment `index` may take from freed time — the
+ * allocator's own ceilings: work and reviews up to MAX_SEGMENT_MINUTES, a
+ * warm-up up to its pinned share, a cool-down up to its split plus the one
+ * rounding minute.
+ */
+export function freedRoom(plan: SessionPlan, index: number, params?: SchedulingParams): number {
+  const seg = plan.segments[index];
+  if (!seg) return 0;
+  const p = clampSchedulingParams(params ?? DEFAULT_SCHEDULING_PARAMS);
+  const B = plan.budgetMinutes;
+  const others = plan.segments.filter((_, i) => i !== index).map((s) => s.bucket);
+  const cap =
+    seg.bucket === 'warmup'
+      ? warmupShareMinutes(B, p)
+      : seg.bucket === 'cooldown'
+        ? Math.min(MAX_SEGMENT_MINUTES, Math.max(seg.floorMinutes ?? MIN_SEGMENT_MINUTES, cooldownShareMinutes(B, p, others) + 1))
+        : MAX_SEGMENT_MINUTES;
+  return Math.max(0, cap - seg.minutes);
+}
+
+/**
+ * Give the preview's freed minutes back, deliberately: `'spread'` hands them
+ * one at a time, in the plan's own order, to the work segments (focus and
+ * class) and only then to reviews — never to a warm-up or cool-down, which
+ * never carry overflow — while `index` gives them to that one entry. Each
+ * recipient stops at its `freedRoom`; whatever nobody can take stays unused.
+ * Order, identity, roles and reasons never change, nothing is regenerated,
+ * and only time still freed can be spent, once.
+ */
+export function reuseFreedMinutes(plan: SessionPlan, to: 'spread' | number, params?: SchedulingParams): SessionPlan {
+  const freed = freedMinutes(plan);
+  if (freed === 0) return plan;
+  const minutes = plan.segments.map((s) => s.minutes);
+  const room = plan.segments.map((_, i) => freedRoom(plan, i, params));
+  let left = freed;
+  const give = (to: number[]) => {
+    for (let changed = true; left > 0 && changed; ) {
+      changed = false;
+      for (const i of to) {
+        if (left > 0 && room[i] > 0) {
+          minutes[i] += 1;
+          room[i] -= 1;
+          left -= 1;
+          changed = true;
+        }
+      }
+    }
+  };
+  const all = plan.segments.map((_, i) => i);
+  if (to === 'spread') {
+    give(all.filter((i) => plan.segments[i].bucket === 'deep' || plan.segments[i].bucket === 'lesson'));
+    give(all.filter((i) => plan.segments[i].bucket === 'review'));
+  } else if (plan.segments[to]) {
+    give([to]);
+  }
+  if (left === freed) return plan;
+  const segments = plan.segments.map((s, i) => (minutes[i] === s.minutes ? s : { ...s, minutes: minutes[i] }));
+  const removedMinutes = (plan.removedMinutes ?? 0) - (freed - left);
+  return { ...plan, segments, removedMinutes, summary: buildSummary(segments, plan.budgetMinutes, [], removedMinutes) };
+}
+
+// --- Class coverage: what the next class asked for, against THIS preview ----
+
+export interface ClassCoverageEntry {
+  itemId: ID;
+  title: string;
+  floorMinutes: number;
+}
+
+export interface ClassCoverage {
+  /** The class date the required work is for. */
+  date?: ISODate;
+  required: ClassCoverageEntry[];
+  /** Required items the preview seats. */
+  seated: ID[];
+  /** Required items it does not: left out for capacity, or by the owner's own remove/swap. */
+  omitted: (ClassCoverageEntry & { why: 'capacity' | 'edited' })[];
+  /** Prepared but resting — never seated, said instead. */
+  resting: { itemId: ID; title: string }[];
+  /** The fewest minutes in which every required item reaches its floor. */
+  minimumMinutes: number;
+  /** Binds a partial-start choice to exactly this budget, subset and omission set. */
+  key: string;
+}
+
+/**
+ * Derived from the preview AS IT STANDS — after any remove or swap — against
+ * the live required set, never stored: a manual edit shows as an omission,
+ * never silently repaired and never silently counted as covered.
+ */
+export function planClassCoverage(
+  plan: SessionPlan,
+  required: { date?: ISODate; itemIds: ID[]; restingItemIds: ID[] },
+  items: PracticeItem[],
+  /** The data revision and local day the preview was built for: a choice made on another basis is stale. */
+  basis = '',
+): ClassCoverage {
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const entries = required.itemIds
+    .map((id) => byId.get(id))
+    .filter((i): i is PracticeItem => !!i)
+    .map((i) => ({ itemId: i.id, title: i.title, floorMinutes: segmentFloor(i) }));
+  const inPlan = new Set(plan.segments.map((s) => s.itemId));
+  const capacity = new Set(plan.classOmitted ?? []);
+  const seated = entries.filter((e) => inPlan.has(e.itemId)).map((e) => e.itemId);
+  const omitted = entries
+    .filter((e) => !inPlan.has(e.itemId))
+    .map((e) => ({ ...e, why: capacity.has(e.itemId) ? ('capacity' as const) : ('edited' as const) }));
+  return {
+    date: required.date,
+    required: entries,
+    seated,
+    omitted,
+    resting: required.restingItemIds.map((id) => byId.get(id)).filter((i): i is PracticeItem => !!i).map((i) => ({ itemId: i.id, title: i.title })),
+    minimumMinutes: Math.max(MIN_BUDGET_MINUTES, entries.reduce((n, e) => n + e.floorMinutes, 0)),
+    key: [basis, plan.budgetMinutes, seated.join(','), omitted.map((o) => o.itemId).join(',')].join('|'),
+  };
+}
+
+/**
+ * Why Start must refuse, or null. A preview with required class work left out
+ * starts only through a choice made against THIS coverage (`acceptedKey`, the
+ * key the owner's partial-start tap carried); a coverage that has moved since
+ * — a changed lesson, a new commitment, another remove — refuses it.
+ */
+export function planStartRefusal(
+  plan: SessionPlan,
+  coverage: ClassCoverage,
+  acceptedKey?: string,
+): 'empty' | 'partial' | null {
+  if (plan.segments.length === 0) return 'empty';
+  if (coverage.omitted.length > 0 && acceptedKey !== coverage.key) return 'partial';
+  return null;
 }
 
 /** Exposure window this planner reasons over, re-exported for the docs table. */

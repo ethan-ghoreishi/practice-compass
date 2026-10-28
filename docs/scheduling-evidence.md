@@ -51,10 +51,27 @@ back with a status change.
 Today's cards, a build, a regeneration and a swap all draw from the SAME
 candidate pool, not just the same eligibility test: `candidatePool`
 (`scoring.ts`) steps aside anything practised today — a routine's unassessed
-block and a class commitment included — while anything else is eligible, and
-falls back to repeating today's work only when nothing else is, saying so in
-every reason. A class commitment practised today therefore returns the next
-day, still before its class; nothing about it was completed. A swap can never
+block included — while anything else is eligible, EXCEPT live class work
+(`classRepeats`): a commitment practised today stays available in every
+session until its class, its reason saying "Practised earlier today — class
+work stays …". The pool falls back to repeating today's work only when
+nothing else is eligible, saying so in every reason, and never says so beside
+fresh work or class repeats. Nothing about a commitment is completed by
+practising it, and nothing it does moves a date (2026-10-28).
+
+**Reserved class work.** A Session Plan seats every non-resting item
+explicitly prepared for the NEAREST upcoming non-archive class on its
+instrument (`requiredClassWork`, every class tied on that date) before any
+optional role, diversity, study turn, anchor preference or segment count — at
+its floor (10 for a whole work, 2 otherwise), counted toward the segment
+target but never removed by it, and protected from the allocator's seating
+cuts. The score is unchanged: reservation is a seat, not a bigger number. If
+the floors cannot all fit, the ranking picks the useful subset (each item
+whose floor still fits), the plan holds class work only, and the rest are
+named with the minimum length; nothing fits → nothing to start. Fixtures:
+two whole works at 20 → 10 + 10; at 15 → one at 15, the other named, minimum
+20; one whole work at 5 → nothing, minimum 10; four 2-minute parts at 10 →
+3, 3, 2, 2. A swap can never
 hand back material the build itself stepped past, and a warm-up swap excludes
 a due-for-review or lesson-committed candidate exactly as the build's own
 warm-up pool does. A piece and its own part are one intended work
@@ -176,8 +193,15 @@ stated in the summary — which therefore appears only when every segment that
 may take minutes is at 25.
 
 Remove (`removePlanSegment`) leaves every other segment's minutes exactly as
-built: the freed minutes stay UNUSED, and the summary says so, until Regenerate
-or a new length — the deliberate reallocations. Move earlier / later
+built: the freed minutes stay UNUSED, and the summary says so, until the owner
+hands them back before Start — `reuseFreedMinutes`: spread one minute at a
+time in the plan's order to focus and class work, then reviews, each up to 25,
+never to a warm-up or cool-down; or all to one chosen entry up to ITS ceiling
+(a warm-up its share, a cool-down its split + 1) — or until Regenerate or a
+new length. Only freed minutes are spent, once; an unplanned remainder stays
+unplanned. Fixture (45 min: warm-up 5, focus 15, class 10, review 6, cool-down
+4; remove the class): spread → focus 25, 0 freed; give the cool-down → 8, 6
+still freed. Move earlier / later
 (`movePlanSegment`) reorders whole segments and nothing else; Start runs the
 owner's order. Swap offers only material whose floor
 fits the slot — in a warm-up or cool-down, the role's share, never the minutes a
@@ -397,4 +421,4 @@ Numbers: `docs/scheduling-evidence.md`. One pure decision, `decideReview` (`sche
 
 ### The Session Plan is a view over real blocks
 
-`plan.ts` reuses the same `scoreItems` priorities, never a second ranking: no scores, no "optimal" claims, its evidence never dressed up as an optimum. Minutes never exceed the budget; a whole work (`isWork`) gets at least 10 beside other work; warm-up and cool-down never exceed their shares or take overflow (`allocateMinutes`); a budget outside 5-120 is rejected, never clamped (`validateBudgetMinutes`); one `isProactiveCandidate` policy and one `candidatePool` serve build and swap; resting material never surfaces, even by fallback; warm-up is for familiar easy items, never a due review or class commitment; diversity stays subordinate to real needs; a study item (`reading_theory`) gets a bounded middle-pick turn, never a work's floor, a warm-up or a cool-down. Remove leaves the freed minutes unused until Regenerate or a new length; Move earlier/later reorders whole segments only, and Start runs the owner's order. A plan is stale when `rev` or the local day moves; Start rechecks the day and refuses visibly. It runs real blocks, each segment's item revalidated at start; skipping logs nothing. The running plan (`activePlan`, `planMinutesByInstrument`) is store state, never in `PracticeDB`, sync or a backup.
+`plan.ts` reuses the same `scoreItems` priorities, never a second ranking: no scores, no "optimal" claims, its evidence never dressed up as an optimum. Minutes never exceed the budget; a whole work (`isWork`) gets at least 10 beside other work; warm-up and cool-down never exceed their shares or take overflow (`allocateMinutes`); a budget outside 5-120 is rejected, never clamped (`validateBudgetMinutes`); one `isProactiveCandidate` policy and one `candidatePool` serve build and swap; resting material never surfaces, even by fallback; warm-up is for familiar easy items, never a due review or class commitment; diversity stays subordinate to real needs; a study item (`reading_theory`) gets a bounded middle-pick turn, never a work's floor, a warm-up or a cool-down. the nearest class's preparations are seated first at their floors, or named as omitted, and a partial or edited plan starts only through a choice bound to that coverage; Remove leaves the freed minutes unused until the owner spreads or gives them before Start, Regenerate or a new length; Move earlier/later reorders whole segments only, and Start runs the owner's order. A plan is stale when `rev` or the local day moves; Start rechecks the day and refuses visibly. It runs real blocks, each segment's item revalidated at start; skipping logs nothing. The running plan (`activePlan`, `planMinutesByInstrument`) is store state, never in `PracticeDB`, sync or a backup.

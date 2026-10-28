@@ -1,0 +1,552 @@
+{
+  "_about": "Literal expectations for tests/live-practice-families.test.ts, worked out by hand from the published rules (docs/practice-session-model.md §12) — never read back from the implementation. Local fixed clock: 2026-10-28, morning 08:00, evening 19:00; next Setar class 2026-10-30.",
+  "ac1": {
+    "plan": {
+      "budget": 45,
+      "base": [
+        [
+          "w",
+          5
+        ],
+        [
+          "a",
+          15
+        ],
+        [
+          "b",
+          10
+        ],
+        [
+          "r",
+          6
+        ],
+        [
+          "c",
+          4
+        ]
+      ],
+      "priorRemainder": 5,
+      "afterRemoveB": {
+        "minutes": [
+          [
+            "w",
+            5
+          ],
+          [
+            "a",
+            15
+          ],
+          [
+            "r",
+            6
+          ],
+          [
+            "c",
+            4
+          ]
+        ],
+        "freed": 10,
+        "unused": 15,
+        "recipients": [
+          "a",
+          "r",
+          "c"
+        ]
+      },
+      "spread": {
+        "minutes": [
+          [
+            "w",
+            5
+          ],
+          [
+            "a",
+            25
+          ],
+          [
+            "r",
+            6
+          ],
+          [
+            "c",
+            4
+          ]
+        ],
+        "freed": 0,
+        "unused": 5
+      },
+      "giveR": {
+        "minutes": [
+          [
+            "w",
+            5
+          ],
+          [
+            "a",
+            15
+          ],
+          [
+            "r",
+            16
+          ],
+          [
+            "c",
+            4
+          ]
+        ],
+        "freed": 0,
+        "unused": 5
+      },
+      "giveCThenA": [
+        {
+          "minutes": [
+            [
+              "w",
+              5
+            ],
+            [
+              "a",
+              15
+            ],
+            [
+              "r",
+              6
+            ],
+            [
+              "c",
+              8
+            ]
+          ],
+          "freed": 6,
+          "unused": 11
+        },
+        {
+          "minutes": [
+            [
+              "w",
+              5
+            ],
+            [
+              "a",
+              21
+            ],
+            [
+              "r",
+              6
+            ],
+            [
+              "c",
+              8
+            ]
+          ],
+          "freed": 0,
+          "unused": 5
+        }
+      ],
+      "removeBThenR": {
+        "removed": {
+          "minutes": [
+            [
+              "w",
+              5
+            ],
+            [
+              "a",
+              15
+            ],
+            [
+              "c",
+              4
+            ]
+          ],
+          "freed": 16,
+          "unused": 21
+        },
+        "spread": {
+          "minutes": [
+            [
+              "w",
+              5
+            ],
+            [
+              "a",
+              25
+            ],
+            [
+              "c",
+              4
+            ]
+          ],
+          "freed": 6,
+          "unused": 11,
+          "recipients": [
+            "c"
+          ]
+        },
+        "giveC": {
+          "minutes": [
+            [
+              "w",
+              5
+            ],
+            [
+              "a",
+              25
+            ],
+            [
+              "c",
+              10
+            ]
+          ],
+          "freed": 0,
+          "unused": 5
+        }
+      },
+      "allRemoved": {
+        "freed": 40,
+        "unused": 45,
+        "recipients": []
+      },
+      "noRecipients": {
+        "budget": 60,
+        "base": [
+          [
+            "w",
+            7
+          ],
+          [
+            "a",
+            25
+          ],
+          [
+            "b",
+            25
+          ]
+        ],
+        "afterRemoveB": {
+          "freed": 25,
+          "unused": 28,
+          "recipients": []
+        }
+      }
+    },
+    "routine": {
+      "base": [
+        [
+          "Open strings",
+          2
+        ],
+        [
+          "Mahur phrases",
+          4
+        ],
+        [
+          "Breathe",
+          1
+        ]
+      ],
+      "removeMahur": {
+        "minutes": [
+          [
+            "Open strings",
+            2
+          ],
+          [
+            "Breathe",
+            1
+          ]
+        ],
+        "freed": 4
+      },
+      "spread": [
+        [
+          "Open strings",
+          5
+        ],
+        [
+          "Breathe",
+          2
+        ]
+      ],
+      "giveBreathe": [
+        [
+          "Open strings",
+          2
+        ],
+        [
+          "Breathe",
+          5
+        ]
+      ],
+      "giveThenRemoveThenGive": [
+        [
+          "Breathe",
+          7
+        ]
+      ],
+      "allRemoved": {
+        "freed": 7,
+        "run": []
+      },
+      "fitted": {
+        "segments": [
+          [
+            "e1",
+            3,
+            true
+          ],
+          [
+            "n1",
+            2,
+            false
+          ],
+          [
+            "e2",
+            5,
+            true
+          ]
+        ],
+        "fitTo": 20,
+        "fit": [
+          [
+            "e1",
+            6
+          ],
+          [
+            "n1",
+            4
+          ],
+          [
+            "e2",
+            10
+          ]
+        ],
+        "removeN1Spread": [
+          [
+            "e1",
+            8
+          ],
+          [
+            "e2",
+            12
+          ]
+        ]
+      },
+      "shortOnTime": {
+        "fitTo": 12,
+        "fit": [
+          [
+            "e1",
+            5
+          ],
+          [
+            "e2",
+            7
+          ]
+        ],
+        "removeE1GiveE2": [
+          [
+            "e2",
+            12
+          ]
+        ]
+      }
+    },
+    "running": {
+      "planSkip": {
+        "available": 45,
+        "planned": 30,
+        "remaining": 30,
+        "unused": 15,
+        "recorded": 0
+      },
+      "planEarlyFinish": {
+        "available": 45,
+        "planned": 38,
+        "remaining": 35,
+        "unused": 7,
+        "recorded": 3
+      },
+      "routineMoveOn": {
+        "planned": 420,
+        "remaining": 300,
+        "unused": 60
+      },
+      "routineSkip": {
+        "planned": 420,
+        "remaining": 300,
+        "unused": 30,
+        "minutes": []
+      }
+    }
+  },
+  "ac2": {
+    "required": {
+      "date": "2026-10-30",
+      "lessonIds": [
+        "L1"
+      ],
+      "itemIds": [
+        "c1",
+        "c2"
+      ],
+      "restingItemIds": [
+        "rest"
+      ]
+    },
+    "classReason": "Practised earlier today — class work stays in until the class.",
+    "todayReason": "Practised earlier today — class work stays available until its class.",
+    "nextPractice": {
+      "c1": {
+        "kind": "class",
+        "date": "2026-10-28",
+        "keptDate": "2027-03-01",
+        "sentence": "Class preparation — for your class on 2026-10-30 (2 days away); practised earlier today, still available this session."
+      },
+      "c2": {
+        "kind": "class",
+        "date": "2026-10-28",
+        "keptDate": "2027-01-15",
+        "sentence": "Class preparation — for your class on 2026-10-30 (2 days away); practised earlier today, still available this session."
+      }
+    },
+    "evening20": [
+      [
+        "f3",
+        2,
+        "warmup"
+      ],
+      [
+        "c1",
+        10,
+        "lesson"
+      ],
+      [
+        "c2",
+        8,
+        "lesson"
+      ]
+    ]
+  },
+  "ac3": {
+    "twoWorks20": [
+      [
+        "w1",
+        10
+      ],
+      [
+        "w2",
+        10
+      ]
+    ],
+    "twoWorks15": {
+      "segments": [
+        [
+          "w1",
+          15
+        ]
+      ],
+      "omitted": [
+        "w2"
+      ],
+      "minimum": 20
+    },
+    "loneWork5": {
+      "segments": [],
+      "omitted": [
+        "w1"
+      ],
+      "minimum": 10
+    },
+    "parts10": [
+      [
+        "p1",
+        3
+      ],
+      [
+        "p2",
+        3
+      ],
+      [
+        "p3",
+        2
+      ],
+      [
+        "p4",
+        2
+      ]
+    ],
+    "parentAndChild20": [
+      [
+        "oth",
+        2
+      ],
+      [
+        "pa",
+        10
+      ],
+      [
+        "ch",
+        8
+      ]
+    ],
+    "over120": {
+      "seated": 12,
+      "omitted": [
+        "w13"
+      ],
+      "minimum": 130
+    },
+    "equalDates": {
+      "lessonIds": [
+        "L1a",
+        "L1b"
+      ],
+      "itemIds": [
+        "e1",
+        "e2"
+      ]
+    }
+  },
+  "ac4": {
+    "x": {
+      "afterSave": "slightly_better",
+      "afterClear": "same"
+    },
+    "y": {
+      "afterSave": "performable",
+      "afterClear": null
+    },
+    "z": {
+      "afterSave": "stable_alone",
+      "afterClear": "stable_alone"
+    }
+  },
+  "ac6": {
+    "bpm80From10": [
+      10.05,
+      10.8,
+      11.55
+    ],
+    "bpm120After": [
+      12.3,
+      12.8
+    ],
+    "duck": [
+      [
+        0,
+        30
+      ],
+      [
+        1,
+        30.56
+      ]
+    ],
+    "lateJump": {
+      "to": 20.75,
+      "beats": [
+        20.8
+      ]
+    }
+  }
+}

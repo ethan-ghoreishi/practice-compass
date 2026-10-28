@@ -786,6 +786,11 @@ function SchedulingSection() {
         </div>
 
         <SchedulingExplanation />
+        <div className="dim">
+          <b>Class work</b> — something prepared for an upcoming class stays available in every session until that
+          class, even after you practised it earlier the same day. A Session Plan seats everything prepared for your
+          next class whenever it fits, and names what does not; none of this moves a review date.
+        </div>
 
         <details className="disclosure" id="what-the-choices-mean">
           <summary>What each choice means</summary>

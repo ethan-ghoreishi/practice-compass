@@ -113,8 +113,9 @@ export function recommend(
   // ONE eligibility policy AND one candidate pool, shared with the planner and
   // its swaps. Resting material never surfaces in a suggestion — including
   // through a "nothing else left" fallback, which is exactly where it used to
-  // reappear — and today's practice steps aside while anything else waits.
-  const { pool: scored, isRepeatPool } = candidatePool(
+  // reappear — and today's practice steps aside while anything else waits,
+  // except live class work, which stays available until its class.
+  const { pool: scored, isRepeatPool, classRepeats } = candidatePool(
     scoreItems(items.filter(isProactiveCandidate), blocksByItem, now, preparationDates),
     blocks,
     now,
@@ -130,7 +131,11 @@ export function recommend(
     return {
       kind,
       score: s,
-      reason: isRepeatPool ? `Practised earlier today — nothing else eligible is waiting. ${reason}` : reason,
+      reason: isRepeatPool
+        ? `Practised earlier today — nothing else eligible is waiting. ${reason}`
+        : classRepeats.has(s.item.id)
+          ? `${reason} Practised earlier today — class work stays available until its class.`
+          : reason,
     };
   };
   // A piece and its own part are one intended work: one card, unless the

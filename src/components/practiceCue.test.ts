@@ -85,6 +85,7 @@ function fakeAudio(log: Log, opts: { ctorThrows?: boolean; resume?: 'ok' | 'thro
         kind: 'gain',
         gain: {
           setValueAtTime: (v: number, t: number) => log.push({ e: 'set', v, t }),
+          linearRampToValueAtTime: (v: number, t: number) => log.push({ e: 'lin', v, t }),
           exponentialRampToValueAtTime: (v: number, t: number) => log.push({ e: 'exp', v, t }),
         },
         connect: (to: { kind?: string }) => (log.push({ e: 'connect', from: 'gain', to: to.kind }), to),
@@ -147,15 +148,26 @@ describe('the practice sound module', () => {
     expect(contextsIn(log).map((c) => c.state)).toEqual(['running']);
     log.length = 0;
     m.playPracticeCue();
-    expect(log.filter((x) => x.e === 'start').map((x) => x.t)).toEqual([5, 5.45]);
-    expect(log.filter((x) => x.e === 'stop').map((x) => x.t)).toEqual([5.3, 5.75]);
-    expect(log.filter((x) => x.e === 'set').map((x) => [x.v, x.t])).toEqual([
-      [0.2, 5],
-      [0.2, 5.45],
+    // Two rising triangle pulses (988 then 1319 Hz), 0.3 s apart: a 10 ms
+    // linear attack to 0.36, held to 80 ms, then an exponential fall to
+    // silence at 260 ms — times read to the millisecond.
+    const ms = (t: unknown) => Math.round((t as number) * 1000) / 1000;
+    const shape = (e: string) => log.filter((x) => x.e === e).map((x) => [x.v, ms(x.t)]);
+    expect(log.filter((x) => x.e === 'start').map((x) => ms(x.t))).toEqual([5, 5.3]);
+    expect(log.filter((x) => x.e === 'stop').map((x) => ms(x.t))).toEqual([5.26, 5.56]);
+    expect(shape('set')).toEqual([
+      [0.0001, 5],
+      [0.36, 5.08],
+      [0.0001, 5.3],
+      [0.36, 5.38],
     ]);
-    expect(log.filter((x) => x.e === 'exp').map((x) => [x.v, x.t])).toEqual([
-      [0.001, 5.3],
-      [0.001, 5.75],
+    expect(shape('lin')).toEqual([
+      [0.36, 5.01],
+      [0.36, 5.31],
+    ]);
+    expect(shape('exp')).toEqual([
+      [0.0001, 5.26],
+      [0.0001, 5.56],
     ]);
     expect(log.filter((x) => x.e === 'ctor' || x.e === 'resume' || x.e === 'close')).toEqual([]);
 
