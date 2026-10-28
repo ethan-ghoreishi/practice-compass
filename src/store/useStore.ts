@@ -2400,10 +2400,12 @@ export const useStore = create<StoreState>()(
         const { db } = get();
         const outcome = captureRoutineResults(db, runBlockIds, captures, new Date());
         if ('refused' in outcome) return outcome.refused;
-        // An unchanged capture returns the same arrays: nothing to write.
+        // An unchanged capture returns the same arrays — but Save and Try again
+        // still write what memory holds, so a capture whose earlier write
+        // failed is made durable now rather than acknowledged by that failure.
         if (outcome.blocks !== db.blocks || outcome.items !== db.items) {
           set((s) => ({ db: { ...s.db, blocks: outcome.blocks, items: outcome.items } }));
-        }
+        } else set({});
         return null;
       },
 

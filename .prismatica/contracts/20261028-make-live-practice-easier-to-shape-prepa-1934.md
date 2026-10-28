@@ -4,7 +4,7 @@ title: Make live practice easier to shape, prepare for class and keep in time
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/58
 intent: 20261028-make-live-practice-easier-to-shape-prepa-1934
 tier: heavy
-stage: build
+stage: review
 baseline:
   commit: 66888db74b90e852e33b008dc216d4b24cb04428
   branch: main

@@ -52,6 +52,8 @@ let nextBeat = 0;
 const voices = new Set<Voice>();
 /** Bumped on every stop: a Start whose resume lands after it never begins. */
 let generation = 0;
+/** The latest cue's window, kept across stops so a beat (re)started inside it still yields. */
+let cueWindow: { c: AudioContext; to: number } | null = null;
 
 function publish(patch: Partial<MetronomeState>): void {
   snapshot = { ...snapshot, ...patch };
@@ -126,7 +128,10 @@ function begin(c: AudioContext): void {
   try {
     ctx = c;
     duck = c.createGain();
-    duck.gain.value = 1;
+    // Inside a cue's window the new beat starts muted, from now (never an
+    // event behind `currentTime`, which a value-1 default would outrank).
+    if (cueWindow?.c === c && cueWindow.to > c.currentTime) yieldToCue(c.currentTime, cueWindow.to);
+    else duck.gain.value = 1;
     duck.connect(c.destination);
     nextBeat = c.currentTime + START_DELAY_SECONDS;
     timer = setInterval(schedule, SCHEDULE_EVERY_MS);
@@ -204,15 +209,20 @@ onContextReplaced(stopMetronome);
 onSoundState(() => {
   if (snapshot.running && ctx?.state !== 'running') stopMetronome();
 });
-// A boundary cue sounds alone: mute the beat for its window, then carry on in time.
-onPracticeCue((c, from, to) => {
-  if (!duck || c !== ctx) return;
+function yieldToCue(from: number, to: number): void {
   try {
-    duck.gain.setValueAtTime(0, from);
-    duck.gain.setValueAtTime(1, to);
+    duck!.gain.setValueAtTime(0, from);
+    duck!.gain.setValueAtTime(1, to);
   } catch {
     // the cue still plays
   }
+}
+
+// A boundary cue sounds alone: mute the beat for its window, then carry on in
+// time. The window is remembered, so a Start (or restart) inside it yields too.
+onPracticeCue((c, from, to) => {
+  cueWindow = { c, to };
+  if (duck && c === ctx) yieldToCue(from, to);
 });
 
 function subscribe(fn: () => void): () => void {

@@ -443,7 +443,7 @@ export interface RoutineCapture {
  * item's latest logged one: a CLEARED result (`not_logged`) hands the summary
  * back to the newest assessed block that remains, or removes it when none
  * does — never an invented result — and a newer assessment elsewhere is left
- * alone. An unchanged capture returns the SAME arrays, so repeating it writes
+ * alone. An unchanged capture returns the SAME arrays, so repeating it changes
  * nothing.
  */
 export function captureRoutineResults(

@@ -547,6 +547,58 @@
       "beats": [
         20.8
       ]
+    },
+    "cueAcrossStarts": {
+      "cue then Start": [
+        [
+          10.15,
+          0
+        ],
+        [
+          10.9,
+          1
+        ]
+      ],
+      "stop and restart inside the window": [
+        [
+          10.05,
+          0
+        ],
+        [
+          10.25,
+          0
+        ],
+        [
+          11,
+          1
+        ],
+        [
+          11.75,
+          1
+        ]
+      ],
+      "window already over at Start": [
+        [
+          10.65,
+          1
+        ]
+      ],
+      "cue on a replaced context": [
+        [
+          10.15,
+          1
+        ]
+      ],
+      "recovery cue then Start": [
+        [
+          10.15,
+          0
+        ],
+        [
+          10.9,
+          1
+        ]
+      ]
     }
   }
 }

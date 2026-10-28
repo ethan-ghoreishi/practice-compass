@@ -361,7 +361,8 @@ never a record, migration, backup or sync.
 
 **Proof** (`docs/practice-session-model.md` §12): `metronome scheduling and
 cue priority survive sound lifecycle changes` (a fake context on a controlled
-audio clock: exact beat times, tempo edits, late timer, duck window, every
+audio clock: exact beat times, tempo edits, late timer, duck window — also
+across a Start or restart inside it, read as each tick's routed level — every
 stop door, denied / rejected / never-settled / late resume, replacement) and
 `live practice tools preserve clocks notes records and mobile controls`
 (Chromium and WebKit through the real screens). **Owner (ac-8):** with and
@@ -380,6 +381,6 @@ baseline (24a84be) wording with its mechanism and identifiers. Both bind;
 neither weakens the other. Change a rule in both places.
 
 - A running clock on a visible screen holds one Screen Wake Lock (`shouldKeepAwake`; one owner, `useScreenAwake`). `nextSignal` announces at most once per call, moving the ephemeral `signalledThrough` to the boundaries passed, never by one; routine boundaries are `segmentBoundaries`, never a second sum; Skip calls `acknowledgeThrough`. The guaranteed signal is visual (target ring, overtime figure; a routine boundary shows for a window, never one render); a block never auto-finishes; audio and vibration are best-effort, never asserted; every Start, Resume, Test sound or recovery tap closes the page's context and creates and resumes a fresh one in the tap (`practiceCue.ts`), never from render or an effect, and plays only on a granted marker claim (`claimSessionSignal`). A routine starts only from a tap, never an effect. None of this changes a minute.
-- The metronome (`metronome.ts`) is opt-in and started only by a tap, on the one practice context; it schedules on the audio clock (look-ahead, one scheduler, a late timer skips to the grid, never a burst); Pause, Finish, Discard, leaving, a hidden page, lost readiness or a context replacement stop it and cancel what was placed, and nothing restarts it. Tempo and level are module memory, never a record, sync or backup. A boundary cue ducks it for `CUE.totalSeconds`, then the beat resumes in time (§10).
+- The metronome (`metronome.ts`) is opt-in and started only by a tap, on the one practice context; it schedules on the audio clock (look-ahead, one scheduler, a late timer skips to the grid, never a burst); Pause, Finish, Discard, leaving, a hidden page, lost readiness or a context replacement stop it and cancel what was placed, and nothing restarts it. Tempo and level are module memory, never a record, sync or backup. A boundary cue ducks it for `CUE.totalSeconds`, then the beat resumes in time (§10); the window is remembered on its context, so a beat started or restarted inside it starts muted until it ends.
 - The wake lock, `crypto.subtle` (`sha256Hex`) and the service worker need a secure context, which LAN `http://` is not: confirm `window.isSecureContext` on the device over HTTPS before judging an unmerged branch. The answer is a route, never a fallback hash: `parseSourceIndex` refuses first (`INSECURE_CONTEXT_REFUSAL`).
 - **Open gaps:** Sync over plain http still throws the raw `Cannot read properties of undefined (reading 'digest')` (a wording fix in its own lane, never a second hash); `readIndexFile` (`src/store/archiveIndex.ts`) has no production caller.

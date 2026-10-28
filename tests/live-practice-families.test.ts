@@ -72,7 +72,7 @@ const MORNING = new Date(2026, 9, 28, 8, 0);
 const EVENING = new Date(2026, 9, 28, 19, 0);
 const T = new Date(2026, 8, 1, 12).toISOString();
 
-const storage = { fail: false, writes: 0, pending: Promise.resolve() as Promise<void> };
+const storage = { fail: false, writes: 0, pending: Promise.resolve() as Promise<void>, last: '' };
 type Store = typeof import('../src/store/useStore').useStore;
 let useStore: Store;
 
@@ -82,8 +82,9 @@ beforeAll(async () => {
     ...(await importOriginal<typeof import('../src/store/idb')>()),
     idbStorage: {
       getItem: async () => null,
-      setItem: async () => {
+      setItem: async (_name: string, value: string) => {
         storage.writes += 1;
+        storage.last = value;
         const write = storage.fail ? Promise.reject(new Error('storage is full')) : Promise.resolve();
         write.catch(() => undefined);
         storage.pending = write;
@@ -586,11 +587,24 @@ describe('routine feedback', () => {
     });
     const fixed = JSON.stringify(untouched());
 
-    // Select then clear BEFORE saving: the draft is "Not assessed" again — saving it writes nothing.
+    /** What a reload would read back: the snapshot the LAST write carried. */
+    const onDisk = () => (JSON.parse(storage.last) as { state: { db: PracticeDB } }).state.db;
+    const diskOf = (blockId: string, itemId: string) => {
+      const d = onDisk();
+      const b = d.blocks.find((x) => x.id === blockId)!;
+      return { result: b.result, observation: b.observation ?? null, lastResult: d.items.find((i) => i.id === itemId)!.lastResult ?? null };
+    };
+    /** The UI's Save and Try again, exactly: `Object.entries(draft)`, an observation string on every row. */
+    const uiSave = (draft: Record<string, { result: BlockResult; observation: string }>) =>
+      capture(Object.entries(draft).map(([blockId, v]) => ({ blockId, result: v.result, observation: v.observation })));
+
+    // Select then clear BEFORE saving: the draft is "Not assessed" again — memory
+    // is unchanged, and the Save still writes what memory holds (one write, settled).
     const writes0 = storage.writes;
     const dbBefore = st();
-    expect(capture([{ blockId: 'rb-x', result: 'not_logged' }])).toBeNull();
-    expect([st() === dbBefore, storage.writes]).toEqual([true, writes0]);
+    expect(uiSave({ 'rb-x': { result: 'not_logged', observation: '' } })).toBeNull();
+    expect([st() === dbBefore, storage.writes - writes0]).toEqual([true, 1]);
+    await expect(storage.pending).resolves.toBeUndefined();
 
     // SAVE, then CLEAR (save-clear-save), several items at once.
     expect(capture([
@@ -601,25 +615,57 @@ describe('routine feedback', () => {
     expect([lastResult('x'), lastResult('y'), lastResult('z')]).toEqual([X.x.afterSave, X.y.afterSave, X.z.afterSave]);
     expect(generateInsights(st(), EVENING).find((i) => i.id === 'improved')?.body).toContain('No older result');
 
-    // Clear: the observation stays unless edited; the summary follows the history honestly.
-    storage.fail = true; // the first clear's write FAILS — the words are held in memory
-    expect(capture([
-      { blockId: 'rb-x', result: 'not_logged', observation: 'Left hand freer' },
-      { blockId: 'rb-y', result: 'not_logged' },
-      { blockId: 'rb-z', result: 'not_logged' },
-    ])).toBeNull();
-    await expect(storage.pending).rejects.toThrow('storage is full');
-    storage.fail = false;
-    useStore.getState().persistAgain(); // Try again: the same capture, written once
-    await storage.pending;
+    // A FAILED write, then the UI's Try again with nothing edited — for each kind
+    // of capture (an assessment, an observation-only edit, a clear). The retry
+    // finds memory already matching, and must still write it: exactly one more
+    // write, which settles, carrying the capture a reload would read back.
+    const retryCases: { name: string; draft: Record<string, { result: BlockResult; observation: string }>; disk: Record<string, [string, string, ReturnType<typeof diskOf>]> }[] = [
+      {
+        name: 'assessment',
+        draft: { 'rb-y': { result: 'worse', observation: '' } },
+        disk: { y: ['rb-y', 'y', { result: 'worse', observation: null, lastResult: 'worse' }] },
+      },
+      {
+        name: 'observation only',
+        draft: { 'rb-x': { result: 'slightly_better', observation: 'Left hand freer still' } },
+        disk: { x: ['rb-x', 'x', { result: 'slightly_better', observation: 'Left hand freer still', lastResult: 'slightly_better' }] },
+      },
+      {
+        // Clear: the observation stays unless edited; the summary follows the history honestly.
+        name: 'clear',
+        draft: {
+          'rb-x': { result: 'not_logged', observation: 'Left hand freer' },
+          'rb-y': { result: 'not_logged', observation: '' },
+          'rb-z': { result: 'not_logged', observation: '' },
+        },
+        disk: {
+          x: ['rb-x', 'x', { result: 'not_logged', observation: 'Left hand freer', lastResult: X.x.afterClear }],
+          y: ['rb-y', 'y', { result: 'not_logged', observation: null, lastResult: X.y.afterClear }],
+          z: ['rb-z', 'z', { result: 'not_logged', observation: null, lastResult: X.z.afterClear }],
+        },
+      },
+    ];
+    for (const c of retryCases) {
+      storage.fail = true; // the write FAILS — the capture is held in memory only
+      expect(uiSave(c.draft), c.name).toBeNull();
+      await expect(storage.pending, c.name).rejects.toThrow('storage is full');
+      storage.fail = false;
+      const w = storage.writes;
+      const inMemory = st();
+      expect(uiSave(c.draft), c.name).toBeNull(); // Try again: the SAME draft, nothing edited
+      expect([st() === inMemory, storage.writes - w], c.name).toEqual([true, 1]);
+      await expect(storage.pending, c.name).resolves.toBeUndefined();
+      for (const [blockId, itemId, expected] of Object.values(c.disk)) expect(diskOf(blockId, itemId), `${c.name} ${blockId}`).toEqual(expected);
+    }
     expect([lastResult('x'), lastResult('y'), lastResult('z')]).toEqual([X.x.afterClear, X.y.afterClear, X.z.afterClear]);
     expect(Object.prototype.hasOwnProperty.call(st().items.find((i) => i.id === 'y'), 'lastResult')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(onDisk().items.find((i) => i.id === 'y'), 'lastResult')).toBe(false);
     expect(st().blocks.find((b) => b.id === 'rb-x')).toMatchObject({ result: 'not_logged', observation: 'Left hand freer' });
-    // Repeating the clear (a retry) is idempotent: the same arrays, nothing written.
+    // Repeating the clear (a second Save) changes nothing in memory: the same arrays, one identical write.
     const afterClear = st();
     const w = storage.writes;
-    expect(capture([{ blockId: 'rb-x', result: 'not_logged', observation: 'Left hand freer' }, { blockId: 'rb-y', result: 'not_logged' }])).toBeNull();
-    expect([st() === afterClear, storage.writes]).toEqual([true, w]);
+    expect(uiSave({ 'rb-x': { result: 'not_logged', observation: 'Left hand freer' }, 'rb-y': { result: 'not_logged', observation: '' } })).toBeNull();
+    expect([st() === afterClear, storage.writes - w]).toEqual([true, 1]);
     // Save again after the clear.
     expect(capture([{ blockId: 'rb-y', result: 'worse' }])).toBeNull();
     expect(lastResult('y')).toBe('worse');
@@ -654,8 +700,12 @@ type Ev = { e: string; [k: string]: unknown };
 function fakeAudio(log: Ev[], resume: { mode: 'ok' | 'rejects' | 'hangs' | 'manual' }) {
   let ids = 0;
   class Param {
-    value = 1;
-    constructor(private ctx: number, private node: string) {}
+    private v = 1;
+    private ctx: number;
+    constructor(private owner: { id: number; currentTime: number }, private node: string) { this.ctx = owner.id; }
+    // As the spec has it: assigning `value` is an automation event at the context's `currentTime`.
+    get value() { return this.v; }
+    set value(v: number) { this.v = v; log.push({ e: 'value', ctx: this.ctx, node: this.node, v, t: this.owner.currentTime }); }
     setValueAtTime(v: number, t: number) { log.push({ e: 'set', ctx: this.ctx, node: this.node, v, t }); }
     linearRampToValueAtTime(v: number, t: number) { log.push({ e: 'lin', ctx: this.ctx, node: this.node, v, t }); }
     exponentialRampToValueAtTime(v: number, t: number) { log.push({ e: 'exp', ctx: this.ctx, node: this.node, v, t }); }
@@ -681,7 +731,7 @@ function fakeAudio(log: Ev[], resume: { mode: 'ok' | 'rejects' | 'hangs' | 'manu
     }
     createGain() {
       const n = ++this.nodes;
-      const node = { kind: `gain${n}`, gain: new Param(this.id, `gain${n}`), connect: (to: { kind: string }) => (log.push({ e: 'connect', ctx: this.id, from: `gain${n}`, to: to.kind }), to), disconnect: () => log.push({ e: 'disconnect', ctx: this.id, node: `gain${n}` }) };
+      const node = { kind: `gain${n}`, gain: new Param(this, `gain${n}`), connect: (to: { kind: string }) => (log.push({ e: 'connect', ctx: this.id, from: `gain${n}`, to: to.kind }), to), disconnect: () => log.push({ e: 'disconnect', ctx: this.id, node: `gain${n}` }) };
       return node;
     }
     createOscillator() {
@@ -693,7 +743,7 @@ function fakeAudio(log: Ev[], resume: { mode: 'ok' | 'rejects' | 'hangs' | 'manu
         onended: null as null | (() => void),
         connect: (to: { kind: string }) => (log.push({ e: 'connect', ctx: this.id, from: `osc${n}`, to: to.kind }), to),
         disconnect: () => log.push({ e: 'disconnect', ctx: this.id, node: `osc${n}` }),
-        start: (t: number) => log.push({ e: 'start', ctx: this.id, t, hz: node.frequency.value, wave: node.type }),
+        start: (t: number) => log.push({ e: 'start', ctx: this.id, node: `osc${n}`, t, hz: node.frequency.value, wave: node.type }),
         stop: (t?: number) => log.push({ e: 'stop', ctx: this.id, t }),
       };
       return node;
@@ -710,6 +760,27 @@ async function loadSound(log: Ev[], resume: { mode: 'ok' | 'rejects' | 'hangs' |
   const metronome = await import('../src/components/metronome');
   const store = (await import('../src/store/useStore')).useStore;
   return { ...cue, ...metronome, store };
+}
+
+/**
+ * The level the beat's MUTE stage (the duck) holds at each 1600 Hz tick: walk
+ * the tick's own route (oscillator -> its envelope -> the duck it feeds) and
+ * read the latest automation event at or before the tick, time-sorted as the
+ * audio engine orders them (insertion order breaks ties). No event: 1.
+ */
+function tickLevels(log: Ev[]): [number, number][] {
+  const ms = (t: unknown) => Math.round((t as number) * 1000) / 1000;
+  const to = (ctx: unknown, from: unknown) => log.find((x) => x.e === 'connect' && x.ctx === ctx && x.from === from)?.to;
+  return log
+    .filter((x) => x.e === 'start' && x.hz === 1600)
+    .map((tick) => {
+      const duck = to(tick.ctx, to(tick.ctx, tick.node));
+      const events = log
+        .map((x, i) => ({ x, i }))
+        .filter(({ x }) => (x.e === 'set' || x.e === 'value') && x.ctx === tick.ctx && x.node === duck && (x.t as number) <= (tick.t as number))
+        .sort((a, b) => (a.x.t as number) - (b.x.t as number) || a.i - b.i);
+      return [ms(tick.t), events.length ? (events.at(-1)!.x.v as number) : 1];
+    });
 }
 
 describe('the metronome', () => {
@@ -839,6 +910,83 @@ describe('the metronome', () => {
     await flush();
     expect(vi.getTimerCount()).toBe(1);
     m.stopMetronome();
+
+    // CUE PRIORITY ACROSS STARTS: a beat started — or stopped and restarted —
+    // inside a cue's window yields until the window ends, on every door that
+    // sounds the cue (a boundary, Test sound / Turn on sound). A window on a
+    // context since replaced, or one already over, mutes nothing.
+    type Sound = Awaited<ReturnType<typeof loadSound>>;
+    const clock = (l: Ev[], t: number) => { (l.filter((x) => x.e === 'ctor').at(-1)!.ctx as { currentTime: number }).currentTime = t; };
+    const cueCases: { name: string; run: (s: Sound, l: Ev[]) => Promise<void> }[] = [
+      {
+        name: 'cue then Start',
+        run: async (s, l) => {
+          s.playPracticeCue(); // 10.00 -> 10.56
+          clock(l, 10.1);
+          s.startMetronome();
+          clock(l, 10.85);
+          await vi.advanceTimersByTimeAsync(25);
+        },
+      },
+      {
+        name: 'stop and restart inside the window',
+        run: async (s, l) => {
+          s.startMetronome(); // first beat 10.05
+          clock(l, 10.02);
+          s.playPracticeCue(); // 10.02 -> 10.58, over a running beat
+          s.stopMetronome();
+          clock(l, 10.2);
+          s.startMetronome(); // a fresh mute stage, still inside the window
+          clock(l, 10.95);
+          await vi.advanceTimersByTimeAsync(25);
+          clock(l, 11.7);
+          await vi.advanceTimersByTimeAsync(25);
+        },
+      },
+      {
+        name: 'window already over at Start',
+        run: async (s, l) => {
+          s.playPracticeCue();
+          clock(l, 10.6);
+          s.startMetronome();
+        },
+      },
+      {
+        name: 'cue on a replaced context',
+        run: async (s, l) => {
+          s.playPracticeCue(); // on the first context
+          s.primePracticeSound(); // a readying tap: a NEW context, its clock at 10
+          await vi.advanceTimersByTimeAsync(0);
+          clock(l, 10.1);
+          s.startMetronome();
+        },
+      },
+      {
+        name: 'recovery cue then Start',
+        run: async (s, l) => {
+          s.testPracticeSound(); // Turn on sound: a new context, and the cue on it at 10.00
+          await vi.advanceTimersByTimeAsync(0);
+          clock(l, 10.1);
+          s.startMetronome();
+          clock(l, 10.85);
+          await vi.advanceTimersByTimeAsync(25);
+        },
+      },
+    ];
+    for (const c of cueCases) {
+      const l: Ev[] = [];
+      const s = await loadSound(l, { mode: 'ok' });
+      s.setBpm(80);
+      s.primePracticeSound();
+      await vi.advanceTimersByTimeAsync(0);
+      await c.run(s, l);
+      expect(tickLevels(l), c.name).toEqual(X.cueAcrossStarts[c.name]);
+      // A mute is the only automation to 0 (envelopes start at a floor): none where no window applies.
+      if (c.name === 'window already over at Start' || c.name === 'cue on a replaced context') {
+        expect(l.filter((x) => x.e === 'set' && x.v === 0), c.name).toEqual([]);
+      }
+      s.stopMetronome();
+    }
 
     // Unavailable audio: nothing starts, nothing throws, practice is usable.
     {
