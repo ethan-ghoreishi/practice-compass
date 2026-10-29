@@ -1,48 +1,47 @@
 ---
 id: 20261028-make-live-practice-easier-to-shape-prepa-1934
 contractId: 20261028-make-live-practice-easier-to-shape-prepa-1934
-patchId: 89070aa4eecb11f686d4baa34dea7c4228003e1c
-reviewer: codex
+patchId: c7ca01b22873e48915edd94457d0b8f98e959857
+reviewer: supervisor
 state: sealed
 verdict: request_changes
 findings:
   - family: required-class-useful-floors-through-preview-and-start
-    summary: Required class work must reach its useful floor after preview edits and
-      at Start.
-    counterexample: "Prepare one full_piece and one technique item for the same
-      upcoming class. Build at 5 minutes: the drill is seated and the whole work
-      omitted. Swap the only row. plan.ts:912 skips the floor check, producing
-      the whole work at 5 minutes with floorMinutes 10. Coverage at 1063-1067
-      counts it seated and planStartRefusal accepts the displayed partial-start
-      key. Expected: no sub-floor class slot may start. Sweep single-row swaps,
-      coverage, preview/live Start and run installation; extend class plan
-      capacity exceptions name omissions before any partial start."
-  - family: live-question-draft-survives-automatic-routine-completion
-    summary: Automatic Routine completion must preserve an open question draft and
-      its Save/Cancel controls.
-    counterexample: Open Ask teacher during the final Routine segment, type and
-      leave it unsaved. Let the final boundary pass. RoutineRunner.tsx:202-205
-      finishes automatically; its result branch at 224 removes
-      TeacherQuestionCapture at 463. The local draft disappears and no agenda
-      question exists, without Save or Cancel. This affects bound/unbound final
-      segments and background catch-up to completion. Preserve the capture
-      without changing elapsed logging; extend live teacher questions retain
-      capture ownership while practice continues through final completion in
-      both engines.
-  - family: live-question-save-acknowledgement-always-settles
-    summary: A completed question write must leave Saving when the live text becomes
-      blank during persistence.
-    counterexample: Type Which finger?, Save, then clear the input before the write
-      settles. Resolve the successful write. useAcknowledgedSaves calls again
-      because the draft changed; TeacherQuestionCapture.tsx:80 returns on blank
-      text. Actual component/hook probe leaves the original question stored, an
-      empty input, disabled Save and ack.status saving indefinitely. The shared
-      component exposes this on ordinary, Plan and Routine screens. Settle
-      acknowledgement truthfully without a blank append; extend live teacher
-      questions retain capture ownership while practice continues with
-      pending-write blank/whitespace edits.
-createdAt: 2026-10-28T23:24:25.309Z
-sealedAt: 2026-10-28T23:43:53.254Z
+    summary: Segment Start must enforce the live useful floor of required class work.
+    counterexample: "In Chromium and WebKit, install a 5-minute Plan containing one
+      prepared technique item. Before starting its segment, edit that item to
+      Composed piece. Return to the Plan and Start it: active.targetMinutes is 5
+      although the required whole-work floor is 10. useStore.ts:786 and
+      plan.ts:1237 check existence, instrument and busy state but not the live
+      floor. Preview swap, coverage and startPlan installation guards are clean.
+      Extend class plan capacity exceptions name omissions before any partial
+      start."
+  - family: live-question-durability-covers-lesson-target
+    summary: A lesson-target write must receive its own persistence acknowledgement
+      even when the editor is blank.
+    counterexample: In Chromium and WebKit, autosave a question for Class 1, clear
+      the field, refuse IndexedDB puts, choose No class and tap Done. The editor
+      closes and reports Question saved on this device — unassigned. Reload
+      restores Class 1. chooseLiveQuestionLesson writes the target, but
+      saveLiveQuestion(true) returns on blank text while Done trusts the
+      previous saved attempt. This shared path affects ordinary/Plan
+      ActiveBlock, bound/unbound Routine, Routine complete, Close and Today
+      recovery. Extend live teacher questions retain capture ownership while
+      practice continues.
+  - family: live-question-editor-stays-open-through-recovery
+    summary: Acknowledged autosave or retry must not remove an open recovery editor
+      without Done.
+    counterexample: In Chromium and WebKit, fail a live-question save, navigate to
+      Today, restore storage and tap Try again. On acknowledgement the question
+      field and Done controls disappear without Done.
+      TeacherQuestionCapture.tsx:47 hides settled captures outside their
+      originating session. Today always uses this branch; other capture
+      consumers use it when recovering another session. Matching-session
+      ActiveBlock, Close, Routine boundaries and Routine complete are clean.
+      Extend live teacher questions retain capture ownership while practice
+      continues.
+createdAt: 2026-10-29T02:03:16.538Z
+sealedAt: 2026-10-29T02:18:15.861Z
 ---
 
 # Review: Make live practice easier to shape, prepare for class and keep in time
@@ -56,8 +55,32 @@ sealedAt: 2026-10-28T23:43:53.254Z
 - **Contract:** 20261028-make-live-practice-easier-to-shape-prepa-1934
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/58
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `89070aa4eecb11f686d4baa34dea7c4228003e1c`
+- **Diff patch-id:** `c7ca01b22873e48915edd94457d0b8f98e959857`
 - **Computed by:** prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified
+
+## Intent revision — supersedes the original request only where it conflicts
+
+- **2026-10-29T01:06:45.559Z** _(Owner requires live teacher questions to autosave without a remembered Save; replace the Save-only lifecycle and strengthen ac-5 while preserving the existing lane, other accepted families and all three review findings.)_
+
+  OWNER REQUIREMENT REVISION: durable live teacher-question capture, within this existing lane.
+
+This revision supersedes only the explicit-Save-only capture and non-blank Cancel semantics in product rule 4 of the original approved intent. Preserve the rest of that intent, the existing lane/issue/baseline, all other acceptance families and all three sealed request_changes findings. Claude remains the builder. This is rework of the current change, not a new lane or a general product review.
+
+Use one lifecycle for the live question, shared by quiet-interval autosave, an optional immediate Save/Done action, retry and exit flushing. Reuse lessonAgenda questions, their existing store actions, and actual device-persistence acknowledgement. No second notes system, persisted draft collection, schema, migration or new dependency is needed. The currently allowed component/store/UI/domain/test paths are sufficient; choose the smallest complete implementation after inspection. Reuse the durable-note timing convention where practical (currently 800 ms), without changing item/lesson notes or their journal.
+
+When a non-blank question is typed, save after a short quiet interval without requiring Save, blur or another remembered action. The first write creates one independent agenda question. Further autosaves, explicit saves and retries for that capture update the same question id. Autosave leaves the editor open and editable, preserving focus and words; it does not turn each pause in typing into another question. Done may flush and close only once the latest applicable non-blank text is acknowledged. Starting another question is deliberate; CloseBlock's later question remains independent. Merely opening and closing an empty/whitespace capture creates nothing. Replace a misleading Cancel after text has been entered with the same flush/close lifecycle; closing must not silently discard a non-blank thought or undo a question already autosaved.
+
+Keep ownership frozen from capture opening: instrument, item (absent for an unbound Routine segment) and named lesson/default or visibly unassigned. The existing explicit lesson choice is deliberate, not permission for props, a boundary, a changed day, a later lesson, navigation or an async callback to retarget words. Once the question is created, edits/retries belong to that id and its established ownership. Revalidate before creating it; invalid/deleted/moved/cross-instrument targets keep the words with a clear problem and a deliberate valid recovery choice, never a guessed replacement. Respect existing agenda deletion/detachment rules for saved questions; do not recreate a deleted question or attach it to a different item/lesson on retry.
+
+Apply this to ordinary practice and Plan ActiveBlock, and Routine bound/unbound segments. Intermediate Routine transitions, manual Move on/Skip/Finish and the final automatic boundary must not lose or retarget an open editor. The same applies when wall-clock catch-up after background crosses several boundaries or completes the run. Preserve the open capture and its useful close/retry controls on Routine complete, including pending/failed saves; automatic success must not erase text still being edited. Flush the latest non-blank text on app-controlled exit or close, including Finish, navigation away and editor unmount. Pending/failed words and their retry route must remain recoverable across internal navigation rather than disappear with component-local state. Do not delay, pause or recalculate practice to wait for question storage. The existing result/agenda/return surfaces may provide recovery; no new workflow is prescribed.
+
+Read the current draft directly, never from an old render or a ref mirrored later by an effect. A pending write must not own the editor. Newer edits must be saved to the same question and must not be cleared, overwritten, marked saved or closed by an earlier acknowledgement. Coalesce/sequence writes through the one lifecycle; repeated taps, autosave plus Done, exit flushing, retry and late/out-of-order outcomes must remain idempotent. Each completed attempt must settle truthfully, including editing to empty or whitespace while a previous non-blank write is pending. Blank text creates no question and does not overwrite/delete an existing non-blank question: retain the last written question, settle its acknowledgement, and make clear that the empty editor is not a newly saved question. Never remain indefinitely Saving after that write has answered.
+
+Saved means IndexedDB acknowledged the relevant text, never just an in-memory agenda append. Failure retains the latest words, ownership and question identity, shows an actionable failure and allows a retry that really writes again even if memory is unchanged. Do not silently close on failure or spin an endless retry loop. Acknowledged autosaves and acknowledged retries survive reload with exactly one question holding the latest acknowledged non-blank words and correct ownership, visible in existing lesson-id agenda/report consumers. Test reload against disk, not memory. An interrupted or refused device write cannot be claimed durable: preserve retry/copy access while the app is alive and accurately distinguish any older acknowledged version after reload. There is no promise that a forced browser/process termination before acknowledgement can retain a write the device refused; do not invent a second persistence system to imply that guarantee.
+
+Preserve all three review findings as required repairs: (1) required-class useful floors through preview edits and Start, including the single-row swap that currently seats a 10-minute whole work at 5 minutes, coverage/partial-start acknowledgement and live run installation; prove it within existing ac-3 without reopening its policy; (2) open live-question draft and controls surviving automatic final Routine completion, bound/unbound and background catch-up; (3) every answered question-save acknowledgement settling, especially pending-write edits to blank/whitespace. Do not edit away, dismiss or weaken the recorded findings.
+
+Strengthen ac-5 in place, retaining its id and exact unique test title. Extend its real-UI family in tests/live-practice.browser.test.ts through Chromium and WebKit, with controlled persistence delay/failure and deterministic clock/background catch-up where needed. Supporting focused pure/state checks may supplement, never replace, reachable UI lifecycle proof. Replace assertions that encode superseded Save-only/Cancel behaviour. Update the existing family proof map and relevant capture guidance in docs/practice-session-model.md, AGENTS.md and DECISIONS.md; reconcile only affected existing Flow proposals through the normal protocol, never signed truth by hand. Document independently expected question ids/text/ownership and the saved-on-device boundary. Sweep existing agenda/list/report consumers and any callers of a shared acknowledgement helper actually changed; report unchanged consumers checked clean. All other acceptance descriptions, scope restrictions, full configured gates and the bounded owner device walkthrough remain as approved. Timer identity and elapsed logging, Plan/Routine accounting and practice records, metronome, cue claims/wake lock, focus/mode, notes/drafts, preparations/ranking and retention remain unaffected by question capture. Do not reopen unrelated accepted families.
 
 ## The plan the owner approved
 
@@ -350,9 +373,11 @@ Prove the named acceptance families against committed fixed-clock fixtures, incl
 - src/domain/routines.ts
 - src/domain/scoring.ts
 - src/pages/ActiveBlock.tsx
+- src/pages/CloseBlock.tsx
 - src/pages/RoutineRunner.tsx
 - src/pages/SessionPlan.tsx
 - src/pages/Settings.tsx
+- src/pages/Today.tsx
 - src/store/useStore.ts
 - tests/fixtures/live-practice-expectations.json
 - tests/live-practice-families.test.ts
@@ -367,7 +392,7 @@ Prove the named acceptance families against committed fixed-clock fixtures, incl
 - [ ] **ac-2** — Fixed local day: at least two class items and fresh competitors, morning ordinary assessed and Routine not_logged blocks, heavy recent minutes, evening build/regenerate/length change/swap. Every exact required item appears when floors fit; no duplicate id, no lower-priority optional displacement, no false repeat reason. Include manual/protected distant dates, working/keep-fresh and uncommitted/future/passed/archive/unassigned/other-instrument/resting counterexamples; inputs, stored dates and spacing stay untouched. Sweep Today and nextPractice explanations as specified. Exact title names one test; use table-driven cases inside it and supporting existing regression checks. _(proof: next class work survives morning practice in every evening plan)_
 - [ ] **ac-3** — Literal fixtures: 2 whole works at 20 and 15 minutes; a whole work at 5; several 2-minute parts; explicitly committed parent plus child, only parent, only child, siblings, own-due-review relative, >120 required minutes and equal-date lessons. Prove reserved floors, optional roles yield, exact omitted titles/minimum capacity, explicit partial selection and no silent start. Removal/swap overrides and changed lesson/day/revision invalidate stale coverage acknowledgement without destroying manual order. Exact title names one test; use table-driven cases inside it and supporting existing regression checks. _(proof: class plan capacity exceptions name omissions before any partial start)_
 - [ ] **ac-4** — Select-clear before Save; save-clear-save; observations retained; repeated saves/retries; multiple items; foreign/deleted block refused atomically. Clearing latest assessed block restores older result or no lastResult when none exists, leaves a newer assessment alone. Exact block minutes/scope, reviews/dates/spacing/readiness unchanged, results visible honestly in item/history/Insights/report consumers. Exact title names one test; use table-driven cases inside it and supporting existing regression checks. _(proof: routine feedback can be cleared without changing practice or retention)_
-- [ ] **ac-5** — Real ordinary, Plan and Routine doors, including unbound segment; save/cancel/blank, no lesson, changed/deleted/cross-instrument lesson/item, boundary while typing, multiple questions and a later Close question. Assert clock identity/elapsed progression, focus and existing note drafts, cue markers unchanged. Inject persistence failure after agenda append, retry and reload: one question, retained words and truthful saving/failed/saved states. Verify lesson-id list/report visibility, unassigned fallback and unchanged preparation/ranking. Exact title names one test; use table-driven cases inside it and supporting existing regression checks. _(proof: live teacher questions retain capture ownership while practice continues)_
+- [ ] **ac-5** — Real UI in Chromium and WebKit: prove quiet-interval autosave without pressing Save for ordinary, Plan and Routine (bound/unbound), then more typing updates the SAME question id without closing or stealing focus. Cover shorter-than-quiet exits; blur/close, navigation and Finish before autosave or while persistence is pending; intermediate boundaries, manual Move on/Skip/Finish, final automatic Routine completion and background catch-up across several boundaries through completion. The open draft/controls and failed/pending recovery remain available, with frozen original item/instrument/lesson ownership. Cover no lesson/unassigned, deliberate lesson choice, changed/deleted/moved/cross-instrument targets, midnight, and saved-question deletion/detachment without resurrection or silent retargeting. Opening/closing blank or whitespace creates nothing. After a non-blank write, clearing to empty/whitespace while pending creates no blank question, preserves the last non-blank record and settles acknowledgement truthfully, never stuck Saving. Inject delayed success/failure after agenda append; edit to newer non-blank text during the earlier write, then autosave/Done/exit/retry and late outcomes. Assert latest words remain editable and are neither overwritten nor cleared/closed by an older acknowledgement; only the relevant acknowledged write may show Saved. Failure retains words/ownership and an actionable retry across internal navigation; retry really writes when memory is unchanged. Repeated autosaves, immediate saves, closes and retries produce exactly one question per capture; a deliberately new capture and a later CloseBlock question stay independent. Reload after acknowledged autosave and after failure/retry restores exact latest acknowledged text, id and ownership once, shown in lesson-id lists/report; do not label unacknowledged or failed text durable. Assert unchanged clock identity/elapsed progression, practice minutes/blocks, Plan/Routine accounting, focus/mode, note drafts, metronome/cue markers, preparations/ranking and retention, allowing only their normal independent progression. Use deterministic state-discriminating cases inside the existing exact unique test; support with focused pure/lifecycle checks where appropriate, never substitute component probes for the reachable UI boundary and pending-write regressions. _(proof: live teacher questions retain capture ownership while practice continues)_
 - [ ] **ac-6** — Controlled audio timeline and fake contexts: bounded tempo edits, start/stop, rapid toggles, denied/rejected/never-settled resume, dead running/suspended/interrupted/closed context, fresh readying tap/test replacement, old callback/remount, pause/finish/discard/navigation/hidden. No orphan scheduled beat, stacked loop or late burst. Cue retains once-only claim and priority/ducking then correct beat cadence, with literal timestamps/levels rather than source assertions; unavailable audio remains usable practice. Exact title names one test; use table-driven cases inside it and supporting existing regression checks. _(proof: metronome scheduling and cue priority survive sound lifecycle changes)_
 - [ ] **ac-7** — Chromium and WebKit journeys via real UI for ordinary/Plan/Routine, running question input and tempo controls across boundary and keyboard dismissal, stop/resume/reload after a finished run. Assert no extra minutes/blocks, notes remain durable, order/unfinished practice preserved, sound recovery doors work, hidden/paused metronome stops and visual cue remains. Reuse existing harness and conformance/direction/pressed-state checks without weakening them. Exact title names one test; use table-driven cases inside it and supporting existing regression checks. _(proof: live practice tools preserve clocks notes records and mobile controls)_
 - [ ] **ac-8** — One bounded real-practice walkthrough with Setar: MacBook and iPhone Safari plus installed PWA over HTTPS, normal media volume beside the instrument. Check cue clearly distinguishable/audible with and without metronome, comfortable BPM/level edits, boundary priority, sound recovery after idle/interruption and quick teacher capture/keyboard return while timer and beat continue. Record devices/versions/output and actual observations; automation cannot certify speaker volume or musical usability. Only reproducible failures of these promised controls/audibility require adjustment, not an open-ended taste review. _(proof: manual:OWNER)_
@@ -376,23 +401,23 @@ Prove the named acceptance families against committed fixed-clock fixtures, incl
 
 **Detected from the diff:**
 
-- **adjust-how-scheduling-works** — touched via src/pages/Settings.tsx, src/domain/plan.ts, src/store/useStore.ts
+- **adjust-how-scheduling-works** — touched via src/pages/Settings.tsx, src/pages/CloseBlock.tsx, src/domain/plan.ts, src/store/useStore.ts
 - **back-up-and-restore** — touched via src/pages/Settings.tsx, src/store/useStore.ts
 - **capture-a-practice-item** — touched via src/store/useStore.ts
-- **clear-a-due-review** — touched via src/store/useStore.ts
+- **clear-a-due-review** — touched via src/pages/Today.tsx, src/store/useStore.ts
 - **install-the-app-and-keep-it-current** — touched via src/pages/Settings.tsx
 - **log-a-class** — touched via src/store/useStore.ts
 - **point-this-device-at-the-nas** — touched via src/pages/Settings.tsx
-- **practise-todays-recommendation** — touched via src/pages/ActiveBlock.tsx, src/store/useStore.ts, src/domain/recommend.ts, src/domain/scoring.ts, src/domain/practiceSessionModel.ts
-- **prepare-for-the-next-class** — touched via src/domain/questions.ts
-- **run-a-session-plan** — touched via src/pages/SessionPlan.tsx, src/pages/ActiveBlock.tsx, src/domain/plan.ts, src/store/useStore.ts
+- **practise-todays-recommendation** — touched via src/pages/Today.tsx, src/pages/ActiveBlock.tsx, src/pages/CloseBlock.tsx, src/store/useStore.ts, src/domain/recommend.ts, src/domain/scoring.ts, src/domain/practiceSessionModel.ts
+- **prepare-for-the-next-class** — touched via src/domain/questions.ts, src/pages/CloseBlock.tsx
+- **run-a-session-plan** — touched via src/pages/SessionPlan.tsx, src/pages/Today.tsx, src/pages/ActiveBlock.tsx, src/domain/plan.ts, src/store/useStore.ts
+- **see-practice-patterns** — touched via src/pages/Today.tsx
 - **sync-devices-via-github** — touched via src/pages/Settings.tsx
 - **work-a-pathway-stage** — touched via src/pages/RoutineRunner.tsx, src/domain/routines.ts, src/store/useStore.ts
 
 **Possibly affected (shares a mechanic with a detected flow):**
 
 - **browse-my-repertoire** — shares entity "PracticeItem" with "adjust-how-scheduling-works"
-- **see-practice-patterns** — shares entity "PracticeItem" with "adjust-how-scheduling-works"
 
 **What the agent reported:**
 
@@ -533,7 +558,7 @@ Proposed step changes:
 −   Shows: The elapsed clock, and the item's notes on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time); pausing, finishing, discarding or navigating away releases it. Resume is a tap too and readies a fresh sound context again; if sound is paused or off on this page, a note says so and offers 'Turn on sound'. The item's Working notes save themselves after a short pause and whenever the musician leaves them — Done is optional, and a draft lands on the item it was typed for.
 −   Changes: Elapsed seconds accumulate only while the timer runs.
 + The musician Practises, optionally opening 'About this piece' or jotting a passing note; pauses and resumes as needed.
-+   Shows: The elapsed clock, and the item's notes on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time); pausing, finishing, discarding or navigating away releases it. Resume is a tap too and readies a fresh sound context again; if sound is paused or off on this page, a note says so and offers 'Turn on sound'. The item's Working notes save themselves after a short pause and whenever the musician leaves them — Done is optional, and a draft lands on the item it was typed for. An optional metronome (Start beat; BPM by −/+ or typed, 40–240; three levels) sounds only while the clock runs on a visible screen: Pause, Finish, Discard, leaving, a hidden page or lost sound stop it, only a tap starts it again, and a boundary cue mutes it briefly. '+ Ask teacher' adds one question for the nearest upcoming class (or unassigned) without pausing anything, saying 'Saved' only once the device has it.
++   Shows: The elapsed clock, and the item's notes on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time); pausing, finishing, discarding or navigating away releases it. Resume is a tap too and readies a fresh sound context again; if sound is paused or off on this page, a note says so and offers 'Turn on sound'. The item's Working notes save themselves after a short pause and whenever the musician leaves them — Done is optional, and a draft lands on the item it was typed for. An optional metronome (Start beat; BPM by −/+ or typed, 40–240; three levels) sounds only while the clock runs on a visible screen: Pause, Finish, Discard, leaving, a hidden page or lost sound stop it, only a tap starts it again, and a boundary cue mutes it briefly. '+ Ask teacher' writes one question for the nearest upcoming class (or unassigned) on its own after a short pause, without pausing anything — no Save to remember; later typing updates that same question, 'Saved' appears only once the device has it, and words not yet saved stay on screen, on Close and on Today until they are.
 +   Changes: Elapsed seconds accumulate only while the timer runs. A question asked here is one new lesson-agenda entry; tempo and level are never recorded.
   The musician Taps 'Finish'.
     Shows: The close screen, with the minutes already filled in.
@@ -558,8 +583,8 @@ Proposed step changes:
 − Practice Compass Collects every item for that instrument that is both flagged for the next class and carries a question, ordered with the Persian collator.
 −   Shows: A 'Questions for your next class' list on the upcoming lesson and on the Teacher report.
 + Practice Compass Keeps each question as its own lesson-agenda entry aimed at the class it names — the nearest upcoming one by default, changeable, or visibly unassigned — and collects a class's open questions by that lesson's id, ordered with the Persian collator.
-+   Shows: A 'Questions for your next class' list on the lesson and on the Teacher report. A question asked mid-practice says 'Saved' only once the device stored it, and its words survive a failed write.
-+   Changes: One new open question per save — never a preparation commitment and never a change to practice priority.
++   Shows: A 'Questions for your next class' list on the lesson and on the Teacher report. A question asked mid-practice saves itself after a short pause and says 'Saved' only once the device stored it; its words survive a failed write, leaving the screen and the run ending.
++   Changes: One new open question per capture — later typing, Done and Try again update that same entry, never a second — never a preparation commitment and never a change to practice priority.
   The musician Copies, downloads or prints the questions.
     Shows: A numbered plain-text export that preserves mixed Farsi and English, or a friendly empty state when there are none.
   The musician Opens the Teacher report and picks the instrument and a date range (last two weeks by default).
@@ -586,10 +611,10 @@ Proposed step changes:
 + Practice Compass Builds a plan from the same priority numbers the recommendation uses, laid out as warm-up, class work, review, focus and cool-down segments; a whole work (gusheh, piece, anything with dastgāh/form/composer) gets at least the 10-minute standard block beside other work, drills at least 2, and a segment is seated only while every seated segment can still reach its floor. Before anything optional it seats every item prepared for the nearest upcoming class — practised earlier today included — at its floor; when they cannot all fit it seats the subset that does by ranking, holds class work only, and names the rest.
 +   Shows: The plan preview: each segment with its minutes, bucket, item and a one-sentence reason. The total equals the chosen budget unless every segment that may take minutes is at its 25-minute ceiling; the warm-up and cool-down never exceed their shares or take leftover minutes. A class-coverage card says how much of the next class's work is in, names anything left out and why (does not fit, or removed or swapped by the musician), offers the length that holds it all ('Use N min', never past 120), and lists resting class work as resting.
 + The musician Reorders (Move earlier / Move later, by keyboard or touch), swaps, removes or regenerates segments until the shape looks right.
-+   Shows: A move carries the whole segment — item, minutes, role, reason — and nothing else changes. A removal leaves every other segment's minutes as they were and shows the freed minutes as unused, offering 'Spread over the rest' or 'Give to one…' — each entry only up to its own ceiling, a cancelled choice changing nothing, leaving them needing no tap; Regenerate or a new length reallocates. A swap keeps the slot's minutes and offers only material whose floor fits it.
++   Shows: A move carries the whole segment — item, minutes, role, reason — and nothing else changes. A removal leaves every other segment's minutes as they were and shows the freed minutes as unused, offering 'Spread over the rest' or 'Give to one…' — each entry only up to its own ceiling, a cancelled choice changing nothing, leaving them needing no tap; Regenerate or a new length reallocates. A swap keeps the slot's minutes and offers only material whose floor fits it — the next class's work too, even in a one-row plan.
 +   Changes: Only a local copy of the plan — nothing is saved yet.
 + The musician Taps 'Start plan' — or, when class work is left out, 'Start without N class items', a choice bound to exactly that coverage.
-+   Shows: The runner: the whole list in the musician's order, the current segment highlighted, with time left, unused and recorded shown separately. Start refuses visibly when the day, the data or the class coverage moved since the preview.
++   Shows: The runner: the whole list in the musician's order, the current segment highlighted, with time left, unused and recorded shown separately. Start refuses visibly when the day, the data or the class coverage moved since the preview, and never starts a class item below its useful minutes.
 +   Changes: The running plan is held in app state (never in the database, never synced), and the chosen length is remembered for this instrument.
   The musician Taps 'Start' on the current segment.
     Shows: The ordinary active-block screen, with the segment's minutes as the target — identical behaviour to an unplanned block, including the screen staying awake while it runs and is visible, and a durable 'Target reached' state with a growing overtime figure if the segment runs past its minutes without the musician tapping Finish.
@@ -604,6 +629,12 @@ Proposed step changes:
 Touchpoints: src/pages/SessionPlan.tsx, src/pages/Today.tsx, src/pages/ActiveBlock.tsx, src/domain/plan.ts, src/domain/practiceSignal.ts, src/components/useScreenAwake.ts, src/components/screenAwake.ts, src/store/useStore.ts
 
 Evidence: 6 steps: 6 manually verified
+
+### see-practice-patterns — Works now
+
+Touchpoints: src/pages/Insights.tsx, src/pages/Today.tsx, src/domain/insights.ts, src/domain/io.ts
+
+Evidence: 3 steps: 3 manually verified
 
 ### sync-devices-via-github — Works now
 
@@ -651,22 +682,10 @@ End your reply with exactly `SAFE TO SEAL` or `DO NOT SEAL` on its own
 final line, and say why. That is a recommendation to the owner, who records
 the outcome — sealing is never the reviewer's to do.
 
-If your verdict is `DO NOT SEAL`, your session is repository-read-only and cannot write the findings file itself — the owner does, from what you print. These are THREE separate copy actions, never one shell script: the JSON is DATA and must never be pasted at a normal shell prompt. Do not reconstruct or alter the path, the contract id or either command below — both commands come verbatim from Prismatica; you supply only the structured findings JSON, and it must parse as strict JSON before you present it here. End your reply with exactly these three steps, in this order, each its own fenced code block:
+If your verdict is `DO NOT SEAL`, make the hand-off self-contained: save your findings as ONE JSON array to EXACTLY this reserved file — if you are a Claude Code session, this lane's own scope hook allows writing only this one path outside the lane, so it is also the only place you CAN write it (a reviewer on a different provider's own sandbox is not covered by this):
 
-**1. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
+`/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261028-make-live-practice-easier-to-shape-prepa-1934/findings.json`
 
-```bash
-cat > '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261028-make-live-practice-easier-to-shape-prepa-1934/findings.json'
-```
-
-**2. Paste this data, then press Ctrl-D** — one fenced `json` code block containing ONE valid, compact JSON array, with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Strict JSON only: no literal newline inside a quoted string — escape multi-line finding text — and keep the array on one logical line so no viewer's word-wrap can be mistaken for a real line break.
-
-**3. Run this exact command** — one fenced `bash` code block containing only this command, on one logical line:
-
-```bash
-prismatica seal '20261028-make-live-practice-easier-to-shape-prepa-1934' --request-changes --findings '/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261028-make-live-practice-easier-to-shape-prepa-1934/findings.json'
-```
-
-You remain `--sandbox read-only` throughout: no `--add-dir`, no workspace-write, no heredoc, no shell interpolation, and no other findings transport. The findings file is `/var/folders/js/7jld3v1s7nq3fb8rnh6fl3h80000gn/T/prismatica-review-d8c8e126e0997c57-20261028-make-live-practice-easier-to-shape-prepa-1934/findings.json`. Never put any of your findings inside either command: they are data the owner pastes, not shell text.
+with each entry shaped exactly `{ "family": "...", "summary": "...", "counterexample": "..." }`. Then report two things verbatim: the exact temporary file path, and the exact command, using this change's own contract id (shown above as **Contract**): `prismatica seal <id> --request-changes --findings <that path>`. The owner should never have to reconstruct that JSON from your prose by hand.
 
 Current policy: acceptance evidence is the exact NAMED test, never a whole test file. After a rejection, rework is judged by the invariant FAMILY a finding named, not by matching its exact wording. A Check already bound to the reviewed head is proof — it is not to be rerun wholesale. Use the stored rejection findings from the sealed review record, verbatim, rather than re-deriving them from memory. A finding names an invariant: sweep the repository for every instance of it and list each one found plus the consumers checked clean, in one round — not one counterexample at a time.
