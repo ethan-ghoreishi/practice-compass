@@ -1222,7 +1222,8 @@ export function planPreviewDayHasPassed(baseDay: string, now: Date): boolean {
 
 export type PlanStartCheck =
   | { ok: true; item: PracticeItem }
-  | { ok: false; reason: 'finished' | 'deleted' | 'moved' | 'busy' };
+  | { ok: false; reason: 'finished' | 'deleted' | 'moved' | 'busy' }
+  | { ok: false; reason: 'short'; floorMinutes: number };
 
 /**
  * May the current segment be started right now? Revalidated against LIVE data
@@ -1233,11 +1234,16 @@ export type PlanStartCheck =
  * A `deleted`/`moved` segment is visibly skipped by the caller rather than
  * played under the wrong instrument; a `busy` verdict refuses outright, because
  * replacing an unfinished block or routine run would destroy real practice.
+ * A `short` verdict refuses too: required class work (`required`, the LIVE
+ * `requiredClassWork` ids) whose useful floor, judged on the item as it is
+ * now, exceeds the segment's minutes is never started as a token slot — the
+ * same rule `planStartRefusal` holds at installation.
  */
 export function planSegmentStartable(
   run: PlanRun,
   items: PracticeItem[],
   busy = false,
+  required: readonly ID[] = [],
 ): PlanStartCheck {
   if (busy) return { ok: false, reason: 'busy' };
   const seg = run.segments[run.pointer];
@@ -1245,5 +1251,6 @@ export function planSegmentStartable(
   const item = items.find((i) => i.id === seg.itemId);
   if (!item) return { ok: false, reason: 'deleted' };
   if (item.instrumentId !== run.instrumentId) return { ok: false, reason: 'moved' };
+  if (required.includes(item.id) && seg.minutes < segmentFloor(item)) return { ok: false, reason: 'short', floorMinutes: segmentFloor(item) };
   return { ok: true, item };
 }

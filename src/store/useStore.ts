@@ -28,6 +28,7 @@ import {
   captureTargetProblem,
   openQuestionCapture,
   type QuestionCapture,
+  type PlanStartCheck,
   lessonLabel,
   planClassCoverage,
   planStartRefusal,
@@ -133,6 +134,7 @@ import {
   type RoutineCapture,
   type ItemStatus,
   type LessonFileKind,
+  type LessonQuestion,
   type LessonRecording,
   type Material,
   type MaterialSourceType,
@@ -381,8 +383,8 @@ interface StoreState {
    * Returns the refusal (nothing installed) or null.
    */
   startPlan: (plan: SessionPlan, acceptedKey?: string) => 'empty' | 'short' | 'partial' | null;
-  /** Start a real block seeded from the current segment (→ /active → /close). */
-  beginPlanSegment: () => void;
+  /** Start a real block seeded from the current segment (→ /active → /close). Returns the live check it ran. */
+  beginPlanSegment: () => PlanStartCheck | null;
   /** Skip a pending segment — the current one by default — recording nothing; other targets keep their minutes. */
   skipPlanSegment: (index?: number) => void;
   /** Skip the plan segment whose block is open right now WITHOUT saving it: the block is discarded and the segment skipped. */
@@ -785,20 +787,23 @@ export const useStore = create<StoreState>()(
 
       beginPlanSegment: () => {
         const { activePlan, db, active, activeRoutine } = get();
-        if (!activePlan) return;
+        if (!activePlan) return null;
         const seg = activePlan.segments[activePlan.pointer];
         // Revalidated LIVE against the same pure check a test can reach, never
-        // trusted from the plan: an item can be deleted or moved to another
-        // instrument between building the plan and reaching this segment.
-        const check = planSegmentStartable(activePlan, db.items, !!active || !!activeRoutine);
+        // trusted from the plan: an item can be deleted, moved to another
+        // instrument or become a whole work (a larger class floor) between
+        // building the plan and reaching this segment.
+        const required = requiredClassWork(db.lessonAgenda, db.lessons, db.items, activePlan.instrumentId, new Date()).itemIds;
+        const check = planSegmentStartable(activePlan, db.items, !!active || !!activeRoutine, required);
         if (!check.ok) {
           // A deleted or moved item is visibly skipped (and skipping logs
-          // nothing); a busy clock is refused outright rather than replaced.
+          // nothing); a busy clock or a sub-floor class slot is refused
+          // outright, the segment left for the owner to skip.
           if (check.reason === 'deleted' || check.reason === 'moved') get().skipPlanSegment();
-          return;
+          return check;
         }
         const item = check.item;
-        if (!seg) return;
+        if (!seg) return check;
         get().startSession({
           itemId: item.id,
           instrumentId: item.instrumentId,
@@ -807,6 +812,7 @@ export const useStore = create<StoreState>()(
           focus: seg.focus,
           targetMinutes: seg.minutes,
         });
+        return check;
       },
 
       skipPlanSegment: (index) =>
@@ -2697,7 +2703,9 @@ else useStore.persist.onFinishHydration(finishHydration);
 //    autosave, Done, retry — updates THAT id, never another, and never
 //    recreates it once it has been removed elsewhere.
 //  - Blank text writes nothing: it never creates a question nor overwrites a
-//    written one.
+//    written one. A write the question needs anyway — Try again, or its class
+//    chosen with the field empty — carries the words it holds in memory, and
+//    is acknowledged like any other.
 //  - "Saved" is IndexedDB's acknowledgement of the words an attempt carried
 //    (`storageSettled` captured beside the write). Only the latest attempt
 //    may set the status; any answered attempt settles (never stuck saving);
@@ -2749,7 +2757,7 @@ const cancelAutosave = () => {
 
 /** The agenda entry a written capture belongs to now (a deleted class may have detached it), or undefined once removed. */
 export function liveQuestionEntry(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']) {
-  return capture.questionId ? agenda.find((e) => e.id === capture.questionId && e.kind === 'question') : undefined;
+  return capture.questionId ? agenda.find((e): e is LessonQuestion => e.id === capture.questionId && e.kind === 'question') : undefined;
 }
 
 /**
@@ -2790,16 +2798,17 @@ export function saveLiveQuestion(force = false): void {
   cancelAutosave();
   const capture = liveCapture();
   if (!capture) return;
-  // Blank writes nothing — except Try again after a refused write, which
-  // writes the words that question already holds in memory.
-  const words = capture.text.trim() || (force && capture.attempt?.status === 'failed' ? capture.attempt.carried : '');
+  const store = useStore.getState();
+  const entry = liveQuestionEntry(capture, store.db.lessonAgenda);
+  // Blank writes nothing of its own — but a forced write (Try again, a class
+  // chosen) still writes the question, carrying the words it holds in memory.
+  const words = capture.text.trim() || (force && entry ? entry.text : '');
   if (!words) return;
   if (!force && capture.attempt?.carried === words && capture.attempt.status !== 'failed') return;
-  const store = useStore.getState();
   let questionId = capture.questionId;
   if (questionId) {
     // Its own question, or nothing: removed elsewhere, it is never recreated.
-    if (!liveQuestionEntry(capture, store.db.lessonAgenda)) return;
+    if (!entry) return;
     store.updateLessonQuestion(questionId, words);
   } else {
     if (captureTargetProblem(store.db, capture.owner, new Date())) return;
@@ -2870,7 +2879,7 @@ export function flushLiveQuestion(): void {
 }
 
 /**
- * Done: flush, and close only once the latest words are acknowledged. Blank
+ * Done: flush, and close only once the latest write is acknowledged. Blank
  * closes without writing (a written question stays as it was). Failed,
  * refused or removed words keep the editor open — they are never discarded
  * silently; clearing the field is the deliberate way to let them go.
@@ -2880,7 +2889,9 @@ export function closeLiveQuestion(): void {
   if (!capture) return;
   if (liveQuestionSettled(capture)) return finishLiveQuestion();
   patchLive({ closing: true });
-  saveLiveQuestion();
+  // A refused write is written again (with an empty field too): Done never
+  // closes over words, or a class, the device has not acknowledged.
+  saveLiveQuestion(capture.attempt?.status === 'failed');
 }
 
 function finishLiveQuestion(): void {

@@ -582,7 +582,22 @@ describe('class plan capacity', () => {
     expect(useStore.getState().activePlan).toBeNull();
     expect(useStore.getState().startPlan(swappedOnly, liveKey(swappedOnly))).toBeNull();
     expect(useStore.getState().activePlan!.segments.map((s) => [s.itemId, s.minutes])).toEqual(X.pairAt5Swapped);
-    useStore.setState({ activePlan: null });
+    // SEGMENT START rechecks the LIVE floor: the installed drill made a whole
+    // work before its segment starts is refused — never a 5-minute token of a
+    // 10-minute class work — and the run waits, unskipped, for the owner.
+    const asWork = pair.map((i) => (i.id === 'cd' ? { ...i, itemType: 'full_piece' as const } : i));
+    useStore.setState((s) => ({ db: { ...s.db, items: asWork } }));
+    expect(useStore.getState().beginPlanSegment()).toEqual({ ok: false, reason: 'short', floorMinutes: 10 });
+    expect([useStore.getState().active, useStore.getState().activePlan!.pointer, useStore.getState().activePlan!.segments[0].status]).toEqual([null, 0, 'pending']);
+    // Discriminators: the same work no longer committed for the class starts
+    // (no class floor applies), and so does the drill as it was.
+    useStore.setState((s) => ({ db: { ...s.db, lessonAgenda: [prep('pcw', 'cw', 'L1'), prep('pcd', 'cd', 'L2')] } }));
+    expect(useStore.getState().beginPlanSegment()).toMatchObject({ ok: true });
+    expect(useStore.getState().active!.targetMinutes).toBe(5);
+    useStore.setState((s) => ({ active: null, db: { ...s.db, items: pair, lessonAgenda: pairAgenda } }));
+    expect(useStore.getState().beginPlanSegment()).toMatchObject({ ok: true });
+    expect([useStore.getState().active!.itemId, useStore.getState().active!.targetMinutes]).toEqual(['cd', 5]);
+    useStore.setState({ active: null, activePlan: null });
   });
 });
 
@@ -939,6 +954,30 @@ describe('the live question lifecycle', () => {
     await flush();
     expect(qs().map((q) => [q.text, q.itemId ?? null])).toEqual([['After removal', 'a'], ['Instrument question', null]]);
     expect(cap()).toBeNull();
+
+    // Its class chosen with the field EMPTY is a write acknowledged like any
+    // other: refused → failed and unsettled, Done writes it again and stays
+    // open; answered → saved, and only then does Done close, saying where.
+    live.openLiveQuestion(SETAR, 'a', 's3');
+    live.editLiveQuestion('Class question');
+    live.saveLiveQuestion();
+    await flush();
+    const id3 = cap()!.questionId!;
+    live.editLiveQuestion('');
+    storage.fail = true;
+    const w0 = storage.writes;
+    live.chooseLiveQuestionLesson(undefined);
+    await flush();
+    expect([cap()!.attempt?.status, cap()!.attempt?.carried, live.liveQuestionSettled(cap()!)]).toEqual(['failed', 'Class question', false]);
+    live.closeLiveQuestion();
+    await flush();
+    expect([cap()?.questionId, cap()?.attempt?.status, storage.writes - w0 >= 3]).toEqual([id3, 'failed', true]);
+    storage.fail = false;
+    live.saveLiveQuestion(true);
+    await flush();
+    expect([cap()!.attempt?.status, live.liveQuestionSettled(cap()!), qs().find((q) => q.id === id3)!.lessonId]).toEqual(['saved', true, undefined]);
+    live.closeLiveQuestion();
+    expect([cap(), live.useLiveQuestion.getState().note]).toEqual([null, 'Question saved on this device — unassigned.']);
   });
 });
 

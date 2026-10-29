@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { captureTargetProblem, isUpcomingLesson, lessonLabel, todayISODate, type ID, type LessonQuestion } from '../domain';
 import {
   chooseLiveQuestionLesson,
@@ -27,9 +27,10 @@ import { useDecisionNow } from './useDecisionNow';
  * words, and "Saved" waits for the device. The words live in the store, not
  * here, so a remount or another screen never loses them: `session` is the
  * practice this screen shows (its clock's start) — a capture opened in it
- * stays open here; one from elsewhere shows only while words are still
- * unsaved. `recover` screens (Routine complete, Close, Today) never open a
- * new one. It touches no clock, note, marker, cue or ranking.
+ * stays open here; one from elsewhere shows while words are still unsaved,
+ * and once shown stays until Done — an acknowledgement never takes the field
+ * away. `recover` screens (Routine complete, Close, Today) never open a new
+ * one. It touches no clock, note, marker, cue or ranking.
  */
 export default function TeacherQuestionCapture({
   instrumentId,
@@ -44,7 +45,13 @@ export default function TeacherQuestionCapture({
 }) {
   const capture = useLiveQuestion((s) => s.capture);
   const note = useLiveQuestion((s) => s.note);
-  const shown = capture && ((session !== undefined && capture.session === session) || !liveQuestionSettled(capture)) ? capture : null;
+  // The capture this screen is showing (by its session): kept in view through its own saving, until Done.
+  const [held, setHeld] = useState<string | null>(null);
+  const shown =
+    capture && ((session !== undefined && capture.session === session) || !liveQuestionSettled(capture) || held === capture.session)
+      ? capture
+      : null;
+  if ((shown?.session ?? null) !== held) setHeld(shown?.session ?? null);
 
   if (!shown) {
     if (recover || !instrumentId || session === undefined) return null;
@@ -134,7 +141,7 @@ function QuestionEditor() {
           </>
         ) : (
           <>
-            <span dir="ltr">Not saved — this device refused the last words, which your question still holds. The field is empty.</span>
+            <span dir="ltr">Not saved — this device refused your question's last change. The field is empty.</span>
             <button type="button" className="btn btn-sm" onClick={() => saveLiveQuestion(true)}>
               Try again
             </button>

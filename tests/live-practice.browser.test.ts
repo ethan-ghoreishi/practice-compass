@@ -308,6 +308,8 @@ describe('asking the teacher while practising', () => {
         const preparations = start.lessonAgenda.filter((e) => e.kind === 'preparation');
         const ranked = recommendForInstrument(SETAR, start.items, start.blocks, CLOCK, preparationDatesByItem(start.lessonAgenda, start.lessons, CLOCK)).best!.score.item.id;
         const SAVED_L0 = `Saved on this device for ${L0_LABEL}.`;
+        const FAILED_EMPTY = "Not saved — this device refused your question's last change. The field is empty.";
+        const EMPTY_KEPT = 'The field is empty — nothing new is saved; your saved question stays as it was.';
 
         // --- ORDINARY: a notes draft open, the clock running -----------------
         await startBlock(app, A, A_TITLE);
@@ -393,7 +395,7 @@ describe('asking the teacher while practising', () => {
         await askStatus(page, 'Saving…').waitFor();
         await askBox(page).fill('  ');
         await answerWrites(page, false);
-        await askStatus(page, 'Not saved — this device refused the last words, which your question still holds. The field is empty.').waitFor();
+        await askStatus(page, FAILED_EMPTY).waitFor();
         await ask(page).getByRole('button', { name: 'Try again' }).click();
         await askStatus(page, 'The field is empty — nothing new is saved; your saved question stays as it was.').waitFor();
         expect((await questionLanded(app, 'Left hand again?')).id, engine).toBe(q1.id);
@@ -411,6 +413,10 @@ describe('asking the teacher while practising', () => {
         await repairStorage(page);
         await ask(page).getByRole('button', { name: 'Try again' }).click();
         expect((await questionLanded(app, 'Should I slow down here?')).id, engine).toBe(q1.id);
+        // Acknowledged there, the field stays on Today — words, Saved and Done — until Done.
+        await askStatus(page, SAVED_L0).waitFor();
+        await page.clock.runFor(1_000);
+        expect([await askBox(page).inputValue(), await ask(page).getByRole('button', { name: 'Done' }).count()], engine).toEqual(['Should I slow down here?', 1]);
         // Back in the block the same capture is still open, saved.
         await goTo(app, '/active');
         await askStatus(page, SAVED_L0).waitFor();
@@ -439,6 +445,37 @@ describe('asking the teacher while practising', () => {
         await page.getByText('Question saved on this device — unassigned.').waitFor();
         const q2 = await questionLanded(app, 'Is the tempo too fast?');
         expect([q2.lessonId, q2.itemId], engine).toEqual([undefined, A]);
+
+        // ITS CLASS CHANGED WITH THE FIELD EMPTY is a write like any other: a
+        // refusal is said, Done never closes over it (nor claims it saved), and
+        // the device keeps the class it last acknowledged until Try again lands.
+        await page.getByRole('button', { name: '+ Ask teacher' }).click();
+        await askBox(page).fill('Which string first?');
+        await page.clock.runFor(800);
+        await askStatus(page, SAVED_L0).waitFor();
+        const q6 = await questionLanded(app, 'Which string first?');
+        await askBox(page).fill('');
+        await breakStorage(page);
+        await page.getByLabel('Ask at', { exact: true }).selectOption('');
+        await askStatus(page, FAILED_EMPTY).waitFor();
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+        await askStatus(page, FAILED_EMPTY).waitFor();
+        await page.clock.runFor(1_000);
+        expect([await askBox(page).count(), await page.getByText(/^Question saved on this device/).count()], engine).toEqual([1, 0]);
+        expect(questions(await db(app)).find((q) => q.id === q6.id)!.lessonId, engine).toBe(L0);
+        await repairStorage(page);
+        await ask(page).getByRole('button', { name: 'Try again' }).click();
+        await askStatus(page, EMPTY_KEPT).waitFor();
+        await persistedUntil(app, (st) => questions((st.state as { db: Db }).db).find((q) => q.id === q6.id), (q) => !!q && q.lessonId === undefined);
+        // …and pending: Done waits for the device's answer to the class, then closes saying it.
+        await holdWrites(page);
+        await page.getByLabel('Ask at', { exact: true }).selectOption(L0);
+        await askStatus(page, 'Saving…').waitFor();
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+        await askStatus(page, 'Saving…').waitFor();
+        await answerWrites(page, true);
+        await page.getByText(`Question saved on this device for ${L0_LABEL}.`).waitFor();
+        expect(questions(await db(app)).filter((q) => q.id === q6.id).map((q) => [q.text, q.lessonId]), engine).toEqual([['Which string first?', L0]]);
 
         // DETACHED underneath: a chosen class deleted after its question exists —
         // the question keeps its id, now unassigned, and later words update it,
@@ -501,6 +538,10 @@ describe('asking the teacher while practising', () => {
         await askStatus(page, 'Saving…').waitFor();
         await answerWrites(page, true);
         expect((await questionLanded(app, 'Plan question, part two')).id, engine).toBe(q5.id);
+        // The acknowledged autosave leaves Today's field in place.
+        await askStatus(page, /^Saved on this device/).waitFor();
+        await page.clock.runFor(1_000);
+        expect(await askBox(page).inputValue(), engine).toBe('Plan question, part two');
         await goTo(app, '/active');
         await askStatus(page, /^Saved on this device/).waitFor();
         const during = await persisted(app);
@@ -658,9 +699,10 @@ describe('asking the teacher while practising', () => {
             ['Should I slow down here?', A, L0],
             ['Typed across midnight, kept', C, null],
             ['Typed as the run ends', B, L0],
+            ['Which string first?', A, L0],
           ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
         );
-        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(12);
+        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(13);
         expect(questions(end).find((q) => q.text === 'Should I slow down here?')!.id, engine).toBe(q1.id);
         expect(end.lessonAgenda.filter((e) => e.kind === 'preparation'), engine).toEqual(preparations);
         const withoutQuestions = end.lessonAgenda.filter((e) => e.kind !== 'question');

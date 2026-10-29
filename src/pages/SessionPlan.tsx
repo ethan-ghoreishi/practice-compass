@@ -506,9 +506,12 @@ function PlanRunner() {
   const done = activePlan.segments.filter((s) => s.status === 'done').length;
   const finished = activePlan.pointer >= activePlan.segments.length;
   const time = planRunTime(activePlan);
+  // A segment refused at Start (required class work now worth more than its slot), for the pointer it was refused at.
+  const [short, setShort] = useState<{ pointer: number; floorMinutes: number } | null>(null);
 
   function begin() {
-    beginPlanSegment();
+    const check = beginPlanSegment();
+    if (check && !check.ok && check.reason === 'short') return setShort({ pointer: activePlan.pointer, floorMinutes: check.floorMinutes });
     navigate('/active');
   }
   function finish() {
@@ -573,6 +576,14 @@ function PlanRunner() {
                   {isCurrent && (
                     <div className="tiny faint">
                       <span dir="ltr">{seg.reason}</span>
+                    </div>
+                  )}
+                  {isCurrent && short?.pointer === i && (
+                    <div className="tiny" role="alert" style={{ color: 'var(--tone-warn)' }}>
+                      <span dir="ltr">
+                        This class work now needs at least {short.floorMinutes} min, more than this segment's {seg.minutes}. Skip it, or end
+                        the plan and build a longer one.
+                      </span>
                     </div>
                   )}
                 </div>
