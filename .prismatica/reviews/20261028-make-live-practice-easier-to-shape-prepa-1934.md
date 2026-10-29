@@ -1,62 +1,40 @@
 ---
 id: 20261028-make-live-practice-easier-to-shape-prepa-1934
 contractId: 20261028-make-live-practice-easier-to-shape-prepa-1934
-patchId: ede7c554880f14730046866bf7a5e17ea54fd4c5
+patchId: 30dd92154511b4db7cf40b96fef22f8a141dc83c
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: live-question-durability-covers-lesson-target
-    summary: A live capture must not reuse a text-only acknowledgement to claim
-      changed question ownership is saved.
-    counterexample: "At HEAD d4e2fa0, Chromium and WebKit: autosave a live question
-      for Class 1; refuse IndexedDB puts; navigate to Lessons and delete Class
-      1, or to the item's agenda and select Unassigned; return to ActiveBlock.
-      It says Saved on this device — unassigned, and Done closes with Question
-      saved on this device — unassigned, although disk still holds the original
-      Class 1 target. Both browser routes reproduced with no page errors.
-      TeacherQuestionCapture.tsx:158 combines the old carried-text
-      acknowledgement with the current in-memory lesson; useStore.ts:2769 and
-      :2890 also treat that old attempt as settled. Family sweep:
-      setAgendaTarget via LessonAgenda TargetPicker and Move to this class,
-      deleteLesson/detachLesson, updateItem/retargetEntriesForItemInstrument,
-      and deleteItem/detachItem all mutate the captured entry without
-      invalidating its acknowledgement; focused state probes confirmed stale
-      saved status for all five mutation cases. Shared consumers: ordinary/Plan
-      ActiveBlock, bound/unbound Routine, Routine complete, Close and Today
-      recovery. Checked clean: the live editor's own lesson picker, including
-      blank-field failed-write retry, now tracks a fresh write; ordinary text
-      autosave/retry uses its own acknowledgement; agenda/report readers retain
-      lesson-id identity. Extend the existing unique test live teacher questions
-      retain capture ownership while practice continues with refused and delayed
-      external target/detachment writes, including unchanged or blank text, Done
-      and reload. Do not label the changed target durable until its own
-      persisted state is acknowledged."
-  - family: live-question-recovery-has-a-valid-empty-exit
-    summary: Clearing a removed question after an answered failed save must leave a
-      working Done exit without recreating it.
-    counterexample: "At HEAD d4e2fa0, Chromium and WebKit: autosave Q; refuse a
-      later edit; navigate to the item; restore storage and Remove this
-      question; return to ActiveBlock; clear the field and press Done. The empty
-      editor remains, Save as a new question and Copy are disabled, and + Ask
-      teacher is unavailable. Repeated Done does nothing. Focused state proof
-      shows status failed, closing true, and zero writes after Done.
-      useStore.ts:2769 refuses settlement because the historical attempt failed,
-      while :2805 returns without writing because both the field and agenda
-      entry are absent; :2887 therefore cannot close.
-      TeacherQuestionCapture.tsx:117 exposes no other enabled recovery action.
-      This is one shared instance across ordinary/Plan ActiveBlock,
-      bound/unbound Routine, Routine complete, Close and Today recovery;
-      removeAgendaEntry from item and lesson QuestionRow reaches it. Checked
-      clean: blank never-written captures close; blank captures whose existing
-      record is retried have a real write route; acknowledged removed captures
-      close; non-blank removed captures offer deliberate Save as a new question
-      and Copy. Extend the existing unique test live teacher questions retain
-      capture ownership while practice continues with failure plus removal plus
-      blank Done, including a pending attempt later refused. Done must release
-      the empty capture without resurrecting the removed record."
-createdAt: 2026-10-29T02:44:26.766Z
-sealedAt: 2026-10-29T02:58:44.251Z
+    summary: A historical capture acknowledgement becomes valid again after an
+      external ownership change persists and its reversal fails, allowing Saved
+      and Done to claim ownership absent from disk.
+    counterexample: "At HEAD 470534ce1f548b525e902a9d8e1b9831789964ce, controlled
+      read-only execution of the real store reproduces: save Q for Class A;
+      successfully setAgendaTarget(Q, undefined); refuse storage;
+      setAgendaTarget(Q, Class A); press Done. liveQuestionAcknowledged returns
+      true, Done closes with a Class A saved claim and zero writes, while disk
+      holds Q unassigned. Both non-empty and blank fields reproduce. Likewise,
+      updateItem Setar-to-Tar acknowledged then Tar-to-Setar refused closes
+      without writing while disk owns Q on Tar. Root: useStore.ts:2774 compares
+      current values with a historical fingerprint without accounting for
+      intervening persisted mutations. Affected doors: LessonAgenda
+      TargetPicker, Move to this class, and updateItem instrument changes.
+      Shared consumers: acknowledgement, settlement, coalescing, Done, closing
+      continuation, status and recovery visibility across ordinary/Plan
+      ActiveBlock, bound/unbound Routine, Routine complete, Close and Today.
+      Checked clean: one-way target changes, lesson deletion/detachment, item
+      movement/deletion/detachment, forced retry, deliberate editor lesson
+      selection, lesson-id agenda/report readers, and removed-question blank
+      Done. Extend the unique test live teacher questions retain capture
+      ownership while practice continues and its lifecycle support test with
+      acknowledged changes followed by refused/delayed reversals,
+      blank/non-empty Done and reload. Invalidate stale acknowledgement
+      authority or obtain a fresh write acknowledgement before claiming the
+      reverted ownership durable."
+createdAt: 2026-10-29T11:56:31.076Z
+sealedAt: 2026-10-29T12:05:21.220Z
 ---
 
 # Review: Make live practice easier to shape, prepare for class and keep in time
@@ -70,7 +48,7 @@ sealedAt: 2026-10-29T02:58:44.251Z
 - **Contract:** 20261028-make-live-practice-easier-to-shape-prepa-1934
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/58
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `ede7c554880f14730046866bf7a5e17ea54fd4c5`
+- **Diff patch-id:** `30dd92154511b4db7cf40b96fef22f8a141dc83c`
 - **Computed by:** prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified
 
 ## Intent revision — supersedes the original request only where it conflicts
@@ -143,436 +121,437 @@ still breaks it is not closed.
 
 **Findings from the previous review:**
 
-- **required-class-useful-floors-through-preview-and-start** — Segment Start must enforce the live useful floor of required class work.
-  _counterexample:_ In Chromium and WebKit, install a 5-minute Plan containing one prepared technique item. Before starting its segment, edit that item to Composed piece. Return to the Plan and Start it: active.targetMinutes is 5 although the required whole-work floor is 10. useStore.ts:786 and plan.ts:1237 check existence, instrument and busy state but not the live floor. Preview swap, coverage and startPlan installation guards are clean. Extend class plan capacity exceptions name omissions before any partial start.
-- **live-question-durability-covers-lesson-target** — A lesson-target write must receive its own persistence acknowledgement even when the editor is blank.
-  _counterexample:_ In Chromium and WebKit, autosave a question for Class 1, clear the field, refuse IndexedDB puts, choose No class and tap Done. The editor closes and reports Question saved on this device — unassigned. Reload restores Class 1. chooseLiveQuestionLesson writes the target, but saveLiveQuestion(true) returns on blank text while Done trusts the previous saved attempt. This shared path affects ordinary/Plan ActiveBlock, bound/unbound Routine, Routine complete, Close and Today recovery. Extend live teacher questions retain capture ownership while practice continues.
-- **live-question-editor-stays-open-through-recovery** — Acknowledged autosave or retry must not remove an open recovery editor without Done.
-  _counterexample:_ In Chromium and WebKit, fail a live-question save, navigate to Today, restore storage and tap Try again. On acknowledgement the question field and Done controls disappear without Done. TeacherQuestionCapture.tsx:47 hides settled captures outside their originating session. Today always uses this branch; other capture consumers use it when recovering another session. Matching-session ActiveBlock, Close, Routine boundaries and Routine complete are clean. Extend live teacher questions retain capture ownership while practice continues.
+- **live-question-durability-covers-lesson-target** — A live capture must not reuse a text-only acknowledgement to claim changed question ownership is saved.
+  _counterexample:_ At HEAD d4e2fa0, Chromium and WebKit: autosave a live question for Class 1; refuse IndexedDB puts; navigate to Lessons and delete Class 1, or to the item's agenda and select Unassigned; return to ActiveBlock. It says Saved on this device — unassigned, and Done closes with Question saved on this device — unassigned, although disk still holds the original Class 1 target. Both browser routes reproduced with no page errors. TeacherQuestionCapture.tsx:158 combines the old carried-text acknowledgement with the current in-memory lesson; useStore.ts:2769 and :2890 also treat that old attempt as settled. Family sweep: setAgendaTarget via LessonAgenda TargetPicker and Move to this class, deleteLesson/detachLesson, updateItem/retargetEntriesForItemInstrument, and deleteItem/detachItem all mutate the captured entry without invalidating its acknowledgement; focused state probes confirmed stale saved status for all five mutation cases. Shared consumers: ordinary/Plan ActiveBlock, bound/unbound Routine, Routine complete, Close and Today recovery. Checked clean: the live editor's own lesson picker, including blank-field failed-write retry, now tracks a fresh write; ordinary text autosave/retry uses its own acknowledgement; agenda/report readers retain lesson-id identity. Extend the existing unique test live teacher questions retain capture ownership while practice continues with refused and delayed external target/detachment writes, including unchanged or blank text, Done and reload. Do not label the changed target durable until its own persisted state is acknowledged.
+- **live-question-recovery-has-a-valid-empty-exit** — Clearing a removed question after an answered failed save must leave a working Done exit without recreating it.
+  _counterexample:_ At HEAD d4e2fa0, Chromium and WebKit: autosave Q; refuse a later edit; navigate to the item; restore storage and Remove this question; return to ActiveBlock; clear the field and press Done. The empty editor remains, Save as a new question and Copy are disabled, and + Ask teacher is unavailable. Repeated Done does nothing. Focused state proof shows status failed, closing true, and zero writes after Done. useStore.ts:2769 refuses settlement because the historical attempt failed, while :2805 returns without writing because both the field and agenda entry are absent; :2887 therefore cannot close. TeacherQuestionCapture.tsx:117 exposes no other enabled recovery action. This is one shared instance across ordinary/Plan ActiveBlock, bound/unbound Routine, Routine complete, Close and Today recovery; removeAgendaEntry from item and lesson QuestionRow reaches it. Checked clean: blank never-written captures close; blank captures whose existing record is retried have a real write route; acknowledged removed captures close; non-blank removed captures offer deliberate Save as a new question and Copy. Extend the existing unique test live teacher questions retain capture ownership while practice continues with failure plus removal plus blank Done, including a pending attempt later refused. Done must release the empty capture without resurrecting the removed record.
 
 **What changed since the previously reviewed head:**
 
 ```diff
 diff --git a/docs/practice-session-model.md b/docs/practice-session-model.md
-index efd05c324acfde3285efcc40d00c216ca99b85db..b5c9f6220bf0c87b2fc43bd9cc6cab51edce3b30 100644
+index b5c9f6220bf0c87b2fc43bd9cc6cab51edce3b30..da7b6c1eb2453cf0650a5f7d3d0794d31fd2e396 100644
 --- a/docs/practice-session-model.md
 +++ b/docs/practice-session-model.md
-@@ -262,9 +262,9 @@ by hand from the rules above.
- |---|---|---|
- | ac-1 `preview time choices preserve identity order capacity and unused remainders` | kept + freed = previewed; only freed time is spent, once; identity, role, reason, floor and order unchanged; ceilings (25, warm-up share, cool-down split + 1; spread never to an optional role); prior remainder stays; saved routine untouched; Start = preview; running Skip / Move on / early Finish keep their accounting | SessionPlan preview, `startPlan`, `planRunTime`; RoutineRunner preview (content, fitted length, short on time, every start door via `startRoutineRun`), `routineRunTime`, `aggregateItemMinutes` |
+@@ -264,7 +264,7 @@ by hand from the rules above.
  | ac-2 `next class work survives morning practice in every evening plan` | required = nearest class's non-resting preparations; seated in every build / regeneration / length change (12–120) whatever exposure or same-day practice, once each; class reasons honest, never "nothing else eligible"; stored dates and spacing untouched; counterexamples: uncommitted morning item, later / passed / archive / unassigned / question-only / other-instrument / resting | `candidatePool` → Today (`recommend`), build, swap; `nextPractice` → ItemDetail, CloseBlock; `planSegmentReason`, summary |
--| ac-3 `class plan capacity exceptions name omissions before any partial start` | floors 10 / 2; 20 → both works, 15 → one + named omission + minimum 20, 5 → nothing to start (needs 10); parts past the old segment count; parent + child both seated when both prepared, uncommitted relatives only with their own due review, siblings distinct; > 120 → partial, no impossible increase; tied classes; remove / swap → `edited` omission; a choice is bound to budget + subset + omissions + revision + day | SessionPlan coverage card, swap (a required item's floor applies even to the only row), Start ("Start without…"), `planStartRefusal` (a required item under its floor is `short`: never seated, never startable), store `startPlan` (installs only after the live recheck) |
-+| ac-3 `class plan capacity exceptions name omissions before any partial start` | floors 10 / 2; 20 → both works, 15 → one + named omission + minimum 20, 5 → nothing to start (needs 10); parts past the old segment count; parent + child both seated when both prepared, uncommitted relatives only with their own due review, siblings distinct; > 120 → partial, no impossible increase; tied classes; remove / swap → `edited` omission; a choice is bound to budget + subset + omissions + revision + day | SessionPlan coverage card, swap (a required item's floor applies even to the only row), Start ("Start without…"), `planStartRefusal` (a required item under its floor is `short`: never seated, never startable), store `startPlan` (installs only after the live recheck), store `beginPlanSegment` → `planSegmentStartable` (each segment's Start rechecks the LIVE required set and the item's floor as it is now: a required item grown into a whole work is refused `short`, unskipped, said on the PlanRunner row) |
+ | ac-3 `class plan capacity exceptions name omissions before any partial start` | floors 10 / 2; 20 → both works, 15 → one + named omission + minimum 20, 5 → nothing to start (needs 10); parts past the old segment count; parent + child both seated when both prepared, uncommitted relatives only with their own due review, siblings distinct; > 120 → partial, no impossible increase; tied classes; remove / swap → `edited` omission; a choice is bound to budget + subset + omissions + revision + day | SessionPlan coverage card, swap (a required item's floor applies even to the only row), Start ("Start without…"), `planStartRefusal` (a required item under its floor is `short`: never seated, never startable), store `startPlan` (installs only after the live recheck), store `beginPlanSegment` → `planSegmentStartable` (each segment's Start rechecks the LIVE required set and the item's floor as it is now: a required item grown into a whole work is refused `short`, unskipped, said on the PlanRunner row) |
  | ac-4 `routine feedback can be cleared without changing practice or retention` | Clear → `not_logged`, observation kept; `lastResult` = newest remaining assessment, absent when none, a newer one left alone; idempotent in memory, yet every Save / Try again writes again so a failed write is made durable; foreign / deleted block refuses all; minutes, scope, reviews, dates, spacing, status unchanged | RoutineCapture, `captureRoutineResults`, history (`recentResults`), Insights (`generateInsights`), report (`buildReportData`) |
--| ac-5 `live teacher questions retain capture ownership while practice continues` | words in `useLiveQuestion` (memory only) through ONE lifecycle: 800 ms quiet autosave, Done (closes once the latest words are acknowledged), Try again (always writes), flush on leaving; owner frozen at open (`openQuestionCapture`), revalidated before the first write (`captureTargetProblem`, words kept on refusal); ONE question per capture — later writes update that id, a removed one is never recreated; blank never writes; only the latest attempt sets the status and every answered attempt settles; Saved = IndexedDB acknowledged those words; boundaries, Skip / Move on, the automatic end and background catch-up keep the field; clock, notes draft, markers, preparations and ranking untouched | ActiveBlock (ordinary, Plan), RoutineRunner (bound, unbound, boundary, Routine complete), CloseBlock (the live field beside its own independent question), Today (unsaved words only), ItemDetail agenda, TeacherReport (by lesson id) |
-+| ac-5 `live teacher questions retain capture ownership while practice continues` | words in `useLiveQuestion` (memory only) through ONE lifecycle: 800 ms quiet autosave, Done (closes once the latest write is acknowledged, writing a refused one again), Try again (always writes; with the field empty it writes the words the question holds), a class chosen after the question exists (a write with its own acknowledgement, even with the field empty), flush on leaving; owner frozen at open (`openQuestionCapture`), revalidated before the first write (`captureTargetProblem`, words kept on refusal); ONE question per capture — later writes update that id, a removed one is never recreated; blank never writes; only the latest attempt sets the status and every answered attempt settles; Saved = IndexedDB acknowledged those words; boundaries, Skip / Move on, the automatic end and background catch-up keep the field; clock, notes draft, markers, preparations and ranking untouched | ActiveBlock (ordinary, Plan), RoutineRunner (bound, unbound, boundary, Routine complete), CloseBlock (the live field beside its own independent question), Today (unsaved words only; any recovery screen, once it shows a capture, keeps it through its own acknowledged autosave or retry until Done), ItemDetail agenda, TeacherReport (by lesson id) |
+-| ac-5 `live teacher questions retain capture ownership while practice continues` | words in `useLiveQuestion` (memory only) through ONE lifecycle: 800 ms quiet autosave, Done (closes once the latest write is acknowledged, writing a refused one again), Try again (always writes; with the field empty it writes the words the question holds), a class chosen after the question exists (a write with its own acknowledgement, even with the field empty), flush on leaving; owner frozen at open (`openQuestionCapture`), revalidated before the first write (`captureTargetProblem`, words kept on refusal); ONE question per capture — later writes update that id, a removed one is never recreated; blank never writes; only the latest attempt sets the status and every answered attempt settles; Saved = IndexedDB acknowledged those words; boundaries, Skip / Move on, the automatic end and background catch-up keep the field; clock, notes draft, markers, preparations and ranking untouched | ActiveBlock (ordinary, Plan), RoutineRunner (bound, unbound, boundary, Routine complete), CloseBlock (the live field beside its own independent question), Today (unsaved words only; any recovery screen, once it shows a capture, keeps it through its own acknowledged autosave or retry until Done), ItemDetail agenda, TeacherReport (by lesson id) |
++| ac-5 `live teacher questions retain capture ownership while practice continues` | words in `useLiveQuestion` (memory only) through ONE lifecycle: 800 ms quiet autosave, Done (closes once the latest write is acknowledged, writing a refused one again), Try again (always writes; with the field empty it writes the words the question holds), a class chosen after the question exists (a write with its own acknowledgement, even with the field empty), flush on leaving; owner frozen at open (`openQuestionCapture`), revalidated before the first write (`captureTargetProblem`, words kept on refusal); ONE question per capture — later writes update that id, a removed one is never recreated; blank never writes; only the latest attempt sets the status and every answered attempt settles; Saved = IndexedDB acknowledged the question as it stands — its words, class, item and instrument (`liveQuestionAcknowledged`), so a retarget, class or item deletion or move elsewhere is unconfirmed until the capture's own write lands, and Done writes it first; a blank field whose question was removed elsewhere closes with no write, never recreated; boundaries, Skip / Move on, the automatic end and background catch-up keep the field; clock, notes draft, markers, preparations and ranking untouched | ActiveBlock (ordinary, Plan), RoutineRunner (bound, unbound, boundary, Routine complete), CloseBlock (the live field beside its own independent question), Today (unsaved words only; any recovery screen, once it shows a capture, keeps it through its own acknowledged autosave or retry until Done), ItemDetail agenda, TeacherReport (by lesson id) |
  | ac-6 `metronome scheduling and cue priority survive sound lifecycle changes` | beats on the audio clock (`LOOKAHEAD_SECONDS`), one scheduler, tempo 40–240 from the next unplaced beat, late timer skips to the grid; stop cancels placed beats; context replacement, lost readiness, hidden, paused, left → stopped, never restarted; resume denied / rejected / never settled or landing late → no beat; cue ducks the beat for `CUE.totalSeconds`, a Start or restart inside the window still yields (per-tick routed level); claims once | `practiceCue` (`onContextReplaced`, `onPracticeCue`, `onSoundState`), `metronome.ts`, store start / resume doors |
  | ac-7 `live practice tools preserve clocks notes records and mobile controls` | the same, through real screens in Chromium and WebKit: tempo / level controls, question across a boundary and keyboard dismissal, notes durable, ring + cue at the target, freed-time cancel / spread then Start = preview, no extra blocks after a finished run and a reload | ActiveBlock, SessionPlan, RoutineRunner, Settings' test sound (unchanged), conformance sweep (`/active`, running routine) |
  
 diff --git a/src/components/TeacherQuestionCapture.tsx b/src/components/TeacherQuestionCapture.tsx
-index 9820203f092b7c196689672108b8173beae33ae7..34f47fcc7ac45b398da601ec57fc4f80e94f1ed1 100644
+index 34f47fcc7ac45b398da601ec57fc4f80e94f1ed1..1050bca8ad772a84c6d26df793a1759468619d95 100644
 --- a/src/components/TeacherQuestionCapture.tsx
 +++ b/src/components/TeacherQuestionCapture.tsx
-@@ -1,4 +1,4 @@
--import { useLayoutEffect, useRef, type ReactNode } from 'react';
-+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
- import { captureTargetProblem, isUpcomingLesson, lessonLabel, todayISODate, type ID, type LessonQuestion } from '../domain';
- import {
-   chooseLiveQuestionLesson,
-@@ -27,9 +27,10 @@ import { useDecisionNow } from './useDecisionNow';
-  * words, and "Saved" waits for the device. The words live in the store, not
-  * here, so a remount or another screen never loses them: `session` is the
-  * practice this screen shows (its clock's start) — a capture opened in it
-- * stays open here; one from elsewhere shows only while words are still
-- * unsaved. `recover` screens (Routine complete, Close, Today) never open a
-- * new one. It touches no clock, note, marker, cue or ranking.
-+ * stays open here; one from elsewhere shows while words are still unsaved,
-+ * and once shown stays until Done — an acknowledgement never takes the field
-+ * away. `recover` screens (Routine complete, Close, Today) never open a new
-+ * one. It touches no clock, note, marker, cue or ranking.
-  */
- export default function TeacherQuestionCapture({
-   instrumentId,
-@@ -44,7 +45,13 @@ export default function TeacherQuestionCapture({
+@@ -7,6 +7,7 @@ import {
+   editLiveQuestion,
+   flushLiveQuestion,
+   focusLiveQuestion,
++  liveQuestionAcknowledged,
+   liveQuestionEntry,
+   liveQuestionSettled,
+   openLiveQuestion,
+@@ -45,10 +46,11 @@ export default function TeacherQuestionCapture({
  }) {
    const capture = useLiveQuestion((s) => s.capture);
    const note = useLiveQuestion((s) => s.note);
--  const shown = capture && ((session !== undefined && capture.session === session) || !liveQuestionSettled(capture)) ? capture : null;
-+  // The capture this screen is showing (by its session): kept in view through its own saving, until Done.
-+  const [held, setHeld] = useState<string | null>(null);
-+  const shown =
-+    capture && ((session !== undefined && capture.session === session) || !liveQuestionSettled(capture) || held === capture.session)
-+      ? capture
-+      : null;
-+  if ((shown?.session ?? null) !== held) setHeld(shown?.session ?? null);
++  const agenda = useStore((s) => s.db.lessonAgenda);
+   // The capture this screen is showing (by its session): kept in view through its own saving, until Done.
+   const [held, setHeld] = useState<string | null>(null);
+   const shown =
+-    capture && ((session !== undefined && capture.session === session) || !liveQuestionSettled(capture) || held === capture.session)
++    capture && ((session !== undefined && capture.session === session) || !liveQuestionSettled(capture, agenda) || held === capture.session)
+       ? capture
+       : null;
+   if ((shown?.session ?? null) !== held) setHeld(shown?.session ?? null);
+@@ -111,6 +113,8 @@ function QuestionEditor() {
+     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+   const words = capture.text.trim();
+   const attempt = capture.attempt;
++  // The device's answer covers the question as written: changed elsewhere since, it is not "Saved".
++  const acknowledged = liveQuestionAcknowledged(capture, db.lessonAgenda);
  
-   if (!shown) {
-     if (recover || !instrumentId || session === undefined) return null;
-@@ -134,7 +141,7 @@ function QuestionEditor() {
-           </>
-         ) : (
-           <>
--            <span dir="ltr">Not saved — this device refused the last words, which your question still holds. The field is empty.</span>
-+            <span dir="ltr">Not saved — this device refused your question's last change. The field is empty.</span>
-             <button type="button" className="btn btn-sm" onClick={() => saveLiveQuestion(true)}>
-               Try again
-             </button>
-diff --git a/src/domain/plan.ts b/src/domain/plan.ts
-index 5c6aa9c731f75a1ab1e9588f78ef6598a9963d91..10ad655b3a06591299c8373d5f3bc520ea659da4 100644
---- a/src/domain/plan.ts
-+++ b/src/domain/plan.ts
-@@ -1222,7 +1222,8 @@ export function planPreviewDayHasPassed(baseDay: string, now: Date): boolean {
- 
- export type PlanStartCheck =
-   | { ok: true; item: PracticeItem }
--  | { ok: false; reason: 'finished' | 'deleted' | 'moved' | 'busy' };
-+  | { ok: false; reason: 'finished' | 'deleted' | 'moved' | 'busy' }
-+  | { ok: false; reason: 'short'; floorMinutes: number };
- 
- /**
-  * May the current segment be started right now? Revalidated against LIVE data
-@@ -1233,11 +1234,16 @@ export type PlanStartCheck =
-  * A `deleted`/`moved` segment is visibly skipped by the caller rather than
-  * played under the wrong instrument; a `busy` verdict refuses outright, because
-  * replacing an unfinished block or routine run would destroy real practice.
-+ * A `short` verdict refuses too: required class work (`required`, the LIVE
-+ * `requiredClassWork` ids) whose useful floor, judged on the item as it is
-+ * now, exceeds the segment's minutes is never started as a token slot — the
-+ * same rule `planStartRefusal` holds at installation.
-  */
- export function planSegmentStartable(
-   run: PlanRun,
-   items: PracticeItem[],
-   busy = false,
-+  required: readonly ID[] = [],
- ): PlanStartCheck {
-   if (busy) return { ok: false, reason: 'busy' };
-   const seg = run.segments[run.pointer];
-@@ -1245,5 +1251,6 @@ export function planSegmentStartable(
-   const item = items.find((i) => i.id === seg.itemId);
-   if (!item) return { ok: false, reason: 'deleted' };
-   if (item.instrumentId !== run.instrumentId) return { ok: false, reason: 'moved' };
-+  if (required.includes(item.id) && seg.minutes < segmentFloor(item)) return { ok: false, reason: 'short', floorMinutes: segmentFloor(item) };
-   return { ok: true, item };
- }
-diff --git a/src/pages/SessionPlan.tsx b/src/pages/SessionPlan.tsx
-index 3cd34b9407cb63e2ff7b48be6176db1b28efb112..c3e661f4bd7392d80375d9af0f4f42baaaf79ca1 100644
---- a/src/pages/SessionPlan.tsx
-+++ b/src/pages/SessionPlan.tsx
-@@ -506,9 +506,12 @@ function PlanRunner() {
-   const done = activePlan.segments.filter((s) => s.status === 'done').length;
-   const finished = activePlan.pointer >= activePlan.segments.length;
-   const time = planRunTime(activePlan);
-+  // A segment refused at Start (required class work now worth more than its slot), for the pointer it was refused at.
-+  const [short, setShort] = useState<{ pointer: number; floorMinutes: number } | null>(null);
- 
-   function begin() {
--    beginPlanSegment();
-+    const check = beginPlanSegment();
-+    if (check && !check.ok && check.reason === 'short') return setShort({ pointer: activePlan.pointer, floorMinutes: check.floorMinutes });
-     navigate('/active');
-   }
-   function finish() {
-@@ -575,6 +578,14 @@ function PlanRunner() {
-                       <span dir="ltr">{seg.reason}</span>
-                     </div>
-                   )}
-+                  {isCurrent && short?.pointer === i && (
-+                    <div className="tiny" role="alert" style={{ color: 'var(--tone-warn)' }}>
-+                      <span dir="ltr">
-+                        This class work now needs at least {short.floorMinutes} min, more than this segment's {seg.minutes}. Skip it, or end
-+                        the plan and build a longer one.
-+                      </span>
-+                    </div>
-+                  )}
-                 </div>
-               </div>
-               {isCurrent && (
+   const copy = () => void navigator.clipboard?.writeText(capture.text).catch(() => undefined);
+   let status: ReactNode = null;
+@@ -155,6 +159,12 @@ function QuestionEditor() {
+         Saving…
+       </span>
+     );
++  } else if (attempt && !acknowledged && (!words || attempt.carried === words)) {
++    status = (
++      <span className="tiny faint" role="status">
++        <span dir="ltr">Changed elsewhere — not yet confirmed on this device. Done saves it.</span>
++      </span>
++    );
+   } else if (words && attempt?.carried === words) {
+     status = (
+       <span className="tiny" role="status">
 diff --git a/src/store/useStore.ts b/src/store/useStore.ts
-index 59a1aa3d93b347d26df63b2d93cab13aca0170b8..4bd4a48ae266b022d7077e0e779410e114b69958 100644
+index 4bd4a48ae266b022d7077e0e779410e114b69958..67fc675f80240d2956ef9b7235d55f13cfde45bc 100644
 --- a/src/store/useStore.ts
 +++ b/src/store/useStore.ts
-@@ -28,6 +28,7 @@ import {
-   captureTargetProblem,
-   openQuestionCapture,
-   type QuestionCapture,
-+  type PlanStartCheck,
-   lessonLabel,
-   planClassCoverage,
-   planStartRefusal,
-@@ -133,6 +134,7 @@ import {
-   type RoutineCapture,
-   type ItemStatus,
-   type LessonFileKind,
-+  type LessonQuestion,
-   type LessonRecording,
-   type Material,
-   type MaterialSourceType,
-@@ -381,8 +383,8 @@ interface StoreState {
-    * Returns the refusal (nothing installed) or null.
-    */
-   startPlan: (plan: SessionPlan, acceptedKey?: string) => 'empty' | 'short' | 'partial' | null;
--  /** Start a real block seeded from the current segment (→ /active → /close). */
--  beginPlanSegment: () => void;
-+  /** Start a real block seeded from the current segment (→ /active → /close). Returns the live check it ran. */
-+  beginPlanSegment: () => PlanStartCheck | null;
-   /** Skip a pending segment — the current one by default — recording nothing; other targets keep their minutes. */
-   skipPlanSegment: (index?: number) => void;
-   /** Skip the plan segment whose block is open right now WITHOUT saving it: the block is discarded and the segment skipped. */
-@@ -785,20 +787,23 @@ export const useStore = create<StoreState>()(
- 
-       beginPlanSegment: () => {
-         const { activePlan, db, active, activeRoutine } = get();
--        if (!activePlan) return;
-+        if (!activePlan) return null;
-         const seg = activePlan.segments[activePlan.pointer];
-         // Revalidated LIVE against the same pure check a test can reach, never
--        // trusted from the plan: an item can be deleted or moved to another
--        // instrument between building the plan and reaching this segment.
--        const check = planSegmentStartable(activePlan, db.items, !!active || !!activeRoutine);
-+        // trusted from the plan: an item can be deleted, moved to another
-+        // instrument or become a whole work (a larger class floor) between
-+        // building the plan and reaching this segment.
-+        const required = requiredClassWork(db.lessonAgenda, db.lessons, db.items, activePlan.instrumentId, new Date()).itemIds;
-+        const check = planSegmentStartable(activePlan, db.items, !!active || !!activeRoutine, required);
-         if (!check.ok) {
-           // A deleted or moved item is visibly skipped (and skipping logs
--          // nothing); a busy clock is refused outright rather than replaced.
-+          // nothing); a busy clock or a sub-floor class slot is refused
-+          // outright, the segment left for the owner to skip.
-           if (check.reason === 'deleted' || check.reason === 'moved') get().skipPlanSegment();
--          return;
-+          return check;
-         }
-         const item = check.item;
--        if (!seg) return;
-+        if (!seg) return check;
-         get().startSession({
-           itemId: item.id,
-           instrumentId: item.instrumentId,
-@@ -807,6 +812,7 @@ export const useStore = create<StoreState>()(
-           focus: seg.focus,
-           targetMinutes: seg.minutes,
-         });
-+        return check;
-       },
- 
-       skipPlanSegment: (index) =>
-@@ -2697,7 +2703,9 @@ else useStore.persist.onFinishHydration(finishHydration);
- //    autosave, Done, retry — updates THAT id, never another, and never
- //    recreates it once it has been removed elsewhere.
- //  - Blank text writes nothing: it never creates a question nor overwrites a
--//    written one.
-+//    written one. A write the question needs anyway — Try again, or its class
-+//    chosen with the field empty — carries the words it holds in memory, and
-+//    is acknowledged like any other.
- //  - "Saved" is IndexedDB's acknowledgement of the words an attempt carried
- //    (`storageSettled` captured beside the write). Only the latest attempt
+@@ -2706,8 +2706,13 @@ else useStore.persist.onFinishHydration(finishHydration);
+ //    written one. A write the question needs anyway — Try again, or its class
+ //    chosen with the field empty — carries the words it holds in memory, and
+ //    is acknowledged like any other.
+-//  - "Saved" is IndexedDB's acknowledgement of the words an attempt carried
+-//    (`storageSettled` captured beside the write). Only the latest attempt
++//  - "Saved" is IndexedDB's acknowledgement of the question an attempt wrote
++//    — its words, class, item and instrument as they stood (`storageSettled`
++//    captured beside the write). A change to that question elsewhere (its
++//    class retargeted or deleted, its item moved or deleted) is not covered
++//    by it: the capture is unacknowledged again until its own write lands.
++//    A question removed elsewhere leaves a blank field nothing to write: Done
++//    lets it go, never recreating it. Only the latest attempt
  //    may set the status; any answered attempt settles (never stuck saving);
-@@ -2749,7 +2757,7 @@ const cancelAutosave = () => {
- 
- /** The agenda entry a written capture belongs to now (a deleted class may have detached it), or undefined once removed. */
- export function liveQuestionEntry(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']) {
--  return capture.questionId ? agenda.find((e) => e.id === capture.questionId && e.kind === 'question') : undefined;
-+  return capture.questionId ? agenda.find((e): e is LessonQuestion => e.id === capture.questionId && e.kind === 'question') : undefined;
+ //    an older acknowledgement never closes or clears newer words.
+ //  - A failure keeps the words, owner and id; Try again always writes again.
+@@ -2726,7 +2731,7 @@ export interface LiveQuestion {
+   /** The agenda question this capture writes — set by its first write, never replaced. */
+   questionId?: ID;
+   /** The latest attempt: the words it carried and how the device answered. */
+-  attempt?: { seq: number; carried: string; status: 'saving' | 'saved' | 'failed' };
++  attempt?: { seq: number; carried: string; wrote: string; status: 'saving' | 'saved' | 'failed' };
+   /** The newest words IndexedDB acknowledged for this capture. */
+   written?: string;
+   /** Done was tapped: close once the latest words are acknowledged. */
+@@ -2760,16 +2765,27 @@ export function liveQuestionEntry(capture: LiveQuestion, agenda: PracticeDB['les
+   return capture.questionId ? agenda.find((e): e is LessonQuestion => e.id === capture.questionId && e.kind === 'question') : undefined;
  }
  
++/** What a write leaves on the device for this question: compared by value, so a rebuilt (synced, imported) entry still matches. */
++const questionState = (e: LessonQuestion) => JSON.stringify([e.text, e.lessonId ?? null, e.itemId ?? null, e.instrumentId]);
++
++/** IndexedDB acknowledged the question exactly as it stands now — not merely the words, its class, item and instrument too. */
++export function liveQuestionAcknowledged(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']): boolean {
++  const entry = liveQuestionEntry(capture, agenda);
++  return !!entry && capture.attempt?.status === 'saved' && capture.attempt.wrote === questionState(entry);
++}
++
  /**
-@@ -2790,16 +2798,17 @@ export function saveLiveQuestion(force = false): void {
-   cancelAutosave();
-   const capture = liveCapture();
-   if (!capture) return;
--  // Blank writes nothing — except Try again after a refused write, which
--  // writes the words that question already holds in memory.
--  const words = capture.text.trim() || (force && capture.attempt?.status === 'failed' ? capture.attempt.carried : '');
-+  const store = useStore.getState();
-+  const entry = liveQuestionEntry(capture, store.db.lessonAgenda);
-+  // Blank writes nothing of its own — but a forced write (Try again, a class
-+  // chosen) still writes the question, carrying the words it holds in memory.
-+  const words = capture.text.trim() || (force && entry ? entry.text : '');
+- * Nothing of this capture is left to write: its words acknowledged as they
+- * stand, or a blank field with no write outstanding. A blank field whose
+- * question's last write failed is NOT settled — the question exists in memory
+- * with words the device refused.
++ * Nothing of this capture is left to write: its question acknowledged as it
++ * stands, or a blank field with nothing outstanding — never written, or its
++ * question removed elsewhere (never recreated). A blank field whose question's
++ * last write failed, or which changed elsewhere since, is NOT settled.
+  */
+-export function liveQuestionSettled(capture: LiveQuestion): boolean {
++export function liveQuestionSettled(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']): boolean {
+   const words = capture.text.trim();
+-  if (!words) return !capture.attempt || capture.attempt.status === 'saved';
+-  return capture.attempt?.status === 'saved' && capture.attempt.carried === words;
++  if (!capture.questionId) return !words;
++  const acknowledged = liveQuestionAcknowledged(capture, agenda);
++  if (!words) return acknowledged || !liveQuestionEntry(capture, agenda);
++  return acknowledged && capture.attempt!.carried === words;
+ }
+ 
+ export function openLiveQuestion(instrumentId: ID, itemId: ID | undefined, session: string): void {
+@@ -2804,7 +2820,8 @@ export function saveLiveQuestion(force = false): void {
+   // chosen) still writes the question, carrying the words it holds in memory.
+   const words = capture.text.trim() || (force && entry ? entry.text : '');
    if (!words) return;
-   if (!force && capture.attempt?.carried === words && capture.attempt.status !== 'failed') return;
--  const store = useStore.getState();
+-  if (!force && capture.attempt?.carried === words && capture.attempt.status !== 'failed') return;
++  const attempt = capture.attempt;
++  if (!force && attempt?.carried === words && (attempt.status === 'saving' || liveQuestionAcknowledged(capture, store.db.lessonAgenda))) return;
    let questionId = capture.questionId;
    if (questionId) {
      // Its own question, or nothing: removed elsewhere, it is never recreated.
--    if (!liveQuestionEntry(capture, store.db.lessonAgenda)) return;
-+    if (!entry) return;
-     store.updateLessonQuestion(questionId, words);
-   } else {
-     if (captureTargetProblem(store.db, capture.owner, new Date())) return;
-@@ -2870,7 +2879,7 @@ export function flushLiveQuestion(): void {
- }
- 
- /**
-- * Done: flush, and close only once the latest words are acknowledged. Blank
-+ * Done: flush, and close only once the latest write is acknowledged. Blank
-  * closes without writing (a written question stays as it was). Failed,
-  * refused or removed words keep the editor open — they are never discarded
-  * silently; clearing the field is the deliberate way to let them go.
-@@ -2880,7 +2889,9 @@ export function closeLiveQuestion(): void {
+@@ -2816,9 +2833,10 @@ export function saveLiveQuestion(force = false): void {
+     if (!questionId) return;
+   }
+   const seq = ++attempts;
+-  // Captured in the same tick as the write: this attempt's own outcome.
++  // Captured in the same tick as the write: this attempt's own outcome, and the question it wrote.
+   const written = storageSettled();
+-  patchLive({ questionId, attempt: { seq, carried: words, status: 'saving' } });
++  const wrote = questionState(liveQuestionEntry({ ...capture, questionId }, useStore.getState().db.lessonAgenda)!);
++  patchLive({ questionId, attempt: { seq, carried: words, wrote, status: 'saving' } });
+   const settle = (ok: boolean) => {
+     const now = liveCapture();
+     if (now?.questionId !== questionId) return; // closed, or another capture
+@@ -2829,12 +2847,15 @@ export function saveLiveQuestion(force = false): void {
+       patch.written = words;
+     }
+     if (latest) {
+-      patch.attempt = { seq, carried: words, status: ok ? 'saved' : 'failed' };
++      patch.attempt = { seq, carried: words, wrote, status: ok ? 'saved' : 'failed' };
+       if (!ok) patch.closing = false;
+     }
+     patchLive(patch);
+     const after = liveCapture()!;
+-    if (latest && ok && after.closing && liveQuestionSettled(after)) finishLiveQuestion();
++    if (!(latest && ok && after.closing)) return;
++    // Done waits on THIS question: changed elsewhere meanwhile, it is written again before closing.
++    if (liveQuestionSettled(after, useStore.getState().db.lessonAgenda)) finishLiveQuestion();
++    else saveLiveQuestion(true);
+   };
+   written.then(
+     () => settle(true),
+@@ -2887,11 +2908,12 @@ export function flushLiveQuestion(): void {
+ export function closeLiveQuestion(): void {
+   const capture = liveCapture();
    if (!capture) return;
-   if (liveQuestionSettled(capture)) return finishLiveQuestion();
+-  if (liveQuestionSettled(capture)) return finishLiveQuestion();
++  if (liveQuestionSettled(capture, useStore.getState().db.lessonAgenda)) return finishLiveQuestion();
    patchLive({ closing: true });
--  saveLiveQuestion();
-+  // A refused write is written again (with an empty field too): Done never
-+  // closes over words, or a class, the device has not acknowledged.
-+  saveLiveQuestion(capture.attempt?.status === 'failed');
+-  // A refused write is written again (with an empty field too): Done never
+-  // closes over words, or a class, the device has not acknowledged.
+-  saveLiveQuestion(capture.attempt?.status === 'failed');
++  // Unless a write is already on its way, the question is written again (with
++  // an empty field too): Done never closes over words, or a class, the device
++  // has not acknowledged.
++  saveLiveQuestion(capture.attempt?.status !== 'saving');
  }
  
  function finishLiveQuestion(): void {
 diff --git a/tests/live-practice-families.test.ts b/tests/live-practice-families.test.ts
-index a8860e115987637958a0949ede7290c9e85c4751..5735c8d240bdeba3943eba2917583ae7fce5fdab 100644
+index 5735c8d240bdeba3943eba2917583ae7fce5fdab..d5cccd299b82ba2a12661afbbcb90d5cd6ac776d 100644
 --- a/tests/live-practice-families.test.ts
 +++ b/tests/live-practice-families.test.ts
-@@ -582,7 +582,22 @@ describe('class plan capacity', () => {
-     expect(useStore.getState().activePlan).toBeNull();
-     expect(useStore.getState().startPlan(swappedOnly, liveKey(swappedOnly))).toBeNull();
-     expect(useStore.getState().activePlan!.segments.map((s) => [s.itemId, s.minutes])).toEqual(X.pairAt5Swapped);
--    useStore.setState({ activePlan: null });
-+    // SEGMENT START rechecks the LIVE floor: the installed drill made a whole
-+    // work before its segment starts is refused — never a 5-minute token of a
-+    // 10-minute class work — and the run waits, unskipped, for the owner.
-+    const asWork = pair.map((i) => (i.id === 'cd' ? { ...i, itemType: 'full_piece' as const } : i));
-+    useStore.setState((s) => ({ db: { ...s.db, items: asWork } }));
-+    expect(useStore.getState().beginPlanSegment()).toEqual({ ok: false, reason: 'short', floorMinutes: 10 });
-+    expect([useStore.getState().active, useStore.getState().activePlan!.pointer, useStore.getState().activePlan!.segments[0].status]).toEqual([null, 0, 'pending']);
-+    // Discriminators: the same work no longer committed for the class starts
-+    // (no class floor applies), and so does the drill as it was.
-+    useStore.setState((s) => ({ db: { ...s.db, lessonAgenda: [prep('pcw', 'cw', 'L1'), prep('pcd', 'cd', 'L2')] } }));
-+    expect(useStore.getState().beginPlanSegment()).toMatchObject({ ok: true });
-+    expect(useStore.getState().active!.targetMinutes).toBe(5);
-+    useStore.setState((s) => ({ active: null, db: { ...s.db, items: pair, lessonAgenda: pairAgenda } }));
-+    expect(useStore.getState().beginPlanSegment()).toMatchObject({ ok: true });
-+    expect([useStore.getState().active!.itemId, useStore.getState().active!.targetMinutes]).toEqual(['cd', 5]);
-+    useStore.setState({ active: null, activePlan: null });
-   });
- });
- 
-@@ -939,6 +954,30 @@ describe('the live question lifecycle', () => {
+@@ -891,7 +891,7 @@ describe('the live question lifecycle', () => {
+     live.editLiveQuestion('');
+     live.saveLiveQuestion();
+     await answer(true);
+-    expect([cap()!.attempt?.status, cap()!.written, live.liveQuestionSettled(cap()!), qs().map((q) => [q.id, q.text])]).toEqual(['saved', 'Which finger for the trill?', true, [[id, 'Which finger for the trill?']]]);
++    expect([cap()!.attempt?.status, cap()!.written, live.liveQuestionSettled(cap()!, useStore.getState().db.lessonAgenda), qs().map((q) => [q.id, q.text])]).toEqual(['saved', 'Which finger for the trill?', true, [[id, 'Which finger for the trill?']]]);
+     // …and on failure: settled as failed, never saving, and not "settled" — the
+     // question in memory holds words the device refused; Try again writes them.
+     answer = hold();
+@@ -899,7 +899,7 @@ describe('the live question lifecycle', () => {
+     live.saveLiveQuestion();
+     live.editLiveQuestion('  ');
+     await answer(false);
+-    expect([cap()!.attempt?.status, cap()!.written, live.liveQuestionSettled(cap()!)]).toEqual(['failed', 'Which finger for the trill?', false]);
++    expect([cap()!.attempt?.status, cap()!.written, live.liveQuestionSettled(cap()!, useStore.getState().db.lessonAgenda)]).toEqual(['failed', 'Which finger for the trill?', false]);
+     live.closeLiveQuestion(); // Done never closes over refused words
+     expect(cap()).not.toBeNull();
+     live.saveLiveQuestion(true);
+@@ -968,16 +968,81 @@ describe('the live question lifecycle', () => {
+     const w0 = storage.writes;
+     live.chooseLiveQuestionLesson(undefined);
      await flush();
-     expect(qs().map((q) => [q.text, q.itemId ?? null])).toEqual([['After removal', 'a'], ['Instrument question', null]]);
-     expect(cap()).toBeNull();
+-    expect([cap()!.attempt?.status, cap()!.attempt?.carried, live.liveQuestionSettled(cap()!)]).toEqual(['failed', 'Class question', false]);
++    expect([cap()!.attempt?.status, cap()!.attempt?.carried, live.liveQuestionSettled(cap()!, useStore.getState().db.lessonAgenda)]).toEqual(['failed', 'Class question', false]);
+     live.closeLiveQuestion();
+     await flush();
+     expect([cap()?.questionId, cap()?.attempt?.status, storage.writes - w0 >= 3]).toEqual([id3, 'failed', true]);
+     storage.fail = false;
+     live.saveLiveQuestion(true);
+     await flush();
+-    expect([cap()!.attempt?.status, live.liveQuestionSettled(cap()!), qs().find((q) => q.id === id3)!.lessonId]).toEqual(['saved', true, undefined]);
++    expect([cap()!.attempt?.status, live.liveQuestionSettled(cap()!, useStore.getState().db.lessonAgenda), qs().find((q) => q.id === id3)!.lessonId]).toEqual(['saved', true, undefined]);
+     live.closeLiveQuestion();
+     expect([cap(), live.useLiveQuestion.getState().note]).toEqual([null, 'Question saved on this device — unassigned.']);
 +
-+    // Its class chosen with the field EMPTY is a write acknowledged like any
-+    // other: refused → failed and unsettled, Done writes it again and stays
-+    // open; answered → saved, and only then does Done close, saying where.
-+    live.openLiveQuestion(SETAR, 'a', 's3');
-+    live.editLiveQuestion('Class question');
-+    live.saveLiveQuestion();
-+    await flush();
-+    const id3 = cap()!.questionId!;
-+    live.editLiveQuestion('');
-+    storage.fail = true;
-+    const w0 = storage.writes;
-+    live.chooseLiveQuestionLesson(undefined);
-+    await flush();
-+    expect([cap()!.attempt?.status, cap()!.attempt?.carried, live.liveQuestionSettled(cap()!)]).toEqual(['failed', 'Class question', false]);
-+    live.closeLiveQuestion();
-+    await flush();
-+    expect([cap()?.questionId, cap()?.attempt?.status, storage.writes - w0 >= 3]).toEqual([id3, 'failed', true]);
-+    storage.fail = false;
-+    live.saveLiveQuestion(true);
-+    await flush();
-+    expect([cap()!.attempt?.status, live.liveQuestionSettled(cap()!), qs().find((q) => q.id === id3)!.lessonId]).toEqual(['saved', true, undefined]);
-+    live.closeLiveQuestion();
-+    expect([cap(), live.useLiveQuestion.getState().note]).toEqual([null, 'Question saved on this device — unassigned.']);
++    // ITS QUESTION CHANGED ELSEWHERE: the acknowledgement covered the question
++    // as written, so every mutator that moves it (class retargeted or deleted,
++    // item moved or deleted) leaves it unacknowledged — refused, Done stays
++    // open; answered, Done writes and closes saying the new one. With words,
++    // and with the field empty.
++    const agenda = () => useStore.getState().db.lessonAgenda;
++    const onDiskQ = (qid: string) => (JSON.parse(storage.last) as { state: { db: PracticeDB } }).state.db.lessonAgenda.find((e) => e.id === qid) as { lessonId?: string; itemId?: string; instrumentId: string } | undefined;
++    const mutators: [string, () => void, string][] = [
++      ['agenda target', () => useStore.getState().setAgendaTarget(cap()!.questionId!, undefined), 'Question saved on this device — unassigned.'],
++      ['lesson deleted', () => useStore.getState().deleteLesson('L2'), 'Question saved on this device — unassigned.'],
++      ['item moved', () => void useStore.getState().updateItem('b', { instrumentId: TAR }), 'Question saved on this device — unassigned.'],
++      ['item deleted', () => useStore.getState().deleteItem('b'), 'Question saved on this device for 2026-10-31.'],
++    ];
++    for (const blank of [false, true]) {
++      for (const [name, mutate, note] of mutators) {
++        useStore.setState({ db: db({ items: [item('a', 'A'), item('b', 'B')], lessons: [L, lesson('L2', '2026-10-31')] }) });
++        live.openLiveQuestion(SETAR, 'b', 's4');
++        live.chooseLiveQuestionLesson('L2');
++        live.editLiveQuestion('Moved question');
++        live.saveLiveQuestion();
++        await flush();
++        const qid = cap()!.questionId!;
++        if (blank) live.editLiveQuestion('');
++        expect(live.liveQuestionSettled(cap()!, agenda()), name).toBe(true);
++        storage.fail = true;
++        mutate();
++        await flush();
++        expect([live.liveQuestionAcknowledged(cap()!, agenda()), live.liveQuestionSettled(cap()!, agenda())], name).toEqual([false, false]);
++        live.closeLiveQuestion();
++        await flush();
++        expect([cap()?.questionId, cap()?.attempt?.status, live.useLiveQuestion.getState().note], name).toEqual([qid, 'failed', null]);
++        storage.fail = false;
++        live.closeLiveQuestion();
++        await flush();
++        const now = agenda().find((e) => e.id === qid)!;
++        expect([cap(), live.useLiveQuestion.getState().note, JSON.stringify(onDiskQ(qid))], name).toEqual([null, note, JSON.stringify(now)]);
++      }
++    }
++
++    // REMOVED ELSEWHERE after a refused write, the field then cleared: Done
++    // lets the capture go — no write, nothing recreated, nothing claimed. Also
++    // when the refusal lands after the removal.
++    for (const late of [false, true]) {
++      useStore.setState({ db: db({ items: [item('a', 'A')], lessons: [L] }) });
++      live.openLiveQuestion(SETAR, 'a', 's5');
++      live.editLiveQuestion('To be removed');
++      live.saveLiveQuestion();
++      await flush();
++      const qid = cap()!.questionId!;
++      const refuse = late ? hold() : null;
++      if (!late) storage.fail = true;
++      live.editLiveQuestion('Refused edit');
++      live.saveLiveQuestion();
++      await flush();
++      storage.fail = false;
++      useStore.getState().removeAgendaEntry(qid);
++      if (refuse) await refuse(false);
++      expect(cap()!.attempt?.status, String(late)).toBe('failed');
++      live.editLiveQuestion('');
++      const w = storage.writes;
++      live.closeLiveQuestion();
++      await flush();
++      expect([cap(), live.useLiveQuestion.getState().note, storage.writes - w, agenda().filter((e) => e.id === qid)], String(late)).toEqual([null, null, 0, []]);
++    }
    });
  });
  
 diff --git a/tests/live-practice.browser.test.ts b/tests/live-practice.browser.test.ts
-index c5b3249e75ee8180fae0d85b88db99c86a9c8d32..c039cc8bd6942d04bad110793028ad3597da7380 100644
+index c039cc8bd6942d04bad110793028ad3597da7380..ea4f2d5e45fa31f9141972a8629a25d82eae7969 100644
 --- a/tests/live-practice.browser.test.ts
 +++ b/tests/live-practice.browser.test.ts
-@@ -308,6 +308,8 @@ describe('asking the teacher while practising', () => {
-         const preparations = start.lessonAgenda.filter((e) => e.kind === 'preparation');
-         const ranked = recommendForInstrument(SETAR, start.items, start.blocks, CLOCK, preparationDatesByItem(start.lessonAgenda, start.lessons, CLOCK)).best!.score.item.id;
+@@ -310,6 +310,10 @@ describe('asking the teacher while practising', () => {
          const SAVED_L0 = `Saved on this device for ${L0_LABEL}.`;
-+        const FAILED_EMPTY = "Not saved — this device refused your question's last change. The field is empty.";
-+        const EMPTY_KEPT = 'The field is empty — nothing new is saved; your saved question stays as it was.';
+         const FAILED_EMPTY = "Not saved — this device refused your question's last change. The field is empty.";
+         const EMPTY_KEPT = 'The field is empty — nothing new is saved; your saved question stays as it was.';
++        const CHANGED = 'Changed elsewhere — not yet confirmed on this device. Done saves it.';
++        const FAILED_WORDS = 'Not saved — this device refused the write. Your words are still here.';
++        /** One question's own row in an agenda list (the innermost card holding its words). */
++        const questionRow = (text: string) => page.locator('.card-quiet').filter({ hasText: text }).last();
  
          // --- ORDINARY: a notes draft open, the clock running -----------------
          await startBlock(app, A, A_TITLE);
-@@ -393,7 +395,7 @@ describe('asking the teacher while practising', () => {
-         await askStatus(page, 'Saving…').waitFor();
-         await askBox(page).fill('  ');
-         await answerWrites(page, false);
--        await askStatus(page, 'Not saved — this device refused the last words, which your question still holds. The field is empty.').waitFor();
-+        await askStatus(page, FAILED_EMPTY).waitFor();
-         await ask(page).getByRole('button', { name: 'Try again' }).click();
-         await askStatus(page, 'The field is empty — nothing new is saved; your saved question stays as it was.').waitFor();
-         expect((await questionLanded(app, 'Left hand again?')).id, engine).toBe(q1.id);
-@@ -411,6 +413,11 @@ describe('asking the teacher while practising', () => {
-         await repairStorage(page);
-         await ask(page).getByRole('button', { name: 'Try again' }).click();
-         expect((await questionLanded(app, 'Should I slow down here?')).id, engine).toBe(q1.id);
-+        // Acknowledged there, the field stays on Today — words, Saved and Done — until Done.
-+        await askStatus(page, SAVED_L0).waitFor();
-+        await page.clock.runFor(1_000);
-+        await ask(page).getByRole('button', { name: 'Done' }).waitFor();
-+        expect(await askBox(page).inputValue(), engine).toBe('Should I slow down here?');
-         // Back in the block the same capture is still open, saved.
-         await goTo(app, '/active');
-         await askStatus(page, SAVED_L0).waitFor();
-@@ -440,6 +447,38 @@ describe('asking the teacher while practising', () => {
-         const q2 = await questionLanded(app, 'Is the tempo too fast?');
-         expect([q2.lessonId, q2.itemId], engine).toEqual([undefined, A]);
+@@ -481,17 +485,32 @@ describe('asking the teacher while practising', () => {
  
-+        // ITS CLASS CHANGED WITH THE FIELD EMPTY is a write like any other: a
-+        // refusal is said, Done never closes over it (nor claims it saved), and
-+        // the device keeps the class it last acknowledged until Try again lands.
+         // DETACHED underneath: a chosen class deleted after its question exists —
+         // the question keeps its id, now unassigned, and later words update it,
+-        // never reattached.
++        // never reattached. The deletion REFUSED by the device: the earlier
++        // acknowledgement (for the deleted class) never stands for it — no
++        // Saved, Done stays open, the device keeps the old class until a write
++        // of the capture's own lands.
+         await page.getByRole('button', { name: '+ Ask teacher' }).click();
+         await askBox(page).fill('Is the bow too heavy?');
+         await page.getByLabel('Ask at', { exact: true }).selectOption('L-40');
+         await askStatus(page, `Saved on this device for ${L1_LABEL}.`).waitFor();
+         const q4 = await questionLanded(app, 'Is the bow too heavy?');
+         expect(q4.lessonId, engine).toBe('L-40');
++        await breakStorage(page);
+         await goTo(app, '/lessons');
+         await page.getByRole('article').filter({ hasText: L1_LABEL }).getByRole('button', { name: 'Delete lesson' }).click();
+         await goTo(app, '/active');
++        await askStatus(page, CHANGED).waitFor();
++        expect(await page.getByText(/Saved on this device|^Question saved on this device/).count(), engine).toBe(0);
++        await ask(page).getByRole('button', { name: 'Done' }).click();
++        await askStatus(page, FAILED_WORDS).waitFor();
++        await page.clock.runFor(1_000);
++        await askBox(page).waitFor();
++        expect(await page.getByText(/^Question saved on this device/).count(), engine).toBe(0);
++        expect(questions(await db(app)).find((q) => q.id === q4.id)!.lessonId, engine).toBe('L-40');
++        await repairStorage(page);
++        await ask(page).getByRole('button', { name: 'Try again' }).click();
+         await askStatus(page, 'Saved on this device — unassigned.').waitFor();
++        await persistedUntil(app, (st) => questions((st.state as { db: Db }).db).find((q) => q.id === q4.id), (q) => !!q && q.lessonId === undefined);
+         await askBox(page).fill('Is the bow too heavy here?');
+         await page.clock.runFor(800);
+         await askStatus(page, 'Saved on this device — unassigned.').waitFor();
+@@ -499,6 +518,32 @@ describe('asking the teacher while practising', () => {
+         expect([q4b.id, q4b.lessonId], engine).toEqual([q4.id, undefined]);
+         await ask(page).getByRole('button', { name: 'Done' }).click();
+ 
++        // RETARGETED in the item's agenda with the field EMPTY, the device
++        // refusing: the same — Done neither closes nor claims "unassigned"
++        // while the device still holds the class; once a write lands it does.
 +        await page.getByRole('button', { name: '+ Ask teacher' }).click();
-+        await askBox(page).fill('Which string first?');
++        await askBox(page).fill('Which bow for the turn?');
 +        await page.clock.runFor(800);
 +        await askStatus(page, SAVED_L0).waitFor();
-+        const q6 = await questionLanded(app, 'Which string first?');
++        const q7 = await questionLanded(app, 'Which bow for the turn?');
 +        await askBox(page).fill('');
 +        await breakStorage(page);
-+        await page.getByLabel('Ask at', { exact: true }).selectOption('');
-+        await askStatus(page, FAILED_EMPTY).waitFor();
++        const picker = questionRow('Which bow for the turn?').getByRole('combobox', { name: 'Ask at which class' });
++        await goTo(app, `/items/${A}`, { arrival: picker });
++        await picker.selectOption('');
++        await goTo(app, '/active');
++        await askStatus(page, CHANGED).waitFor();
 +        await ask(page).getByRole('button', { name: 'Done' }).click();
 +        await askStatus(page, FAILED_EMPTY).waitFor();
 +        await page.clock.runFor(1_000);
 +        await askBox(page).waitFor();
 +        expect(await page.getByText(/^Question saved on this device/).count(), engine).toBe(0);
-+        expect(questions(await db(app)).find((q) => q.id === q6.id)!.lessonId, engine).toBe(L0);
++        expect(questions(await db(app)).find((q) => q.id === q7.id)!.lessonId, engine).toBe(L0);
 +        await repairStorage(page);
-+        await ask(page).getByRole('button', { name: 'Try again' }).click();
-+        await askStatus(page, EMPTY_KEPT).waitFor();
-+        await persistedUntil(app, (st) => questions((st.state as { db: Db }).db).find((q) => q.id === q6.id), (q) => !!q && q.lessonId === undefined);
-+        // …and pending: Done waits for the device's answer to the class, then closes saying it.
-+        await holdWrites(page);
-+        await page.getByLabel('Ask at', { exact: true }).selectOption(L0);
-+        await askStatus(page, 'Saving…').waitFor();
 +        await ask(page).getByRole('button', { name: 'Done' }).click();
-+        await askStatus(page, 'Saving…').waitFor();
-+        await answerWrites(page, true);
-+        await page.getByText(`Question saved on this device for ${L0_LABEL}.`).waitFor();
-+        expect(questions(await db(app)).filter((q) => q.id === q6.id).map((q) => [q.text, q.lessonId]), engine).toEqual([['Which string first?', L0]]);
++        await page.getByText('Question saved on this device — unassigned.').waitFor();
++        await persistedUntil(app, (st) => questions((st.state as { db: Db }).db).find((q) => q.id === q7.id), (q) => !!q && q.lessonId === undefined && q.text === 'Which bow for the turn?');
 +
-         // DETACHED underneath: a chosen class deleted after its question exists —
-         // the question keeps its id, now unassigned, and later words update it,
-         // never reattached.
-@@ -501,6 +540,10 @@ describe('asking the teacher while practising', () => {
-         await askStatus(page, 'Saving…').waitFor();
-         await answerWrites(page, true);
-         expect((await questionLanded(app, 'Plan question, part two')).id, engine).toBe(q5.id);
-+        // The acknowledged autosave leaves Today's field in place.
-+        await askStatus(page, /^Saved on this device/).waitFor();
-+        await page.clock.runFor(1_000);
-+        expect(await askBox(page).inputValue(), engine).toBe('Plan question, part two');
-         await goTo(app, '/active');
-         await askStatus(page, /^Saved on this device/).waitFor();
-         const during = await persisted(app);
-@@ -658,9 +701,10 @@ describe('asking the teacher while practising', () => {
-             ['Should I slow down here?', A, L0],
+         // FINISH before the pause, its flush still pending: the editor is there
+         // on Close, Saving, until the device answers; Close's own question stays
+         // independent.
+@@ -677,6 +722,43 @@ describe('asking the teacher while practising', () => {
+         await askStatus(page, 'Saved on this device — unassigned.').waitFor();
+         const renewed = await questionLanded(app, 'Typed across midnight, kept');
+         expect([renewed.id === late.id, renewed.itemId, renewed.lessonId], engine).toEqual([false, C, undefined]);
++        await ask(page).getByRole('button', { name: 'Done' }).click();
++
++        // REMOVED after a write the device refused — or one it refuses later,
++        // while the removal is on its way — then the field cleared: Done lets
++        // the capture go, writing nothing and recreating nothing.
++        for (const pending of [false, true]) {
++          const words = pending ? 'Removed while pending' : 'Removed after a refusal';
++          await page.getByRole('button', { name: '+ Ask teacher' }).click();
++          await askBox(page).fill(words);
++          await page.clock.runFor(800);
++          await askStatus(page, 'Saved on this device — unassigned.').waitFor();
++          const gone = await questionLanded(app, words);
++          if (pending) {
++            await holdWrites(page);
++            await askBox(page).fill(`${words}, edited`);
++            await page.clock.runFor(800);
++            await askStatus(page, 'Saving…').waitFor();
++          } else {
++            await breakStorage(page);
++            await askBox(page).fill(`${words}, edited`);
++            await page.clock.runFor(800);
++            await askStatus(page, FAILED_WORDS).waitFor();
++            await repairStorage(page);
++          }
++          const remove = questionRow(`${words}, edited`).getByRole('button', { name: 'Remove this question' });
++          await goTo(app, `/items/${C}`, { arrival: remove });
++          await remove.click();
++          if (pending) await answerWrites(page, false);
++          await goTo(app, '/active');
++          await askStatus(page, 'This question was removed from your class list — these words are not saved.').waitFor();
++          await askBox(page).fill('');
++          await ask(page).getByRole('button', { name: 'Done' }).click();
++          await page.getByRole('button', { name: '+ Ask teacher' }).waitFor();
++          expect(await page.getByText(/^Question saved on this device/).count(), engine).toBe(0);
++          // (A removal the device refused lands with the next write: the reload below holds neither.)
++          if (!pending) expect(questions(await db(app)).some((q) => q.id === gone.id), engine).toBe(false);
++        }
+         await page.getByRole('button', { name: 'Discard block' }).click();
+         await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+ 
+@@ -702,9 +784,10 @@ describe('asking the teacher while practising', () => {
              ['Typed across midnight, kept', C, null],
              ['Typed as the run ends', B, L0],
-+            ['Which string first?', A, L0],
+             ['Which string first?', A, L0],
++            ['Which bow for the turn?', A, null],
            ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
          );
--        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(12);
-+        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(13);
+-        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(13);
++        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(14);
          expect(questions(end).find((q) => q.text === 'Should I slow down here?')!.id, engine).toBe(q1.id);
          expect(end.lessonAgenda.filter((e) => e.kind === 'preparation'), engine).toEqual(preparations);
          const withoutQuestions = end.lessonAgenda.filter((e) => e.kind !== 'question');
@@ -582,8 +561,6 @@ index c5b3249e75ee8180fae0d85b88db99c86a9c8d32..c039cc8bd6942d04bad110793028ad35
 
 - `docs/practice-session-model.md`
 - `src/components/TeacherQuestionCapture.tsx`
-- `src/domain/plan.ts`
-- `src/pages/SessionPlan.tsx`
 - `src/store/useStore.ts`
 - `tests/live-practice-families.test.ts`
 - `tests/live-practice.browser.test.ts`
@@ -591,42 +568,41 @@ index c5b3249e75ee8180fae0d85b88db99c86a9c8d32..c039cc8bd6942d04bad110793028ad35
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
 
 ```
-205aab7 Rework: live class floors at segment Start; every live-question write acknowledged; recovery editors held until Done
+470534c Rework: a live question's acknowledgement covers the question as written, and an empty capture of a removed question closes
 
-Family 1 — required class work is never started below its useful floor,
-judged LIVE at every door. Choke point: planSegmentStartable now takes the
-live requiredClassWork ids and refuses `short` when the item, as it is now,
-needs more than the segment's minutes; the store's beginPlanSegment computes
-that set and returns the check; PlanRunner shows the refusal on the row and
-does not navigate (the segment stays pending, Skip available).
-Consumers: buildSessionPlan, length change/regenerate, swapSegment,
-spread/give freed time (only adds), move, remove (coverage `edited`),
-planClassCoverage, planStartRefusal, store startPlan — checked clean;
-beginPlanSegment — fixed (the only segment-start door: Today and Close
-route to /plan; ItemDetail/Today starts are off-plan blocks).
-Proof: ac-3 `class plan capacity exceptions name omissions before any
-partial start` — installed drill made a whole work is refused, run
-untouched; discriminators (commitment retargeted, drill as it was) start.
+Invariant: "Saved" / settled means IndexedDB acknowledged the agenda question
+as it stands now — its words, class, item and instrument — never just the
+words an earlier attempt carried; and a capture with nothing left to write
+(blank field, its question removed elsewhere) always has a working Done exit
+that writes nothing and recreates nothing.
 
-Family 2 — every write the live question makes is acknowledged by the
-device before anything says Saved or Done closes. Choke point:
-saveLiveQuestion — a forced write (Try again, a class chosen) with an empty
-field now writes the words the question holds in memory and tracks its own
-attempt; Done re-writes a refused attempt rather than trusting an older
-acknowledgement. Consumers of the lifecycle: autosave, form submit, Try
-again, chooseLiveQuestionLesson (both branches), dropLiveQuestionItem and
-the pre-question owner choice (memory only, nothing to acknowledge),
-saveLiveQuestionAsNew, flush on exit, Done — all route through it; every
-surface (ordinary/Plan ActiveBlock, bound/unbound Routine, Routine
-complete, Close, Today) renders the one editor. LessonAgenda's own
-retarget select makes no durability claim — checked clean, unchanged.
+Choke point: src/store/useStore.ts. Each attempt records a value fingerprint
+of the entry it wrote (questionState). liveQuestionAcknowledged compares it
+with the entry now; liveQuestionSettled takes the agenda and uses it (blank +
+removed => settled). The coalescing early return, closeLiveQuestion (forces a
+write unless one is in flight) and a closing settle (writes again when the
+question changed meanwhile) all route through it. TeacherQuestionCapture
+renders the same predicates: no Saved/empty-kept line while unacknowledged,
+"Changed elsewhere — not yet confirmed" instead.
 
-Family 3 — once a screen shows a 
+Consumers enumerated:
+- Mutators of the captured entry — setAgendaTarget (LessonAgenda TargetPicker,
+  Move to this class), deleteLesson/detachLesson, updateItem →
+  retargetEntriesForItemInstrument, deleteItem/detachItem, and wholesale
+  replacements (import, sync, restore): fixed by the fingerprint, no per-site
+  code. removeAgendaEntry (item and lesson QuestionRow): fixed by the
+  blank+removed settlement.
+- Readers of settlement: TeacherQuestionCapture `shown` (ordinary/Plan
+  ActiveBlock, bound/unbound Routine, Routine complete, Close, Today
+  recovery — all one component), its status line, closeLiveQuestion, the
+  settle continuation, finishLiveQuestion's note: fixed/checked.
+- Checked clean: the live editor's own class picker (forced write, new
+  fingerprint); ordinary text autosave/retry; non-blank removed capture still
+  keeps words with Save as a new question / Copy; agenda/report lesson-id
+  readers unchanged.
+
+
 … (truncated)
-
-d4e2fa0 Rework proof: recovery-editor assertions wait on events, never a point-in-time presence read
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ## Check against the contract
