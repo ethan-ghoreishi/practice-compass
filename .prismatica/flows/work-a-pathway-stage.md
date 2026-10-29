@@ -24,8 +24,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-24T02:15:08.771Z
-        commit: 229a78d448e79562f37473c1dc1e5fcbc7cfc21c
+        at: 2026-10-29T21:08:27.792Z
+        commit: c453e040d9b175fbd47f494d3f1312ab39a55133
     - actor: The musician
       action: Taps + on a suggestion.
       shows: "'Added … — not practised yet.' The row now plays that item, and the same
@@ -259,4 +259,3 @@ The next piece of the route is a real practice item — taken once — with real
 
 - The musician
 - The pathway catalogue
-
