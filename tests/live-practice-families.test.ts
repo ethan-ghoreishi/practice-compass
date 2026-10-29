@@ -891,7 +891,7 @@ describe('the live question lifecycle', () => {
     live.editLiveQuestion('');
     live.saveLiveQuestion();
     await answer(true);
-    expect([cap()!.attempt?.status, cap()!.written, live.liveQuestionSettled(cap()!), qs().map((q) => [q.id, q.text])]).toEqual(['saved', 'Which finger for the trill?', true, [[id, 'Which finger for the trill?']]]);
+    expect([cap()!.attempt?.status, cap()!.written, live.liveQuestionSettled(cap()!, useStore.getState().db.lessonAgenda), qs().map((q) => [q.id, q.text])]).toEqual(['saved', 'Which finger for the trill?', true, [[id, 'Which finger for the trill?']]]);
     // …and on failure: settled as failed, never saving, and not "settled" — the
     // question in memory holds words the device refused; Try again writes them.
     answer = hold();
@@ -899,7 +899,7 @@ describe('the live question lifecycle', () => {
     live.saveLiveQuestion();
     live.editLiveQuestion('  ');
     await answer(false);
-    expect([cap()!.attempt?.status, cap()!.written, live.liveQuestionSettled(cap()!)]).toEqual(['failed', 'Which finger for the trill?', false]);
+    expect([cap()!.attempt?.status, cap()!.written, live.liveQuestionSettled(cap()!, useStore.getState().db.lessonAgenda)]).toEqual(['failed', 'Which finger for the trill?', false]);
     live.closeLiveQuestion(); // Done never closes over refused words
     expect(cap()).not.toBeNull();
     live.saveLiveQuestion(true);
@@ -968,16 +968,81 @@ describe('the live question lifecycle', () => {
     const w0 = storage.writes;
     live.chooseLiveQuestionLesson(undefined);
     await flush();
-    expect([cap()!.attempt?.status, cap()!.attempt?.carried, live.liveQuestionSettled(cap()!)]).toEqual(['failed', 'Class question', false]);
+    expect([cap()!.attempt?.status, cap()!.attempt?.carried, live.liveQuestionSettled(cap()!, useStore.getState().db.lessonAgenda)]).toEqual(['failed', 'Class question', false]);
     live.closeLiveQuestion();
     await flush();
     expect([cap()?.questionId, cap()?.attempt?.status, storage.writes - w0 >= 3]).toEqual([id3, 'failed', true]);
     storage.fail = false;
     live.saveLiveQuestion(true);
     await flush();
-    expect([cap()!.attempt?.status, live.liveQuestionSettled(cap()!), qs().find((q) => q.id === id3)!.lessonId]).toEqual(['saved', true, undefined]);
+    expect([cap()!.attempt?.status, live.liveQuestionSettled(cap()!, useStore.getState().db.lessonAgenda), qs().find((q) => q.id === id3)!.lessonId]).toEqual(['saved', true, undefined]);
     live.closeLiveQuestion();
     expect([cap(), live.useLiveQuestion.getState().note]).toEqual([null, 'Question saved on this device — unassigned.']);
+
+    // ITS QUESTION CHANGED ELSEWHERE: the acknowledgement covered the question
+    // as written, so every mutator that moves it (class retargeted or deleted,
+    // item moved or deleted) leaves it unacknowledged — refused, Done stays
+    // open; answered, Done writes and closes saying the new one. With words,
+    // and with the field empty.
+    const agenda = () => useStore.getState().db.lessonAgenda;
+    const onDiskQ = (qid: string) => (JSON.parse(storage.last) as { state: { db: PracticeDB } }).state.db.lessonAgenda.find((e) => e.id === qid) as { lessonId?: string; itemId?: string; instrumentId: string } | undefined;
+    const mutators: [string, () => void, string][] = [
+      ['agenda target', () => useStore.getState().setAgendaTarget(cap()!.questionId!, undefined), 'Question saved on this device — unassigned.'],
+      ['lesson deleted', () => useStore.getState().deleteLesson('L2'), 'Question saved on this device — unassigned.'],
+      ['item moved', () => void useStore.getState().updateItem('b', { instrumentId: TAR }), 'Question saved on this device — unassigned.'],
+      ['item deleted', () => useStore.getState().deleteItem('b'), 'Question saved on this device for 2026-10-31.'],
+    ];
+    for (const blank of [false, true]) {
+      for (const [name, mutate, note] of mutators) {
+        useStore.setState({ db: db({ items: [item('a', 'A'), item('b', 'B')], lessons: [L, lesson('L2', '2026-10-31')] }) });
+        live.openLiveQuestion(SETAR, 'b', 's4');
+        live.chooseLiveQuestionLesson('L2');
+        live.editLiveQuestion('Moved question');
+        live.saveLiveQuestion();
+        await flush();
+        const qid = cap()!.questionId!;
+        if (blank) live.editLiveQuestion('');
+        expect(live.liveQuestionSettled(cap()!, agenda()), name).toBe(true);
+        storage.fail = true;
+        mutate();
+        await flush();
+        expect([live.liveQuestionAcknowledged(cap()!, agenda()), live.liveQuestionSettled(cap()!, agenda())], name).toEqual([false, false]);
+        live.closeLiveQuestion();
+        await flush();
+        expect([cap()?.questionId, cap()?.attempt?.status, live.useLiveQuestion.getState().note], name).toEqual([qid, 'failed', null]);
+        storage.fail = false;
+        live.closeLiveQuestion();
+        await flush();
+        const now = agenda().find((e) => e.id === qid)!;
+        expect([cap(), live.useLiveQuestion.getState().note, JSON.stringify(onDiskQ(qid))], name).toEqual([null, note, JSON.stringify(now)]);
+      }
+    }
+
+    // REMOVED ELSEWHERE after a refused write, the field then cleared: Done
+    // lets the capture go — no write, nothing recreated, nothing claimed. Also
+    // when the refusal lands after the removal.
+    for (const late of [false, true]) {
+      useStore.setState({ db: db({ items: [item('a', 'A')], lessons: [L] }) });
+      live.openLiveQuestion(SETAR, 'a', 's5');
+      live.editLiveQuestion('To be removed');
+      live.saveLiveQuestion();
+      await flush();
+      const qid = cap()!.questionId!;
+      const refuse = late ? hold() : null;
+      if (!late) storage.fail = true;
+      live.editLiveQuestion('Refused edit');
+      live.saveLiveQuestion();
+      await flush();
+      storage.fail = false;
+      useStore.getState().removeAgendaEntry(qid);
+      if (refuse) await refuse(false);
+      expect(cap()!.attempt?.status, String(late)).toBe('failed');
+      live.editLiveQuestion('');
+      const w = storage.writes;
+      live.closeLiveQuestion();
+      await flush();
+      expect([cap(), live.useLiveQuestion.getState().note, storage.writes - w, agenda().filter((e) => e.id === qid)], String(late)).toEqual([null, null, 0, []]);
+    }
   });
 });
 

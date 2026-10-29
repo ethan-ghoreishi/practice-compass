@@ -7,6 +7,7 @@ import {
   editLiveQuestion,
   flushLiveQuestion,
   focusLiveQuestion,
+  liveQuestionAcknowledged,
   liveQuestionEntry,
   liveQuestionSettled,
   openLiveQuestion,
@@ -45,10 +46,11 @@ export default function TeacherQuestionCapture({
 }) {
   const capture = useLiveQuestion((s) => s.capture);
   const note = useLiveQuestion((s) => s.note);
+  const agenda = useStore((s) => s.db.lessonAgenda);
   // The capture this screen is showing (by its session): kept in view through its own saving, until Done.
   const [held, setHeld] = useState<string | null>(null);
   const shown =
-    capture && ((session !== undefined && capture.session === session) || !liveQuestionSettled(capture) || held === capture.session)
+    capture && ((session !== undefined && capture.session === session) || !liveQuestionSettled(capture, agenda) || held === capture.session)
       ? capture
       : null;
   if ((shown?.session ?? null) !== held) setHeld(shown?.session ?? null);
@@ -111,6 +113,8 @@ function QuestionEditor() {
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   const words = capture.text.trim();
   const attempt = capture.attempt;
+  // The device's answer covers the question as written: changed elsewhere since, it is not "Saved".
+  const acknowledged = liveQuestionAcknowledged(capture, db.lessonAgenda);
 
   const copy = () => void navigator.clipboard?.writeText(capture.text).catch(() => undefined);
   let status: ReactNode = null;
@@ -153,6 +157,12 @@ function QuestionEditor() {
     status = (
       <span className="tiny faint" role="status">
         Saving…
+      </span>
+    );
+  } else if (attempt && !acknowledged && (!words || attempt.carried === words)) {
+    status = (
+      <span className="tiny faint" role="status">
+        <span dir="ltr">Changed elsewhere — not yet confirmed on this device. Done saves it.</span>
       </span>
     );
   } else if (words && attempt?.carried === words) {

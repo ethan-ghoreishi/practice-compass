@@ -2706,8 +2706,13 @@ else useStore.persist.onFinishHydration(finishHydration);
 //    written one. A write the question needs anyway — Try again, or its class
 //    chosen with the field empty — carries the words it holds in memory, and
 //    is acknowledged like any other.
-//  - "Saved" is IndexedDB's acknowledgement of the words an attempt carried
-//    (`storageSettled` captured beside the write). Only the latest attempt
+//  - "Saved" is IndexedDB's acknowledgement of the question an attempt wrote
+//    — its words, class, item and instrument as they stood (`storageSettled`
+//    captured beside the write). A change to that question elsewhere (its
+//    class retargeted or deleted, its item moved or deleted) is not covered
+//    by it: the capture is unacknowledged again until its own write lands.
+//    A question removed elsewhere leaves a blank field nothing to write: Done
+//    lets it go, never recreating it. Only the latest attempt
 //    may set the status; any answered attempt settles (never stuck saving);
 //    an older acknowledgement never closes or clears newer words.
 //  - A failure keeps the words, owner and id; Try again always writes again.
@@ -2726,7 +2731,7 @@ export interface LiveQuestion {
   /** The agenda question this capture writes — set by its first write, never replaced. */
   questionId?: ID;
   /** The latest attempt: the words it carried and how the device answered. */
-  attempt?: { seq: number; carried: string; status: 'saving' | 'saved' | 'failed' };
+  attempt?: { seq: number; carried: string; wrote: string; status: 'saving' | 'saved' | 'failed' };
   /** The newest words IndexedDB acknowledged for this capture. */
   written?: string;
   /** Done was tapped: close once the latest words are acknowledged. */
@@ -2760,16 +2765,27 @@ export function liveQuestionEntry(capture: LiveQuestion, agenda: PracticeDB['les
   return capture.questionId ? agenda.find((e): e is LessonQuestion => e.id === capture.questionId && e.kind === 'question') : undefined;
 }
 
+/** What a write leaves on the device for this question: compared by value, so a rebuilt (synced, imported) entry still matches. */
+const questionState = (e: LessonQuestion) => JSON.stringify([e.text, e.lessonId ?? null, e.itemId ?? null, e.instrumentId]);
+
+/** IndexedDB acknowledged the question exactly as it stands now — not merely the words, its class, item and instrument too. */
+export function liveQuestionAcknowledged(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']): boolean {
+  const entry = liveQuestionEntry(capture, agenda);
+  return !!entry && capture.attempt?.status === 'saved' && capture.attempt.wrote === questionState(entry);
+}
+
 /**
- * Nothing of this capture is left to write: its words acknowledged as they
- * stand, or a blank field with no write outstanding. A blank field whose
- * question's last write failed is NOT settled — the question exists in memory
- * with words the device refused.
+ * Nothing of this capture is left to write: its question acknowledged as it
+ * stands, or a blank field with nothing outstanding — never written, or its
+ * question removed elsewhere (never recreated). A blank field whose question's
+ * last write failed, or which changed elsewhere since, is NOT settled.
  */
-export function liveQuestionSettled(capture: LiveQuestion): boolean {
+export function liveQuestionSettled(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']): boolean {
   const words = capture.text.trim();
-  if (!words) return !capture.attempt || capture.attempt.status === 'saved';
-  return capture.attempt?.status === 'saved' && capture.attempt.carried === words;
+  if (!capture.questionId) return !words;
+  const acknowledged = liveQuestionAcknowledged(capture, agenda);
+  if (!words) return acknowledged || !liveQuestionEntry(capture, agenda);
+  return acknowledged && capture.attempt!.carried === words;
 }
 
 export function openLiveQuestion(instrumentId: ID, itemId: ID | undefined, session: string): void {
@@ -2804,7 +2820,8 @@ export function saveLiveQuestion(force = false): void {
   // chosen) still writes the question, carrying the words it holds in memory.
   const words = capture.text.trim() || (force && entry ? entry.text : '');
   if (!words) return;
-  if (!force && capture.attempt?.carried === words && capture.attempt.status !== 'failed') return;
+  const attempt = capture.attempt;
+  if (!force && attempt?.carried === words && (attempt.status === 'saving' || liveQuestionAcknowledged(capture, store.db.lessonAgenda))) return;
   let questionId = capture.questionId;
   if (questionId) {
     // Its own question, or nothing: removed elsewhere, it is never recreated.
@@ -2816,9 +2833,10 @@ export function saveLiveQuestion(force = false): void {
     if (!questionId) return;
   }
   const seq = ++attempts;
-  // Captured in the same tick as the write: this attempt's own outcome.
+  // Captured in the same tick as the write: this attempt's own outcome, and the question it wrote.
   const written = storageSettled();
-  patchLive({ questionId, attempt: { seq, carried: words, status: 'saving' } });
+  const wrote = questionState(liveQuestionEntry({ ...capture, questionId }, useStore.getState().db.lessonAgenda)!);
+  patchLive({ questionId, attempt: { seq, carried: words, wrote, status: 'saving' } });
   const settle = (ok: boolean) => {
     const now = liveCapture();
     if (now?.questionId !== questionId) return; // closed, or another capture
@@ -2829,12 +2847,15 @@ export function saveLiveQuestion(force = false): void {
       patch.written = words;
     }
     if (latest) {
-      patch.attempt = { seq, carried: words, status: ok ? 'saved' : 'failed' };
+      patch.attempt = { seq, carried: words, wrote, status: ok ? 'saved' : 'failed' };
       if (!ok) patch.closing = false;
     }
     patchLive(patch);
     const after = liveCapture()!;
-    if (latest && ok && after.closing && liveQuestionSettled(after)) finishLiveQuestion();
+    if (!(latest && ok && after.closing)) return;
+    // Done waits on THIS question: changed elsewhere meanwhile, it is written again before closing.
+    if (liveQuestionSettled(after, useStore.getState().db.lessonAgenda)) finishLiveQuestion();
+    else saveLiveQuestion(true);
   };
   written.then(
     () => settle(true),
@@ -2887,11 +2908,12 @@ export function flushLiveQuestion(): void {
 export function closeLiveQuestion(): void {
   const capture = liveCapture();
   if (!capture) return;
-  if (liveQuestionSettled(capture)) return finishLiveQuestion();
+  if (liveQuestionSettled(capture, useStore.getState().db.lessonAgenda)) return finishLiveQuestion();
   patchLive({ closing: true });
-  // A refused write is written again (with an empty field too): Done never
-  // closes over words, or a class, the device has not acknowledged.
-  saveLiveQuestion(capture.attempt?.status === 'failed');
+  // Unless a write is already on its way, the question is written again (with
+  // an empty field too): Done never closes over words, or a class, the device
+  // has not acknowledged.
+  saveLiveQuestion(capture.attempt?.status !== 'saving');
 }
 
 function finishLiveQuestion(): void {

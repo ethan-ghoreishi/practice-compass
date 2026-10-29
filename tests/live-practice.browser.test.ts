@@ -310,6 +310,10 @@ describe('asking the teacher while practising', () => {
         const SAVED_L0 = `Saved on this device for ${L0_LABEL}.`;
         const FAILED_EMPTY = "Not saved — this device refused your question's last change. The field is empty.";
         const EMPTY_KEPT = 'The field is empty — nothing new is saved; your saved question stays as it was.';
+        const CHANGED = 'Changed elsewhere — not yet confirmed on this device. Done saves it.';
+        const FAILED_WORDS = 'Not saved — this device refused the write. Your words are still here.';
+        /** One question's own row in an agenda list (the innermost card holding its words). */
+        const questionRow = (text: string) => page.locator('.card-quiet').filter({ hasText: text }).last();
 
         // --- ORDINARY: a notes draft open, the clock running -----------------
         await startBlock(app, A, A_TITLE);
@@ -481,23 +485,64 @@ describe('asking the teacher while practising', () => {
 
         // DETACHED underneath: a chosen class deleted after its question exists —
         // the question keeps its id, now unassigned, and later words update it,
-        // never reattached.
+        // never reattached. The deletion REFUSED by the device: the earlier
+        // acknowledgement (for the deleted class) never stands for it — no
+        // Saved, Done stays open, the device keeps the old class until a write
+        // of the capture's own lands.
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
         await askBox(page).fill('Is the bow too heavy?');
         await page.getByLabel('Ask at', { exact: true }).selectOption('L-40');
         await askStatus(page, `Saved on this device for ${L1_LABEL}.`).waitFor();
         const q4 = await questionLanded(app, 'Is the bow too heavy?');
         expect(q4.lessonId, engine).toBe('L-40');
+        await breakStorage(page);
         await goTo(app, '/lessons');
         await page.getByRole('article').filter({ hasText: L1_LABEL }).getByRole('button', { name: 'Delete lesson' }).click();
         await goTo(app, '/active');
+        await askStatus(page, CHANGED).waitFor();
+        expect(await page.getByText(/Saved on this device|^Question saved on this device/).count(), engine).toBe(0);
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+        await askStatus(page, FAILED_WORDS).waitFor();
+        await page.clock.runFor(1_000);
+        await askBox(page).waitFor();
+        expect(await page.getByText(/^Question saved on this device/).count(), engine).toBe(0);
+        expect(questions(await db(app)).find((q) => q.id === q4.id)!.lessonId, engine).toBe('L-40');
+        await repairStorage(page);
+        await ask(page).getByRole('button', { name: 'Try again' }).click();
         await askStatus(page, 'Saved on this device — unassigned.').waitFor();
+        await persistedUntil(app, (st) => questions((st.state as { db: Db }).db).find((q) => q.id === q4.id), (q) => !!q && q.lessonId === undefined);
         await askBox(page).fill('Is the bow too heavy here?');
         await page.clock.runFor(800);
         await askStatus(page, 'Saved on this device — unassigned.').waitFor();
         const q4b = await questionLanded(app, 'Is the bow too heavy here?');
         expect([q4b.id, q4b.lessonId], engine).toEqual([q4.id, undefined]);
         await ask(page).getByRole('button', { name: 'Done' }).click();
+
+        // RETARGETED in the item's agenda with the field EMPTY, the device
+        // refusing: the same — Done neither closes nor claims "unassigned"
+        // while the device still holds the class; once a write lands it does.
+        await page.getByRole('button', { name: '+ Ask teacher' }).click();
+        await askBox(page).fill('Which bow for the turn?');
+        await page.clock.runFor(800);
+        await askStatus(page, SAVED_L0).waitFor();
+        const q7 = await questionLanded(app, 'Which bow for the turn?');
+        await askBox(page).fill('');
+        await breakStorage(page);
+        const picker = questionRow('Which bow for the turn?').getByRole('combobox', { name: 'Ask at which class' });
+        await goTo(app, `/items/${A}`, { arrival: picker });
+        await picker.selectOption('');
+        await goTo(app, '/active');
+        await askStatus(page, CHANGED).waitFor();
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+        await askStatus(page, FAILED_EMPTY).waitFor();
+        await page.clock.runFor(1_000);
+        await askBox(page).waitFor();
+        expect(await page.getByText(/^Question saved on this device/).count(), engine).toBe(0);
+        expect(questions(await db(app)).find((q) => q.id === q7.id)!.lessonId, engine).toBe(L0);
+        await repairStorage(page);
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+        await page.getByText('Question saved on this device — unassigned.').waitFor();
+        await persistedUntil(app, (st) => questions((st.state as { db: Db }).db).find((q) => q.id === q7.id), (q) => !!q && q.lessonId === undefined && q.text === 'Which bow for the turn?');
 
         // FINISH before the pause, its flush still pending: the editor is there
         // on Close, Saving, until the device answers; Close's own question stays
@@ -677,6 +722,43 @@ describe('asking the teacher while practising', () => {
         await askStatus(page, 'Saved on this device — unassigned.').waitFor();
         const renewed = await questionLanded(app, 'Typed across midnight, kept');
         expect([renewed.id === late.id, renewed.itemId, renewed.lessonId], engine).toEqual([false, C, undefined]);
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+
+        // REMOVED after a write the device refused — or one it refuses later,
+        // while the removal is on its way — then the field cleared: Done lets
+        // the capture go, writing nothing and recreating nothing.
+        for (const pending of [false, true]) {
+          const words = pending ? 'Removed while pending' : 'Removed after a refusal';
+          await page.getByRole('button', { name: '+ Ask teacher' }).click();
+          await askBox(page).fill(words);
+          await page.clock.runFor(800);
+          await askStatus(page, 'Saved on this device — unassigned.').waitFor();
+          const gone = await questionLanded(app, words);
+          if (pending) {
+            await holdWrites(page);
+            await askBox(page).fill(`${words}, edited`);
+            await page.clock.runFor(800);
+            await askStatus(page, 'Saving…').waitFor();
+          } else {
+            await breakStorage(page);
+            await askBox(page).fill(`${words}, edited`);
+            await page.clock.runFor(800);
+            await askStatus(page, FAILED_WORDS).waitFor();
+            await repairStorage(page);
+          }
+          const remove = questionRow(`${words}, edited`).getByRole('button', { name: 'Remove this question' });
+          await goTo(app, `/items/${C}`, { arrival: remove });
+          await remove.click();
+          if (pending) await answerWrites(page, false);
+          await goTo(app, '/active');
+          await askStatus(page, 'This question was removed from your class list — these words are not saved.').waitFor();
+          await askBox(page).fill('');
+          await ask(page).getByRole('button', { name: 'Done' }).click();
+          await page.getByRole('button', { name: '+ Ask teacher' }).waitFor();
+          expect(await page.getByText(/^Question saved on this device/).count(), engine).toBe(0);
+          // (A removal the device refused lands with the next write: the reload below holds neither.)
+          if (!pending) expect(questions(await db(app)).some((q) => q.id === gone.id), engine).toBe(false);
+        }
         await page.getByRole('button', { name: 'Discard block' }).click();
         await page.getByRole('navigation', { name: 'Primary' }).waitFor();
 
@@ -702,9 +784,10 @@ describe('asking the teacher while practising', () => {
             ['Typed across midnight, kept', C, null],
             ['Typed as the run ends', B, L0],
             ['Which string first?', A, L0],
+            ['Which bow for the turn?', A, null],
           ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
         );
-        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(13);
+        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(14);
         expect(questions(end).find((q) => q.text === 'Should I slow down here?')!.id, engine).toBe(q1.id);
         expect(end.lessonAgenda.filter((e) => e.kind === 'preparation'), engine).toEqual(preparations);
         const withoutQuestions = end.lessonAgenda.filter((e) => e.kind !== 'question');
