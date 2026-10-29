@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-24T02:14:27.915Z
-        commit: 8eeb7d512120468cd26ef28655ad0d8171bcb664
+        at: 2026-10-29T21:06:55.493Z
+        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
     - actor: Practice Compass
       action: Scores every item of that instrument from the one candidate pool Today,
         a plan's build, regeneration and swaps share — work already practised
@@ -37,8 +37,9 @@ truth:
         says it stays available until its class.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-10-28T19:04:54.684Z
+        method: manual
+        at: 2026-10-29T21:06:55.493Z
+        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
     - actor: The musician
       action: Taps 'Start · 10 min'.
       shows: "The active block screen: item title, mode and focus chips, a running
@@ -50,8 +51,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-24T02:14:27.915Z
-        commit: 8eeb7d512120468cd26ef28655ad0d8171bcb664
+        at: 2026-10-29T21:06:55.493Z
+        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
     - actor: The musician
       action: Practises, optionally opening 'About this piece' or jotting a passing
         note; pauses and resumes as needed.
@@ -77,8 +78,9 @@ truth:
         here is one new lesson-agenda entry; tempo and level are never recorded.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-10-28T19:04:54.684Z
+        method: manual
+        at: 2026-10-29T21:06:55.493Z
+        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
     - actor: The musician
       action: Taps 'Finish'.
       shows: The close screen, with the minutes already filled in.
@@ -86,8 +88,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-24T02:14:27.915Z
-        commit: 8eeb7d512120468cd26ef28655ad0d8171bcb664
+        at: 2026-10-29T21:06:55.493Z
+        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
     - actor: The musician
       action: Says what the block covered — focused work on a part or one aspect (the
         default) or an explicit whole-item check — picks one of the six results,
@@ -103,8 +105,9 @@ truth:
       changes: Nothing until Save; untouched fields are never written.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-10-28T19:04:54.684Z
+        method: manual
+        at: 2026-10-29T21:06:55.493Z
+        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
     - actor: The musician
       action: Taps 'Save block'.
       shows: Back to Today (or to the running plan), with the item's stats and status
@@ -118,8 +121,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-24T02:14:27.915Z
-        commit: 8eeb7d512120468cd26ef28655ad0d8171bcb664
+        at: 2026-10-29T21:06:55.493Z
+        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
   endsWith: "The session is recorded honestly: one block, one result, one next
     action — and the item knows when it should come back."
   variations:
@@ -314,4 +317,3 @@ The session is recorded honestly: one block, one result, one next action — and
 - The musician
 - The recommendation engine
 - The spaced-repetition scheduler
-
