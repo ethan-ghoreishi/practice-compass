@@ -294,8 +294,9 @@ npx vitest run tests/live-practice-families.test.ts tests/live-practice.browser.
 Limits: the audio port records what is scheduled, not what a speaker plays;
 a mobile keyboard is approximated by focus and blur; changes underneath an
 open question field that only sync could make (a deleted class or item) are
-proved on `captureTargetProblem`, while midnight passing under it and a
-question removed from the item's agenda are proved through the real screen.
+proved on `captureTargetProblem`, while midnight passing under it, a
+question removed from the item's agenda and its class deleted after it was
+written (detached, never reattached) are proved through the real screen.
 Delayed and refused writes are injected by holding IndexedDB transactions in
 the page; a write the device never acknowledged before the browser is killed
 is not claimed durable — no second store exists to imply it. Real audibility beside the Setar, BPM comfort and

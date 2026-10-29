@@ -183,6 +183,7 @@ function fixture(): string {
           { label: 'Mahur phrases', minutes: 1, itemId: B },
           { label: 'Breathe slowly', minutes: 1 },
           { label: 'Rest the hand', minutes: 1 },
+          { label: 'Let go', minutes: 1 },
         ],
         order: 1,
         createdAt: T,
@@ -424,20 +425,51 @@ describe('asking the teacher while practising', () => {
         await page.getByRole('button', { name: '+ Ask teacher' }).waitFor();
         expect(questions(await db(app)).map((q) => [q.id, q.text]), engine).toEqual([[q1.id, 'Should I slow down here?']]);
 
-        // A deliberate class choice; Done closes once the words are on the device.
+        // A deliberate class choice (none); DONE while the write is pending keeps
+        // the field open until the device answers, then closes it.
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
-        await askBox(page).fill('Is the tempo too fast?');
         await page.getByLabel('Ask at', { exact: true }).selectOption('');
+        await holdWrites(page);
+        await askBox(page).fill('Is the tempo too fast?');
+        await page.clock.runFor(800);
+        await askStatus(page, 'Saving…').waitFor();
         await ask(page).getByRole('button', { name: 'Done' }).click();
+        await askStatus(page, 'Saving…').waitFor();
+        await answerWrites(page, true);
         await page.getByText('Question saved on this device — unassigned.').waitFor();
         const q2 = await questionLanded(app, 'Is the tempo too fast?');
         expect([q2.lessonId, q2.itemId], engine).toEqual([undefined, A]);
 
-        // FINISH before the pause: the words are flushed on the way out, and the
-        // editor is still there on Close; Close's own question stays independent.
+        // DETACHED underneath: a chosen class deleted after its question exists —
+        // the question keeps its id, now unassigned, and later words update it,
+        // never reattached.
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
+        await askBox(page).fill('Is the bow too heavy?');
+        await page.getByLabel('Ask at', { exact: true }).selectOption('L-40');
+        await askStatus(page, `Saved on this device for ${L1_LABEL}.`).waitFor();
+        const q4 = await questionLanded(app, 'Is the bow too heavy?');
+        expect(q4.lessonId, engine).toBe('L-40');
+        await goTo(app, '/lessons');
+        await page.getByRole('article').filter({ hasText: L1_LABEL }).getByRole('button', { name: 'Delete lesson' }).click();
+        await goTo(app, '/active');
+        await askStatus(page, 'Saved on this device — unassigned.').waitFor();
+        await askBox(page).fill('Is the bow too heavy here?');
+        await page.clock.runFor(800);
+        await askStatus(page, 'Saved on this device — unassigned.').waitFor();
+        const q4b = await questionLanded(app, 'Is the bow too heavy here?');
+        expect([q4b.id, q4b.lessonId], engine).toEqual([q4.id, undefined]);
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+
+        // FINISH before the pause, its flush still pending: the editor is there
+        // on Close, Saving, until the device answers; Close's own question stays
+        // independent.
+        await page.getByRole('button', { name: '+ Ask teacher' }).click();
+        await holdWrites(page);
         await askBox(page).fill('Asked just before finishing');
         await page.getByRole('button', { name: 'Finish' }).click();
+        await askStatus(page, 'Saving…').waitFor();
+        expect(await askBox(page).inputValue(), engine).toBe('Asked just before finishing');
+        await answerWrites(page, true);
         await askStatus(page, SAVED_L0).waitFor();
         const q3 = await questionLanded(app, 'Asked just before finishing');
         expect([q3.itemId, q3.lessonId], engine).toEqual([A, L0]);
@@ -502,12 +534,12 @@ describe('asking the teacher while practising', () => {
           run0.runningSince,
         ]);
         // The unbound segment: an instrument question, never a guessed item —
-        // and a manual Skip under the open field neither closes nor retargets it.
+        // and a manual Move on under the open field neither closes nor retargets it.
         await ask(page).getByRole('button', { name: 'Done' }).click();
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
         await ask(page).getByText('About this instrument — no item.').waitFor();
         await askBox(page).fill('Asked while breathing');
-        await page.getByRole('button', { name: 'Skip — log nothing for this segment' }).click();
+        await page.getByRole('button', { name: 'Move on — keep the time practised' }).click();
         await page.getByText(/Segment 3 of 3/).waitFor();
         await ask(page).getByText('About this instrument — no item.').waitFor();
         await page.clock.runFor(800);
@@ -532,15 +564,34 @@ describe('asking the teacher while practising', () => {
         await page.getByRole('button', { name: 'Back' }).click();
         await page.getByRole('navigation', { name: 'Primary' }).waitFor();
 
+        // A MANUAL Finish & save before the pause: flushed, and the field is on
+        // Routine complete with its words and owner.
+        await goTo(app, '/routine/rt-live', { arrival: 'Evening warm-up' });
+        await page.getByRole('button', { name: 'Start', exact: true }).click();
+        await page.getByRole('button', { name: 'Pause' }).waitFor();
+        await page.getByRole('button', { name: '+ Ask teacher' }).click();
+        await askBox(page).fill('Asked before Finish & save');
+        await page.getByRole('button', { name: 'Finish & save' }).click();
+        await page.getByText('Routine complete').waitFor();
+        await ask(page).getByText(`About: ${A_TITLE}`).waitFor();
+        await askStatus(page, SAVED_L0).waitFor();
+        expect((await questionLanded(app, 'Asked before Finish & save')).itemId, engine).toBe(A);
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+        await page.getByRole('button', { name: 'Back' }).click();
+        await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+
         // BACKGROUND CATCH-UP across several boundaries through completion,
-        // the field open on an UNBOUND final stretch.
+        // the field open on an UNBOUND stretch — and a manual Skip under it first.
         await goTo(app, '/routine/rt-rest', { arrival: 'Resting close' });
         await page.getByRole('button', { name: 'Start', exact: true }).click();
         await page.getByRole('button', { name: 'Pause' }).waitFor();
         await page.getByRole('button', { name: 'Skip — log nothing for this segment' }).click();
-        await page.getByText(/Segment 2 of 3/).waitFor();
+        await page.getByText(/Segment 2 of 4/).waitFor();
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
         await askBox(page).fill('Asked while resting');
+        await page.getByRole('button', { name: 'Skip — log nothing for this segment' }).click();
+        await page.getByText(/Segment 3 of 4/).waitFor();
+        expect(await askBox(page).inputValue(), engine).toBe('Asked while resting');
         await page.evaluate(() => (window as unknown as { __visibility(h: boolean): void }).__visibility(true));
         await page.clock.fastForward(130_000);
         await page.evaluate(() => (window as unknown as { __visibility(h: boolean): void }).__visibility(false));
@@ -601,13 +652,15 @@ describe('asking the teacher while practising', () => {
             ['Asked while resting', null, L0],
             ['How long should the pause be?', A, L0],
             ['Is the tempo too fast?', A, null],
+            ['Is the bow too heavy here?', A, null],
+            ['Asked before Finish & save', A, L0],
             ['Plan question, part two', first.itemId, L0],
             ['Should I slow down here?', A, L0],
             ['Typed across midnight, kept', C, null],
             ['Typed as the run ends', B, L0],
           ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
         );
-        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(10);
+        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(12);
         expect(questions(end).find((q) => q.text === 'Should I slow down here?')!.id, engine).toBe(q1.id);
         expect(end.lessonAgenda.filter((e) => e.kind === 'preparation'), engine).toEqual(preparations);
         const withoutQuestions = end.lessonAgenda.filter((e) => e.kind !== 'question');

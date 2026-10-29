@@ -3,7 +3,8 @@ id: practise-todays-recommendation
 proposalType: update
 reason: Class work practised earlier today stays in the shared pool until its
   class; the running block gains an opt-in metronome and an in-place teacher
-  question; the boundary cue was reshaped.
+  question; the boundary cue was reshaped. A live question now saves itself
+  and survives the run ending.
 proposedBy: agent
 createdAt: 2026-10-28T19:05:19.093Z
 status: works
@@ -244,7 +245,7 @@ mechanics:
 
 _Proposed by agent · Works now_
 
-**Reason:** Class work practised earlier today stays in the shared pool until its class; the running block gains an opt-in metronome and an in-place teacher question; the boundary cue was reshaped.
+**Reason:** Class work practised earlier today stays in the shared pool until its class; the running block gains an opt-in metronome and an in-place teacher question; the boundary cue was reshaped. A live question now saves itself and survives the run ending.
 
 ## Goal
 

@@ -3,7 +3,7 @@ id: work-a-pathway-stage
 proposalType: update
 reason: A routine preview can hand freed minutes back explicitly; optional
   results clear; the runner gains the metronome and an in-place teacher
-  question.
+  question. A live question now saves itself and survives the run ending.
 proposedBy: agent
 createdAt: 2026-10-28T19:05:19.093Z
 status: works
@@ -202,7 +202,7 @@ mechanics:
 
 _Proposed by agent · Works now_
 
-**Reason:** A routine preview can hand freed minutes back explicitly; optional results clear; the runner gains the metronome and an in-place teacher question.
+**Reason:** A routine preview can hand freed minutes back explicitly; optional results clear; the runner gains the metronome and an in-place teacher question. A live question now saves itself and survives the run ending.
 
 ## Goal
 

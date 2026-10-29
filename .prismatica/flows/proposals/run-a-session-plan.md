@@ -3,6 +3,7 @@ id: run-a-session-plan
 proposalType: update
 reason: Plans reserve the next class's work and name what cannot fit; freed
   preview time can be handed back explicitly; Start rechecks class coverage.
+  A class item never starts below its useful minutes.
 proposedBy: agent
 createdAt: 2026-10-28T19:05:19.093Z
 status: works
@@ -187,7 +188,7 @@ mechanics:
 
 _Proposed by agent · Works now_
 
-**Reason:** Plans reserve the next class's work and name what cannot fit; freed preview time can be handed back explicitly; Start rechecks class coverage.
+**Reason:** Plans reserve the next class's work and name what cannot fit; freed preview time can be handed back explicitly; Start rechecks class coverage. A class item never starts below its useful minutes.
 
 ## Goal
 

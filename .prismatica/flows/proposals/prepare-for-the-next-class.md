@@ -2,7 +2,8 @@
 id: prepare-for-the-next-class
 proposalType: update
 reason: "Realigned with the implemented agenda: questions are independent
-  entries chosen by lesson id, and can now be asked mid-practice."
+  entries chosen by lesson id, and can now be asked mid-practice. A live
+  question now saves itself and survives the run ending."
 proposedBy: agent
 createdAt: 2026-10-28T19:05:19.093Z
 status: works
@@ -121,7 +122,7 @@ mechanics:
 
 _Proposed by agent · Works now_
 
-**Reason:** Realigned with the implemented agenda: questions are independent entries chosen by lesson id, and can now be asked mid-practice.
+**Reason:** Realigned with the implemented agenda: questions are independent entries chosen by lesson id, and can now be asked mid-practice. A live question now saves itself and survives the run ending.
 
 ## Goal
 
