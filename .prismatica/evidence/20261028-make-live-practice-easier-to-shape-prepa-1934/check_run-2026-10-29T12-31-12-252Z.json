@@ -1,0 +1,122 @@
+{
+  "contractId": "20261028-make-live-practice-easier-to-shape-prepa-1934",
+  "event": "check_run",
+  "at": "2026-10-29T12:31:12.252Z",
+  "pass": false,
+  "outcomes": [
+    {
+      "name": "typecheck",
+      "status": "pass",
+      "detail": "npx tsc --noEmit"
+    },
+    {
+      "name": "lint",
+      "status": "pass",
+      "detail": "npm run lint"
+    },
+    {
+      "name": "unit",
+      "status": "fail",
+      "detail": "`npx vitest run --reporter=json` exited 1 — 1 test(s) failed: the apt routing script ci browser setup avoids a fast index slow package mirror within the existing bounds — AssertionError: expected 6122 to be less than 3500"
+    },
+    {
+      "name": "build",
+      "status": "pass",
+      "detail": "npm run build"
+    },
+    {
+      "name": "journeys",
+      "status": "skipped",
+      "detail": "no separate journey command is configured — browser tests may be included in another configured runner, which is not inferred here"
+    },
+    {
+      "name": "secrets",
+      "status": "pass",
+      "detail": "regex fallback: clean"
+    },
+    {
+      "name": "scope",
+      "status": "pass",
+      "detail": "31 changed file(s), all in scope"
+    },
+    {
+      "name": "traceability",
+      "status": "pass",
+      "detail": "7 acceptance check(s) trace to passing tests"
+    },
+    {
+      "name": "docs-delta",
+      "status": "pass",
+      "detail": "all required docs were updated"
+    },
+    {
+      "name": "contract-state",
+      "status": "pass",
+      "detail": "contract collections are internally consistent"
+    },
+    {
+      "name": "instruction-budget",
+      "status": "pass",
+      "detail": "prismatica-instructions/2: claude 29184 of 32768 bytes (CLAUDE.md 865 B, AGENTS.md 28319 B); codex 28319 of 32768 bytes (AGENTS.md 28319 B)"
+    },
+    {
+      "name": "atlas-uncommitted-main",
+      "status": "pass",
+      "detail": "no uncommitted Atlas records on main"
+    },
+    {
+      "name": "truth-integrity",
+      "status": "pass",
+      "detail": "14 flow(s) + rules verified"
+    },
+    {
+      "name": "flow-proposals",
+      "status": "pass",
+      "detail": "5 Flow proposal(s) can be approved as filed"
+    },
+    {
+      "name": "atlas-impact",
+      "status": "pass",
+      "detail": "flow report covers what this change touches"
+    },
+    {
+      "name": "implementation",
+      "status": "pass",
+      "detail": "attribution, not proof: prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified"
+    }
+  ],
+  "changedFiles": [
+    "AGENTS.md",
+    "DECISIONS.md",
+    "docs/practice-session-model.md",
+    "docs/scheduling-evidence.md",
+    "docs/setar-practice-reliability.md",
+    "src/components/TeacherQuestionCapture.tsx",
+    "src/components/direction.test.ts",
+    "src/components/metronome.ts",
+    "src/components/practiceCue.test.ts",
+    "src/components/practiceCue.ts",
+    "src/components/ui.tsx",
+    "src/domain/lessonAgenda.ts",
+    "src/domain/plan.ts",
+    "src/domain/practiceSessionModel.ts",
+    "src/domain/questions.ts",
+    "src/domain/recommend.ts",
+    "src/domain/routines.ts",
+    "src/domain/scoring.ts",
+    "src/pages/ActiveBlock.tsx",
+    "src/pages/CloseBlock.tsx",
+    "src/pages/RoutineRunner.tsx",
+    "src/pages/SessionPlan.tsx",
+    "src/pages/Settings.tsx",
+    "src/pages/Today.tsx",
+    "src/store/useStore.ts",
+    "tests/fixtures/live-practice-expectations.json",
+    "tests/live-practice-families.test.ts",
+    "tests/live-practice.browser.test.ts",
+    "tests/practice-cues.browser.test.ts",
+    "tests/practice-session-families.test.ts",
+    "tests/practice-session.browser.test.ts"
+  ],
+  "prismaticaVersion": "0.11.0"
+}
