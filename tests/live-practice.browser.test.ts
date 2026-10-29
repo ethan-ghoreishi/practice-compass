@@ -416,7 +416,8 @@ describe('asking the teacher while practising', () => {
         // Acknowledged there, the field stays on Today — words, Saved and Done — until Done.
         await askStatus(page, SAVED_L0).waitFor();
         await page.clock.runFor(1_000);
-        expect([await askBox(page).inputValue(), await ask(page).getByRole('button', { name: 'Done' }).count()], engine).toEqual(['Should I slow down here?', 1]);
+        await ask(page).getByRole('button', { name: 'Done' }).waitFor();
+        expect(await askBox(page).inputValue(), engine).toBe('Should I slow down here?');
         // Back in the block the same capture is still open, saved.
         await goTo(app, '/active');
         await askStatus(page, SAVED_L0).waitFor();
@@ -461,7 +462,8 @@ describe('asking the teacher while practising', () => {
         await ask(page).getByRole('button', { name: 'Done' }).click();
         await askStatus(page, FAILED_EMPTY).waitFor();
         await page.clock.runFor(1_000);
-        expect([await askBox(page).count(), await page.getByText(/^Question saved on this device/).count()], engine).toEqual([1, 0]);
+        await askBox(page).waitFor();
+        expect(await page.getByText(/^Question saved on this device/).count(), engine).toBe(0);
         expect(questions(await db(app)).find((q) => q.id === q6.id)!.lessonId, engine).toBe(L0);
         await repairStorage(page);
         await ask(page).getByRole('button', { name: 'Try again' }).click();
