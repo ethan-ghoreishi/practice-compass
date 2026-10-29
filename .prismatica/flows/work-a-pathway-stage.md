@@ -85,24 +85,34 @@ truth:
       differs: "A routine's card — on a stage, a pathway or Today, or with a chosen
         length or essentials only — opens the run's contents first: each
         segment's label, bound item, minutes, essential mark, and 'unbound — not
-        logged' where it has no item; removing an entry there drops it and its
-        minutes from this run only. The Start tap runs exactly what was shown (a
-        bare routine link asks for Start rather than starting itself). While it
-        runs, the full frozen list shows each segment as done, moved on,
-        skipped, now or pending; Move on keeps the time practised in the current
-        segment, Skip and Remove record nothing, and freed time is never handed
-        to another segment. A segment bound to a real item — labelled or not —
-        creates an honest PracticeBlock when the run finishes (one per item,
-        result 'not_logged', so no review completes and no spaced-repetition
-        state advances — the practice itself IS recorded), and Routine complete
-        says 'Saved' only once the device has stored it; a segment with no bound
-        item is pure warm-up and logs nothing. Routine complete then optionally
-        records, per recorded item, one of the six results and one line, written
-        onto that run's own blocks — real evidence for history and results,
-        never a review, date, status or minutes. While the run is genuinely
-        active and its screen is visible, the app keeps the display awake, and
-        arriving at a new segment is visibly announced — once, and staying
-        perceptible for a few seconds, never a single-render flash."
+        logged' where it has no item; removing an entry there drops it from this
+        run only and leaves its minutes unused unless the musician spreads them
+        over the rest (in their own proportions) or gives them to one entry —
+        the saved routine never changes. The Start tap runs exactly what was
+        shown (a bare routine link asks for Start rather than starting itself).
+        While it runs, the full frozen list shows each segment as done, moved
+        on, skipped, now or pending; Move on keeps the time practised in the
+        current segment, Skip and Remove record nothing, and freed time is never
+        handed to another segment. A segment bound to a real item — labelled or
+        not — creates an honest PracticeBlock when the run finishes (one per
+        item, result 'not_logged', so no review completes and no
+        spaced-repetition state advances — the practice itself IS recorded), and
+        Routine complete says 'Saved' only once the device has stored it; a
+        segment with no bound item is pure warm-up and logs nothing. Routine
+        complete then optionally records, per recorded item, one of the six
+        results and one line, written onto that run's own blocks — real evidence
+        for history and results, never a review, date, status or minutes — and a
+        chosen result can be cleared back to 'Not assessed' before or after
+        saving, the item's last result then following what remains. The
+        metronome and '+ Ask teacher' work as on an ordinary block: a segment
+        boundary keeps the beat; a boundary, Move on, Skip or the run ending on
+        its own (even caught up after the screen was away) keeps an open
+        question field and its words onto Routine complete, never retargeting
+        them; and an unbound segment asks about the instrument, never a guessed
+        item. While the run is genuinely active and its screen is visible, the
+        app keeps the display awake, and arriving at a new segment is visibly
+        announced — once, and staying perceptible for a few seconds, never a
+        single-render flash."
       status: works
     - name: Off-catalogue items
       differs: Anything quick-added inside the stage appears in the same list and in
@@ -144,6 +154,8 @@ mechanics:
     - src/components/screenAwake.ts
     - src/store/useStore.ts
     - src/pages/Repertoire.tsx
+    - src/components/metronome.ts
+    - src/components/TeacherQuestionCapture.tsx
   routes:
     - /repertoire
     - /pathway/:pathwayId
@@ -175,11 +187,14 @@ mechanics:
     - file: src/components/screenAwake.test.ts
       steps:
         - 4
+    - file: tests/live-practice-families.test.ts
+      steps:
+        - 4
 approval:
-  hash: 6a75a0ed6b51ad9a22794fba93056132d6db8d5f3f1087a187ea19965614a73f
-  at: 2026-10-24T02:13:09.259Z
+  hash: c2226ab03ab86f1a454937c0075e2d8d8644647bed9830290e1272657bf56e3c
+  at: 2026-10-29T21:05:17.762Z
   by: owner
-  signature: IeVjVs3MaZydNYOjNn8EYMWg4EiqTTXXr4npfR2HCYf3k2LEb5C9kZD5kt4Vwg6vKLGlXmirRm45bSJ/2fTrDQ==
+  signature: Chmx4xC9gicm3VTXnSCEQVz/rcpWUzpGFO05XlVVIf0MxOKfONBBY2O5Sz2PCXjU/Z1gjn+HrjkT9kKYfPm2Ag==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -188,7 +203,7 @@ approval:
 
 # Work through a pathway stage
 
-_Works now · approved 2026-10-24T02:13:09.259Z by owner (signed)_
+_Works now · approved 2026-10-29T21:05:17.762Z by owner (signed)_
 
 ## Goal
 
@@ -229,7 +244,7 @@ The next piece of the route is a real practice item — taken once — with real
 ## Variations
 
 - **Teacher jumps around** — A pinned current stage always beats 'first incomplete stage', because teacher-led work does not go in order. _(Works now)_
-- **Guided routine** — A routine's card — on a stage, a pathway or Today, or with a chosen length or essentials only — opens the run's contents first: each segment's label, bound item, minutes, essential mark, and 'unbound — not logged' where it has no item; removing an entry there drops it and its minutes from this run only. The Start tap runs exactly what was shown (a bare routine link asks for Start rather than starting itself). While it runs, the full frozen list shows each segment as done, moved on, skipped, now or pending; Move on keeps the time practised in the current segment, Skip and Remove record nothing, and freed time is never handed to another segment. A segment bound to a real item — labelled or not — creates an honest PracticeBlock when the run finishes (one per item, result 'not_logged', so no review completes and no spaced-repetition state advances — the practice itself IS recorded), and Routine complete says 'Saved' only once the device has stored it; a segment with no bound item is pure warm-up and logs nothing. Routine complete then optionally records, per recorded item, one of the six results and one line, written onto that run's own blocks — real evidence for history and results, never a review, date, status or minutes. While the run is genuinely active and its screen is visible, the app keeps the display awake, and arriving at a new segment is visibly announced — once, and staying perceptible for a few seconds, never a single-render flash. _(Works now)_
+- **Guided routine** — A routine's card — on a stage, a pathway or Today, or with a chosen length or essentials only — opens the run's contents first: each segment's label, bound item, minutes, essential mark, and 'unbound — not logged' where it has no item; removing an entry there drops it from this run only and leaves its minutes unused unless the musician spreads them over the rest (in their own proportions) or gives them to one entry — the saved routine never changes. The Start tap runs exactly what was shown (a bare routine link asks for Start rather than starting itself). While it runs, the full frozen list shows each segment as done, moved on, skipped, now or pending; Move on keeps the time practised in the current segment, Skip and Remove record nothing, and freed time is never handed to another segment. A segment bound to a real item — labelled or not — creates an honest PracticeBlock when the run finishes (one per item, result 'not_logged', so no review completes and no spaced-repetition state advances — the practice itself IS recorded), and Routine complete says 'Saved' only once the device has stored it; a segment with no bound item is pure warm-up and logs nothing. Routine complete then optionally records, per recorded item, one of the six results and one line, written onto that run's own blocks — real evidence for history and results, never a review, date, status or minutes — and a chosen result can be cleared back to 'Not assessed' before or after saving, the item's last result then following what remains. The metronome and '+ Ask teacher' work as on an ordinary block: a segment boundary keeps the beat; a boundary, Move on, Skip or the run ending on its own (even caught up after the screen was away) keeps an open question field and its words onto Routine complete, never retargeting them; and an unbound segment asks about the instrument, never a guessed item. While the run is genuinely active and its screen is visible, the app keeps the display awake, and arriving at a new segment is visibly announced — once, and staying perceptible for a few seconds, never a single-render flash. _(Works now)_
 - **Off-catalogue items** — Anything quick-added inside the stage appears in the same list and in recommendations. _(Works now)_
 - **A default pathway this install lacks** — Before step 1, Repertoire → Pathways offers each shipped default pathway this install does not have — one newly shipped since the database was made, such as the Khonyagar Tar course, or one the owner deleted — as its own 'Add default pathway: <name>' button beside 'New pathway', only when this device has that pathway's instrument and only within the current instrument filter. Tapping one adds exactly that pathway with its seeded stages and any seeded routine whose id is not already held; nothing that exists is changed, nothing is added without that tap, and the button then disappears. _(Works now)_
 
@@ -244,3 +259,4 @@ The next piece of the route is a real practice item — taken once — with real
 
 - The musician
 - The pathway catalogue
+

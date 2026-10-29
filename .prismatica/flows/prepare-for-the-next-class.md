@@ -9,20 +9,26 @@ presentation:
 truth:
   goal: Arrive at the lesson with the questions that came up while practising, and
     a short honest account of the period.
-  startsWhen: A question is written on an item (at close, or by editing it) while
-    it is flagged for the next class.
+  startsWhen: A question comes up — asked from a running block or routine ('+ Ask
+    teacher'), at Close, or from the item or lesson page.
   needs: []
   steps:
     - actor: Practice Compass
-      action: Collects every item for that instrument that is both flagged for the
-        next class and carries a question, ordered with the Persian collator.
-      shows: A 'Questions for your next class' list on the upcoming lesson and on the
-        Teacher report.
+      action: Keeps each question as its own lesson-agenda entry aimed at the class it
+        names — the nearest upcoming one by default, changeable, or visibly
+        unassigned — and collects a class's open questions by that lesson's id,
+        ordered with the Persian collator.
+      shows: A 'Questions for your next class' list on the lesson and on the Teacher
+        report. A question asked mid-practice saves itself after a short pause
+        and says 'Saved' only once the device stored it; its words survive a
+        failed write, leaving the screen and the run ending.
+      changes: One new open question per capture — later typing, Done and Try again
+        update that same entry, never a second — never a preparation commitment
+        and never a change to practice priority.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-24T02:14:37.676Z
-        commit: a998c1ff98aea722ad6e57a28bafe3b61a19da07
+        method: inferred
+        at: 2026-10-28T19:04:54.684Z
     - actor: The musician
       action: Copies, downloads or prints the questions.
       shows: A numbered plain-text export that preserves mixed Farsi and English, or a
@@ -54,7 +60,18 @@ truth:
     truthful summary, without having kept a separate notebook.
   variations:
     - name: A question survives practice
-      differs: Practising never clears a question — only editing the item removes it.
+      differs: Practising never clears a question — it leaves the open list only when
+        marked asked, and then stays with the class it was asked at.
+      status: works
+    - name: Asked mid-practice
+      differs: "'+ Ask teacher' on an ordinary or planned block or a running routine
+        captures one line without pausing the clock, the beat or the notes. Who
+        it is about is fixed when the field opens, so a routine boundary never
+        moves it; an unbound segment asks about the instrument; a class that
+        stops being upcoming before the first save is refused with the words
+        kept and an 'unassigned' choice; Try again after a failed write rewrites
+        the same question, never a second; a question removed elsewhere is never
+        recreated except by 'Save as a new question'."
       status: works
   rules:
     - A question is never auto-cleared by practising.
@@ -70,6 +87,10 @@ mechanics:
     - src/domain/report.ts
     - src/pages/Lessons.tsx
     - src/pages/CloseBlock.tsx
+    - src/components/TeacherQuestionCapture.tsx
+    - src/pages/ActiveBlock.tsx
+    - src/pages/RoutineRunner.tsx
+    - src/domain/lessonAgenda.ts
   routes:
     - /report
     - /lessons
@@ -87,11 +108,14 @@ mechanics:
       steps:
         - 1
         - 2
+    - file: tests/live-practice.browser.test.ts
+      steps:
+        - 1
 approval:
-  hash: 79d3ebee5b9e5cf7e13e6d61ac17e1154a9e3a662b882229ef3fd17c120b64dc
-  at: 2026-08-28T13:30:18.013Z
-  by: Ethan
-  signature: +CvCBPI6aAq0y/89W9M1Mu4LZo3hLET/MjfgxvfVJQNWC3VDqd0/qwMAPDFMplRXyNEgYMbKaNZzhW6Rnt3FCw==
+  hash: a959468c5b6b88cc254905361161fe7b619bf3a672179f32b9765530115c6138
+  at: 2026-10-29T21:05:17.740Z
+  by: owner
+  signature: NZP4Uvb0+g3o6GEMV6C+xIBqDwrFRIxx1sd8bDi7JqbCm/XzWDhVzi8ibW6upukGxyhp9Rdy+RY7yjw17MELBQ==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -100,7 +124,7 @@ approval:
 
 # Take questions and a summary to class
 
-_Works now · approved 2026-08-28T13:30:18.013Z by Ethan (signed)_
+_Works now · approved 2026-10-29T21:05:17.740Z by owner (signed)_
 
 ## Goal
 
@@ -108,7 +132,7 @@ Arrive at the lesson with the questions that came up while practising, and a sho
 
 ## Starts when
 
-A question is written on an item (at close, or by editing it) while it is flagged for the next class.
+A question comes up — asked from a running block or routine ('+ Ask teacher'), at Close, or from the item or lesson page.
 
 ## Needs first
 
@@ -116,8 +140,9 @@ _nothing extra required_
 
 ## Steps
 
-1. **Practice Compass** Collects every item for that instrument that is both flagged for the next class and carries a question, ordered with the Persian collator.
-   - Shows: A 'Questions for your next class' list on the upcoming lesson and on the Teacher report.
+1. **Practice Compass** Keeps each question as its own lesson-agenda entry aimed at the class it names — the nearest upcoming one by default, changeable, or visibly unassigned — and collects a class's open questions by that lesson's id, ordered with the Persian collator.
+   - Shows: A 'Questions for your next class' list on the lesson and on the Teacher report. A question asked mid-practice saves itself after a short pause and says 'Saved' only once the device stored it; its words survive a failed write, leaving the screen and the run ending.
+   - Changes: One new open question per capture — later typing, Done and Try again update that same entry, never a second — never a preparation commitment and never a change to practice priority.
 
 2. **The musician** Copies, downloads or prints the questions.
    - Shows: A numbered plain-text export that preserves mixed Farsi and English, or a friendly empty state when there are none.
@@ -135,7 +160,8 @@ The musician walks into the lesson with their real questions and a truthful summ
 
 ## Variations
 
-- **A question survives practice** — Practising never clears a question — only editing the item removes it. _(Works now)_
+- **A question survives practice** — Practising never clears a question — it leaves the open list only when marked asked, and then stays with the class it was asked at. _(Works now)_
+- **Asked mid-practice** — '+ Ask teacher' on an ordinary or planned block or a running routine captures one line without pausing the clock, the beat or the notes. Who it is about is fixed when the field opens, so a routine boundary never moves it; an unbound segment asks about the instrument; a class that stops being upcoming before the first save is refused with the words kept and an 'unassigned' choice; Try again after a failed write rewrites the same question, never a second; a question removed elsewhere is never recreated except by 'Save as a new question'. _(Works now)_
 
 ## Rules
 
@@ -146,3 +172,4 @@ The musician walks into the lesson with their real questions and a truthful summ
 
 - The musician
 - The teacher
+

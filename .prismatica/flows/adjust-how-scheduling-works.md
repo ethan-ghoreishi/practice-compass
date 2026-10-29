@@ -16,16 +16,17 @@ truth:
     - actor: Practice Compass
       action: States the real priority formula, how each item comes back — working on
         it (1–3 days), kept fresh (spaced repetition on a whole-item check),
-        class preparation before its class — and the spaced-repetition rungs, in
-        plain English, filled in with the values currently in force.
+        class preparation before its class (still available after practising it
+        the same day, and seated in a Session Plan whenever it fits) — and the
+        spaced-repetition rungs, in plain English, filled in with the values
+        currently in force.
       shows: The priority terms, the working return days, the current
         first/second/slip-reset gaps, and how importance and difficulty pull
         material sooner.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-24T02:13:32.364Z
-        commit: 67f7bd74767e6aa1f01b65d4e4af8f0b72e9c68a
+        method: inferred
+        at: 2026-10-28T19:04:54.684Z
     - actor: The musician
       action: Changes a value — a review gap, the warm-up or deep-work share of a
         plan, the shortest or longest review slot.
@@ -103,10 +104,10 @@ mechanics:
       steps:
         - 3
 approval:
-  hash: 472e56a8d2f5adcd2f5b2d85e543ca707c052983246239d8b7042439d2246aec
-  at: 2026-10-24T02:13:09.184Z
+  hash: 46fbd286e3a887c581ee3e619d2cb7212b6a79c2be0c67a8b3f5de3e210c8557
+  at: 2026-10-29T21:05:17.708Z
   by: owner
-  signature: x9elLNZtjUa/sa5kIVFCTMVD879vp+IGOegXh+4OPYIY+T0nOvUNPAPPJ9rxZXz/FY/liGvtbXXQJz0ddcTuAQ==
+  signature: BqUimB/ADXAFDIR2d4qUj8k+yHZf+oEh02eA8Jmj57PJEwVFGXPYZwglYueBrk8lhXDVTfKRHn5kwHU/hCipAg==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -115,7 +116,7 @@ approval:
 
 # See and adjust the scheduling engine
 
-_Works now · approved 2026-10-24T02:13:09.184Z by owner (signed)_
+_Works now · approved 2026-10-29T21:05:17.708Z by owner (signed)_
 
 ## Goal
 
@@ -131,7 +132,7 @@ _nothing extra required_
 
 ## Steps
 
-1. **Practice Compass** States the real priority formula, how each item comes back — working on it (1–3 days), kept fresh (spaced repetition on a whole-item check), class preparation before its class — and the spaced-repetition rungs, in plain English, filled in with the values currently in force.
+1. **Practice Compass** States the real priority formula, how each item comes back — working on it (1–3 days), kept fresh (spaced repetition on a whole-item check), class preparation before its class (still available after practising it the same day, and seated in a Session Plan whenever it fits) — and the spaced-repetition rungs, in plain English, filled in with the values currently in force.
    - Shows: The priority terms, the working return days, the current first/second/slip-reset gaps, and how importance and difficulty pull material sooner.
 
 2. **The musician** Changes a value — a review gap, the warm-up or deep-work share of a plan, the shortest or longest review slot.
@@ -165,3 +166,4 @@ The engine is understood and, if wanted, tuned — and it still produces the sam
 - The musician
 - The spaced-repetition scheduler
 - The plan builder
+
