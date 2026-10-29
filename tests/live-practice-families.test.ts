@@ -1018,6 +1018,53 @@ describe('the live question lifecycle', () => {
       }
     }
 
+    // CHANGED AND CHANGED BACK elsewhere: A → B lands, B → A is refused (or
+    // answered late). The values match what this capture once wrote, but the
+    // device holds B — the older acknowledgement never regains authority: no
+    // Saved, Done writes rather than closing, and closes only once its own
+    // write of the current revision lands. With words and with the field empty.
+    const reversals: [string, string | undefined, () => void, () => void, string][] = [
+      ['class', 'L2', () => useStore.getState().setAgendaTarget(cap()!.questionId!, undefined), () => useStore.getState().setAgendaTarget(cap()!.questionId!, 'L2'), 'Question saved on this device for 2026-10-31.'],
+      ['instrument', undefined, () => void useStore.getState().updateItem('b', { instrumentId: TAR }), () => void useStore.getState().updateItem('b', { instrumentId: SETAR }), 'Question saved on this device — unassigned.'],
+    ];
+    for (const blank of [false, true]) {
+      for (const late of [false, true]) {
+        for (const [name, target, there, back, note] of reversals) {
+          const tag = `${name} blank=${blank} late=${late}`;
+          useStore.setState({ db: db({ items: [item('a', 'A'), item('b', 'B')], lessons: [L, lesson('L2', '2026-10-31')] }) });
+          live.openLiveQuestion(SETAR, 'b', 's6');
+          live.chooseLiveQuestionLesson(target);
+          live.editLiveQuestion('Round trip');
+          live.saveLiveQuestion();
+          await flush();
+          const qid = cap()!.questionId!;
+          const ownership = () => {
+            const q = agenda().find((e) => e.id === qid) as LessonAgendaEntry & { text: string; itemId?: string };
+            return [q.text, q.lessonId, q.itemId, q.instrumentId];
+          };
+          const written = ownership();
+          if (blank) live.editLiveQuestion('');
+          there();
+          await flush();
+          const answer = late ? hold() : null;
+          if (!late) storage.fail = true;
+          back();
+          if (!late) await flush();
+          // The same text, class, item and instrument as the acknowledged write — still not acknowledged.
+          expect([ownership(), live.liveQuestionAcknowledged(cap()!, agenda()), live.liveQuestionSettled(cap()!, agenda())], tag).toEqual([written, false, false]);
+          const w = storage.writes;
+          live.closeLiveQuestion();
+          if (answer) await answer(false);
+          await flush();
+          expect([cap()?.questionId, cap()?.attempt?.status, storage.writes - w >= 1, live.useLiveQuestion.getState().note], tag).toEqual([qid, 'failed', true, null]);
+          storage.fail = false;
+          live.closeLiveQuestion();
+          await flush();
+          expect([cap(), live.useLiveQuestion.getState().note, JSON.stringify(onDiskQ(qid))], tag).toEqual([null, note, JSON.stringify(agenda().find((e) => e.id === qid))]);
+        }
+      }
+    }
+
     // REMOVED ELSEWHERE after a refused write, the field then cleared: Done
     // lets the capture go — no write, nothing recreated, nothing claimed. Also
     // when the refusal lands after the removal.

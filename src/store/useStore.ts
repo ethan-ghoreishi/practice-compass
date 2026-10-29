@@ -2706,11 +2706,12 @@ else useStore.persist.onFinishHydration(finishHydration);
 //    written one. A write the question needs anyway — Try again, or its class
 //    chosen with the field empty — carries the words it holds in memory, and
 //    is acknowledged like any other.
-//  - "Saved" is IndexedDB's acknowledgement of the question an attempt wrote
-//    — its words, class, item and instrument as they stood (`storageSettled`
-//    captured beside the write). A change to that question elsewhere (its
-//    class retargeted or deleted, its item moved or deleted) is not covered
-//    by it: the capture is unacknowledged again until its own write lands.
+//  - "Saved" is IndexedDB's acknowledgement of the question REVISION an
+//    attempt wrote (`storageSettled` captured beside the write). Every store
+//    change to an agenda entry makes a new entry object, so that object is the
+//    revision: any later change to the question (its class retargeted or
+//    deleted, its item moved or deleted) — even one that puts back the same
+//    values — leaves the capture unacknowledged until its own write lands.
 //    A question removed elsewhere leaves a blank field nothing to write: Done
 //    lets it go, never recreating it. Only the latest attempt
 //    may set the status; any answered attempt settles (never stuck saving);
@@ -2731,7 +2732,7 @@ export interface LiveQuestion {
   /** The agenda question this capture writes — set by its first write, never replaced. */
   questionId?: ID;
   /** The latest attempt: the words it carried and how the device answered. */
-  attempt?: { seq: number; carried: string; wrote: string; status: 'saving' | 'saved' | 'failed' };
+  attempt?: { seq: number; carried: string; wrote: LessonQuestion; status: 'saving' | 'saved' | 'failed' };
   /** The newest words IndexedDB acknowledged for this capture. */
   written?: string;
   /** Done was tapped: close once the latest words are acknowledged. */
@@ -2765,13 +2766,15 @@ export function liveQuestionEntry(capture: LiveQuestion, agenda: PracticeDB['les
   return capture.questionId ? agenda.find((e): e is LessonQuestion => e.id === capture.questionId && e.kind === 'question') : undefined;
 }
 
-/** What a write leaves on the device for this question: compared by value, so a rebuilt (synced, imported) entry still matches. */
-const questionState = (e: LessonQuestion) => JSON.stringify([e.text, e.lessonId ?? null, e.itemId ?? null, e.instrumentId]);
-
-/** IndexedDB acknowledged the question exactly as it stands now — not merely the words, its class, item and instrument too. */
+/**
+ * IndexedDB acknowledged the question's CURRENT revision: the entry object
+ * the latest attempt wrote is still the one in the agenda. Never compared by
+ * value — a change elsewhere that restores the old words or target is a newer
+ * revision no write of this capture has acknowledged.
+ */
 export function liveQuestionAcknowledged(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']): boolean {
   const entry = liveQuestionEntry(capture, agenda);
-  return !!entry && capture.attempt?.status === 'saved' && capture.attempt.wrote === questionState(entry);
+  return !!entry && capture.attempt?.status === 'saved' && capture.attempt.wrote === entry;
 }
 
 /**
@@ -2833,9 +2836,9 @@ export function saveLiveQuestion(force = false): void {
     if (!questionId) return;
   }
   const seq = ++attempts;
-  // Captured in the same tick as the write: this attempt's own outcome, and the question it wrote.
+  // Captured in the same tick as the write: this attempt's own outcome, and the revision it wrote.
   const written = storageSettled();
-  const wrote = questionState(liveQuestionEntry({ ...capture, questionId }, useStore.getState().db.lessonAgenda)!);
+  const wrote = liveQuestionEntry({ ...capture, questionId }, useStore.getState().db.lessonAgenda)!;
   patchLive({ questionId, attempt: { seq, carried: words, wrote, status: 'saving' } });
   const settle = (ok: boolean) => {
     const now = liveCapture();
