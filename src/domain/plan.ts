@@ -897,8 +897,11 @@ export function swapSegment(
   // Only material whose floor fits the slot: a two-minute warm-up is never
   // handed a whole work. An optional role is judged by its SHARE, as the build
   // and the allocator judge it — never by minutes rounding lifted above it.
-  // A one-segment plan has no floors.
+  // A one-segment plan has no floors — except the next class's required
+  // work, which is never seated as a token slot below its useful minimum
+  // (the build's own reservation rule), however few rows the plan has.
   const params = args.params ?? DEFAULT_SCHEDULING_PARAMS;
+  const required = new Set(args.requiredItemIds ?? []);
   const others = plan.segments.filter((_, i) => i !== index).map((s) => s.bucket);
   const room =
     target.bucket === 'warmup'
@@ -909,7 +912,7 @@ export function swapSegment(
   const eligible = (s: ItemScore): boolean => {
     if (inUse.has(s.item.id) || exclude.has(s.item.id)) return false;
     if (kept.some((k) => sameWork(k, s.item)) && !hasDueReview(s.item, args.now)) return false;
-    if (plan.segments.length > 1 && segmentFloor(s.item) > room) return false;
+    if ((plan.segments.length > 1 || required.has(s.item.id)) && segmentFloor(s.item) > room) return false;
     switch (target.bucket) {
       case 'warmup':
         // Same exclusions as the build's own warm-up pool: a due review or a
@@ -1033,8 +1036,12 @@ export interface ClassCoverage {
   required: ClassCoverageEntry[];
   /** Required items the preview seats. */
   seated: ID[];
-  /** Required items it does not: left out for capacity, or by the owner's own remove/swap. */
-  omitted: (ClassCoverageEntry & { why: 'capacity' | 'edited' })[];
+  /**
+   * Required items it does not: left out for capacity, by the owner's own
+   * remove/swap, or seated SHORT of their useful floor — a token slot that
+   * counts as nothing and that no partial-start choice can accept.
+   */
+  omitted: (ClassCoverageEntry & { why: 'capacity' | 'edited' | 'short' })[];
   /** Prepared but resting — never seated, said instead. */
   resting: { itemId: ID; title: string }[];
   /** The fewest minutes in which every required item reaches its floor. */
@@ -1060,12 +1067,20 @@ export function planClassCoverage(
     .map((id) => byId.get(id))
     .filter((i): i is PracticeItem => !!i)
     .map((i) => ({ itemId: i.id, title: i.title, floorMinutes: segmentFloor(i) }));
-  const inPlan = new Set(plan.segments.map((s) => s.itemId));
+  // Seated means seated at its useful floor: a required item holding fewer
+  // minutes than that is not covered, whatever row it occupies.
+  const minutesIn = new Map(plan.segments.map((s) => [s.itemId, s.minutes]));
   const capacity = new Set(plan.classOmitted ?? []);
-  const seated = entries.filter((e) => inPlan.has(e.itemId)).map((e) => e.itemId);
-  const omitted = entries
-    .filter((e) => !inPlan.has(e.itemId))
-    .map((e) => ({ ...e, why: capacity.has(e.itemId) ? ('capacity' as const) : ('edited' as const) }));
+  const why = (e: ClassCoverageEntry): 'capacity' | 'edited' | 'short' | null => {
+    const m = minutesIn.get(e.itemId);
+    if (m === undefined) return capacity.has(e.itemId) ? 'capacity' : 'edited';
+    return m < e.floorMinutes ? 'short' : null;
+  };
+  const seated = entries.filter((e) => why(e) === null).map((e) => e.itemId);
+  const omitted = entries.flatMap((e) => {
+    const w = why(e);
+    return w ? [{ ...e, why: w }] : [];
+  });
   return {
     date: required.date,
     required: entries,
@@ -1081,14 +1096,17 @@ export function planClassCoverage(
  * Why Start must refuse, or null. A preview with required class work left out
  * starts only through a choice made against THIS coverage (`acceptedKey`, the
  * key the owner's partial-start tap carried); a coverage that has moved since
- * — a changed lesson, a new commitment, another remove — refuses it.
+ * — a changed lesson, a new commitment, another remove — refuses it. A
+ * required item seated below its floor (`short`) refuses outright: no choice
+ * starts a sub-floor class slot.
  */
 export function planStartRefusal(
   plan: SessionPlan,
   coverage: ClassCoverage,
   acceptedKey?: string,
-): 'empty' | 'partial' | null {
+): 'empty' | 'short' | 'partial' | null {
   if (plan.segments.length === 0) return 'empty';
+  if (coverage.omitted.some((o) => o.why === 'short')) return 'short';
   if (coverage.omitted.length > 0 && acceptedKey !== coverage.key) return 'partial';
   return null;
 }

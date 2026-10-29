@@ -25,6 +25,13 @@ import {
   retargetEntry as retargetAgendaEntry,
   completePlanSegment,
   planSegmentStartable,
+  captureTargetProblem,
+  openQuestionCapture,
+  type QuestionCapture,
+  lessonLabel,
+  planClassCoverage,
+  planStartRefusal,
+  requiredClassWork,
   scheduleAgainPlan,
   transferToAutomaticReview,
   AUTOMATIC_TRANSFER_REASON,
@@ -367,8 +374,13 @@ interface StoreState {
   // Session Plan (a time-budgeted programme over real practice blocks)
   /** Remember the chosen duration for an instrument's next plan. */
   setPlanMinutes: (instrumentId: ID, minutes: number) => void;
-  /** Begin running a built plan (segments become pending). */
-  startPlan: (plan: SessionPlan) => void;
+  /**
+   * Begin running a built plan (segments become pending) — only once its class
+   * coverage, rechecked against live data and the true day, allows it:
+   * `acceptedKey` is the coverage a partial-start choice was made against.
+   * Returns the refusal (nothing installed) or null.
+   */
+  startPlan: (plan: SessionPlan, acceptedKey?: string) => 'empty' | 'short' | 'partial' | null;
   /** Start a real block seeded from the current segment (→ /active → /close). */
   beginPlanSegment: () => void;
   /** Skip a pending segment — the current one by default — recording nothing; other targets keep their minutes. */
@@ -745,7 +757,20 @@ export const useStore = create<StoreState>()(
           planMinutesByInstrument: { ...s.planMinutesByInstrument, [instrumentId]: Math.max(5, Math.round(minutes)) },
         })),
 
-      startPlan: (plan) =>
+      startPlan: (plan, acceptedKey) => {
+        // The run's installation is the one door every Start passes: a
+        // sub-floor class slot, or omissions no choice was made against, never
+        // become a running plan, whatever the preview showed.
+        const { db, rev } = get();
+        const now = new Date();
+        const coverage = planClassCoverage(
+          plan,
+          requiredClassWork(db.lessonAgenda, db.lessons, db.items, plan.instrumentId, now),
+          db.items,
+          `${rev}|${todayISODate(now)}`,
+        );
+        const refusal = planStartRefusal(plan, coverage, acceptedKey);
+        if (refusal) return refusal;
         set({
           activePlan: {
             instrumentId: plan.instrumentId,
@@ -754,7 +779,9 @@ export const useStore = create<StoreState>()(
             pointer: 0,
             segments: plan.segments.map((seg) => ({ ...seg, status: 'pending' as const })),
           },
-        }),
+        });
+        return null;
+      },
 
       beginPlanSegment: () => {
         const { activePlan, db, active, activeRoutine } = get();
@@ -2655,3 +2682,215 @@ function finishHydration() {
 }
 if (useStore.persist.hasHydrated()) finishHydration();
 else useStore.persist.onFinishHydration(finishHydration);
+
+// ---------------------------------------------------------------------------
+// A TEACHER QUESTION CAPTURED WHILE PRACTISING — one lifecycle, in memory.
+//
+// The words live here, outside any screen, so a Routine boundary, its final
+// automatic completion, navigation or an unmounted editor never takes them
+// away; they are never persisted themselves (no draft collection) — only the
+// agenda question they write is. One lifecycle serves the quiet-interval
+// autosave, Done, Try again and the flush on exit:
+//
+//  - Ownership is frozen at opening (`openQuestionCapture`). The FIRST write
+//    revalidates it and appends ONE agenda question; every later write —
+//    autosave, Done, retry — updates THAT id, never another, and never
+//    recreates it once it has been removed elsewhere.
+//  - Blank text writes nothing: it never creates a question nor overwrites a
+//    written one.
+//  - "Saved" is IndexedDB's acknowledgement of the words an attempt carried
+//    (`storageSettled` captured beside the write). Only the latest attempt
+//    may set the status; any answered attempt settles (never stuck saving);
+//    an older acknowledgement never closes or clears newer words.
+//  - A failure keeps the words, owner and id; Try again always writes again.
+//    Nothing retries on its own, and practice never waits for any of it.
+// ---------------------------------------------------------------------------
+
+/** The quiet interval after the last keystroke before the words are written (the notes' own). */
+export const QUESTION_AUTOSAVE_MS = 800;
+
+export interface LiveQuestion {
+  /** Frozen at opening: who the words belong to until the question exists. */
+  owner: QuestionCapture;
+  /** The practice it was opened in (its clock's start): a SETTLED capture is not carried into another. */
+  session: string;
+  text: string;
+  /** The agenda question this capture writes — set by its first write, never replaced. */
+  questionId?: ID;
+  /** The latest attempt: the words it carried and how the device answered. */
+  attempt?: { seq: number; carried: string; status: 'saving' | 'saved' | 'failed' };
+  /** The newest words IndexedDB acknowledged for this capture. */
+  written?: string;
+  /** Done was tapped: close once the latest words are acknowledged. */
+  closing?: boolean;
+  /** The field held focus — restored if the editor remounts (Routine complete). */
+  focused?: boolean;
+}
+
+interface LiveQuestionState {
+  capture: LiveQuestion | null;
+  /** What the last closed capture saved, said beside "+ Ask teacher". */
+  note: string | null;
+}
+
+export const useLiveQuestion = create<LiveQuestionState>(() => ({ capture: null, note: null }));
+
+let autosave: ReturnType<typeof setTimeout> | undefined;
+let attempts = 0;
+let writtenSeq = 0;
+
+const liveCapture = () => useLiveQuestion.getState().capture;
+const patchLive = (patch: Partial<LiveQuestion>) =>
+  useLiveQuestion.setState((s) => (s.capture ? { capture: { ...s.capture, ...patch } } : {}));
+const cancelAutosave = () => {
+  clearTimeout(autosave);
+  autosave = undefined;
+};
+
+/** The agenda entry a written capture belongs to now (a deleted class may have detached it), or undefined once removed. */
+export function liveQuestionEntry(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']) {
+  return capture.questionId ? agenda.find((e) => e.id === capture.questionId && e.kind === 'question') : undefined;
+}
+
+/**
+ * Nothing of this capture is left to write: its words acknowledged as they
+ * stand, or a blank field with no write outstanding. A blank field whose
+ * question's last write failed is NOT settled — the question exists in memory
+ * with words the device refused.
+ */
+export function liveQuestionSettled(capture: LiveQuestion): boolean {
+  const words = capture.text.trim();
+  if (!words) return !capture.attempt || capture.attempt.status === 'saved';
+  return capture.attempt?.status === 'saved' && capture.attempt.carried === words;
+}
+
+export function openLiveQuestion(instrumentId: ID, itemId: ID | undefined, session: string): void {
+  cancelAutosave();
+  const owner = openQuestionCapture(useStore.getState().db.lessons, instrumentId, itemId, new Date());
+  useLiveQuestion.setState({ capture: { owner, session, text: '', focused: true }, note: null });
+}
+
+export function editLiveQuestion(text: string): void {
+  if (!liveCapture()) return;
+  patchLive({ text, closing: false });
+  cancelAutosave();
+  if (text.trim()) autosave = setTimeout(() => saveLiveQuestion(), QUESTION_AUTOSAVE_MS);
+}
+
+export function focusLiveQuestion(focused: boolean): void {
+  patchLive({ focused });
+}
+
+/**
+ * The one write. Coalesces with an attempt already carrying these words
+ * (autosave + Done, a repeated tap, exit flushing) unless `force` — Try
+ * again, which writes even when memory has not changed.
+ */
+export function saveLiveQuestion(force = false): void {
+  cancelAutosave();
+  const capture = liveCapture();
+  if (!capture) return;
+  // Blank writes nothing — except Try again after a refused write, which
+  // writes the words that question already holds in memory.
+  const words = capture.text.trim() || (force && capture.attempt?.status === 'failed' ? capture.attempt.carried : '');
+  if (!words) return;
+  if (!force && capture.attempt?.carried === words && capture.attempt.status !== 'failed') return;
+  const store = useStore.getState();
+  let questionId = capture.questionId;
+  if (questionId) {
+    // Its own question, or nothing: removed elsewhere, it is never recreated.
+    if (!liveQuestionEntry(capture, store.db.lessonAgenda)) return;
+    store.updateLessonQuestion(questionId, words);
+  } else {
+    if (captureTargetProblem(store.db, capture.owner, new Date())) return;
+    questionId = store.addLessonQuestion({ text: words, ...capture.owner }) ?? undefined;
+    if (!questionId) return;
+  }
+  const seq = ++attempts;
+  // Captured in the same tick as the write: this attempt's own outcome.
+  const written = storageSettled();
+  patchLive({ questionId, attempt: { seq, carried: words, status: 'saving' } });
+  const settle = (ok: boolean) => {
+    const now = liveCapture();
+    if (now?.questionId !== questionId) return; // closed, or another capture
+    const latest = now.attempt?.seq === seq;
+    const patch: Partial<LiveQuestion> = {};
+    if (ok && seq > writtenSeq) {
+      writtenSeq = seq;
+      patch.written = words;
+    }
+    if (latest) {
+      patch.attempt = { seq, carried: words, status: ok ? 'saved' : 'failed' };
+      if (!ok) patch.closing = false;
+    }
+    patchLive(patch);
+    const after = liveCapture()!;
+    if (latest && ok && after.closing && liveQuestionSettled(after)) finishLiveQuestion();
+  };
+  written.then(
+    () => settle(true),
+    () => settle(false),
+  );
+}
+
+/** Choose the class deliberately: before the question exists it is the frozen owner; after, its own agenda target. */
+export function chooseLiveQuestionLesson(lessonId: ID | undefined): void {
+  const capture = liveCapture();
+  if (!capture) return;
+  if (capture.questionId) {
+    useStore.getState().setAgendaTarget(capture.questionId, lessonId);
+    saveLiveQuestion(true);
+    return;
+  }
+  const { instrumentId, itemId } = capture.owner;
+  patchLive({ owner: { instrumentId, ...(itemId ? { itemId } : {}), ...(lessonId ? { lessonId } : {}) } });
+  if (capture.text.trim()) saveLiveQuestion();
+}
+
+/** Keep the words without the item that is no longer valid (only before the question exists). */
+export function dropLiveQuestionItem(): void {
+  const capture = liveCapture();
+  if (!capture || capture.questionId) return;
+  const { instrumentId, lessonId } = capture.owner;
+  patchLive({ owner: { instrumentId, ...(lessonId ? { lessonId } : {}) } });
+  if (capture.text.trim()) saveLiveQuestion();
+}
+
+/** The question was removed elsewhere: deliberately write these words as a NEW question (its owner revalidated). */
+export function saveLiveQuestionAsNew(): void {
+  const capture = liveCapture();
+  if (!capture) return;
+  patchLive({ questionId: undefined, attempt: undefined, written: undefined });
+  saveLiveQuestion(true);
+}
+
+/** Leaving the editor (navigation, Finish, unmount): what is still waiting for its quiet interval is written now. */
+export function flushLiveQuestion(): void {
+  if (autosave !== undefined) saveLiveQuestion();
+}
+
+/**
+ * Done: flush, and close only once the latest words are acknowledged. Blank
+ * closes without writing (a written question stays as it was). Failed,
+ * refused or removed words keep the editor open — they are never discarded
+ * silently; clearing the field is the deliberate way to let them go.
+ */
+export function closeLiveQuestion(): void {
+  const capture = liveCapture();
+  if (!capture) return;
+  if (liveQuestionSettled(capture)) return finishLiveQuestion();
+  patchLive({ closing: true });
+  saveLiveQuestion();
+}
+
+function finishLiveQuestion(): void {
+  cancelAutosave();
+  const capture = liveCapture();
+  if (!capture) return;
+  const entry = liveQuestionEntry(capture, useStore.getState().db.lessonAgenda);
+  const lesson = entry?.lessonId ? useStore.getState().db.lessons.find((l) => l.id === entry.lessonId) : undefined;
+  useLiveQuestion.setState({
+    capture: null,
+    note: entry && capture.written ? `Question saved on this device${lesson ? ` for ${lessonLabel(lesson)}` : ' — unassigned'}.` : null,
+  });
+}

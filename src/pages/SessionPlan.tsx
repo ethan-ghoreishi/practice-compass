@@ -12,7 +12,6 @@ import {
   planClassCoverage,
   planPreviewDayHasPassed,
   planRunTime,
-  planStartRefusal,
   preparationDatesByItem,
   removePlanSegment,
   requiredClassWork,
@@ -157,6 +156,7 @@ function PlanPreview() {
   }
   const stale = rev !== baseRev || today !== baseDay;
   const coverage = planClassCoverage(plan, required, db.items, `${baseRev}|${baseDay}`);
+  const short = coverage.omitted.some((o) => o.why === 'short');
 
   const total = plan.segments.reduce((a, s) => a + s.minutes, 0);
   const unused = Math.max(0, plan.budgetMinutes - total);
@@ -179,6 +179,7 @@ function PlanPreview() {
       preparationDates,
       stageItemIds,
       params: clampSchedulingParams(db.settings),
+      requiredItemIds: required.itemIds,
       excludeIds: new Set(plan.segments.map((s) => s.itemId)),
     };
   };
@@ -231,21 +232,20 @@ function PlanPreview() {
       return;
     }
     if (plan.segments.length === 0 || stale) return;
-    // Class coverage is rechecked against LIVE data at the true instant: a
-    // partial-start choice made against other commitments never carries over.
-    const live = useStore.getState();
-    const liveCoverage = planClassCoverage(
-      plan,
-      requiredClassWork(live.db.lessonAgenda, live.db.lessons, live.db.items, instrumentId, trueNow),
-      live.db.items,
-      `${live.rev}|${todayISODate(trueNow)}`,
-    );
-    if (planStartRefusal(plan, liveCoverage, acceptedKey)) {
-      setRefusal('Your class work changed — check what is left out, then choose again.');
+    // Class coverage is rechecked against LIVE data at the true instant, by
+    // the store as it installs the run: a partial-start choice made against
+    // other commitments never carries over, and a sub-floor class slot never
+    // starts at all.
+    const refused = startPlan(plan, acceptedKey);
+    if (refused) {
+      setRefusal(
+        refused === 'short'
+          ? 'A class item here has less than its useful minutes — swap it back or regenerate.'
+          : 'Your class work changed — check what is left out, then choose again.',
+      );
       return;
     }
     setPlanMinutes(instrumentId, plan.budgetMinutes);
-    startPlan(plan);
     navigate('/plan');
   }
 
@@ -397,7 +397,11 @@ function PlanPreview() {
       )}
 
       <div className="row" style={{ gap: 10 }}>
-        {coverage.omitted.length > 0 && plan.segments.length > 0 ? (
+        {short ? (
+          <button className="btn btn-primary btn-lg grow" disabled>
+            <PlayIcon /> Start plan
+          </button>
+        ) : coverage.omitted.length > 0 && plan.segments.length > 0 ? (
           <button className="btn btn-primary btn-lg grow" onClick={() => start(coverage.key)} disabled={stale}>
             <PlayIcon /> Start without {coverage.omitted.length} class item{coverage.omitted.length === 1 ? '' : 's'}
           </button>
@@ -452,7 +456,11 @@ function ClassCoverageCard({
             <li key={o.itemId} className="small" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               <span dir="auto" style={{ fontWeight: 500 }}>{o.title}</span>
               <span className="tiny faint" dir="ltr">
-                left out — {o.why === 'capacity' ? `needs ${o.floorMinutes} min and does not fit` : 'you removed or swapped it'}
+                {o.why === 'capacity'
+                  ? `left out — needs ${o.floorMinutes} min and does not fit`
+                  : o.why === 'short'
+                    ? `needs ${o.floorMinutes} min — too short here to start; swap it back or regenerate`
+                    : 'left out — you removed or swapped it'}
               </span>
             </li>
           ))}

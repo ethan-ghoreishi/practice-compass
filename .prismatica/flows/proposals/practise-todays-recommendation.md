@@ -72,9 +72,12 @@ truth:
         beat; BPM by −/+ or typed, 40–240; three levels) sounds only while the
         clock runs on a visible screen: Pause, Finish, Discard, leaving, a
         hidden page or lost sound stop it, only a tap starts it again, and a
-        boundary cue mutes it briefly. '+ Ask teacher' adds one question for the
-        nearest upcoming class (or unassigned) without pausing anything, saying
-        'Saved' only once the device has it."
+        boundary cue mutes it briefly. '+ Ask teacher' writes one question for
+        the nearest upcoming class (or unassigned) on its own after a short
+        pause, without pausing anything — no Save to remember; later typing
+        updates that same question, 'Saved' appears only once the device has
+        it, and words not yet saved stay on screen, on Close and on Today until
+        they are."
       changes: Elapsed seconds accumulate only while the timer runs. A question asked
         here is one new lesson-agenda entry; tempo and level are never recorded.
       assumes: []
@@ -269,7 +272,7 @@ _nothing extra required_
    - Changes: A practice block is opened in memory with mode, focus and a 10-minute target derived from the item. The same tap closes the page's sound context and creates and resumes a fresh one, so a context that died while the app sat idle never outlives this tap.
 
 4. **The musician** Practises, optionally opening 'About this piece' or jotting a passing note; pauses and resumes as needed.
-   - Shows: The elapsed clock, and the item's notes on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time); pausing, finishing, discarding or navigating away releases it. Resume is a tap too and readies a fresh sound context again; if sound is paused or off on this page, a note says so and offers 'Turn on sound'. The item's Working notes save themselves after a short pause and whenever the musician leaves them — Done is optional, and a draft lands on the item it was typed for. An optional metronome (Start beat; BPM by −/+ or typed, 40–240; three levels) sounds only while the clock runs on a visible screen: Pause, Finish, Discard, leaving, a hidden page or lost sound stop it, only a tap starts it again, and a boundary cue mutes it briefly. '+ Ask teacher' adds one question for the nearest upcoming class (or unassigned) without pausing anything, saying 'Saved' only once the device has it.
+   - Shows: The elapsed clock, and the item's notes on request. While the block is genuinely running and its screen is visible, the app asks the device to keep the display awake (best-effort; feature-detected; never affects elapsed time); pausing, finishing, discarding or navigating away releases it. Resume is a tap too and readies a fresh sound context again; if sound is paused or off on this page, a note says so and offers 'Turn on sound'. The item's Working notes save themselves after a short pause and whenever the musician leaves them — Done is optional, and a draft lands on the item it was typed for. An optional metronome (Start beat; BPM by −/+ or typed, 40–240; three levels) sounds only while the clock runs on a visible screen: Pause, Finish, Discard, leaving, a hidden page or lost sound stop it, only a tap starts it again, and a boundary cue mutes it briefly. '+ Ask teacher' writes one question for the nearest upcoming class (or unassigned) on its own after a short pause, without pausing anything — no Save to remember; later typing updates that same question, 'Saved' appears only once the device has it, and words not yet saved stay on screen, on Close and on Today until they are.
    - Changes: Elapsed seconds accumulate only while the timer runs. A question asked here is one new lesson-agenda entry; tempo and level are never recorded.
 
 5. **The musician** Taps 'Finish'.

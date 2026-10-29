@@ -76,7 +76,7 @@ export default function RoutineRunner() {
   // Snapshot of what was actually recorded, frozen at the moment of finishing
   // — the finished screen must show exactly what was saved, never a value
   // recomputed later against a clock that has since stopped advancing.
-  const [result, setResult] = useState<{ segs: RunSegment[]; elapsedSeconds: number; blockIds: ID[] } | null>(null);
+  const [result, setResult] = useState<{ segs: RunSegment[]; elapsedSeconds: number; blockIds: ID[]; startedAt: string } | null>(null);
   // Whether what Finish wrote has reached IndexedDB — "Saved" is said only
   // then. A failed write keeps the run's outcome in memory (no second credit)
   // and Try again writes it again.
@@ -192,7 +192,7 @@ export default function RoutineRunner() {
   function finish() {
     if (!isMine || result) return;
     // The minutes are saved HERE, before Routine complete offers any capture.
-    setResult({ segs, elapsedSeconds, blockIds: finishRoutine() });
+    setResult({ segs, elapsedSeconds, startedAt: activeRoutine?.startedAt ?? 'routine', blockIds: finishRoutine() });
     acknowledge();
   }
 
@@ -279,6 +279,8 @@ export default function RoutineRunner() {
             <span dir="ltr">Nothing was recorded — no item-bound segment was practised in this run.</span>
           </p>
         )}
+        {/* A question typed as the run ended stays open, its words and controls intact. */}
+        <TeacherQuestionCapture recover session={result.startedAt} />
         {recorded.size > 0 && <RoutineCapture blockIds={result.blockIds} />}
         <button className="btn btn-primary btn-lg" onClick={() => navigate(backTo)}>
           {stage ? `Back to ${stage.code}` : 'Back'}
@@ -460,7 +462,7 @@ export default function RoutineRunner() {
 
       <Metronome running={activeRoutine.running} />
 
-      {captureInstrument && <TeacherQuestionCapture instrumentId={captureInstrument} itemId={seg.itemId && getItem(db, seg.itemId) ? seg.itemId : undefined} />}
+      <TeacherQuestionCapture instrumentId={captureInstrument} itemId={seg.itemId && getItem(db, seg.itemId) ? seg.itemId : undefined} session={activeRoutine.startedAt ?? 'routine'} />
 
       <details className="disclosure" style={{ textAlign: 'start' }}>
         <summary className="small">

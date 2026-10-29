@@ -255,7 +255,7 @@ export default function ActiveBlock() {
         </button>
       )}
 
-      <TeacherQuestionCapture instrumentId={active.instrumentId} itemId={item?.id} />
+      <TeacherQuestionCapture instrumentId={active.instrumentId} itemId={item?.id} session={active.startedAt} />
 
       {/* Inside a running plan: Finish is "move on and keep what I practised"
           (it saves through Close, then the plan advances); this is the other

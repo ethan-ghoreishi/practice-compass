@@ -23,10 +23,12 @@ truth:
         unassigned — and collects a class's open questions by that lesson's id,
         ordered with the Persian collator.
       shows: A 'Questions for your next class' list on the lesson and on the Teacher
-        report. A question asked mid-practice says 'Saved' only once the device
-        stored it, and its words survive a failed write.
-      changes: One new open question per save — never a preparation commitment and
-        never a change to practice priority.
+        report. A question asked mid-practice saves itself after a short pause
+        and says 'Saved' only once the device stored it; its words survive a
+        failed write, leaving the screen and the run ending.
+      changes: One new open question per capture — later typing, Done and Try again
+        update that same entry, never a second — never a preparation commitment
+        and never a change to practice priority.
       assumes: []
       evidence:
         method: inferred
@@ -70,9 +72,10 @@ truth:
         captures one line without pausing the clock, the beat or the notes. Who
         it is about is fixed when the field opens, so a routine boundary never
         moves it; an unbound segment asks about the instrument; a class that
-        stops being upcoming while typing is refused with the words kept and an
-        'unassigned' choice; Try again after a failed write rewrites the same
-        question, never a second."
+        stops being upcoming before the first save is refused with the words
+        kept and an 'unassigned' choice; Try again after a failed write
+        rewrites the same question, never a second; a question removed
+        elsewhere is never recreated except by 'Save as a new question'."
       status: works
   rules:
     - A question is never auto-cleared by practising.
@@ -135,8 +138,8 @@ _nothing extra required_
 ## Steps
 
 1. **Practice Compass** Keeps each question as its own lesson-agenda entry aimed at the class it names — the nearest upcoming one by default, changeable, or visibly unassigned — and collects a class's open questions by that lesson's id, ordered with the Persian collator.
-   - Shows: A 'Questions for your next class' list on the lesson and on the Teacher report. A question asked mid-practice says 'Saved' only once the device stored it, and its words survive a failed write.
-   - Changes: One new open question per save — never a preparation commitment and never a change to practice priority.
+   - Shows: A 'Questions for your next class' list on the lesson and on the Teacher report. A question asked mid-practice saves itself after a short pause and says 'Saved' only once the device stored it; its words survive a failed write, leaving the screen and the run ending.
+   - Changes: One new open question per capture — later typing, Done and Try again update that same entry, never a second — never a preparation commitment and never a change to practice priority.
 
 2. **The musician** Copies, downloads or prints the questions.
    - Shows: A numbered plain-text export that preserves mixed Farsi and English, or a friendly empty state when there are none.
@@ -155,7 +158,7 @@ The musician walks into the lesson with their real questions and a truthful summ
 ## Variations
 
 - **A question survives practice** — Practising never clears a question — it leaves the open list only when marked asked, and then stays with the class it was asked at. _(Works now)_
-- **Asked mid-practice** — '+ Ask teacher' on an ordinary or planned block or a running routine captures one line without pausing the clock, the beat or the notes. Who it is about is fixed when the field opens, so a routine boundary never moves it; an unbound segment asks about the instrument; a class that stops being upcoming while typing is refused with the words kept and an 'unassigned' choice; Try again after a failed write rewrites the same question, never a second. _(Works now)_
+- **Asked mid-practice** — '+ Ask teacher' on an ordinary or planned block or a running routine captures one line without pausing the clock, the beat or the notes. Who it is about is fixed when the field opens, so a routine boundary never moves it; an unbound segment asks about the instrument; a class that stops being upcoming before the first save is refused with the words kept and an 'unassigned' choice; Try again after a failed write rewrites the same question, never a second; a question removed elsewhere is never recreated except by 'Save as a new question'. _(Works now)_
 
 ## Rules
 

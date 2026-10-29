@@ -506,6 +506,39 @@
         "e1",
         "e2"
       ]
+    },
+    "pairAt5": {
+      "segments": [
+        [
+          "cd",
+          5
+        ]
+      ],
+      "omitted": [
+        [
+          "cw",
+          "capacity"
+        ]
+      ]
+    },
+    "pairAt5Swapped": [
+      [
+        "cd",
+        5
+      ]
+    ],
+    "tokenCoverage": {
+      "seated": [],
+      "omitted": [
+        [
+          "cd",
+          "edited"
+        ],
+        [
+          "cw",
+          "short"
+        ]
+      ]
     }
   },
   "ac4": {

@@ -211,6 +211,11 @@ export function useAcknowledgedSaves(): AckSaves {
         if (seqs.current[key] !== mine) return;
         if (live && live.current() !== carried) {
           live.again();
+          // An `again` that wrote nothing (the draft was cleared to blank, or
+          // it declined) leaves THIS write as the latest — and it answered:
+          // settle it for the words it carried, never leave it saving.
+          // `SaveStatus` shows "Saved." only while those words are on screen.
+          if (seqs.current[key] === mine) put(key, { status: 'saved', carried });
           return;
         }
         put(key, { status: 'saved', carried });

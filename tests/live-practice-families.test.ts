@@ -72,7 +72,7 @@ const MORNING = new Date(2026, 9, 28, 8, 0);
 const EVENING = new Date(2026, 9, 28, 19, 0);
 const T = new Date(2026, 8, 1, 12).toISOString();
 
-const storage = { fail: false, writes: 0, pending: Promise.resolve() as Promise<void>, last: '' };
+const storage = { fail: false, writes: 0, pending: Promise.resolve() as Promise<void>, last: '', gate: null as Promise<void> | null };
 type Store = typeof import('../src/store/useStore').useStore;
 let useStore: Store;
 
@@ -85,7 +85,7 @@ beforeAll(async () => {
       setItem: async (_name: string, value: string) => {
         storage.writes += 1;
         storage.last = value;
-        const write = storage.fail ? Promise.reject(new Error('storage is full')) : Promise.resolve();
+        const write = storage.gate ?? (storage.fail ? Promise.reject(new Error('storage is full')) : Promise.resolve());
         write.catch(() => undefined);
         storage.pending = write;
       },
@@ -550,6 +550,39 @@ describe('class plan capacity', () => {
     const reordered = movePlanSegment(t20.plan, 1, -1);
     expect(removePlanSegment(reordered, 0).segments.map((s) => s.itemId)).toEqual(['w1']);
     expect(reordered.segments.map((s) => s.itemId)).toEqual(['w2', 'w1']);
+
+    // USEFUL FLOORS THROUGH EVERY PREVIEW EDIT AND START. A whole work and a
+    // drill for the same class at 5: the drill is seated, the work named.
+    const cw = item('cw', 'Class work', { itemType: 'full_piece', importance: 5 });
+    const cd = item('cd', 'Class drill', { importance: 4 });
+    const pair = [cw, cd, ...optional];
+    const pairAgenda = [prep('pcw', 'cw', 'L1'), prep('pcd', 'cd', 'L1')];
+    const five = build(pair, pairAgenda, 5);
+    expect({ segments: pairs(five.plan), omitted: five.coverage.omitted.map((o) => [o.itemId, o.why]) }).toEqual(X.pairAt5);
+    // Swapping the ONLY row never seats the 10-minute work in a 5-minute slot.
+    const swapArgs = { instrumentId: SETAR, now: EVENING, items: pair, blocks: [], reviews: [], preparationDates: preparationDatesByItem(pairAgenda, [L1, L2], EVENING), requiredItemIds: five.required.itemIds };
+    const swappedOnly = swapSegment(five.plan, 0, swapArgs);
+    expect(pairs(swappedOnly)).toEqual(X.pairAt5Swapped);
+    expect(swappedOnly.segments.some((s) => s.itemId === 'cw')).toBe(false);
+    // (Discriminator: the same swap blind to the required set is exactly the token slot.)
+    expect(pairs(swapSegment(five.plan, 0, { ...swapArgs, requiredItemIds: [] }))).toEqual([['cw', 5]]);
+    // Coverage and every Start door judge a sub-floor class slot as NOT seated,
+    // and no partial-start choice can accept it (the plan the old swap made).
+    const token: SessionPlan = { ...five.plan, segments: [{ ...five.plan.segments[0], itemId: 'cw', title: 'Class work', minutes: 5, floorMinutes: 10 }] };
+    const tokenCov = planClassCoverage(token, five.required, pair, 'rev1|2026-10-28');
+    expect({ seated: tokenCov.seated, omitted: tokenCov.omitted.map((o) => [o.itemId, o.why]) }).toEqual(X.tokenCoverage);
+    expect(planStartRefusal(token, tokenCov, tokenCov.key)).toBe('short');
+    // Run installation (the store's startPlan) rechecks live: the token plan
+    // never becomes a running plan, an unaccepted partial neither; the swap
+    // result starts only with the choice made against its own coverage.
+    useStore.setState({ db: db({ items: pair, lessons: [L1, L2], lessonAgenda: pairAgenda }), active: null, activePlan: null, activeRoutine: null });
+    const liveKey = (p: SessionPlan) => planClassCoverage(p, five.required, pair, `${useStore.getState().rev}|2026-10-28`).key;
+    expect(useStore.getState().startPlan(token, liveKey(token))).toBe('short');
+    expect(useStore.getState().startPlan(swappedOnly)).toBe('partial');
+    expect(useStore.getState().activePlan).toBeNull();
+    expect(useStore.getState().startPlan(swappedOnly, liveKey(swappedOnly))).toBeNull();
+    expect(useStore.getState().activePlan!.segments.map((s) => [s.itemId, s.minutes])).toEqual(X.pairAt5Swapped);
+    useStore.setState({ activePlan: null });
   });
 });
 
@@ -782,6 +815,132 @@ function tickLevels(log: Ev[]): [number, number][] {
       return [ms(tick.t), events.length ? (events.at(-1)!.x.v as number) : 1];
     });
 }
+
+// ---------------------------------------------------------------------------
+// ac-5 support — the live question's one write lifecycle, against a storage
+// whose every answer this file controls (the real UI proof is the browser's).
+// ---------------------------------------------------------------------------
+
+describe('the live question lifecycle', () => {
+  it('a live question writes one agenda question whose every answered write settles', async () => {
+    const live = await import('../src/store/useStore');
+    const L = lesson('L1', '2026-10-30');
+    useStore.setState({ db: db({ items: [item('a', 'A')], lessons: [L] }), active: null, activePlan: null, activeRoutine: null });
+    const cap = () => live.useLiveQuestion.getState().capture;
+    const qs = () => useStore.getState().db.lessonAgenda.filter((e) => e.kind === 'question') as (LessonAgendaEntry & { text: string; itemId?: string; lessonId?: string })[];
+    const onDisk = () => (JSON.parse(storage.last) as { state: { db: PracticeDB } }).state.db.lessonAgenda.filter((e) => e.kind === 'question').map((q) => [q.id, (q as { text: string }).text]);
+    /** Let an answered write's acknowledgement run (a resolved promise's continuation, no timer). */
+    const flush = async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+    /** A write the test answers by hand. */
+    const hold = () => {
+      let answer!: (ok: boolean) => void;
+      storage.gate = new Promise<void>((res, rej) => (answer = (ok) => (ok ? res() : rej(new Error('refused')))));
+      storage.gate.catch(() => undefined);
+      return async (ok: boolean) => {
+        storage.gate = null;
+        answer(ok);
+        await flush();
+      };
+    };
+
+    // Opening and closing blank (or whitespace) creates nothing.
+    live.openLiveQuestion(SETAR, 'a', 's1');
+    expect(cap()!.owner).toEqual({ instrumentId: SETAR, itemId: 'a', lessonId: 'L1' });
+    live.editLiveQuestion('   ');
+    live.closeLiveQuestion();
+    expect([cap(), qs()]).toEqual([null, []]);
+
+    // First write appends ONE question; later writes update THAT id.
+    live.openLiveQuestion(SETAR, 'a', 's1');
+    live.editLiveQuestion('Which finger?');
+    live.saveLiveQuestion();
+    await flush();
+    const id = cap()!.questionId!;
+    expect([cap()!.attempt?.status, cap()!.written, onDisk()]).toEqual(['saved', 'Which finger?', [[id, 'Which finger?']]]);
+    // Coalesced: the same words again write nothing more.
+    const writes = storage.writes;
+    live.saveLiveQuestion();
+    live.flushLiveQuestion();
+    expect(storage.writes).toBe(writes);
+
+    // Pending write, then the field cleared to blank: no blank question, the
+    // written one untouched, and the answer SETTLES — on success…
+    let answer = hold();
+    live.editLiveQuestion('Which finger for the trill?');
+    live.saveLiveQuestion();
+    expect(cap()!.attempt?.status).toBe('saving');
+    live.editLiveQuestion('');
+    live.saveLiveQuestion();
+    await answer(true);
+    expect([cap()!.attempt?.status, cap()!.written, live.liveQuestionSettled(cap()!), qs().map((q) => [q.id, q.text])]).toEqual(['saved', 'Which finger for the trill?', true, [[id, 'Which finger for the trill?']]]);
+    // …and on failure: settled as failed, never saving, and not "settled" — the
+    // question in memory holds words the device refused; Try again writes them.
+    answer = hold();
+    live.editLiveQuestion('Left hand?');
+    live.saveLiveQuestion();
+    live.editLiveQuestion('  ');
+    await answer(false);
+    expect([cap()!.attempt?.status, cap()!.written, live.liveQuestionSettled(cap()!)]).toEqual(['failed', 'Which finger for the trill?', false]);
+    live.closeLiveQuestion(); // Done never closes over refused words
+    expect(cap()).not.toBeNull();
+    live.saveLiveQuestion(true);
+    await flush();
+    // Acknowledged now, so the Done asked for completes.
+    expect([cap(), onDisk()]).toEqual([null, [[id, 'Left hand?']]]);
+
+    // An OLDER acknowledgement never closes, clears or marks newer words saved.
+    live.openLiveQuestion(SETAR, 'a', 's1');
+    live.editLiveQuestion('Second capture');
+    live.saveLiveQuestion();
+    await flush();
+    const id2 = cap()!.questionId!;
+    expect(id2).not.toBe(id);
+    answer = hold();
+    live.editLiveQuestion('Older words');
+    live.closeLiveQuestion(); // Done: close only once the LATEST words land
+    live.editLiveQuestion('Newer words');
+    live.saveLiveQuestion();
+    await answer(true);
+    expect([cap()!.text, cap()!.attempt?.carried, cap()!.attempt?.status, cap()!.closing]).toEqual(['Newer words', 'Newer words', 'saved', false]);
+    // A failed write keeps words and id; Try again writes even with memory unchanged.
+    storage.fail = true;
+    live.editLiveQuestion('Retry me');
+    live.saveLiveQuestion();
+    await flush();
+    expect([cap()!.attempt?.status, cap()!.questionId]).toEqual(['failed', id2]);
+    storage.fail = false;
+    const before = storage.writes;
+    live.saveLiveQuestion(true);
+    await flush();
+    expect([storage.writes - before, cap()!.attempt?.status, onDisk()]).toEqual([1, 'saved', [[id, 'Left hand?'], [id2, 'Retry me']]]);
+
+    // Removed elsewhere: never recreated by a later write; only a deliberate new question.
+    useStore.getState().removeAgendaEntry(id);
+    useStore.getState().removeAgendaEntry(id2);
+    live.editLiveQuestion('After removal');
+    live.saveLiveQuestion();
+    await flush();
+    expect(qs()).toEqual([]);
+    live.saveLiveQuestionAsNew();
+    await flush();
+    expect(qs().map((q) => [q.text, q.itemId, q.lessonId])).toEqual([['After removal', 'a', 'L1']]);
+    expect(cap()!.questionId).not.toBe(id2);
+
+    // Done closes once acknowledged; a NEW capture is a new question.
+    live.closeLiveQuestion();
+    expect([cap(), live.useLiveQuestion.getState().note]).toEqual([null, 'Question saved on this device for 2026-10-30.']);
+    live.openLiveQuestion(SETAR, undefined, 's2');
+    live.editLiveQuestion('Instrument question');
+    live.closeLiveQuestion();
+    await flush();
+    expect(qs().map((q) => [q.text, q.itemId ?? null])).toEqual([['After removal', 'a'], ['Instrument question', null]]);
+    expect(cap()).toBeNull();
+  });
+});
 
 describe('the metronome', () => {
   it('metronome scheduling and cue priority survive sound lifecycle changes', async () => {

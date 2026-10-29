@@ -39,6 +39,7 @@ import { closeOverrideDate, relativeDay, reviewOverrideSurvivesResultChange, rev
 import { useDecisionNow } from '../components/useDecisionNow';
 import { closeDraftFor, closeDraftKey, dropCloseDraft, holdCloseDraft } from '../components/closeDraft';
 import SchedulingExplanation from '../components/SchedulingExplanation';
+import TeacherQuestionCapture from '../components/TeacherQuestionCapture';
 
 const SCOPE_OPTIONS: { value: EvidenceScope; label: string }[] = [
   { value: 'focused', label: 'Focused work — a part or one aspect' },
@@ -604,6 +605,10 @@ export default function CloseBlock() {
           </>
         )}
       </div>
+
+      {/* A question still open from the practice itself: its own lifecycle,
+          independent of the one below. */}
+      <TeacherQuestionCapture recover session={active?.startedAt} />
 
       <div className="card card-quiet stack-sm">
         <div className="row between">

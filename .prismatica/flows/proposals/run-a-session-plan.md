@@ -48,7 +48,8 @@ truth:
         the rest' or 'Give to one…' — each entry only up to its own ceiling, a
         cancelled choice changing nothing, leaving them needing no tap;
         Regenerate or a new length reallocates. A swap keeps the slot's minutes
-        and offers only material whose floor fits it.
+        and offers only material whose floor fits it — the next class's work
+        too, even in a one-row plan.
       changes: Only a local copy of the plan — nothing is saved yet.
       assumes: []
       evidence:
@@ -60,7 +61,7 @@ truth:
       shows: "The runner: the whole list in the musician's order, the current segment
         highlighted, with time left, unused and recorded shown separately. Start
         refuses visibly when the day, the data or the class coverage moved since
-        the preview."
+        the preview, and never starts a class item below its useful minutes."
       changes: The running plan is held in app state (never in the database, never
         synced), and the chosen length is remembered for this instrument.
       assumes: []
@@ -206,11 +207,11 @@ _nothing extra required_
    - Shows: The plan preview: each segment with its minutes, bucket, item and a one-sentence reason. The total equals the chosen budget unless every segment that may take minutes is at its 25-minute ceiling; the warm-up and cool-down never exceed their shares or take leftover minutes. A class-coverage card says how much of the next class's work is in, names anything left out and why (does not fit, or removed or swapped by the musician), offers the length that holds it all ('Use N min', never past 120), and lists resting class work as resting.
 
 2. **The musician** Reorders (Move earlier / Move later, by keyboard or touch), swaps, removes or regenerates segments until the shape looks right.
-   - Shows: A move carries the whole segment — item, minutes, role, reason — and nothing else changes. A removal leaves every other segment's minutes as they were and shows the freed minutes as unused, offering 'Spread over the rest' or 'Give to one…' — each entry only up to its own ceiling, a cancelled choice changing nothing, leaving them needing no tap; Regenerate or a new length reallocates. A swap keeps the slot's minutes and offers only material whose floor fits it.
+   - Shows: A move carries the whole segment — item, minutes, role, reason — and nothing else changes. A removal leaves every other segment's minutes as they were and shows the freed minutes as unused, offering 'Spread over the rest' or 'Give to one…' — each entry only up to its own ceiling, a cancelled choice changing nothing, leaving them needing no tap; Regenerate or a new length reallocates. A swap keeps the slot's minutes and offers only material whose floor fits it — the next class's work too, even in a one-row plan.
    - Changes: Only a local copy of the plan — nothing is saved yet.
 
 3. **The musician** Taps 'Start plan' — or, when class work is left out, 'Start without N class items', a choice bound to exactly that coverage.
-   - Shows: The runner: the whole list in the musician's order, the current segment highlighted, with time left, unused and recorded shown separately. Start refuses visibly when the day, the data or the class coverage moved since the preview.
+   - Shows: The runner: the whole list in the musician's order, the current segment highlighted, with time left, unused and recorded shown separately. Start refuses visibly when the day, the data or the class coverage moved since the preview, and never starts a class item below its useful minutes.
    - Changes: The running plan is held in app state (never in the database, never synced), and the chosen length is remembered for this instrument.
 
 4. **The musician** Taps 'Start' on the current segment.

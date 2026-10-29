@@ -2,6 +2,40 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## A live teacher question saves itself; a class slot never starts below its floor (2026-10-29)
+
+Rework of the 2026-10-28 lane (same contract, owner amendment of
+2026-10-29) — no schema change, no persisted draft.
+
+- **Owner decision: live questions autosave.** Supersedes only the explicit
+  Save and the Cancel of 2026-10-28's "Ask teacher". A remembered Save lost
+  thoughts, and the component-local draft vanished when a Routine finished on
+  its own (the result screen replaced the field) or the screen was left. The
+  words now live in an in-memory store slice (`useLiveQuestion`, never
+  persisted) with ONE lifecycle — quiet-interval autosave (800 ms, the notes'
+  own), Done, Try again, flush on leaving — so a boundary, the automatic end,
+  background catch-up or navigation never takes them; Routine complete, Close
+  and Today show what is still unsaved. The first write creates one agenda
+  question for the owner frozen at opening (revalidated then); every later
+  write updates that id and never recreates it once removed elsewhere ("Save
+  as a new question" is the deliberate way). Blank never writes; Done closes
+  only once the latest words are acknowledged; a refused write keeps words,
+  owner and id until Try again. Saved means IndexedDB acknowledged those words
+  — a refused write is never called durable, and a reload shows the last
+  acknowledged text.
+- **Every answered save settles.** The shared acknowledgement
+  (`useAcknowledgedSaves`) left "Saving…" forever when the draft changed while
+  a write was pending and its re-issue declined (cleared to blank). Fixed at
+  that choke point for every editor using it: the answered write settles for
+  the words it carried.
+- **A required class item is never a token slot.** Swapping the only row of a
+  5-minute class plan could seat a 10-minute whole work at 5, counted as
+  covered and startable. A swap now applies the required item's floor however
+  few rows the plan has; coverage counts an under-floor required item as
+  `short`, not seated; and `startPlan` — the one door installing a run —
+  rechecks coverage against live data and the true day, refusing a short slot
+  outright and an unaccepted omission.
+
 ## Live practice: freed time on request, the next class reserved, a question and a beat without stopping (2026-10-28)
 
 One heavy lane (contract 20261028-…-1934, issue #58), schema **17**, no new

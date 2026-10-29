@@ -119,6 +119,35 @@ const LIVE_PORTS = `(() => {
   Object.defineProperty(window, '__visibility', {
     value: (h) => { hidden = h; document.dispatchEvent(new Event('visibilitychange')); },
   });
+  // Held writes: while held, every readwrite transaction the app opens stays
+  // alive on a chain of no-op reads until the test answers it — committed, or
+  // aborted (a delayed refusal). The harness's own reads and barriers open
+  // theirs through 'unslowed', as with its slow-storage fixture.
+  const openTx = IDBDatabase.prototype.transaction;
+  let holding = false;
+  const held = [];
+  function transaction(stores, mode, options) {
+    const tx = openTx.call(this, stores, mode, options);
+    if (mode !== 'readwrite' || !holding) return tx;
+    const store = tx.objectStore(tx.objectStoreNames[0]);
+    const w = { answer: null };
+    held.push(w);
+    tx.commit = () => {};
+    const spin = () => {
+      if (w.answer === null) store.count().onsuccess = spin;
+      else if (w.answer === 'refuse') tx.abort();
+    };
+    spin();
+    return tx;
+  }
+  transaction.unslowed = openTx;
+  IDBDatabase.prototype.transaction = transaction;
+  Object.defineProperty(window, '__writes', {
+    value: {
+      hold: () => { holding = true; },
+      answer: (ok) => { holding = false; for (const w of held.splice(0)) w.answer = ok ? 'commit' : 'refuse'; },
+    },
+  });
 })();`;
 
 function fixture(): string {
@@ -146,6 +175,19 @@ function fixture(): string {
     pathways: [],
     pathwayStages: [],
     pathwayRoutines: [
+      {
+        id: 'rt-rest',
+        instrumentId: SETAR,
+        name: 'Resting close',
+        segments: [
+          { label: 'Mahur phrases', minutes: 1, itemId: B },
+          { label: 'Breathe slowly', minutes: 1 },
+          { label: 'Rest the hand', minutes: 1 },
+        ],
+        order: 1,
+        createdAt: T,
+        updatedAt: T,
+      },
       {
         id: 'rt-live',
         instrumentId: SETAR,
@@ -221,6 +263,12 @@ async function repairStorage(page: Page): Promise<void> {
   });
 }
 
+/** Hold every app write until `answerWrites` commits or refuses it. */
+const holdWrites = (page: Page) => page.evaluate(() => (window as unknown as { __writes: { hold(): void } }).__writes.hold());
+const answerWrites = (page: Page, ok: boolean) => page.evaluate((k) => (window as unknown as { __writes: { answer(ok: boolean): void } }).__writes.answer(k), ok);
+const ask = (page: Page) => page.getByRole('form', { name: 'Ask teacher' });
+const askStatus = (page: Page, text: string | RegExp) => ask(page).getByText(text);
+
 async function startBlock(app: PracticeApp, itemId: string, title: string): Promise<void> {
   await goTo(app, `/items/${itemId}`, { arrival: title });
   await app.page.getByRole('button', { name: 'Start a block' }).click();
@@ -258,6 +306,7 @@ describe('asking the teacher while practising', () => {
         const start = await db(app);
         const preparations = start.lessonAgenda.filter((e) => e.kind === 'preparation');
         const ranked = recommendForInstrument(SETAR, start.items, start.blocks, CLOCK, preparationDatesByItem(start.lessonAgenda, start.lessons, CLOCK)).best!.score.item.id;
+        const SAVED_L0 = `Saved on this device for ${L0_LABEL}.`;
 
         // --- ORDINARY: a notes draft open, the clock running -----------------
         await startBlock(app, A, A_TITLE);
@@ -268,22 +317,36 @@ describe('asking the teacher while practising', () => {
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
         // Explicit opening focuses the field; ownership is named.
         await askBox(page).and(page.locator(':focus')).waitFor();
-        await page.getByRole('form', { name: 'Ask teacher' }).getByText(`About: ${A_TITLE}`).waitFor();
+        await ask(page).getByText(`About: ${A_TITLE}`).waitFor();
         expect(await page.getByLabel('Ask at', { exact: true }).inputValue(), engine).toBe(L0);
         // Only this instrument's upcoming classes, plus unassigned — never the Tar class.
         expect(await page.getByLabel('Ask at', { exact: true }).locator('option').allInnerTexts(), engine).toEqual([L0_LABEL, L1_LABEL, 'No class — save it unassigned']);
-        // Blank saves nothing; Cancel writes nothing.
-        await page.getByRole('button', { name: 'Save question', disabled: true }).waitFor();
-        await page.getByRole('button', { name: 'Cancel' }).click();
+        // Opening and closing with only whitespace creates nothing.
+        await askBox(page).fill('   ');
+        await page.clock.runFor(1_000);
+        await ask(page).getByRole('button', { name: 'Done' }).click();
         await page.getByRole('button', { name: '+ Ask teacher' }).waitFor();
         expect(questions(await db(app)), engine).toEqual([]);
 
+        // QUIET-INTERVAL AUTOSAVE: nothing is written while typing goes on…
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
         await askBox(page).fill('Which finger for the trill?');
-        await page.getByRole('button', { name: 'Save question' }).click();
-        await page.getByText(`Question saved on this device for ${L0_LABEL}.`).waitFor();
+        await askStatus(page, 'Saves on this device when you pause.').waitFor();
+        await page.clock.runFor(500);
+        expect(questions(await db(app)), engine).toEqual([]);
+        // …and after the pause the words are on the device, with no Save pressed,
+        // the field still open, still focused.
+        await page.clock.runFor(400);
+        await askStatus(page, SAVED_L0).waitFor();
+        await askBox(page).and(page.locator(':focus')).waitFor();
         const q1 = await questionLanded(app, 'Which finger for the trill?');
         expect([q1.itemId, q1.lessonId, q1.instrumentId], engine).toEqual([A, L0, SETAR]);
+        // More typing updates the SAME question.
+        await askBox(page).fill('Which finger for the trill, 2 or 3?');
+        await page.clock.runFor(800);
+        await askStatus(page, SAVED_L0).waitFor();
+        expect((await questionLanded(app, 'Which finger for the trill, 2 or 3?')).id, engine).toBe(q1.id);
+        await askBox(page).and(page.locator(':focus')).waitFor();
         // The clock, the notes draft and the block were never touched: the same
         // running interval (never paused or restarted), still advancing.
         await page.clock.runFor(3_000);
@@ -298,35 +361,93 @@ describe('asking the teacher while practising', () => {
         await page.getByText(/^0:0[4-9]$|^0:[1-5]\d$/).first().waitFor();
         expect(await notesBox(page).inputValue(), engine).toBe('the draft I am in the middle of');
 
-        // No class chosen: visibly unassigned.
+        // An OLDER acknowledgement never marks newer words saved, clears or closes them.
+        await holdWrites(page);
+        await askBox(page).fill('Does the bow lift here?');
+        await page.clock.runFor(800);
+        await askStatus(page, 'Saving…').waitFor();
+        await askBox(page).fill('Does the bow lift here, or later?');
+        await answerWrites(page, true);
+        await askStatus(page, 'Saves on this device when you pause.').waitFor();
+        expect(await askBox(page).inputValue(), engine).toBe('Does the bow lift here, or later?');
+        await page.clock.runFor(800);
+        await askStatus(page, SAVED_L0).waitFor();
+        expect((await questionLanded(app, 'Does the bow lift here, or later?')).id, engine).toBe(q1.id);
+
+        // CLEARED WHILE A WRITE IS PENDING: no blank question, the written one
+        // kept, and the answer settles — on success…
+        await holdWrites(page);
+        await askBox(page).fill('Should the left hand rest?');
+        await page.clock.runFor(800);
+        await askStatus(page, 'Saving…').waitFor();
+        await askBox(page).fill('');
+        await answerWrites(page, true);
+        await askStatus(page, 'The field is empty — nothing new is saved; your saved question stays as it was.').waitFor();
+        expect((await questionLanded(app, 'Should the left hand rest?')).id, engine).toBe(q1.id);
+        // …and on a delayed refusal (whitespace this time): failed, never Saving,
+        // and Try again writes the words that question still holds.
+        await holdWrites(page);
+        await askBox(page).fill('Left hand again?');
+        await page.clock.runFor(800);
+        await askStatus(page, 'Saving…').waitFor();
+        await askBox(page).fill('  ');
+        await answerWrites(page, false);
+        await askStatus(page, 'Not saved — this device refused the last words, which your question still holds. The field is empty.').waitFor();
+        await ask(page).getByRole('button', { name: 'Try again' }).click();
+        await askStatus(page, 'The field is empty — nothing new is saved; your saved question stays as it was.').waitFor();
+        expect((await questionLanded(app, 'Left hand again?')).id, engine).toBe(q1.id);
+        expect(questions(await db(app)).length, engine).toBe(1);
+
+        // A REFUSED write keeps the words, owner and id, and its Try again
+        // survives internal navigation: Today holds the words.
+        await breakStorage(page);
+        await askBox(page).fill('Should I slow down here?');
+        await page.clock.runFor(800);
+        await askStatus(page, 'Not saved — this device refused the write. Your words are still here.').waitFor();
+        await goTo(app, '/');
+        expect(await askBox(page).inputValue(), engine).toBe('Should I slow down here?');
+        await ask(page).getByText(`About: ${A_TITLE}`).waitFor();
+        await repairStorage(page);
+        await ask(page).getByRole('button', { name: 'Try again' }).click();
+        expect((await questionLanded(app, 'Should I slow down here?')).id, engine).toBe(q1.id);
+        // Back in the block the same capture is still open, saved.
+        await goTo(app, '/active');
+        await askStatus(page, SAVED_L0).waitFor();
+        expect(await askBox(page).inputValue(), engine).toBe('Should I slow down here?');
+        // Refused again, then a reload: the device still holds the OLDER
+        // acknowledged words — never the refused ones.
+        await breakStorage(page);
+        await askBox(page).fill('Unsaved newer words');
+        await page.clock.runFor(800);
+        await askStatus(page, 'Not saved — this device refused the write. Your words are still here.').waitFor();
+        await reload(app);
+        await page.getByRole('button', { name: '+ Ask teacher' }).waitFor();
+        expect(questions(await db(app)).map((q) => [q.id, q.text]), engine).toEqual([[q1.id, 'Should I slow down here?']]);
+
+        // A deliberate class choice; Done closes once the words are on the device.
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
         await askBox(page).fill('Is the tempo too fast?');
         await page.getByLabel('Ask at', { exact: true }).selectOption('');
-        await page.getByRole('button', { name: 'Save question' }).click();
+        await ask(page).getByRole('button', { name: 'Done' }).click();
         await page.getByText('Question saved on this device — unassigned.').waitFor();
-        expect((await questionLanded(app, 'Is the tempo too fast?')).lessonId, engine).toBeUndefined();
+        const q2 = await questionLanded(app, 'Is the tempo too fast?');
+        expect([q2.lessonId, q2.itemId], engine).toEqual([undefined, A]);
 
-        // A FAILED write keeps the words; Try again writes the SAME question once.
+        // FINISH before the pause: the words are flushed on the way out, and the
+        // editor is still there on Close; Close's own question stays independent.
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
-        await askBox(page).fill('Should the left hand rest here?');
-        await breakStorage(page);
-        await page.getByRole('button', { name: 'Save question' }).click();
-        await page.getByText('Not saved — this device refused the write. Nothing on screen was lost.').waitFor();
-        expect(await askBox(page).inputValue(), engine).toBe('Should the left hand rest here?');
-        await repairStorage(page);
-        await page.getByRole('button', { name: 'Try again' }).click();
-        await page.getByText(`Question saved on this device for ${L0_LABEL}.`).waitFor();
-        await questionLanded(app, 'Should the left hand rest here?');
-
-        // A LATER question at Close stays its own entry.
+        await askBox(page).fill('Asked just before finishing');
         await page.getByRole('button', { name: 'Finish' }).click();
+        await askStatus(page, SAVED_L0).waitFor();
+        const q3 = await questionLanded(app, 'Asked just before finishing');
+        expect([q3.itemId, q3.lessonId], engine).toEqual([A, L0]);
         await page.getByRole('group', { name: 'Make this a teacher question?' }).getByRole('button', { name: 'Yes' }).click();
-        await page.getByRole('textbox', { name: 'Question for your teacher' }).fill('How long should the pause be?');
+        await page.locator('textarea[aria-label="Question for your teacher"]').fill('How long should the pause be?');
         await page.getByRole('button', { name: 'Save without a result' }).click();
         await page.getByRole('navigation', { name: 'Primary' }).waitFor();
         await questionLanded(app, 'How long should the pause be?');
 
-        // --- PLAN: the segment's own item, the run untouched -----------------
+        // --- PLAN: the segment's own item; navigation while a write is pending
         await goTo(app, '/plan?minutes=20');
         await page.getByRole('button', { name: /^Start plan|^Start without/ }).click();
         const planBefore = (await persisted(app)).activePlan!;
@@ -334,19 +455,29 @@ describe('asking the teacher while practising', () => {
         const firstTitle = (await db(app)).items.find((i) => i.id === first.itemId)!.title;
         await page.getByRole('button', { name: `Start ${firstTitle}` }).click();
         await page.getByRole('button', { name: 'Finish' }).waitFor();
+        // A capture settled in the last practice is not carried into this one.
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
-        await page.getByRole('form', { name: 'Ask teacher' }).getByText(`About: ${firstTitle}`).waitFor();
+        await ask(page).getByText(`About: ${firstTitle}`).waitFor();
         await askBox(page).fill('Plan question');
-        await page.getByRole('button', { name: 'Save question' }).click();
-        await page.getByText(/^Question saved on this device/).waitFor();
-        expect((await questionLanded(app, 'Plan question')).itemId, engine).toBe(first.itemId);
+        await page.clock.runFor(800);
+        await askStatus(page, /^Saved on this device/).waitFor();
+        const q5 = await questionLanded(app, 'Plan question');
+        expect(q5.itemId, engine).toBe(first.itemId);
+        await holdWrites(page);
+        await askBox(page).fill('Plan question, part two');
+        await goTo(app, '/');
+        await askStatus(page, 'Saving…').waitFor();
+        await answerWrites(page, true);
+        expect((await questionLanded(app, 'Plan question, part two')).id, engine).toBe(q5.id);
+        await goTo(app, '/active');
+        await askStatus(page, /^Saved on this device/).waitFor();
         const during = await persisted(app);
         expect([during.activePlan!.pointer, during.active!.running, during.active!.itemId], engine).toEqual([planBefore.pointer, true, first.itemId]);
         await page.getByRole('button', { name: 'Skip this one — save nothing' }).click();
         await page.getByRole('button', { name: 'End the plan' }).click();
         await page.getByRole('navigation', { name: 'Primary' }).waitFor();
 
-        // --- ROUTINE: a boundary while typing never retargets the words ------
+        // --- ROUTINE: boundaries, Skip and the automatic end keep the words --
         await goTo(app, '/routine/rt-live');
         await page.getByRole('button', { name: 'Start', exact: true }).click();
         await page.getByRole('button', { name: 'Pause' }).waitFor();
@@ -358,20 +489,11 @@ describe('asking the teacher while practising', () => {
         // Same field, same words, same owner, still focused: nothing remounted.
         await askBox(page).and(page.locator(':focus')).waitFor();
         expect(await askBox(page).inputValue(), engine).toBe('Asked while on open strings');
-        await page.getByRole('form', { name: 'Ask teacher' }).getByText(`About: ${A_TITLE}`).waitFor();
-        await page.getByRole('button', { name: 'Save question' }).click();
-        await page.getByText(/^Question saved on this device/).waitFor();
+        await ask(page).getByText(`About: ${A_TITLE}`).waitFor();
+        await askStatus(page, SAVED_L0).waitFor();
         expect((await questionLanded(app, 'Asked while on open strings')).itemId, engine).toBe(A);
-        // The unbound segment: an instrument question, never a guessed item.
-        await page.getByRole('button', { name: '+ Ask teacher' }).click();
-        await page.getByText('About this instrument — no item.').waitFor();
-        await askBox(page).fill('Asked while breathing');
-        await page.getByRole('button', { name: 'Save question' }).click();
-        await page.getByText(/^Question saved on this device/).waitFor();
-        expect((await questionLanded(app, 'Asked while breathing')).itemId, engine).toBeUndefined();
         const run1 = (await persisted(app)).activeRoutine!;
-        // One clock, its boundary claimed once by the natural crossing — capture changed neither,
-        // and the run was never paused or restarted.
+        // One clock, its boundary claimed once by the natural crossing — capture changed neither.
         expect([run1.startedAt, run1.running, run1.signalledThrough, run1.accumulatedSeconds, run1.runningSince], engine).toEqual([
           run0.startedAt,
           true,
@@ -379,58 +501,129 @@ describe('asking the teacher while practising', () => {
           run0.accumulatedSeconds,
           run0.runningSince,
         ]);
-        await page.getByRole('button', { name: 'Finish & save' }).click();
+        // The unbound segment: an instrument question, never a guessed item —
+        // and a manual Skip under the open field neither closes nor retargets it.
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+        await page.getByRole('button', { name: '+ Ask teacher' }).click();
+        await ask(page).getByText('About this instrument — no item.').waitFor();
+        await askBox(page).fill('Asked while breathing');
+        await page.getByRole('button', { name: 'Skip — log nothing for this segment' }).click();
+        await page.getByText(/Segment 3 of 3/).waitFor();
+        await ask(page).getByText('About this instrument — no item.').waitFor();
+        await page.clock.runFor(800);
+        await askStatus(page, SAVED_L0).waitFor();
+        expect((await questionLanded(app, 'Asked while breathing')).itemId, engine).toBeUndefined();
+        // THE FINAL AUTOMATIC BOUNDARY while a write is pending: Routine complete
+        // keeps the field, its words, its owner and its status — then Saved.
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+        await page.getByRole('button', { name: '+ Ask teacher' }).click();
+        await holdWrites(page);
+        await askBox(page).fill('Typed as the run ends');
+        await page.clock.fastForward(61_000);
         await page.getByText('Routine complete').waitFor();
+        expect(await askBox(page).inputValue(), engine).toBe('Typed as the run ends');
+        await ask(page).getByText(`About: ${B_TITLE}`).waitFor();
+        await askStatus(page, 'Saving…').waitFor();
+        await answerWrites(page, true);
+        await askStatus(page, SAVED_L0).waitFor();
+        await page.getByText('Saved on this device — no feedback needed.').waitFor();
+        expect((await questionLanded(app, 'Typed as the run ends')).itemId, engine).toBe(B);
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+        await page.getByRole('button', { name: 'Back' }).click();
+        await page.getByRole('navigation', { name: 'Primary' }).waitFor();
 
-        // --- MIDNIGHT while typing: the class has passed — refused, words kept ---
+        // BACKGROUND CATCH-UP across several boundaries through completion,
+        // the field open on an UNBOUND final stretch.
+        await goTo(app, '/routine/rt-rest', { arrival: 'Resting close' });
+        await page.getByRole('button', { name: 'Start', exact: true }).click();
+        await page.getByRole('button', { name: 'Pause' }).waitFor();
+        await page.getByRole('button', { name: 'Skip — log nothing for this segment' }).click();
+        await page.getByText(/Segment 2 of 3/).waitFor();
+        await page.getByRole('button', { name: '+ Ask teacher' }).click();
+        await askBox(page).fill('Asked while resting');
+        await page.evaluate(() => (window as unknown as { __visibility(h: boolean): void }).__visibility(true));
+        await page.clock.fastForward(130_000);
+        await page.evaluate(() => (window as unknown as { __visibility(h: boolean): void }).__visibility(false));
+        await page.getByText('Routine complete').waitFor();
+        expect(await askBox(page).inputValue(), engine).toBe('Asked while resting');
+        await ask(page).getByText('About this instrument — no item.').waitFor();
+        await askStatus(page, SAVED_L0).waitFor();
+        expect((await questionLanded(app, 'Asked while resting')).itemId, engine).toBeUndefined();
+        await ask(page).getByRole('button', { name: 'Done' }).click();
+
+        // --- MIDNIGHT before the first write: the class has passed — refused,
+        // words kept; the owner's deliberate choice writes them.
         await startBlock(app, C, C_TITLE);
         await page.getByRole('button', { name: '+ Ask teacher' }).click();
-        await askBox(page).fill('Typed across midnight');
         const toMidnight = await page.evaluate(() => {
           const d = new Date();
           return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime() - d.getTime();
         });
         await page.clock.fastForward(toMidnight + 31_000);
         await page.getByText('The class it was for is no longer upcoming.').waitFor();
-        await page.getByRole('button', { name: 'Save question', disabled: true }).waitFor();
+        await askBox(page).fill('Typed across midnight');
+        await page.clock.runFor(800);
+        expect(questions(await db(app)).filter((q) => q.text === 'Typed across midnight'), engine).toEqual([]);
         expect(await askBox(page).inputValue(), engine).toBe('Typed across midnight');
         await page.getByRole('button', { name: 'Save it unassigned' }).click();
-        await page.getByRole('button', { name: 'Save question' }).click();
-        await page.getByText('Question saved on this device — unassigned.').waitFor();
+        await askStatus(page, 'Saved on this device — unassigned.').waitFor();
         const late = await questionLanded(app, 'Typed across midnight');
         expect([late.itemId, late.lessonId], engine).toEqual([C, undefined]);
+        // REMOVED ELSEWHERE while the field is open: never resurrected by a later
+        // write — only by the deliberate "Save as a new question".
+        await goTo(app, `/items/${C}`, { arrival: page.getByRole('button', { name: 'Remove this question' }) });
+        await page.getByRole('button', { name: 'Remove this question' }).click();
+        await page.getByText('No questions recorded for this item.').waitFor();
+        await goTo(app, '/active');
+        await askStatus(page, 'This question was removed from your class list — these words are not saved.').waitFor();
+        await askBox(page).fill('Typed across midnight, kept');
+        await page.clock.runFor(800);
+        expect(questions(await db(app)).filter((q) => q.itemId === C), engine).toEqual([]);
+        await ask(page).getByRole('button', { name: 'Save as a new question' }).click();
+        await askStatus(page, 'Saved on this device — unassigned.').waitFor();
+        const renewed = await questionLanded(app, 'Typed across midnight, kept');
+        expect([renewed.id === late.id, renewed.itemId, renewed.lessonId], engine).toEqual([false, C, undefined]);
         await page.getByRole('button', { name: 'Discard block' }).click();
         await page.getByRole('navigation', { name: 'Primary' }).waitFor();
 
-        // --- After a reload: each question once, independent; nothing else moved.
+        // --- After a reload: each capture ONE question with its latest
+        // acknowledged words and frozen owner; nothing else moved.
         await reload(app);
         const end = await db(app);
-        expect(questions(end).map((q) => q.text).sort(), engine).toEqual([
-          'Asked while breathing',
-          'Asked while on open strings',
-          'How long should the pause be?',
-          'Is the tempo too fast?',
-          'Plan question',
-          'Should the left hand rest here?',
-          'Typed across midnight',
-          'Which finger for the trill?',
-        ]);
-        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(8);
+        const owned = questions(end)
+          .map((q) => [q.text, q.itemId ?? null, q.lessonId ?? null])
+          .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+        expect(owned, engine).toEqual(
+          [
+            ['Asked just before finishing', A, L0],
+            ['Asked while breathing', null, L0],
+            ['Asked while on open strings', A, L0],
+            ['Asked while resting', null, L0],
+            ['How long should the pause be?', A, L0],
+            ['Is the tempo too fast?', A, null],
+            ['Plan question, part two', first.itemId, L0],
+            ['Should I slow down here?', A, L0],
+            ['Typed across midnight, kept', C, null],
+            ['Typed as the run ends', B, L0],
+          ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+        );
+        expect(new Set(questions(end).map((q) => q.id)).size, engine).toBe(10);
+        expect(questions(end).find((q) => q.text === 'Should I slow down here?')!.id, engine).toBe(q1.id);
         expect(end.lessonAgenda.filter((e) => e.kind === 'preparation'), engine).toEqual(preparations);
         const withoutQuestions = end.lessonAgenda.filter((e) => e.kind !== 'question');
         expect(preparationDatesByItem(end.lessonAgenda, end.lessons, CLOCK), engine).toEqual(preparationDatesByItem(withoutQuestions, end.lessons, CLOCK));
         expect(recommendForInstrument(SETAR, start.items, start.blocks, CLOCK, preparationDatesByItem(end.lessonAgenda, end.lessons, CLOCK)).best!.score.item.id, engine).toBe(ranked);
         // Visible where questions are read: the item's agenda (with its class), and the report.
         await goTo(app, `/items/${A}`, { arrival: A_TITLE });
-        await page.getByText('Which finger for the trill?').waitFor();
+        await page.getByText('Should I slow down here?').waitFor();
         await page.getByText(`For ${L0_LABEL}`).first().waitFor();
         await goTo(app, `/items/${C}`, { arrival: C_TITLE });
-        await page.getByText('Typed across midnight').waitFor();
+        await page.getByText('Typed across midnight, kept').waitFor();
         await page.getByText('Unassigned — no class chosen yet').first().waitFor();
         // The report selects BY LESSON ID: last night's class still holds its questions.
         await goTo(app, '/report');
         await page.getByRole('combobox', { name: 'Class this report is for' }).selectOption(L0);
-        await page.getByText('Asked while breathing').first().waitFor();
+        await page.getByText('Asked while resting').first().waitFor();
         expect(app.pageErrors.map((e) => e.message), engine).toEqual([]);
       } finally {
         await app.close();
@@ -484,7 +677,7 @@ describe('live practice tools', () => {
         from = (await trace(app)).length;
         await page.clock.runFor(1_000);
         expect(beatsIn((await trace(app)).slice(from)).length, engine).toBeGreaterThanOrEqual(1);
-        await page.getByRole('button', { name: 'Cancel' }).click();
+        await page.getByRole('form', { name: 'Ask teacher' }).getByRole('button', { name: 'Done' }).click();
         // Notes typed with the beat running are durable.
         await page.getByRole('button', { name: 'Show Working notes' }).click();
         await page.getByRole('button', { name: 'Edit Working notes' }).click();
@@ -602,7 +795,7 @@ describe('live practice tools', () => {
         expect(cuesIn(events).length, engine).toBe(2);
         expect(beatsIn(events).length, engine).toBeGreaterThanOrEqual(1);
         expect(await askBox(page).inputValue(), engine).toBe('typing over the boundary');
-        await page.getByRole('button', { name: 'Cancel' }).click();
+        await page.getByRole('form', { name: 'Ask teacher' }).getByRole('button', { name: 'Done' }).click();
         await page.getByRole('button', { name: 'Finish & save' }).click();
         await page.getByText('Routine complete').waitFor();
         from = (await trace(app)).length;

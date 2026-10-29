@@ -33,6 +33,7 @@ import { relativeDay } from '../components/format';
 import InstallHint from '../components/InstallHint';
 import QuickAdd from '../components/QuickAdd';
 import RoutineDuration from '../components/RoutineDuration';
+import TeacherQuestionCapture from '../components/TeacherQuestionCapture';
 
 // ---------------------------------------------------------------------------
 // Today is a session workspace: "I am practising X now." Everything on screen
@@ -117,6 +118,10 @@ export default function Today() {
       ) : (
         <SessionView instrumentId={selected.id} instrumentName={selected.name} now={now} />
       )}
+
+      {/* A teacher question whose words are not yet saved, wherever it was
+          asked — below the session, never pushing its doorways down. */}
+      <TeacherQuestionCapture recover />
 
       {/* One-time, dismissible, hidden once installed — after the session, never in its place. */}
       <InstallHint />
