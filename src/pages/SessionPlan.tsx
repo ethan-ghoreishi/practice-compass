@@ -7,14 +7,20 @@ import {
   MAX_BUDGET_MINUTES,
   MIN_BUDGET_MINUTES,
   movePlanSegment,
+  freedMinutes,
+  freedRoom,
+  planClassCoverage,
   planPreviewDayHasPassed,
   planRunTime,
   preparationDatesByItem,
   removePlanSegment,
+  requiredClassWork,
+  reuseFreedMinutes,
   swapSegment,
   clampSchedulingParams,
   todayISODate,
   validateBudgetMinutes,
+  type ClassCoverage,
   type PlanBucket,
   type SessionPlan as SessionPlanT,
 } from '../domain';
@@ -22,6 +28,7 @@ import { useStore } from '../store/useStore';
 import { instrumentName } from '../store/lookups';
 import { CheckIcon, MinusIcon, PlayIcon, XIcon } from '../components/icons';
 import { useDecisionNow } from '../components/useDecisionNow';
+import { FreedTime } from '../components/ui';
 
 /** The presets the picker offers; any whole minute in range is still accepted. */
 const BUDGET_PRESETS = [5, 10, 15, 20, 30, 45, 60] as const;
@@ -78,6 +85,8 @@ function PlanPreview() {
   // reflect it, instead of silently installing yesterday's selections under a
   // Start button that still reads as enabled.
   const [nowOverride, setNowOverride] = useState<Date | null>(null);
+  // A refused Start says why, until the preview changes under it.
+  const [refusal, setRefusal] = useState<string | null>(null);
   const decisionNow = useDecisionNow();
   const now = nowOverride ?? decisionNow;
 
@@ -87,6 +96,13 @@ function PlanPreview() {
   const queryMinutes = validateBudgetMinutes(Number(params.get('minutes')));
   const [chosen, setChosen] = useState<number | null>(null);
   const budget = chosen ?? queryMinutes ?? validateBudgetMinutes(planMinutes[instrumentId]) ?? 20;
+
+  // The next class's required work — the ONE set the build reserves, the
+  // coverage reports and Start rechecks.
+  const required = useMemo(
+    () => requiredClassWork(db.lessonAgenda, db.lessons, db.items, instrumentId, now),
+    [db.lessonAgenda, db.lessons, db.items, instrumentId, now],
+  );
 
   const build = useMemo(() => {
     const preparationDates = preparationDatesByItem(db.lessonAgenda, db.lessons, now);
@@ -103,9 +119,10 @@ function PlanPreview() {
       reviews: db.reviews,
       preparationDates,
       stageItemIds,
+      requiredItemIds: required.itemIds,
       params: clampSchedulingParams(db.settings),
     });
-  }, [instrumentId, budget, db.items, db.blocks, db.reviews, db.lessons, db.lessonAgenda, db.pathways, db.pathwayStages, db.settings, now]);
+  }, [instrumentId, budget, db.items, db.blocks, db.reviews, db.lessons, db.lessonAgenda, db.pathways, db.pathwayStages, db.settings, now, required]);
 
   const [plan, setPlan] = useState<SessionPlanT>(build);
   // WHAT the plan was built FOR. `generatedAt` used to be the re-seed key, and
@@ -132,14 +149,21 @@ function PlanPreview() {
   const [baseDay, setBaseDay] = useState(today);
   if (seedKey !== seed) {
     setSeed(seedKey);
+    setRefusal(null);
     setPlan(build);
     setBaseRev(rev);
     setBaseDay(today);
   }
   const stale = rev !== baseRev || today !== baseDay;
+  const coverage = planClassCoverage(plan, required, db.items, `${baseRev}|${baseDay}`);
+  const short = coverage.omitted.some((o) => o.why === 'short');
 
   const total = plan.segments.reduce((a, s) => a + s.minutes, 0);
   const unused = Math.max(0, plan.budgetMinutes - total);
+  const scheduling = clampSchedulingParams(db.settings);
+  const freed = freedMinutes(plan);
+  const recipients = plan.segments.map((seg, i) => ({ index: i, title: seg.title })).filter((r) => freedRoom(plan, r.index, scheduling) > 0);
+  const spreadable = recipients.some((r) => plan.segments[r.index].bucket !== 'warmup' && plan.segments[r.index].bucket !== 'cooldown');
   const editorArgs = () => {
     const preparationDates = preparationDatesByItem(db.lessonAgenda, db.lessons, now);
     const stageItemIds = currentStageItemIds(
@@ -155,11 +179,17 @@ function PlanPreview() {
       preparationDates,
       stageItemIds,
       params: clampSchedulingParams(db.settings),
+      requiredItemIds: required.itemIds,
       excludeIds: new Set(plan.segments.map((s) => s.itemId)),
     };
   };
 
+  function edit(next: SessionPlanT) {
+    setRefusal(null);
+    setPlan(next);
+  }
   function regenerate() {
+    setRefusal(null);
     setPlan(build);
     setSeed(seedKey);
     setBaseRev(rev);
@@ -168,13 +198,13 @@ function PlanPreview() {
   // Removing leaves the freed minutes UNUSED — the other segments keep
   // exactly what they asked for; Regenerate (or a new length) allocates again.
   function removeAt(i: number) {
-    setPlan(removePlanSegment(plan, i));
+    edit(removePlanSegment(plan, i));
   }
   // Order is the owner's: the whole segment moves, nothing else changes, and
   // focus stays on the control just used so repeated moves need no hunting.
   function moveAt(i: number, dir: -1 | 1, button: HTMLButtonElement) {
     const label = button.getAttribute('aria-label') ?? '';
-    setPlan(movePlanSegment(plan, i, dir));
+    edit(movePlanSegment(plan, i, dir));
     // At either end its own control disables, so focus moves to the other one.
     const other = label.endsWith(' earlier') ? label.replace(/ earlier$/, ' later') : label.replace(/ later$/, ' earlier');
     requestAnimationFrame(() => {
@@ -184,9 +214,10 @@ function PlanPreview() {
     });
   }
   function swapAt(i: number) {
-    setPlan(swapSegment(plan, i, editorArgs()));
+    edit(swapSegment(plan, i, editorArgs()));
   }
-  function start() {
+  /** `acceptedKey`: the coverage a "Start without …" tap was made against. */
+  function start(acceptedKey?: string) {
     // Starting a plan is an authority boundary: check the TRUE current
     // instant here, never the polled `now` above, which can still be
     // showing yesterday for up to `useDecisionNow`'s own poll interval after
@@ -201,8 +232,20 @@ function PlanPreview() {
       return;
     }
     if (plan.segments.length === 0 || stale) return;
+    // Class coverage is rechecked against LIVE data at the true instant, by
+    // the store as it installs the run: a partial-start choice made against
+    // other commitments never carries over, and a sub-floor class slot never
+    // starts at all.
+    const refused = startPlan(plan, acceptedKey);
+    if (refused) {
+      setRefusal(
+        refused === 'short'
+          ? 'A class item here has less than its useful minutes — swap it back or regenerate.'
+          : 'Your class work changed — check what is left out, then choose again.',
+      );
+      return;
+    }
     setPlanMinutes(instrumentId, plan.budgetMinutes);
-    startPlan(plan);
     navigate('/plan');
   }
 
@@ -261,10 +304,14 @@ function PlanPreview() {
         />
       </fieldset>
 
+      <ClassCoverageCard coverage={coverage} budget={plan.budgetMinutes} onUseMinutes={(m) => setChosen(m)} />
+
       {plan.segments.length === 0 ? (
-        <div className="card">
-          <p className="dim">Nothing to plan yet — add a piece or exercise and come back.</p>
-        </div>
+        coverage.omitted.length > 0 ? null : (
+          <div className="card">
+            <p className="dim">Nothing to plan yet — add a piece or exercise and come back.</p>
+          </div>
+        )
       ) : (
         <div className="card card-flush list">
           {plan.segments.map((seg, i) => (
@@ -326,6 +373,13 @@ function PlanPreview() {
         </div>
       )}
 
+      <FreedTime
+        minutes={freed}
+        recipients={recipients}
+        onSpread={spreadable ? () => edit(reuseFreedMinutes(plan, 'spread', scheduling)) : undefined}
+        onGive={(i) => edit(reuseFreedMinutes(plan, i, scheduling))}
+      />
+
       {stale && (
         <div className="card card-quiet small" role="status" style={{ color: 'var(--tone-warn)' }}>
           <span dir="ltr">
@@ -336,20 +390,106 @@ function PlanPreview() {
         </div>
       )}
 
+      {refusal && (
+        <div className="card card-quiet small" role="alert" style={{ color: 'var(--tone-warn)' }}>
+          <span dir="ltr">{refusal}</span>
+        </div>
+      )}
+
       <div className="row" style={{ gap: 10 }}>
-        <button
-          className="btn btn-primary btn-lg grow"
-          onClick={start}
-          disabled={plan.segments.length === 0 || stale}
-        >
-          <PlayIcon /> Start plan
-        </button>
+        {short ? (
+          <button className="btn btn-primary btn-lg grow" disabled>
+            <PlayIcon /> Start plan
+          </button>
+        ) : coverage.omitted.length > 0 && plan.segments.length > 0 ? (
+          <button className="btn btn-primary btn-lg grow" onClick={() => start(coverage.key)} disabled={stale}>
+            <PlayIcon /> Start without {coverage.omitted.length} class item{coverage.omitted.length === 1 ? '' : 's'}
+          </button>
+        ) : (
+          <button className="btn btn-primary btn-lg grow" onClick={() => start()} disabled={plan.segments.length === 0 || stale}>
+            <PlayIcon /> Start plan
+          </button>
+        )}
         <button className="btn btn-lg" onClick={regenerate}>Regenerate</button>
       </div>
       <p className="tiny faint">
-        Each block is real practice — start it, close it, and the plan moves on. Reorder, swap or remove anything before you begin; removing never lengthens the rest.
+        Each block is real practice — start it, close it, and the plan moves on. Reorder, swap or remove anything before you begin; removing leaves its time free unless you give it to the rest.
       </p>
     </div>
+  );
+}
+
+/**
+ * What the next class asked this plan for, against the preview AS IT STANDS:
+ * how much of it is seated, what is left out and why (does not fit, or the
+ * owner's own remove/swap), what it would need, and what is resting. Silent
+ * when there is no class work to report.
+ */
+function ClassCoverageCard({
+  coverage,
+  budget,
+  onUseMinutes,
+}: {
+  coverage: ClassCoverage;
+  budget: number;
+  onUseMinutes: (minutes: number) => void;
+}) {
+  if (coverage.required.length === 0 && coverage.resting.length === 0) return null;
+  const n = coverage.required.length;
+  const capacity = coverage.omitted.some((o) => o.why === 'capacity');
+  const tooMuch = coverage.minimumMinutes > MAX_BUDGET_MINUTES;
+  return (
+    <section className={`card stack-sm${coverage.omitted.length > 0 ? ' card-accent' : ' card-quiet'}`} aria-label="Class coverage">
+      <div className="small">
+        <span dir="ltr">
+          For your class on {coverage.date}:{' '}
+          {n === 0
+            ? 'nothing to seat.'
+            : coverage.omitted.length === 0
+              ? `all ${n} class item${n === 1 ? ' is' : 's are'} in this plan.`
+              : `${coverage.seated.length} of ${n} class items in this plan.`}
+        </span>
+      </div>
+      {coverage.omitted.length > 0 && (
+        <ul className="stack-sm" role="list" style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+          {coverage.omitted.map((o) => (
+            <li key={o.itemId} className="small" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <span dir="auto" style={{ fontWeight: 500 }}>{o.title}</span>
+              <span className="tiny faint" dir="ltr">
+                {o.why === 'capacity'
+                  ? `left out — needs ${o.floorMinutes} min and does not fit`
+                  : o.why === 'short'
+                    ? `needs ${o.floorMinutes} min — too short here to start; swap it back or regenerate`
+                    : 'left out — you removed or swapped it'}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {capacity && (
+        <div className="row tiny" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {tooMuch ? (
+            <span dir="ltr">
+              All of it needs at least {coverage.minimumMinutes} min — more than one plan holds ({MAX_BUDGET_MINUTES}). Start the part that fits and plan the rest in another session.
+            </span>
+          ) : (
+            <>
+              <span dir="ltr">All of it fits in {coverage.minimumMinutes} min (you chose {budget}).</span>
+              <button type="button" className="btn btn-sm" style={{ minHeight: 44 }} onClick={() => onUseMinutes(coverage.minimumMinutes)}>
+                Use {coverage.minimumMinutes} min
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {coverage.resting.map((r) => (
+        <div key={r.itemId} className="tiny faint">
+          <span dir="ltr">
+            <span dir="auto">{r.title}</span> is prepared for this class but resting — change its status to plan it.
+          </span>
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -366,9 +506,12 @@ function PlanRunner() {
   const done = activePlan.segments.filter((s) => s.status === 'done').length;
   const finished = activePlan.pointer >= activePlan.segments.length;
   const time = planRunTime(activePlan);
+  // A segment refused at Start (required class work now worth more than its slot), for the pointer it was refused at.
+  const [short, setShort] = useState<{ pointer: number; floorMinutes: number } | null>(null);
 
   function begin() {
-    beginPlanSegment();
+    const check = beginPlanSegment();
+    if (check && !check.ok && check.reason === 'short') return setShort({ pointer: activePlan.pointer, floorMinutes: check.floorMinutes });
     navigate('/active');
   }
   function finish() {
@@ -433,6 +576,14 @@ function PlanRunner() {
                   {isCurrent && (
                     <div className="tiny faint">
                       <span dir="ltr">{seg.reason}</span>
+                    </div>
+                  )}
+                  {isCurrent && short?.pointer === i && (
+                    <div className="tiny" role="alert" style={{ color: 'var(--tone-warn)' }}>
+                      <span dir="ltr">
+                        This class work now needs at least {short.floorMinutes} min, more than this segment's {seg.minutes}. Skip it, or end
+                        the plan and build a longer one.
+                      </span>
                     </div>
                   )}
                 </div>

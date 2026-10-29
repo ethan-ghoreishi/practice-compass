@@ -1,6 +1,6 @@
 import type { ISODate, PracticeItem } from './types';
 import { effectiveReturnDate, returnIntentOf } from './scoring';
-import { addDaysISODate, dayDiff, parseISODate, toISODate, todayISODate } from './util';
+import { dayDiff, parseISODate, toISODate, todayISODate } from './util';
 
 // ---------------------------------------------------------------------------
 // The ONE "Next practice" answer for an item: why it comes back, and when.
@@ -41,8 +41,10 @@ function provenance(item: PracticeItem): string {
  * Why and when this item next wants practice. `preparationDate` is the date of
  * the class it is LIVE-committed to (`preparationDatesByItem`), if any — a
  * passed, removed, unassigned, archive or other-instrument class never
- * reaches here. Class preparation leads while it is live: practised today, it
- * returns tomorrow (or on the class day itself); otherwise it is wanted today.
+ * reaches here. Class preparation leads while it is live, and it is wanted
+ * TODAY until its class — practised earlier today included: practice is not
+ * the preparation done, so it stays available in this and every later
+ * session (`candidatePool`), never "back tomorrow" for having been played.
  */
 export function nextPractice(args: { item: PracticeItem; preparationDate?: ISODate; now: Date }): NextPractice {
   const { item, preparationDate, now } = args;
@@ -53,15 +55,14 @@ export function nextPractice(args: { item: PracticeItem; preparationDate?: ISODa
     stored && stored !== date ? { keptDate: stored, keptNote: `Review date ${stored} stays as it is (${provenance(item)}).` } : {};
 
   if (preparationDate && preparationDate >= today) {
-    const tomorrow = addDaysISODate(today, 1);
-    const date = lastDay === today && preparationDate > today ? tomorrow : today;
     const away = dayDiff(now, parseISODate(preparationDate));
     const when = away === 0 ? 'today' : `on ${preparationDate} (${away} day${away === 1 ? '' : 's'} away)`;
+    const again = lastDay === today ? 'practised earlier today, still available this session' : 'practise it today';
     return {
       kind: 'class',
-      date,
-      sentence: `Class preparation — for your class ${when}; ${date === today ? 'practise it today' : 'back tomorrow'}.`,
-      ...kept(date),
+      date: today,
+      sentence: `Class preparation — for your class ${when}; ${again}.`,
+      ...kept(today),
     };
   }
 

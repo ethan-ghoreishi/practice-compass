@@ -443,20 +443,26 @@ describe('the practice sound, through every door', () => {
         const cue = await since(app, boundaryFrom);
         expect(count(cue, 'ctor')).toBe(0);
         expect(count(cue, 'resume')).toBe(0);
-        // ONE cue — two bounded pulses on the fresh context, never the dead
-        // one: 880 Hz, gain 0.2 decaying to silence over 0.3 s, starting 0.45 s
-        // apart, each oscillator → gain → destination, each let go once played.
-        expect(cue.filter((x) => x.e === 'start').map((x) => [x.ctx, x.t, x.state, x.silent])).toEqual([
+        // ONE cue — two bounded rising pulses on the fresh context, never the
+        // dead one: 988 then 1319 Hz, 0.3 s apart, each a 10 ms attack to 0.36,
+        // held to 80 ms, falling to silence at 260 ms; each oscillator → gain →
+        // destination, each let go once played. Times to the millisecond.
+        const ms = (t: unknown) => Math.round((t as number) * 1000) / 1000;
+        expect(cue.filter((x) => x.e === 'start').map((x) => [x.ctx, ms(x.t), x.state, x.silent])).toEqual([
           [fresh, 10, 'running', false],
-          [fresh, 10.45, 'running', false],
+          [fresh, 10.3, 'running', false],
         ]);
-        expect(cue.filter((x) => x.e === 'stop').map((x) => x.t)).toEqual([10.3, 10.75]);
-        expect(cue.filter((x) => x.e === 'frequency').map((x) => x.v)).toEqual([880, 880]);
-        expect(cue.filter((x) => x.e === 'param').map((x) => [x.op, x.v, x.t])).toEqual([
-          ['set', 0.2, 10],
-          ['exp', 0.001, 10.3],
-          ['set', 0.2, 10.45],
-          ['exp', 0.001, 10.75],
+        expect(cue.filter((x) => x.e === 'stop').map((x) => ms(x.t))).toEqual([10.26, 10.56]);
+        expect(cue.filter((x) => x.e === 'frequency').map((x) => x.v)).toEqual([988, 1319]);
+        expect(cue.filter((x) => x.e === 'param').map((x) => [x.op, x.v, ms(x.t)])).toEqual([
+          ['set', 0.0001, 10],
+          ['lin', 0.36, 10.01],
+          ['set', 0.36, 10.08],
+          ['exp', 0.0001, 10.26],
+          ['set', 0.0001, 10.3],
+          ['lin', 0.36, 10.31],
+          ['set', 0.36, 10.38],
+          ['exp', 0.0001, 10.56],
         ]);
         expect(cue.filter((x) => x.e === 'connect').map((x) => `${x.from}>${x.to}`)).toEqual([
           'oscillator>gain',

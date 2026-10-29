@@ -25,6 +25,14 @@ import {
   retargetEntry as retargetAgendaEntry,
   completePlanSegment,
   planSegmentStartable,
+  captureTargetProblem,
+  openQuestionCapture,
+  type QuestionCapture,
+  type PlanStartCheck,
+  lessonLabel,
+  planClassCoverage,
+  planStartRefusal,
+  requiredClassWork,
   scheduleAgainPlan,
   transferToAutomaticReview,
   AUTOMATIC_TRANSFER_REASON,
@@ -126,6 +134,7 @@ import {
   type RoutineCapture,
   type ItemStatus,
   type LessonFileKind,
+  type LessonQuestion,
   type LessonRecording,
   type Material,
   type MaterialSourceType,
@@ -367,10 +376,15 @@ interface StoreState {
   // Session Plan (a time-budgeted programme over real practice blocks)
   /** Remember the chosen duration for an instrument's next plan. */
   setPlanMinutes: (instrumentId: ID, minutes: number) => void;
-  /** Begin running a built plan (segments become pending). */
-  startPlan: (plan: SessionPlan) => void;
-  /** Start a real block seeded from the current segment (→ /active → /close). */
-  beginPlanSegment: () => void;
+  /**
+   * Begin running a built plan (segments become pending) — only once its class
+   * coverage, rechecked against live data and the true day, allows it:
+   * `acceptedKey` is the coverage a partial-start choice was made against.
+   * Returns the refusal (nothing installed) or null.
+   */
+  startPlan: (plan: SessionPlan, acceptedKey?: string) => 'empty' | 'short' | 'partial' | null;
+  /** Start a real block seeded from the current segment (→ /active → /close). Returns the live check it ran. */
+  beginPlanSegment: () => PlanStartCheck | null;
   /** Skip a pending segment — the current one by default — recording nothing; other targets keep their minutes. */
   skipPlanSegment: (index?: number) => void;
   /** Skip the plan segment whose block is open right now WITHOUT saving it: the block is discarded and the segment skipped. */
@@ -745,7 +759,20 @@ export const useStore = create<StoreState>()(
           planMinutesByInstrument: { ...s.planMinutesByInstrument, [instrumentId]: Math.max(5, Math.round(minutes)) },
         })),
 
-      startPlan: (plan) =>
+      startPlan: (plan, acceptedKey) => {
+        // The run's installation is the one door every Start passes: a
+        // sub-floor class slot, or omissions no choice was made against, never
+        // become a running plan, whatever the preview showed.
+        const { db, rev } = get();
+        const now = new Date();
+        const coverage = planClassCoverage(
+          plan,
+          requiredClassWork(db.lessonAgenda, db.lessons, db.items, plan.instrumentId, now),
+          db.items,
+          `${rev}|${todayISODate(now)}`,
+        );
+        const refusal = planStartRefusal(plan, coverage, acceptedKey);
+        if (refusal) return refusal;
         set({
           activePlan: {
             instrumentId: plan.instrumentId,
@@ -754,24 +781,29 @@ export const useStore = create<StoreState>()(
             pointer: 0,
             segments: plan.segments.map((seg) => ({ ...seg, status: 'pending' as const })),
           },
-        }),
+        });
+        return null;
+      },
 
       beginPlanSegment: () => {
         const { activePlan, db, active, activeRoutine } = get();
-        if (!activePlan) return;
+        if (!activePlan) return null;
         const seg = activePlan.segments[activePlan.pointer];
         // Revalidated LIVE against the same pure check a test can reach, never
-        // trusted from the plan: an item can be deleted or moved to another
-        // instrument between building the plan and reaching this segment.
-        const check = planSegmentStartable(activePlan, db.items, !!active || !!activeRoutine);
+        // trusted from the plan: an item can be deleted, moved to another
+        // instrument or become a whole work (a larger class floor) between
+        // building the plan and reaching this segment.
+        const required = requiredClassWork(db.lessonAgenda, db.lessons, db.items, activePlan.instrumentId, new Date()).itemIds;
+        const check = planSegmentStartable(activePlan, db.items, !!active || !!activeRoutine, required);
         if (!check.ok) {
           // A deleted or moved item is visibly skipped (and skipping logs
-          // nothing); a busy clock is refused outright rather than replaced.
+          // nothing); a busy clock or a sub-floor class slot is refused
+          // outright, the segment left for the owner to skip.
           if (check.reason === 'deleted' || check.reason === 'moved') get().skipPlanSegment();
-          return;
+          return check;
         }
         const item = check.item;
-        if (!seg) return;
+        if (!seg) return check;
         get().startSession({
           itemId: item.id,
           instrumentId: item.instrumentId,
@@ -780,6 +812,7 @@ export const useStore = create<StoreState>()(
           focus: seg.focus,
           targetMinutes: seg.minutes,
         });
+        return check;
       },
 
       skipPlanSegment: (index) =>
@@ -2400,10 +2433,12 @@ export const useStore = create<StoreState>()(
         const { db } = get();
         const outcome = captureRoutineResults(db, runBlockIds, captures, new Date());
         if ('refused' in outcome) return outcome.refused;
-        // An unchanged capture returns the same arrays: nothing to write.
+        // An unchanged capture returns the same arrays — but Save and Try again
+        // still write what memory holds, so a capture whose earlier write
+        // failed is made durable now rather than acknowledged by that failure.
         if (outcome.blocks !== db.blocks || outcome.items !== db.items) {
           set((s) => ({ db: { ...s.db, blocks: outcome.blocks, items: outcome.items } }));
-        }
+        } else set({});
         return null;
       },
 
@@ -2653,3 +2688,245 @@ function finishHydration() {
 }
 if (useStore.persist.hasHydrated()) finishHydration();
 else useStore.persist.onFinishHydration(finishHydration);
+
+// ---------------------------------------------------------------------------
+// A TEACHER QUESTION CAPTURED WHILE PRACTISING — one lifecycle, in memory.
+//
+// The words live here, outside any screen, so a Routine boundary, its final
+// automatic completion, navigation or an unmounted editor never takes them
+// away; they are never persisted themselves (no draft collection) — only the
+// agenda question they write is. One lifecycle serves the quiet-interval
+// autosave, Done, Try again and the flush on exit:
+//
+//  - Ownership is frozen at opening (`openQuestionCapture`). The FIRST write
+//    revalidates it and appends ONE agenda question; every later write —
+//    autosave, Done, retry — updates THAT id, never another, and never
+//    recreates it once it has been removed elsewhere.
+//  - Blank text writes nothing: it never creates a question nor overwrites a
+//    written one. A write the question needs anyway — Try again, or its class
+//    chosen with the field empty — carries the words it holds in memory, and
+//    is acknowledged like any other.
+//  - "Saved" is IndexedDB's acknowledgement of the question REVISION an
+//    attempt wrote (`storageSettled` captured beside the write). Every store
+//    change to an agenda entry makes a new entry object, so that object is the
+//    revision: any later change to the question (its class retargeted or
+//    deleted, its item moved or deleted) — even one that puts back the same
+//    values — leaves the capture unacknowledged until its own write lands.
+//    A question removed elsewhere leaves a blank field nothing to write: Done
+//    lets it go, never recreating it. Only the latest attempt
+//    may set the status; any answered attempt settles (never stuck saving);
+//    an older acknowledgement never closes or clears newer words.
+//  - A failure keeps the words, owner and id; Try again always writes again.
+//    Nothing retries on its own, and practice never waits for any of it.
+// ---------------------------------------------------------------------------
+
+/** The quiet interval after the last keystroke before the words are written (the notes' own). */
+export const QUESTION_AUTOSAVE_MS = 800;
+
+export interface LiveQuestion {
+  /** Frozen at opening: who the words belong to until the question exists. */
+  owner: QuestionCapture;
+  /** The practice it was opened in (its clock's start): a SETTLED capture is not carried into another. */
+  session: string;
+  text: string;
+  /** The agenda question this capture writes — set by its first write, never replaced. */
+  questionId?: ID;
+  /** The latest attempt: the words it carried and how the device answered. */
+  attempt?: { seq: number; carried: string; wrote: LessonQuestion; status: 'saving' | 'saved' | 'failed' };
+  /** The newest words IndexedDB acknowledged for this capture. */
+  written?: string;
+  /** Done was tapped: close once the latest words are acknowledged. */
+  closing?: boolean;
+  /** The field held focus — restored if the editor remounts (Routine complete). */
+  focused?: boolean;
+}
+
+interface LiveQuestionState {
+  capture: LiveQuestion | null;
+  /** What the last closed capture saved, said beside "+ Ask teacher". */
+  note: string | null;
+}
+
+export const useLiveQuestion = create<LiveQuestionState>(() => ({ capture: null, note: null }));
+
+let autosave: ReturnType<typeof setTimeout> | undefined;
+let attempts = 0;
+let writtenSeq = 0;
+
+const liveCapture = () => useLiveQuestion.getState().capture;
+const patchLive = (patch: Partial<LiveQuestion>) =>
+  useLiveQuestion.setState((s) => (s.capture ? { capture: { ...s.capture, ...patch } } : {}));
+const cancelAutosave = () => {
+  clearTimeout(autosave);
+  autosave = undefined;
+};
+
+/** The agenda entry a written capture belongs to now (a deleted class may have detached it), or undefined once removed. */
+export function liveQuestionEntry(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']) {
+  return capture.questionId ? agenda.find((e): e is LessonQuestion => e.id === capture.questionId && e.kind === 'question') : undefined;
+}
+
+/**
+ * IndexedDB acknowledged the question's CURRENT revision: the entry object
+ * the latest attempt wrote is still the one in the agenda. Never compared by
+ * value — a change elsewhere that restores the old words or target is a newer
+ * revision no write of this capture has acknowledged.
+ */
+export function liveQuestionAcknowledged(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']): boolean {
+  const entry = liveQuestionEntry(capture, agenda);
+  return !!entry && capture.attempt?.status === 'saved' && capture.attempt.wrote === entry;
+}
+
+/**
+ * Nothing of this capture is left to write: its question acknowledged as it
+ * stands, or a blank field with nothing outstanding — never written, or its
+ * question removed elsewhere (never recreated). A blank field whose question's
+ * last write failed, or which changed elsewhere since, is NOT settled.
+ */
+export function liveQuestionSettled(capture: LiveQuestion, agenda: PracticeDB['lessonAgenda']): boolean {
+  const words = capture.text.trim();
+  if (!capture.questionId) return !words;
+  const acknowledged = liveQuestionAcknowledged(capture, agenda);
+  if (!words) return acknowledged || !liveQuestionEntry(capture, agenda);
+  return acknowledged && capture.attempt!.carried === words;
+}
+
+export function openLiveQuestion(instrumentId: ID, itemId: ID | undefined, session: string): void {
+  cancelAutosave();
+  const owner = openQuestionCapture(useStore.getState().db.lessons, instrumentId, itemId, new Date());
+  useLiveQuestion.setState({ capture: { owner, session, text: '', focused: true }, note: null });
+}
+
+export function editLiveQuestion(text: string): void {
+  if (!liveCapture()) return;
+  patchLive({ text, closing: false });
+  cancelAutosave();
+  if (text.trim()) autosave = setTimeout(() => saveLiveQuestion(), QUESTION_AUTOSAVE_MS);
+}
+
+export function focusLiveQuestion(focused: boolean): void {
+  patchLive({ focused });
+}
+
+/**
+ * The one write. Coalesces with an attempt already carrying these words
+ * (autosave + Done, a repeated tap, exit flushing) unless `force` — Try
+ * again, which writes even when memory has not changed.
+ */
+export function saveLiveQuestion(force = false): void {
+  cancelAutosave();
+  const capture = liveCapture();
+  if (!capture) return;
+  const store = useStore.getState();
+  const entry = liveQuestionEntry(capture, store.db.lessonAgenda);
+  // Blank writes nothing of its own — but a forced write (Try again, a class
+  // chosen) still writes the question, carrying the words it holds in memory.
+  const words = capture.text.trim() || (force && entry ? entry.text : '');
+  if (!words) return;
+  const attempt = capture.attempt;
+  if (!force && attempt?.carried === words && (attempt.status === 'saving' || liveQuestionAcknowledged(capture, store.db.lessonAgenda))) return;
+  let questionId = capture.questionId;
+  if (questionId) {
+    // Its own question, or nothing: removed elsewhere, it is never recreated.
+    if (!entry) return;
+    store.updateLessonQuestion(questionId, words);
+  } else {
+    if (captureTargetProblem(store.db, capture.owner, new Date())) return;
+    questionId = store.addLessonQuestion({ text: words, ...capture.owner }) ?? undefined;
+    if (!questionId) return;
+  }
+  const seq = ++attempts;
+  // Captured in the same tick as the write: this attempt's own outcome, and the revision it wrote.
+  const written = storageSettled();
+  const wrote = liveQuestionEntry({ ...capture, questionId }, useStore.getState().db.lessonAgenda)!;
+  patchLive({ questionId, attempt: { seq, carried: words, wrote, status: 'saving' } });
+  const settle = (ok: boolean) => {
+    const now = liveCapture();
+    if (now?.questionId !== questionId) return; // closed, or another capture
+    const latest = now.attempt?.seq === seq;
+    const patch: Partial<LiveQuestion> = {};
+    if (ok && seq > writtenSeq) {
+      writtenSeq = seq;
+      patch.written = words;
+    }
+    if (latest) {
+      patch.attempt = { seq, carried: words, wrote, status: ok ? 'saved' : 'failed' };
+      if (!ok) patch.closing = false;
+    }
+    patchLive(patch);
+    const after = liveCapture()!;
+    if (!(latest && ok && after.closing)) return;
+    // Done waits on THIS question: changed elsewhere meanwhile, it is written again before closing.
+    if (liveQuestionSettled(after, useStore.getState().db.lessonAgenda)) finishLiveQuestion();
+    else saveLiveQuestion(true);
+  };
+  written.then(
+    () => settle(true),
+    () => settle(false),
+  );
+}
+
+/** Choose the class deliberately: before the question exists it is the frozen owner; after, its own agenda target. */
+export function chooseLiveQuestionLesson(lessonId: ID | undefined): void {
+  const capture = liveCapture();
+  if (!capture) return;
+  if (capture.questionId) {
+    useStore.getState().setAgendaTarget(capture.questionId, lessonId);
+    saveLiveQuestion(true);
+    return;
+  }
+  const { instrumentId, itemId } = capture.owner;
+  patchLive({ owner: { instrumentId, ...(itemId ? { itemId } : {}), ...(lessonId ? { lessonId } : {}) } });
+  if (capture.text.trim()) saveLiveQuestion();
+}
+
+/** Keep the words without the item that is no longer valid (only before the question exists). */
+export function dropLiveQuestionItem(): void {
+  const capture = liveCapture();
+  if (!capture || capture.questionId) return;
+  const { instrumentId, lessonId } = capture.owner;
+  patchLive({ owner: { instrumentId, ...(lessonId ? { lessonId } : {}) } });
+  if (capture.text.trim()) saveLiveQuestion();
+}
+
+/** The question was removed elsewhere: deliberately write these words as a NEW question (its owner revalidated). */
+export function saveLiveQuestionAsNew(): void {
+  const capture = liveCapture();
+  if (!capture) return;
+  patchLive({ questionId: undefined, attempt: undefined, written: undefined });
+  saveLiveQuestion(true);
+}
+
+/** Leaving the editor (navigation, Finish, unmount): what is still waiting for its quiet interval is written now. */
+export function flushLiveQuestion(): void {
+  if (autosave !== undefined) saveLiveQuestion();
+}
+
+/**
+ * Done: flush, and close only once the latest write is acknowledged. Blank
+ * closes without writing (a written question stays as it was). Failed,
+ * refused or removed words keep the editor open — they are never discarded
+ * silently; clearing the field is the deliberate way to let them go.
+ */
+export function closeLiveQuestion(): void {
+  const capture = liveCapture();
+  if (!capture) return;
+  if (liveQuestionSettled(capture, useStore.getState().db.lessonAgenda)) return finishLiveQuestion();
+  patchLive({ closing: true });
+  // Unless a write is already on its way, the question is written again (with
+  // an empty field too): Done never closes over words, or a class, the device
+  // has not acknowledged.
+  saveLiveQuestion(capture.attempt?.status !== 'saving');
+}
+
+function finishLiveQuestion(): void {
+  cancelAutosave();
+  const capture = liveCapture();
+  if (!capture) return;
+  const entry = liveQuestionEntry(capture, useStore.getState().db.lessonAgenda);
+  const lesson = entry?.lessonId ? useStore.getState().db.lessons.find((l) => l.id === entry.lessonId) : undefined;
+  useLiveQuestion.setState({
+    capture: null,
+    note: entry && capture.written ? `Question saved on this device${lesson ? ` for ${lessonLabel(lesson)}` : ' — unassigned'}.` : null,
+  });
+}

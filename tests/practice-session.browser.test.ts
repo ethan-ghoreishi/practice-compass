@@ -426,8 +426,9 @@ describe('plan and routine controls', () => {
           expect(await minutesOf(page), where).toEqual(keptMinutes);
           expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), where).toBe(true);
 
-          // START runs the owner's order.
-          await page.getByRole('button', { name: 'Start plan' }).click();
+          // START runs the owner's order — through the explicit "Start without"
+          // choice when the removed row was the next class's work (2026-10-28).
+          await page.getByRole('button', { name: /^(Start plan|Start without 1 class item)$/ }).click();
           await page.getByRole('button', { name: `Start ${moved[0]}` }).click();
           await page.getByRole('heading', { level: 1, name: moved[0] }).waitFor();
           // Move on, keeping what was practised: Finish → Close → Save.
@@ -1296,7 +1297,8 @@ describe('the close and review screens', () => {
         // --- CLASS PREPARATION beside a protected, months-away date ----------
         await practiseToClose(app, CLASS_ITEM);
         await page.getByRole('button', { name: RESULT_LABELS.slightly_better, exact: true }).click();
-        await expect.poll(line).toContain('Class preparation — for your class on 2026-10-27 (4 days away); back tomorrow.');
+        // Practised today, class work stays available this session (2026-10-28, superseding "back tomorrow").
+        await expect.poll(line).toContain('Class preparation — for your class on 2026-10-27 (4 days away); practised earlier today, still available this session.');
         expect(await line(), engine).toContain('Review date 2027-01-21 stays as it is (your date).');
         await page.getByRole('button', { name: 'Save block' }).click();
         await page.getByRole('navigation', { name: 'Primary' }).waitFor();

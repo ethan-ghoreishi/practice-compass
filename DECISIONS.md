@@ -2,6 +2,96 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## A live teacher question saves itself; a class slot never starts below its floor (2026-10-29)
+
+Rework of the 2026-10-28 lane (same contract, owner amendment of
+2026-10-29) — no schema change, no persisted draft.
+
+- **Owner decision: live questions autosave.** Supersedes only the explicit
+  Save and the Cancel of 2026-10-28's "Ask teacher". A remembered Save lost
+  thoughts, and the component-local draft vanished when a Routine finished on
+  its own (the result screen replaced the field) or the screen was left. The
+  words now live in an in-memory store slice (`useLiveQuestion`, never
+  persisted) with ONE lifecycle — quiet-interval autosave (800 ms, the notes'
+  own), Done, Try again, flush on leaving — so a boundary, the automatic end,
+  background catch-up or navigation never takes them; Routine complete, Close
+  and Today show what is still unsaved. The first write creates one agenda
+  question for the owner frozen at opening (revalidated then); every later
+  write updates that id and never recreates it once removed elsewhere ("Save
+  as a new question" is the deliberate way). Blank never writes; Done closes
+  only once the latest words are acknowledged; a refused write keeps words,
+  owner and id until Try again. Saved means IndexedDB acknowledged those words
+  — a refused write is never called durable, and a reload shows the last
+  acknowledged text.
+- **Every answered save settles.** The shared acknowledgement
+  (`useAcknowledgedSaves`) left "Saving…" forever when the draft changed while
+  a write was pending and its re-issue declined (cleared to blank). Fixed at
+  that choke point for every editor using it: the answered write settles for
+  the words it carried.
+- **A required class item is never a token slot.** Swapping the only row of a
+  5-minute class plan could seat a 10-minute whole work at 5, counted as
+  covered and startable. A swap now applies the required item's floor however
+  few rows the plan has; coverage counts an under-floor required item as
+  `short`, not seated; and `startPlan` — the one door installing a run —
+  rechecks coverage against live data and the true day, refusing a short slot
+  outright and an unaccepted omission.
+
+## Live practice: freed time on request, the next class reserved, a question and a beat without stopping (2026-10-28)
+
+One heavy lane (contract 20261028-…-1934, issue #58), schema **17**, no new
+persisted field. Model and proof map: `docs/practice-session-model.md` §5, §7,
+§12. **Owner decisions** carried by the approved plan:
+
+- **Freed preview time is the owner's to hand back** — supersedes the PREVIEW
+  half of 2026-10-23's "Freed time stays free". Remove still leaves the minutes
+  visibly unused with no further tap; "Spread over the rest" / "Give to one…"
+  (Plan and Routine previews alike) are explicit edits before Start, within
+  the allocator's own ceilings, spending only freed time and only once. Nothing
+  becomes automatic: no regeneration, no reorder, no new candidates, no change
+  to the saved routine, and a running Skip / Move on / early Finish still never
+  lengthens anything — running boundaries stay frozen.
+- **The next class's work is reserved, not merely boosted** — supersedes
+  2026-10-23's "practised-today work, class work included, steps aside … and
+  returns the next day". Practising a commitment did not prepare it, so live
+  class work stays in the shared pool every session until its class (honestly
+  labelled), and a Plan SEATS every non-resting item prepared for the nearest
+  upcoming class before any optional role or heuristic, at its floor (10 for a
+  whole work, 2 otherwise). When the floors cannot fit, the omissions are named
+  with the minimum length, and a partial (or hand-edited) plan starts only
+  through a choice bound to that exact coverage, revision and day. A later
+  class keeps only its bounded urgency; the published score is unchanged (no
+  larger multiplier, no second ranking); reservation is organisation, never
+  retention evidence, so no date, review row or spacing moves.
+- **Optional routine feedback clears.** A result chosen on Routine complete
+  can go back to "Not assessed", before or after saving; the item's
+  `lastResult` then follows the remaining assessed history. Reproduced first:
+  clearing the only assessed block kept the cleared result in `lastResult`
+  (`captureRoutineResults` returned early when nothing older remained), so
+  Insights still announced it — fixed at that choke point.
+- **A question and a beat while the clock runs.** "Ask teacher" appends one
+  agenda question with its owner frozen when the field opens; Saved waits for
+  the device and a retry rewrites the same entry. The metronome is a small,
+  opt-in, unaccented beat on the one practice context, scheduled on the audio
+  clock, stopped by anything that ends the screen's right to sound and never
+  restarted by itself. The boundary cue became two rising triangle pulses
+  (988 → 1319 Hz, 10 ms attack, held, 0.36 peak) — more energy and a shape no
+  tick shares, rather than simply more gain — and ducks the beat for its
+  0.56 s.
+
+**Constants, not claims.** 80 BPM (40–240), three levels (0.12 / 0.22 / 0.34),
+a 0.12 s look-ahead every 25 ms, the cue's envelope, and the reservation
+floors are bounded defaults; real audibility beside the Setar on MacBook and
+iPhone is the owner's walkthrough (ac-8).
+
+**AGENTS.md budget.** The Claude profile sat 1 byte under its headroom
+ceiling, so the changed rules were rewritten in place at their binding
+minimum and two items moved to the docs that already state them in full: the
+hands-free "Open gaps" line (`docs/setar-practice-reliability.md`, Rules in
+full) and the Session Plan's study-turn clause (`docs/scheduling-evidence.md`,
+Rules in full). The routine Clear result and mid-practice question rules live
+in `docs/practice-session-model.md` §12 and their Flows; no pinned prohibition
+was dropped.
+
 ## Practice records you can rely on, and returns that follow the work (2026-10-23)
 
 One heavy lane (contract 20261023-…-34cc, issue #56), schema **17**. Model and

@@ -10,6 +10,21 @@ import { closeDraftFor, closeDraftKey, editHeldObservation } from '../components
 import { PauseIcon, PlayIcon } from '../components/icons';
 import { useScreenAwake } from '../components/useScreenAwake';
 import { playPracticeCue, testPracticeSound, usePracticeSound } from '../components/practiceCue';
+import {
+  BPM_MAX,
+  BPM_MIN,
+  holdMetronome,
+  setBpm,
+  setLevel,
+  startMetronome,
+  stepBpm,
+  stopMetronome,
+  useMetronome,
+  validateBpm,
+  type MetronomeLevel,
+} from '../components/metronome';
+import { OptionPills } from '../components/ui';
+import TeacherQuestionCapture from '../components/TeacherQuestionCapture';
 
 export default function ActiveBlock() {
   const db = useStore((s) => s.db);
@@ -205,6 +220,8 @@ export default function ActiveBlock() {
 
       <SoundNote state={sound} />
 
+      <Metronome running={!!active.running} />
+
       {hasMaterial && <MaterialDuringPractice itemId={active.itemId} />}
 
       {/* Scratch OBSERVATION for THIS block — it seeds the close screen and
@@ -237,6 +254,8 @@ export default function ActiveBlock() {
           + Note an observation for this block
         </button>
       )}
+
+      <TeacherQuestionCapture instrumentId={active.instrumentId} itemId={item?.id} session={active.startedAt} />
 
       {/* Inside a running plan: Finish is "move on and keep what I practised"
           (it saves through Close, then the plan advances); this is the other
@@ -318,5 +337,100 @@ export function SoundNote({ state }: { state: ReturnType<typeof usePracticeSound
         Turn on sound
       </button>
     </div>
+  );
+}
+
+const LEVEL_OPTIONS: { value: MetronomeLevel; label: string }[] = [
+  { value: 'soft', label: 'Soft' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'loud', label: 'Loud' },
+];
+
+/**
+ * The practice screen's metronome controls: Start/Stop, tempo (−/+ and a
+ * typed value) and a level. `running` is the practice clock: the beat may
+ * sound only while it runs on a visible screen, and stops — staying off until
+ * a tap — on Pause, leaving the screen (Finish, Discard, navigation) or the
+ * page being hidden. Nothing here touches the clock, a record or a note.
+ */
+export function Metronome({ running }: { running: boolean }) {
+  const m = useMetronome();
+  const sound = usePracticeSound();
+  // A typed tempo in progress ("1" on the way to "120"); the store holds the last valid one.
+  const [draft, setDraft] = useState<string | null>(null);
+
+  useEffect(() => {
+    holdMetronome({ visible: document.visibilityState === 'visible', running });
+  }, [running]);
+  useEffect(() => {
+    const onVisibility = () => holdMetronome({ visible: document.visibilityState === 'visible', running: true });
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      stopMetronome();
+    };
+  }, []);
+
+  if (sound === 'unavailable') return null;
+
+  return (
+    <section className="card card-quiet stack-sm" aria-label="Metronome" style={{ textAlign: 'start' }}>
+      <div className="row" style={{ gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <button
+          type="button"
+          className={`btn btn-sm${m.running ? ' btn-primary' : ''}`}
+          style={{ minHeight: 44 }}
+          disabled={!running}
+          onClick={m.running ? stopMetronome : startMetronome}
+        >
+          {m.running ? 'Stop beat' : 'Start beat'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ minWidth: 44, minHeight: 44, padding: 0 }}
+          aria-label="Slower"
+          disabled={m.bpm <= BPM_MIN}
+          onClick={() => {
+            setDraft(null);
+            stepBpm(-1);
+          }}
+        >
+          −
+        </button>
+        <input
+          className="input mono-num"
+          type="number"
+          inputMode="numeric"
+          min={BPM_MIN}
+          max={BPM_MAX}
+          step={1}
+          aria-label="Beats per minute"
+          value={draft ?? String(m.bpm)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            const bpm = validateBpm(Number(e.target.value));
+            if (bpm !== null) setBpm(bpm);
+          }}
+          onBlur={() => setDraft(null)}
+          style={{ width: 84 }}
+        />
+        <button
+          type="button"
+          className="btn btn-ghost"
+          style={{ minWidth: 44, minHeight: 44, padding: 0 }}
+          aria-label="Faster"
+          disabled={m.bpm >= BPM_MAX}
+          onClick={() => {
+            setDraft(null);
+            stepBpm(1);
+          }}
+        >
+          +
+        </button>
+        <span className="tiny faint">BPM</span>
+      </div>
+      <OptionPills ariaLabel="Beat level" value={m.level} onChange={setLevel} options={LEVEL_OPTIONS} />
+    </section>
   );
 }

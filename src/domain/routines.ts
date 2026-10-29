@@ -139,6 +139,63 @@ export function describeFitDrop(segments: RoutineSegment[], fitted: RoutineSegme
     : `${dropped} non-essential segment(s) dropped`;
 }
 
+// --- The run preview: freed minutes are an explicit choice -----------------
+
+/**
+ * A run's PREVIEW before its Start tap: the segments it would run (after the
+ * content and length choices), which of them the owner removed, and the
+ * minutes those removals freed that have not been handed out again.
+ * `sum(minutes of kept) + freedMinutes` never changes: no minute is ever
+ * spent twice, and the saved routine is never touched.
+ */
+export interface RoutinePreview {
+  segments: RoutineSegment[];
+  removed: number[];
+  freedMinutes: number;
+}
+
+export function previewRoutine(segments: RoutineSegment[]): RoutinePreview {
+  return { segments, removed: [], freedMinutes: 0 };
+}
+
+/** Remove one entry from THIS run: its minutes become freed time, nothing else moves. */
+export function removeFromPreview(preview: RoutinePreview, index: number): RoutinePreview {
+  const seg = preview.segments[index];
+  if (!seg || preview.removed.includes(index)) return preview;
+  return {
+    ...preview,
+    removed: [...preview.removed, index].sort((a, b) => a - b),
+    freedMinutes: preview.freedMinutes + Math.max(0, seg.minutes),
+  };
+}
+
+/**
+ * Hand the freed minutes back, deliberately: `'spread'` scales the entries
+ * still in the run in their own authored proportions (`fitRoutineToMinutes`,
+ * the same fit a run length uses — nobody shrinks), `index` gives them all to
+ * that one entry. Order, labels, bindings and the essential flag never change.
+ */
+export function reuseFreedRoutineMinutes(preview: RoutinePreview, to: 'spread' | number): RoutinePreview {
+  if (preview.freedMinutes <= 0) return preview;
+  const keptIdx = preview.segments.map((_, i) => i).filter((i) => !preview.removed.includes(i));
+  if (keptIdx.length === 0) return preview;
+  let segments: RoutineSegment[];
+  if (to === 'spread') {
+    const kept = keptIdx.map((i) => preview.segments[i]);
+    const fitted = fitRoutineToMinutes(kept, routineTotalMinutes(kept) + preview.freedMinutes);
+    segments = preview.segments.map((s, i) => (keptIdx.includes(i) ? { ...s, minutes: fitted[keptIdx.indexOf(i)].minutes } : s));
+  } else {
+    if (!keptIdx.includes(to)) return preview;
+    segments = preview.segments.map((s, i) => (i === to ? { ...s, minutes: s.minutes + preview.freedMinutes } : s));
+  }
+  return { ...preview, segments, freedMinutes: 0 };
+}
+
+/** Exactly what Start runs: the kept entries, with the minutes the preview shows. */
+export function previewRunSegments(preview: RoutinePreview): RoutineSegment[] {
+  return preview.segments.filter((_, i) => !preview.removed.includes(i));
+}
+
 /** Routines the session instrument may practise right now. */
 export function routinesForInstrument(routines: PathwayRoutine[], instrumentId: ID): PathwayRoutine[] {
   return routines.filter((r) => r.instrumentId === instrumentId);
@@ -383,8 +440,11 @@ export interface RoutineCapture {
  * three-same hint, Insights, the teacher report). It never reaches a review:
  * dates, open reviews, SM-2 state, status, minutes and counters stay exactly
  * as the run left them. `lastResult` follows only while the block is the
- * item's latest logged one. An unchanged capture returns the SAME arrays, so
- * repeating it writes nothing.
+ * item's latest logged one: a CLEARED result (`not_logged`) hands the summary
+ * back to the newest assessed block that remains, or removes it when none
+ * does — never an invented result — and a newer assessment elsewhere is left
+ * alone. An unchanged capture returns the SAME arrays, so repeating it changes
+ * nothing.
  */
 export function captureRoutineResults(
   db: { blocks: PracticeBlock[]; items: PracticeItem[] },
@@ -429,8 +489,11 @@ export function captureRoutineResults(
     const after = latestLogged(blocks, item.id);
     // Only when a captured block is (or was) the item's latest logged one.
     const touches = [before, after].some((b) => b && mine.has(b.id) && byBlock.has(b.id));
-    if (!touches || !after || after.result === item.lastResult) return item;
-    return { ...item, lastResult: after.result, updatedAt: nowISO(now) };
+    if (!touches || after?.result === item.lastResult) return item;
+    const next = { ...item, updatedAt: nowISO(now) };
+    if (after) next.lastResult = after.result;
+    else delete next.lastResult;
+    return next;
   });
   return { blocks, items };
 }

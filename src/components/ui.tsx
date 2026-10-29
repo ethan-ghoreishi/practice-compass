@@ -211,6 +211,11 @@ export function useAcknowledgedSaves(): AckSaves {
         if (seqs.current[key] !== mine) return;
         if (live && live.current() !== carried) {
           live.again();
+          // An `again` that wrote nothing (the draft was cleared to blank, or
+          // it declined) leaves THIS write as the latest — and it answered:
+          // settle it for the words it carried, never leave it saving.
+          // `SaveStatus` shows "Saved." only while those words are on screen.
+          if (seqs.current[key] === mine) put(key, { status: 'saved', carried });
           return;
         }
         put(key, { status: 'saved', carried });
@@ -252,5 +257,72 @@ export function SaveStatus({ ack, current, onRetry, subject }: { ack?: Ack; curr
         Try again
       </button>
     </span>
+  );
+}
+
+/**
+ * Freed preview time, OFFERED after a removal and never applied on its own:
+ * leaving it needs no tap; "Spread over the rest" and "Give to one…" are the
+ * deliberate ways to hand it back (Plan and Routine previews alike). Only
+ * entries that can still take a minute are offered — with none, the time just
+ * stays unused and no dead button is shown. Choosing a recipient can be
+ * cancelled, changing nothing.
+ */
+export function FreedTime({
+  minutes,
+  recipients,
+  onSpread,
+  onGive,
+}: {
+  minutes: number;
+  recipients: { index: number; title: string }[];
+  onSpread?: () => void;
+  onGive: (index: number) => void;
+}) {
+  const [choosing, setChoosing] = useState(false);
+  if (minutes <= 0) return null;
+  return (
+    <div className="card card-quiet stack-sm" role="group" aria-label="Freed time">
+      <div className="small">
+        <span dir="ltr">
+          {minutes} min freed — {recipients.length > 0 || onSpread ? 'left unused unless you choose.' : 'nothing here can take more, so it stays unused.'}
+        </span>
+      </div>
+      {choosing ? (
+        <div className="stack-sm">
+          {recipients.map((r) => (
+            <button
+              key={r.index}
+              type="button"
+              className="btn btn-sm"
+              style={{ minHeight: 44, justifyContent: 'flex-start' }}
+              aria-label={`Give the freed minutes to ${r.title}`}
+              onClick={() => {
+                setChoosing(false);
+                onGive(r.index);
+              }}
+            >
+              <span dir="auto">{r.title}</span>
+            </button>
+          ))}
+          <button type="button" className="btn btn-ghost btn-sm" style={{ minHeight: 44 }} onClick={() => setChoosing(false)}>
+            Cancel
+          </button>
+        </div>
+      ) : recipients.length > 0 || onSpread ? (
+        <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+          {onSpread && (
+            <button type="button" className="btn btn-sm" style={{ minHeight: 44 }} onClick={onSpread}>
+              Spread over the rest
+            </button>
+          )}
+          {recipients.length > 0 && (
+            <button type="button" className="btn btn-sm" style={{ minHeight: 44 }} onClick={() => setChoosing(true)}>
+              Give to one…
+            </button>
+          )}
+        </div>
+      ) : null}
+    </div>
   );
 }

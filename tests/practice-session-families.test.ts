@@ -701,22 +701,29 @@ describe('class preparation and the shared pool', () => {
       keptNote: 'Review date 2027-01-21 stays as it is (your date).',
     });
 
-    // Heavy practice today (a routine, no feedback) steps it aside while others wait …
+    // Heavy practice today (a routine, no feedback) does NOT step class work
+    // aside: it stays available this session until its class (2026-10-28
+    // policy, superseding 2026-10-23), and its reason says so honestly.
     const todayBlock: PracticeBlock = {
       id: 'b1', practiceItemId: 'p', instrumentId: SETAR, startedAt: '2026-10-23T08:00:00.000Z', durationMinutes: 20, mode: 'maintain', focus: 'other', result: 'not_logged', scope: 'focused', createdReview: false, createdAt: T, updatedAt: T,
     };
     const practisedP = { ...P, lastPractisedAt: todayBlock.startedAt };
-    expect(best([practisedP, Q, R], [todayBlock])!.score.item.id).toBe('q');
+    const again = best([practisedP, Q, R], [todayBlock])!;
+    expect([again.score.item.id, again.reason.endsWith('Practised earlier today — class work stays available until its class.')]).toEqual(['p', true]);
     const plan = buildSessionPlan({ instrumentId: SETAR, budgetMinutes: 20, now: NOW, items: [practisedP, Q, R], blocks: [todayBlock], reviews: [], preparationDates: dates() });
-    expect(plan.segments.map((s) => s.itemId)).not.toContain('p');
-    expect(swapSegment(plan, 0, { instrumentId: SETAR, now: NOW, items: [practisedP, Q, R], blocks: [todayBlock], reviews: [], preparationDates: dates() }).segments.map((s) => s.itemId)).not.toContain('p');
-    expect(nextPractice({ item: practisedP, preparationDate: dates().get('p'), now: NOW })).toMatchObject({ kind: 'class', date: '2026-10-24' });
-    // … and comes back the next day, still before its class.
+    expect(plan.segments.map((s) => s.itemId)).toContain('p');
+    expect(nextPractice({ item: practisedP, preparationDate: dates().get('p'), now: NOW })).toMatchObject({
+      kind: 'class',
+      date: TODAY,
+      sentence: 'Class preparation — for your class on 2026-10-27 (4 days away); practised earlier today, still available this session.',
+    });
+    // … and on the next day, still before its class.
     const tomorrow = new Date('2026-10-24T12:00:00.000Z');
     expect(best([practisedP, Q, R], [todayBlock], tomorrow, dates([prep], [lesson, later], tomorrow))!.score.item.id).toBe('p');
-    // Only candidate: an honest, explained repeat.
-    const only = recommendForInstrument(SETAR, [practisedP], [todayBlock], NOW, dates()).best!;
-    expect([only.score.item.id, only.reason.startsWith('Practised earlier today — nothing else eligible is waiting.')]).toEqual(['p', true]);
+    // Only candidate, practised today and committed to no class: an honest, explained repeat.
+    const qBlock = { ...todayBlock, id: 'bq', practiceItemId: 'q' };
+    const only = recommendForInstrument(SETAR, [{ ...Q, lastPractisedAt: qBlock.startedAt }], [qBlock], NOW, dates()).best!;
+    expect([only.score.item.id, only.reason.startsWith('Practised earlier today — nothing else eligible is waiting.')]).toEqual(['q', true]);
 
     // Near beats later; a passed, removed, unassigned, archive or other-instrument class adds nothing.
     const P2 = item('p2', 'For the later class', { itemType: 'full_piece', status: 'integrated', lastPractisedAt: '2026-10-21T12:00:00.000Z' });

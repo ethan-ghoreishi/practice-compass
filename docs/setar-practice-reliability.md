@@ -326,6 +326,52 @@ node scripts/check-setar-practice-families.mjs --mutations  # each partial fix m
 A missing browser fails (`npx playwright install chromium webkit`); every page
 error is kept; each server has a private Vite cache (`tests/practiceBrowser.ts`).
 
+## 10. The metronome and the reshaped cue (2026-10-28, issue #58)
+
+**The cue.** It was two 880 Hz sine pulses at 0.2, each decaying from its
+first instant — the owner reported it too quiet beside the Setar. Inspected
+rather than simply amplified: a bare sine at 880 Hz carries little a phone
+speaker reproduces well, and an instant decay puts almost no energy in the
+pulse. It is now two RISING triangle pulses, 988 then 1319 Hz, 0.3 s apart,
+each a 10 ms linear attack (no click) to a 0.36 peak, held to 80 ms, then an
+exponential fall to silence at 260 ms (`CUE` in `practiceCue.ts`). The shape
+is unlike any tick, the once-only claim, the visual ring and every readying
+door are unchanged, and Settings' Test sound and the practice screen's "Turn
+on sound" play exactly this cue.
+
+**The metronome** (`metronome.ts`, controls in `ActiveBlock.tsx`, shown on the
+ordinary/Plan block and the Routine runner). Opt-in and off by default; 80 BPM
+in 40–240 (−/+ and a typed value), three levels; one 1600 Hz triangle tick of
+40 ms per beat, unaccented. Beats are placed on the AUDIO clock by a 25 ms
+look-ahead pass 0.12 s ahead (MDN, "Advanced techniques"), never from the
+practice wall clock or the screen's one-second tick; a late pass skips the
+beats it missed and keeps the grid. It shares the page's ONE context and never
+readies or replaces one on a tempo or level edit: Start beat uses the running
+context, or — sound not ready — readies it exactly as "Turn on sound" does and
+begins only if that resume lands on the still-current context with nothing
+having stopped it since. Anything that ends the screen's right to sound stops
+it and cancels every beat already placed: Pause, Finish, Discard, leaving the
+screen, a hidden page, lost readiness (interrupted / suspended / closed) and a
+context replaced by any readying tap. Nothing restarts it — returning or
+resuming leaves it off until a tap. A Routine boundary alone keeps it going;
+typing a question or a note never touches it. A boundary cue mutes the beat
+for the cue's 0.56 s through the metronome's own gain stage, and the beat
+resumes on its grid — no burst. Tempo and level live in module memory only:
+never a record, migration, backup or sync.
+
+**Proof** (`docs/practice-session-model.md` §12): `metronome scheduling and
+cue priority survive sound lifecycle changes` (a fake context on a controlled
+audio clock: exact beat times, tempo edits, late timer, duck window — also
+across a Start or restart inside it, read as each tick's routed level — every
+stop door, denied / rejected / never-settled / late resume, replacement) and
+`live practice tools preserve clocks notes records and mobile controls`
+(Chromium and WebKit through the real screens). **Owner (ac-8):** with and
+without the beat, on MacBook and iPhone Safari plus the installed PWA over
+HTTPS at normal media volume beside the Setar — the cue clearly audible and
+distinguishable, BPM and level edits comfortable, the cue heard over the beat,
+recovery after idle / interruption, and a question typed while the timer and
+beat continue. Record devices, versions, output and what was heard.
+
 ## Rules in full: hands-free practice
 
 Moved from `AGENTS.md` on 2026-10-22 to keep the always-loaded rules within
@@ -335,5 +381,6 @@ baseline (24a84be) wording with its mechanism and identifiers. Both bind;
 neither weakens the other. Change a rule in both places.
 
 - A running clock on a visible screen holds one Screen Wake Lock (`shouldKeepAwake`; one owner, `useScreenAwake`). `nextSignal` announces at most once per call, moving the ephemeral `signalledThrough` to the boundaries passed, never by one; routine boundaries are `segmentBoundaries`, never a second sum; Skip calls `acknowledgeThrough`. The guaranteed signal is visual (target ring, overtime figure; a routine boundary shows for a window, never one render); a block never auto-finishes; audio and vibration are best-effort, never asserted; every Start, Resume, Test sound or recovery tap closes the page's context and creates and resumes a fresh one in the tap (`practiceCue.ts`), never from render or an effect, and plays only on a granted marker claim (`claimSessionSignal`). A routine starts only from a tap, never an effect. None of this changes a minute.
+- The metronome (`metronome.ts`) is opt-in and started only by a tap, on the one practice context; it schedules on the audio clock (look-ahead, one scheduler, a late timer skips to the grid, never a burst); Pause, Finish, Discard, leaving, a hidden page, lost readiness or a context replacement stop it and cancel what was placed, and nothing restarts it. Tempo and level are module memory, never a record, sync or backup. A boundary cue ducks it for `CUE.totalSeconds`, then the beat resumes in time (§10); the window is remembered on its context, so a beat started or restarted inside it starts muted until it ends.
 - The wake lock, `crypto.subtle` (`sha256Hex`) and the service worker need a secure context, which LAN `http://` is not: confirm `window.isSecureContext` on the device over HTTPS before judging an unmerged branch. The answer is a route, never a fallback hash: `parseSourceIndex` refuses first (`INSECURE_CONTEXT_REFUSAL`).
 - **Open gaps:** Sync over plain http still throws the raw `Cannot read properties of undefined (reading 'digest')` (a wording fix in its own lane, never a second hash); `readIndexFile` (`src/store/archiveIndex.ts`) has no production caller.

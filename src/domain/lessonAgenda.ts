@@ -128,6 +128,52 @@ export function preparationDatesByItem(
   return out;
 }
 
+/** What the NEXT class asks a Session Plan to seat (`requiredClassWork`). */
+export interface RequiredClassWork {
+  /** The nearest upcoming class date on the instrument; absent with no such class. */
+  date?: ISODate;
+  /** Every class on that date (ties all count). */
+  lessonIds: ID[];
+  /** Existing, non-resting items explicitly prepared for those classes. */
+  itemIds: ID[];
+  /** Prepared for them but resting: never seated, explained instead. */
+  restingItemIds: ID[];
+}
+
+/**
+ * The class work a plan must RESERVE: items explicitly prepared for the
+ * nearest upcoming non-archive class on this instrument (every class tied on
+ * that date). A later class keeps its own bounded urgency and never this
+ * guarantee; a question, an unassigned entry, a past, deleted, archive or
+ * other-instrument class confers nothing. The nearest class with no
+ * preparations requires nothing, whatever a later one holds.
+ */
+export function requiredClassWork(
+  agenda: LessonAgendaEntry[],
+  lessons: Lesson[],
+  items: { id: ID; instrumentId: ID; status: string }[],
+  instrumentId: ID,
+  now: Date,
+): RequiredClassWork {
+  const next = defaultTargetLesson(lessons, instrumentId, now);
+  if (!next) return { lessonIds: [], itemIds: [], restingItemIds: [] };
+  const today = todayISODate(now);
+  const lessonIds = lessons
+    .filter((l) => l.instrumentId === instrumentId && l.date === next.date && isUpcomingLesson(l, today))
+    .map((l) => l.id)
+    .sort();
+  const byId = new Map(items.map((i) => [i.id, i]));
+  const itemIds = new Set<ID>();
+  const restingItemIds = new Set<ID>();
+  for (const e of agenda) {
+    if (!isPreparation(e) || !e.lessonId || !lessonIds.includes(e.lessonId) || e.instrumentId !== instrumentId) continue;
+    const item = byId.get(e.itemId);
+    if (!item || item.instrumentId !== instrumentId) continue;
+    (item.status === 'dormant' ? restingItemIds : itemIds).add(item.id);
+  }
+  return { date: next.date, lessonIds, itemIds: [...itemIds].sort(), restingItemIds: [...restingItemIds].sort() };
+}
+
 /** Item ids with a live (today-or-later) preparation commitment. */
 export function itemsPreparedForLesson(agenda: LessonAgendaEntry[], lessons: Lesson[], now: Date): Set<ID> {
   return new Set(preparationDatesByItem(agenda, lessons, now).keys());

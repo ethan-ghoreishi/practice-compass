@@ -1,8 +1,9 @@
 import type { ID, ISODateTime, Lesson, LessonAgendaEntry, LessonQuestion, PracticeBlock, PracticeItem } from './types';
 import { faCollator } from './farsi';
-import { isOpenQuestion, isQuestion, isUnassigned } from './lessonAgenda';
+import { defaultTargetLesson, isOpenQuestion, isQuestion, isUnassigned } from './lessonAgenda';
 import { latestObservation } from './blocks';
-import { isolate } from './util';
+import { isUpcomingLesson } from './sourceArchive';
+import { isolate, todayISODate } from './util';
 
 // ---------------------------------------------------------------------------
 // Questions for a class — the things the owner actually wants to ask their
@@ -131,6 +132,46 @@ export function openQuestionsForInstrument(
       .filter((q) => q.instrumentId === instrumentId)
       .map((q) => toClassQuestion(q, items, blocks)),
   );
+}
+
+// --- A question captured while practising ----------------------------------
+//
+// Ownership is FROZEN when the field opens: the instrument, the item being
+// practised (none for an unbound routine segment — never a guessed one) and
+// the nearest upcoming class. A routine boundary, a deleted item or a changed
+// class while the owner types never retargets the words; a target that has
+// become invalid is explained and refused, and the owner chooses again.
+
+export interface QuestionCapture {
+  instrumentId: ID;
+  itemId?: ID;
+  lessonId?: ID;
+}
+
+export function openQuestionCapture(lessons: Lesson[], instrumentId: ID, itemId: ID | undefined, now: Date): QuestionCapture {
+  const lesson = defaultTargetLesson(lessons, instrumentId, now);
+  return { instrumentId, ...(itemId ? { itemId } : {}), ...(lesson ? { lessonId: lesson.id } : {}) };
+}
+
+/** Why the frozen owner can no longer take the words — per target — or null when it still can. */
+export function captureTargetProblem(
+  db: { items: PracticeItem[]; lessons: Lesson[] },
+  capture: QuestionCapture,
+  now: Date,
+): { item?: string; lesson?: string } | null {
+  const out: { item?: string; lesson?: string } = {};
+  if (capture.itemId) {
+    const item = db.items.find((i) => i.id === capture.itemId);
+    if (!item) out.item = 'The item this question was about was deleted while you typed.';
+    else if (item.instrumentId !== capture.instrumentId) out.item = 'The item this question was about moved to another instrument while you typed.';
+  }
+  if (capture.lessonId) {
+    const lesson = db.lessons.find((l) => l.id === capture.lessonId);
+    if (!lesson) out.lesson = 'The class it was for was deleted while you typed.';
+    else if (lesson.instrumentId !== capture.instrumentId) out.lesson = 'The class it was for moved to another instrument while you typed.';
+    else if (!isUpcomingLesson(lesson, todayISODate(now))) out.lesson = 'The class it was for is no longer upcoming.';
+  }
+  return out.item || out.lesson ? out : null;
 }
 
 /** A short label for the class an entry names, for display next to it. */
