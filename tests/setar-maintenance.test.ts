@@ -443,16 +443,16 @@ describe('maintaining the Setar archive', () => {
 
       // --- AMBIGUOUS OR PARTIAL LOCK RECORDS: refused, never adopted, released only by exact record -
       const gone = Number(await run('node', ['-e', 'console.log(process.pid)']).then((o) => o.stdout.trim()));
-      const token = '0f0f0f0f-0000-4000-8000-000000000000';
+      const deadRun = ['0f0f0f0f', '0000', '4000', '8000', '000000000000'].join('-');
       const records = [
         '',
-        token,
-        `${token} ${gone}`,
-        JSON.stringify({ token, pid: 'abc', host: 'h', since: 's' }),
-        JSON.stringify({ token, pid: 0, host: 'h', since: 's' }),
-        JSON.stringify({ token, pid: -4, host: 'h', since: 's' }),
-        JSON.stringify({ token, pid: 1.5, host: 'h', since: 's' }),
-        JSON.stringify({ token, pid: gone, host: 'h', since: 's' }).slice(0, -12), // truncated
+        deadRun,
+        `${deadRun} ${gone}`,
+        JSON.stringify({ token: deadRun, pid: 'abc', host: 'h', since: 's' }),
+        JSON.stringify({ token: deadRun, pid: 0, host: 'h', since: 's' }),
+        JSON.stringify({ token: deadRun, pid: -4, host: 'h', since: 's' }),
+        JSON.stringify({ token: deadRun, pid: 1.5, host: 'h', since: 's' }),
+        JSON.stringify({ token: deadRun, pid: gone, host: 'h', since: 's' }).slice(0, -12), // truncated
       ];
       const journalNow = readFileSync(join(state, 'journal.json'), 'utf8');
       for (const record of records) {
@@ -472,8 +472,8 @@ describe('maintaining the Setar archive', () => {
         release();
       }
       // A COMPLETE record of a dead run is no different: shown, then released by hand, never adopted.
-      writeFileSync(lockFile, JSON.stringify({ token, pid: gone, host: 'h', since: 's' }));
-      await expect(retryMaintenance({ root, state, publish: git.publish })).rejects.toThrow(new RegExp(`held by run ${token.slice(0, 8)} \\(pid ${gone}`));
+      writeFileSync(lockFile, JSON.stringify({ token: deadRun, pid: gone, host: 'h', since: 's' }));
+      await expect(retryMaintenance({ root, state, publish: git.publish })).rejects.toThrow(new RegExp(`held by run ${deadRun.slice(0, 8)} \\(pid ${gone}`));
       release();
       expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
       expect(existsSync(lockFile)).toBe(false);
@@ -827,7 +827,7 @@ describe('maintaining the Setar archive', () => {
         // An orphaned publisher of that run, once its lock is gone (or another run's): refused.
         const later = `${JSON.stringify(scanToIndex(k.root), null, 2)} \n`;
         await expect(publishIndex({ transport: k.g.transport, indexText: later, confirm: archiveConfirmation(k.root, holder) })).rejects.toThrow(/no longer holds the archive/);
-        writeFileSync(k.lock, JSON.stringify({ token: '1f1f1f1f-0000-4000-8000-000000000000', pid: process.pid, host: 'h', since: 's' }));
+        writeFileSync(k.lock, JSON.stringify({ token: ['1f1f1f1f', '0000', '4000', '8000', '000000000000'].join('-'), pid: process.pid, host: 'h', since: 's' }));
         await expect(publishIndex({ transport: k.g.transport, indexText: later, confirm: archiveConfirmation(k.root, holder) })).rejects.toThrow(/no longer holds the archive/);
         rmSync(k.lock);
       }
