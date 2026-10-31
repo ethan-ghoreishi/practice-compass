@@ -173,7 +173,8 @@ folder on the NAS outside every share; they are not reproduced here.
    changing only `last_work_hour` 0 → 23, then `synoschedtask --sync`.
    - It now shows "Repeat every 15 min until 23:45".
    - The crontab line is `0,15,30,45 0,1,…,23`.
-   - The 01:00 run, the first ever past hour 0, ran (Success).
+   - The scheduled 01:00 run fired (Success): the first run past hour 0 since
+     the repetition broke.
    - DSM's power schedule (on 09:00, off 20:00) is unchanged, so "all day" means
      while powered.
 2. **Runtime share.** Removed the `group:http` ACE. `http` can no longer read
@@ -248,12 +249,25 @@ inside…"), the power schedule, the `web` bind mount, `http`'s read on the medi
 **Rollback manifest** (root shell on the NAS; private copies under
 `/volume1/@practice-compass-rollback/20261031/`, root-only):
 
-- **Archive declarations.** Run the guided route, never a hand edit: `… rollback`,
-  as `ethan`, with the same `--state`. It restores both CSVs from the latest
-  private copy and publishes. Run it again to step back one more change. A
-  rename is undone the same way, and its bytes are checked.
-- **Index.** Commit an earlier `setar/index.json` forward on `source-index`
-  (for example the blob at `c23e808`); never force-push.
+- **Archive declarations.**
+  - **Session 41 registration** (the last change): run `… rollback` as `ethan`
+    with the same `--state` and `PC_MAINT_PUBLISH`. It restores both CSVs from
+    that apply's private copy and publishes.
+  - **Session 40 rename** (`rollback` only undoes the last journaled change, and
+    a reverse `rename` is refused as a loop): as `ethan`, in this order.
+    1. Put both CSVs back from the private copy in
+       `--state/2026-10-31T00-45-36-512Z-c8c77a84974c2484/` by writing a temp
+       file beside each and renaming it, never through the Mac.
+    2. `mv` the take back to its old name in the same folder.
+    3. Check SHA‑256 `0839ec841c82…`.
+    4. Run the job through `PC_MAINT_PUBLISH`.
+
+    The same original CSVs also sit in the root-only rollback folder, under
+    `archive/`.
+- **Index.** Disable task 3 first, or roll the archive back first. Otherwise
+  the next tick republishes what the archive says within 15 minutes. Then
+  commit an earlier `setar/index.json` forward on `source-index` (for example
+  the blob at `c23e808`); never force-push.
 - **Task 3.** The same API `set` with `last_work_hour=0` (saved as
   `task3-api-before.json`), then `synoschedtask --sync`. DSM also keeps
   `3.task` copies in `…/synoschedule.d/root/3.backup/`.
@@ -267,3 +281,13 @@ inside…"), the power schedule, the `web` bind mount, `http`'s read on the medi
   `config.env` as is unless reverting `PC_NODE` too, then run
   `synoacltool -enforce-inherit` on each file.
 - **Sudo.** Delete `/etc/sudoers.d/practice-compass-maint`.
+  - A DSM update may remove it too. The failure is safe: an apply ends
+    `publish-failed`, and the last good index stays published. Reinstall the
+    one line and run `… retry`.
+
+**Still broader than needed (recorded, not changed):** through the runtime
+share's inherited ACE, `setar-indexer` can write its own scripts and
+`config.env`; it needs write only on `setar-index.json` and the folder. The
+root-only rollback folder holds a second copy of `config.env` (the token):
+delete `/volume1/@practice-compass-rollback/20261031/` once this repair is
+accepted.
