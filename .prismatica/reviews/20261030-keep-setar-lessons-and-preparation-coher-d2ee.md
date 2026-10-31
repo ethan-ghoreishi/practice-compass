@@ -1,56 +1,46 @@
 ---
 id: 20261030-keep-setar-lessons-and-preparation-coher-d2ee
 contractId: 20261030-keep-setar-lessons-and-preparation-coher-d2ee
-patchId: 4b621c3079645e092f05c3e5a7f9e1651dbd2d48
+patchId: bfd122a0652bcecefcada743774e666d31ae8fe9
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
-  - family: lesson-decisions-refuse-moved-identity
-    summary: Explicit lesson linking must refuse a changed date or number after
-      preview. sourceReconcile.ts:760 checks only existence, binding and
-      instrument.
-    counterexample: Preview pathless L41-mine for session 41 dated 2026-10-27,
-      choose Link, then sync/import its date as 2026-11-24 or number as 42
-      before Apply. The domain probe returned no stale decision or question and
-      bound session 41 to the changed lesson. Sweep explicit linking, store
-      rebase, ArchiveRefresh and obsolete renumber expectations; automatic
-      adoption, duplicate candidate matching and deleted/wrong-instrument guards
-      checked clean. Extend the existing ac-3 named family.
   - family: maintenance-recovery-preserves-concurrent-state
-    summary: Recovery overwrites complete declarations without checking current
-      state. Rollback acquires no lock and removes an existing lock.
-    counterexample: Apply A, add a valid registry row through another maintenance
-      state directory, then roll back A. The filesystem probe returned
-      ok/published after removing the later row and also removed an active lock.
-      Shared restore affects explicit rollback and automatic apply-failure
-      recovery; it writes declarations before checking changed media bytes.
-      Journals lack archive-root binding. Initial preview hashing, same-state
-      apply/retry locking and exclusive declaration temp writes checked clean.
-      Extend the existing ac-2 named family.
-  - family: maintenance-writes-stay-inside-authorised-tree
-    summary: Rename validates the source leaf but not its session directory,
-      allowing mutation through a symlink outside the archive.
-    counterexample: Point session-39-01-09-2026 outside the archive containing
-      نمونه.mp4 and request rename into real session-40-29-09-2026/نمونه-2.mp4.
-      The filesystem probe accepted the preview and hashed the outside file;
-      Apply uses those paths directly. Sweep planning, apply and restore media
-      paths. Source-leaf refusal, initial destination-directory checks,
-      declaration-leaf checks, scanner directory exclusion and scratch-output
-      containment checked clean. Extend the existing ac-2 named family.
+    summary: Interrupted publication cannot recover its dead lock. lock() adopts
+      only a prepared journal, retry supplies no recovery journal, and recovery
+      does not record its newly adopted lock token.
+    counterexample: After apply writes status applied and awaits publication,
+      terminate the process. In-memory probes of the actual entry points with
+      that journal and its matching dead-process lock made apply, retry and
+      rollback all refuse, with zero writes and the lock retained. Dead locks
+      also block published, publish-failed and rolled-back states; interruption
+      after adopting a prepared lock leaves its token different from
+      journal.lockToken and blocks rollback again. Sweep lock/unlock,
+      applyMaintenance, retryMaintenance, rollbackMaintenance and publication
+      transitions. Concurrent-declaration digest refusal, whole-restore media
+      preflight, archive-root binding, live-lock refusal and owned unlock
+      checked clean. Extend the existing exact ac-2 title across interruption
+      phases rather than only after registry.
   - family: maintenance-publication-matches-validated-index
-    summary: The runner wrapper ignores validated text, accepts missing publication
-      evidence and compares scan hashes only after the scan-and-publish job
-      completes.
-    counterexample: The actual publishWithRunner body with PC_MAINT_PUBLISH=true
-      returned published without running the job. A job configured for another
-      archive root publishes before hash comparison, after which publishStep
-      incorrectly promises the last good index remains published. Sweep
-      apply/retry/rollback, publishStep, runner and publisher. Atomic publisher
-      updates, unchanged handling and runner scan-failure exit checked clean.
-      Extend the existing ac-2 named family through the real wrapper.
-createdAt: 2026-10-31T01:31:15.455Z
-sealedAt: 2026-10-31T02:56:36.940Z
+    summary: A non-zero or signalled runner exit is still treated as proof that
+      nothing published; ordinary exceptions also default to known
+      non-publication.
+    counterexample: Using makeGitHubIndexTransport with fake fetch, accept the PATCH
+      ref update and then throw for a lost response. publishIndex throws while
+      the remote ref is already new; passing that exit-1 result through actual
+      publishWithRunner produced nothingPublished=true. publishStep consequently
+      promises that the last good index remains published. The same ambiguity
+      exists for createRef, process interruption after ref acceptance and
+      journal-write failure after successful publication. Sweep
+      apply/retry/rollback through publishStep, runner, publisher CLI,
+      updateRef/createRef and the new non-zero-exit claims in
+      docs/setar-archive.md and DECISIONS.md. Pre-request expected-hash refusal,
+      positive matching evidence, zero-exit missing/wrong evidence and unchanged
+      handling checked clean. Extend the existing exact ac-2 title with
+      accepted-write/lost-response and post-publication failures.
+createdAt: 2026-10-31T03:28:53.885Z
+sealedAt: 2026-10-31T04:54:45.706Z
 ---
 
 # Review: Keep Setar lessons and preparation coherent from archive to next class
@@ -64,7 +54,7 @@ sealedAt: 2026-10-31T02:56:36.940Z
 - **Contract:** 20261030-keep-setar-lessons-and-preparation-coher-d2ee
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/60
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `4b621c3079645e092f05c3e5a7f9e1651dbd2d48`
+- **Diff patch-id:** `bfd122a0652bcecefcada743774e666d31ae8fe9`
 - **Computed by:** prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified
 
 ## The plan the owner approved
@@ -365,6 +355,8 @@ Run the seven exact named automated acceptance families above and inspect the re
 - docs/setar-archive.md
 - docs/setar-lesson-lifecycle.md
 - docs/setar-practice-reliability.md
+- scripts/publish-setar-index.mjs
+- scripts/run-setar-index.sh
 - scripts/scan-setar-classes.mjs
 - scripts/setar-archive-maintenance.mjs
 - src/components/ArchiveRefresh.tsx
