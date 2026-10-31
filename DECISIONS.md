@@ -26,7 +26,8 @@ bullet of the entry below.
   (`.<name>.superseded-<run>`), never unlinked: a handle still open on it can
   write at any time, even after the run, so only keeping the inode named loses
   nothing. A media name is dropped only after being moved to a private name
-  and judged there, so a file renamed onto it in that instant keeps its name.
+  and judged there, so a file renamed onto it in that instant keeps its name; a run stopped
+  there has the next run put it back (or drop a second name of the moved file).
 - **Publishers answer to the owner and to the archive as it is now.** Before
   writing anything after reading the ref, the publisher checks the lock (absent
   for the scheduled job, the caller's token for maintenance) and rescans; the

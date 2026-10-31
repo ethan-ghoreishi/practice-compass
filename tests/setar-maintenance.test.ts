@@ -844,7 +844,32 @@ describe('maintaining the Setar archive', () => {
         }]) })).rejects.toThrow(/power cut/);
         expect(await v.back({ at: when(['judge-drop', v.at(B), swapIn(v.at(B), 'swapped in at the new name')]) })).toMatchObject({ ok: true });
         expect([sha(readFileSync(v.at(A))), readFileSync(v.at(B), 'utf8')]).toEqual([vBytes, 'swapped in at the new name']);
-        for (const x of [f, u, v]) expect(readdirSync(join(x.root, S39)).filter((n) => n.includes('.dropping-'))).toEqual([]);
+        // A run STOPPED at that judgement leaves a name on its private aside: the next run puts back
+        // someone else's file (the only name it has), or drops a second name of ours — at all three sites.
+        const cut = () => {
+          throw new Interrupted('power cut at the drop');
+        };
+        const g = box();
+        const gBytes = sha(readFileSync(g.at(A)));
+        await expect(g.go(MOVE, { at: when(['unlink', A, swapIn(g.at(A), 'theirs at the old name')], ['judge-drop', g.at(A), cut]) })).rejects.toThrow(/power cut/);
+        await expect(g.back()).rejects.toThrow(/neither as this change left them nor as they were/);
+        expect([readFileSync(g.at(A), 'utf8'), sha(readFileSync(g.at(B)))]).toEqual(['theirs at the old name', gBytes]);
+        const h = box();
+        const hBytes = sha(readFileSync(h.at(A)));
+        await expect(h.go(MOVE, { at: when(['judge-drop', h.at(A), cut]) })).rejects.toThrow(/power cut/);
+        expect(await h.back()).toMatchObject({ ok: true });
+        expect([sha(readFileSync(h.at(A))), existsSync(h.at(B))]).toEqual([hBytes, false]);
+        const w = box();
+        await expect(w.go(MOVE, { at: when(['link', B, () => writeFileSync(w.at(A), Buffer.alloc(500, 7))], ['judge-drop', w.at(B), cut]) })).rejects.toThrow(/power cut/);
+        expect(await w.back()).toMatchObject({ ok: true });
+        expect([sha(readFileSync(w.at(A))), existsSync(w.at(B))]).toEqual([sha(Buffer.alloc(500, 7)), false]);
+        const y = box();
+        const yBytes = sha(readFileSync(y.at(A)));
+        await expect(y.go(MOVE, { at: when(['unlink', A, cut]) })).rejects.toThrow(/power cut/);
+        await expect(y.back({ at: when(['judge-drop', y.at(B), cut]) })).rejects.toThrow(/power cut/);
+        expect(await y.back()).toMatchObject({ ok: true });
+        expect([sha(readFileSync(y.at(A))), existsSync(y.at(B))]).toEqual([yBytes, false]);
+        for (const x of [f, u, v, g, h, w, y]) expect(readdirSync(join(x.root, S39)).filter((n) => n.includes('.dropping-'))).toEqual([]);
         // A run stopped with a declaration SET ASIDE: the next run puts back that exact capture first.
         const t = box();
         const tDecl = declarations(t.root);

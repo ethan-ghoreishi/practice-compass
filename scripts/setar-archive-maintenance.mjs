@@ -329,6 +329,7 @@ function lock(root) {
   }
   try {
     recoverCaptures(root);
+    recoverDrops(root);
   } catch (err) {
     unlock(root, token);
     throw err;
@@ -437,6 +438,27 @@ function recoverCaptures(root) {
     }
     if (caps.length > 1) throw new Refusal(`${name} is missing, and ${caps.length} copies set aside by interrupted runs exist (${caps.join(', ')}); nothing was changed. Put the right one back by hand.`);
     putBack(root, name, join(root, caps[0]));
+  }
+}
+
+/**
+ * A run stopped inside `dropName` left a media name on its private aside. A
+ * second name of a file still named elsewhere is dropped (the bytes stay
+ * there: the drop it was making). The ONLY name of a file — someone else's,
+ * renamed onto the public name in that instant — is put back at that name,
+ * never over a newer one; if it is taken, it is kept and named. Under the lock.
+ */
+function recoverDrops(root) {
+  for (const d of readdirSync(root, { withFileTypes: true })) {
+    if (!d.isDirectory()) continue;
+    for (const f of readdirSync(join(root, d.name))) {
+      const m = /^\.(.+)\.dropping-[0-9a-f-]{36}$/.exec(f);
+      if (!m) continue;
+      const aside = join(root, d.name, f);
+      const st = lstatSync(aside);
+      if (st.isFile() && st.nlink > 1) rmSync(aside);
+      else putBack(join(root, d.name), m[1], aside);
+    }
   }
 }
 

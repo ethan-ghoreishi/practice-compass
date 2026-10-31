@@ -666,7 +666,9 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   media file gets its new name by link (never over anything), is judged by
   size and SHA-256, and only then loses its old name — and any name is dropped
   only after it is first moved to a private name and judged THERE, so a file
-  renamed onto it meanwhile keeps its name (put back, never overwritten). An
+  renamed onto it meanwhile keeps its name (put back, never overwritten); a
+  run stopped there has the next run put that file back at its name, or drop
+  the private name when it is a second name of the moved file. An
   edit, deletion or new file from anyone else at that instant is kept and the
   run refuses. A failure while editing, and `rollback`, put back only what THIS
   change wrote — judged first, and proved again at each write against what
@@ -702,7 +704,9 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   ref (a commit even for unchanged content), so it can never land afterwards.
   A paused or orphaned publisher therefore never puts an older index over a
   newer one. Success needs the publisher's last line
-  `published-index <status> <hash>` naming that hash.
+  `published-index <status> <hash>` naming that hash. The runner is the only
+  entry point on the NAS: its work folder holds the intent record every
+  publisher there shares.
 - **Unconfirmed stays unconfirmed.** Before any remote work the journal names
   the attempt's validated hash and marks it open; every unconfirmed attempt's
   hash stays in `unresolved` until a positive observation of the branch.
