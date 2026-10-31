@@ -2,6 +2,56 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## One Setar class, one record — from planned lesson to archive session (2026-10-30)
+
+Lane `20261030-keep-setar-lessons-and-preparation-coher-d2ee` (issue #60). The
+identity matrix, consumers and proof routes are `docs/setar-lesson-lifecycle.md`.
+
+- **Provenance is not intent.** Adopting or combining an owner's lesson no
+  longer stamps `origin: 'archive'`; only a lesson the import creates is
+  history-by-marker. A planned Class 42 bound to early material stays the next
+  class until its date; an archive-only session dated ahead of the device clock
+  stays history. Lessons adopted before this keep their marker (no clock-reading
+  migration); they are all in the past.
+- **Same instrument + date + number without path evidence now ASKS.** It used to
+  create a competing lesson (the reported Class 41 pair). Number alone, date
+  alone, another instrument or date (the real Class 38) still never match; a
+  unique exact path still adopts on its own. A bound session is now examined for
+  an unbound twin: Combine (owner's id survives, every reference rebound, no
+  `deleteLesson`, no suppression) or Keep separate.
+- **Keep separate is a lesson-scoped `session` suppression**
+  (`{kind:'session', ref:N, itemId:<lessonId>}`), chosen over a new suppression
+  kind because it passes the v17 validator unchanged: no schema bump, and a
+  device still on the previous build accepts the synced snapshot (it shows the
+  row as a session decision, harmlessly). Only an UNSCOPED session suppression
+  hides a session.
+- **Words in progress block a combine** (a held notes recovery copy or a live
+  question capture on the twin): refused with the words kept, never folded away.
+  Two Combine answers into one archive row contradict each other; the second is
+  stale.
+- **Diagnostics carry a `code`** (additive; index stays version 1, older apps
+  ignore it, digest still verifies). Refresh groups attention by the one action
+  it needs and names the class, never parsing the sentence. One new
+  source-index commit follows, because diagnostics are inside `contentHash`.
+- **One guided maintenance route** (`scripts/setar-archive-maintenance.mjs`)
+  replaces hand-editing `PIECES.csv` / `RENAME-LOG.csv`: register, roster,
+  rename; preview id; private rollback copy outside the archive; validate with
+  the scanner's own grammar; scratch scan; publish through the existing job;
+  `retry` and `rollback`; repeat is a no-op. A "piece name" starting with a role
+  is refused as a filename mistake (Session 40's stacked `تمرین-من-نت-…`), never
+  registered. The scanner stays read-only. This supersedes "only the owner edits
+  the declarations" (2026-09-17): the owner still decides every fact; the tool
+  makes the edit.
+- **Sound recovery stays reachable when the page says ready.** A context left
+  `running` but silent had no practice-screen tap; "No sound? Test it" now is,
+  and a transient constructor refusal offers "Try sound again" (Settings no
+  longer disables Test for it). Same fresh-in-the-tap context; nothing detected
+  or automatic; metronome Start keeps reusing a running context, which after
+  the tap is the fresh one.
+- **CI test, not CI:** the apt-routing test proves per-probe `--max-time`,
+  targets and safeguards by a recording `curl` shim and weakened scratch copies,
+  with a 60 s deadlock guard, instead of racing wall-clock totals.
+
 ## A live teacher question saves itself; a class slot never starts below its floor (2026-10-29)
 
 Rework of the 2026-10-28 lane (same contract, owner amendment of

@@ -39,6 +39,28 @@ export const DEMO_ROLE = 'نمونه';
 /** The whole class recording. Attaches to the SESSION; never carries a piece. */
 export const CLASS_ROLE = 'ضبط-کلاس';
 
+/**
+ * What KIND of attention a diagnostic needs — the published vocabulary the
+ * app groups by (`DIAGNOSTIC_ACTIONS` in `src/domain/sourceArchive.ts`).
+ * Naming: no-role, unsupported-type, class-names-piece, not-session-folder,
+ * outside-session. Identity: unregistered. Roster: roster, demo-unattributed.
+ * Renames: rename-log. Inventory: symlink, not-file, not-directory.
+ */
+export const DIAGNOSTIC_CODES = [
+  'no-role',
+  'unsupported-type',
+  'class-names-piece',
+  'not-session-folder',
+  'outside-session',
+  'unregistered',
+  'roster',
+  'demo-unattributed',
+  'rename-log',
+  'symlink',
+  'not-file',
+  'not-directory',
+];
+
 const KIND_BY_EXT = { '.mp4': 'video', '.pdf': 'score', '.jpg': 'photo' };
 
 /** NAS housekeeping and dotfiles are never archive content. */
@@ -317,12 +339,16 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
   if (inventory.length > MAX_FILES) throw new Error(`Archive holds more than ${MAX_FILES} files; refusing to index.`);
 
   const diagnostics = [];
-  const diag = (path, reason) => diagnostics.push({ path, reason });
+  // Every diagnostic carries a CODE (`DIAGNOSTIC_CODES`): what kind of thing
+  // needs the owner, so the app can group it and name the one action without
+  // ever parsing the sentence. Additive: the index stays version 1, and an app
+  // that predates it ignores the field (its digest covers the raw file).
+  const diag = (path, reason, code) => diagnostics.push({ path, reason, code });
   // Everything the WALK could not take in. A symlink is not followed and a
   // device node is not a file, but dropping either in silence publishes an
   // index that is quietly narrower than the archive — the same "partial view
   // sold as complete" this scanner's two-read check exists to refuse.
-  for (const s of skipped) diag(s.path, s.reason);
+  for (const s of skipped) diag(s.path, s.reason, s.code);
 
   // --- sessions -----------------------------------------------------------
   const sessions = new Map(); // n -> { n, date, folder, assets: [] }
@@ -335,13 +361,13 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
 
     const segs = path.split('/');
     if (segs.length !== 2) {
-      diag(path, 'Outside a session folder — not indexed.');
+      diag(path, 'Outside a session folder — not indexed.', 'outside-session');
       continue;
     }
     const [folder, name] = segs;
     const parsed = parseSessionFolderName(folder);
     if (!parsed) {
-      diag(path, 'Not in a session-N-DD-MM-YYYY folder — not indexed.');
+      diag(path, 'Not in a session-N-DD-MM-YYYY folder — not indexed.', 'not-session-folder');
       continue;
     }
     const existing = sessions.get(parsed.n);
@@ -356,7 +382,7 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
     const stem = ext ? name.slice(0, -ext.length) : name;
     const parsedName = parseAssetStem(stem);
     if (!parsedName) {
-      diag(path, 'Filename carries no known role — left for the owner to name or move.');
+      diag(path, 'Filename carries no known role — not indexed. Rename it to <role>-<piece>.<ext> with the maintenance tool.', 'no-role');
       continue;
     }
     // EVERY piece a filename names is evidence about this class — recorded
@@ -367,18 +393,19 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
     // disagrees with.
     if (parsedName.piece) session.named.add(parsedName.piece);
     if (!kind) {
-      diag(path, `Unsupported file type "${ext || '(none)'}" — not indexed. Save it as .mp4, .pdf or .jpg to include it.`);
+      diag(path, `Unsupported file type "${ext || '(none)'}" — not indexed. Save it as .mp4, .pdf or .jpg to include it.`, 'unsupported-type');
       continue;
     }
     if (parsedName.piece && !byKey.has(parsedName.piece)) {
       diag(
         path,
-        `Piece "${parsedName.piece}" is not in the registry — not indexed. If it is a new piece, declare it in PIECES.csv (the scanner's --attention report drafts the row).`,
+        `Piece "${parsedName.piece}" is not in the registry — not indexed. If it is a new piece, register it with the maintenance tool; if the filename is wrong, rename the file with it.`,
+        'unregistered',
       );
       continue;
     }
     if (parsedName.piece && parsedName.role === CLASS_ROLE) {
-      diag(path, 'A class recording covers the whole lesson and cannot name a piece.');
+      diag(path, 'A class recording covers the whole lesson and cannot name a piece — not indexed. Rename it to ضبط-کلاس.<ext>.', 'class-names-piece');
       continue;
     }
     session.assets.push({
@@ -414,7 +441,8 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
       if (byKey.has(k)) {
         diag(
           `${s.folder}`,
-          `Piece "${k}" appears in this folder but the registry does not list session ${s.n} for it. Add ${s.n} to its sessions in PIECES.csv only if it was taught in this class.`,
+          `Piece "${k}" appears in this folder but the registry does not list session ${s.n} for it. Confirm the class roster with the maintenance tool only if it was taught in this class.`,
+          'roster',
         );
       }
     }
@@ -444,12 +472,14 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
           a.path,
           `Unnamed demonstration not attributed: session ${s.n}'s roster disagrees with its filenames (${strays
             .map((k) => `"${k}"`)
-            .join(', ')} named here, not listed for session ${s.n}). It stays with the lesson until PIECES.csv declares who this class taught.`,
+            .join(', ')} named here, not listed for session ${s.n}). It stays with the lesson until the class roster is confirmed.`,
+          'demo-unattributed',
         );
       } else if (a.role === DEMO_ROLE && !a.piece && roster.length === 0) {
         diag(
           a.path,
-          `Unnamed demonstration not attributed: PIECES.csv lists no pieces for session ${s.n}. It stays with the lesson until a confirmed roster is declared there.`,
+          `Unnamed demonstration not attributed: PIECES.csv lists no pieces for session ${s.n}. It stays with the lesson until the class roster is confirmed.`,
+          'demo-unattributed',
         );
       }
       for (const k of pieces_) member(k, a.role);
@@ -508,7 +538,7 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
       const to = r.new_path.trim();
       if (!from || !to) continue;
       if (!isSafeRelativePath(from) || !isSafeRelativePath(to)) {
-        diag(from, 'Rename row carries an unsafe path — ignored.');
+        diag(from, 'Rename row carries an unsafe path — ignored.', 'rename-log');
         continue;
       }
       const prior = dest.get(from);
@@ -551,11 +581,11 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
     }
     for (const [from, reason] of unresolvable) {
       dest.delete(from);
-      diag(from, reason);
+      diag(from, reason, 'rename-log');
     }
     for (const [from, tos] of forks) {
       const named = [...tos].sort(cmp).map((t) => `"${t}"`).join(' and ');
-      diag(from, `Rename log names more than one destination for this path (${named}) — no replacement name can be read from it.`);
+      diag(from, `Rename log names more than one destination for this path (${named}) — no replacement name can be read from it.`, 'rename-log');
     }
     renames = [...dest].map(([from, to]) => ({ from, to })).sort((a, b) => cmp(a.from, b.from));
   }
@@ -567,7 +597,7 @@ export function buildIndex({ registryText, inventory, renameLog, skipped = [] })
     pieces,
     sessions: out,
     renames,
-    diagnostics: diagnostics.sort((a, b) => cmp(a.path, b.path) || cmp(a.reason, b.reason)),
+    diagnostics: diagnostics.sort((a, b) => cmp(a.path, b.path) || cmp(a.reason, b.reason) || cmp(a.code, b.code)),
   };
   return { ...body, contentHash: contentHash(body) };
 }
@@ -608,7 +638,7 @@ export function scanArchive(root) {
     if (!entry.isDirectory()) {
       // It CLAIMS to be a session and this walk will not open it. Silence here
       // would drop a whole class out of a "complete" index.
-      skipped.push({ path: entry.name, reason: 'A session folder that is not a real directory — not scanned.' });
+      skipped.push({ path: entry.name, reason: 'A session folder that is not a real directory — not scanned.', code: 'not-directory' });
       continue;
     }
     const dir = join(base, entry.name);
@@ -621,11 +651,11 @@ export function scanArchive(root) {
         // Never FOLLOWED — a link out of the archive is a path this scanner
         // has no authority over — but always SAID, so the owner can see that
         // the index is not describing something the folder holds.
-        skipped.push({ path, reason: 'A symbolic link — not followed, so this file is not indexed.' });
+        skipped.push({ path, reason: 'A symbolic link — not followed, so this file is not indexed. Put the real file in the folder instead.', code: 'symlink' });
         continue;
       }
       if (!st.isFile()) {
-        skipped.push({ path, reason: 'Not a regular file — not indexed.' });
+        skipped.push({ path, reason: 'Not a regular file — not indexed.', code: 'not-file' });
         continue;
       }
       if (!full.startsWith(base + sep)) continue;
@@ -794,8 +824,8 @@ export function readStableSource(root, reread) {
 // prints to stdout and writes nothing anywhere: every draft in it is
 // UNCONFIRMED, because a filename is evidence of what a file is called, not of
 // which piece it is, who taught it or what it means musically. The owner
-// confirms an identity and edits PIECES.csv / RENAME-LOG.csv themselves; the
-// ordinary NAS job then publishes, and the app's Refresh imports.
+// confirms an identity through `setar-archive-maintenance.mjs`, which makes
+// the edit, validates and publishes; the app's Refresh then imports.
 
 /** The report as data. `formatAttention` is its only rendering. */
 export function attentionReport(source) {
@@ -907,7 +937,7 @@ export function attentionReport(source) {
   // say better.
   const covered = new Set([...newIdentities.flatMap((n) => n.files), ...unattributedDemos.map((d) => d.path)]);
   const other = index.diagnostics.filter(
-    (d) => !covered.has(d.path) && !/registry does not list session/.test(d.reason),
+    (d) => !covered.has(d.path) && d.code !== 'roster',
   );
 
   return {
@@ -990,7 +1020,9 @@ export function formatAttention(r) {
   line(`5. Other files and rows needing attention: ${r.other.length}`);
   for (const d of r.other) line(`   ${d.path} — ${d.reason}`);
   line();
-  line('Edit PIECES.csv and RENAME-LOG.csv yourself, let the existing NAS job publish, then Refresh in the app.');
+  line('Act on these with the guided route — it previews, keeps a private rollback copy, validates and publishes:');
+  line('  node setar-archive-maintenance.mjs --root <archive> --state <private folder> register|roster|rename …');
+  line('Then Refresh in the app. Never hand-edit PIECES.csv or RENAME-LOG.csv.');
   return `${out.join('\n')}\n`;
 }
 

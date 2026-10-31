@@ -1,0 +1,329 @@
+{
+  "_about": "Hand-written from the evidence (who taught what, which file is whose), never from scanner or reconciler output. Roles and keys are sorted by code point, as the published index sorts them.",
+  "before": {
+    "sessions": [
+      {
+        "n": 39,
+        "date": "2026-09-01",
+        "roster": [
+          "ضربی-سه-گاه-لطفی"
+        ],
+        "rosterTrusted": true,
+        "resources": [
+          {
+            "path": "session-39-01-09-2026/ضبط-کلاس.mp4",
+            "role": "ضبط-کلاس",
+            "pieces": []
+          },
+          {
+            "path": "session-39-01-09-2026/نت-ضربی-سه-گاه-لطفی.jpg",
+            "role": "نت",
+            "pieces": [
+              "ضربی-سه-گاه-لطفی"
+            ]
+          },
+          {
+            "path": "session-39-01-09-2026/نمونه-ضربی-سه-گاه-لطفی.mp4",
+            "role": "نمونه",
+            "pieces": [
+              "ضربی-سه-گاه-لطفی"
+            ]
+          }
+        ],
+        "members": [
+          {
+            "key": "ضربی-سه-گاه-لطفی",
+            "roles": [
+              "تمرین-من",
+              "نت",
+              "نمونه"
+            ]
+          }
+        ]
+      },
+      {
+        "n": 40,
+        "date": "2026-09-29",
+        "roster": [
+          "پیش-درامد-چهارگاه-فروتن",
+          "چهارمضراب-چهارگاه-عبادی"
+        ],
+        "rosterTrusted": false,
+        "resources": [
+          {
+            "path": "session-40-29-09-2026/ضبط-کلاس.mp4",
+            "role": "ضبط-کلاس",
+            "pieces": []
+          },
+          {
+            "path": "session-40-29-09-2026/نت-پیش-درامد-چهارگاه-فروتن.pdf",
+            "role": "نت",
+            "pieces": [
+              "پیش-درامد-چهارگاه-فروتن"
+            ]
+          },
+          {
+            "path": "session-40-29-09-2026/نت-چهارمضراب-چهارگاه-عبادی.pdf",
+            "role": "نت",
+            "pieces": [
+              "چهارمضراب-چهارگاه-عبادی"
+            ]
+          },
+          {
+            "path": "session-40-29-09-2026/نمونه.mp4",
+            "role": "نمونه",
+            "pieces": []
+          }
+        ],
+        "members": [
+          {
+            "key": "پیش-درامد-چهارگاه-فروتن",
+            "roles": [
+              "تمرین-من",
+              "نت"
+            ]
+          },
+          {
+            "key": "چهارمضراب-چهارگاه-عبادی",
+            "roles": [
+              "نت"
+            ]
+          }
+        ]
+      },
+      {
+        "n": 41,
+        "date": "2026-10-27",
+        "roster": [],
+        "rosterTrusted": false,
+        "resources": [
+          {
+            "path": "session-41-27-10-2026/ضبط-کلاس.mp4",
+            "role": "ضبط-کلاس",
+            "pieces": []
+          }
+        ],
+        "members": []
+      }
+    ],
+    "diagnostics": [
+      {
+        "path": "session-39-01-09-2026/IMG_0001.mp4",
+        "code": "no-role"
+      },
+      {
+        "path": "session-39-01-09-2026/نمونه-ضربی-سه-گاه-لطفی-2.mov",
+        "code": "unsupported-type"
+      },
+      {
+        "path": "session-40-29-09-2026/تمرین-من-نت-چهارمضراب-چهارگاه-عبادی.mp4",
+        "code": "unregistered"
+      },
+      {
+        "path": "session-40-29-09-2026/نمونه.mp4",
+        "code": "demo-unattributed"
+      },
+      {
+        "path": "session-41-27-10-2026/نمونه-پیش-درامد-ابوعطا-لطفی.mp4",
+        "code": "unregistered"
+      }
+    ],
+    "renames": [
+      {
+        "from": "session-39-01-09-2026/video-a.mp4",
+        "to": "session-39-01-09-2026/ضبط-کلاس-1.mp4"
+      },
+      {
+        "from": "session-39-01-09-2026/ضبط-کلاس-1.mp4",
+        "to": "session-39-01-09-2026/ضبط-کلاس.mp4"
+      }
+    ],
+    "legacyChain": {
+      "stored": "setar-classes/session-39-01-09-2026/video-a.mp4",
+      "resolves": "session-39-01-09-2026/ضبط-کلاس.mp4"
+    }
+  },
+  "after": {
+    "sessions": [
+      {
+        "n": 39,
+        "date": "2026-09-01",
+        "roster": [
+          "ضربی-سه-گاه-لطفی"
+        ],
+        "rosterTrusted": true,
+        "resources": [
+          {
+            "path": "session-39-01-09-2026/ضبط-کلاس.mp4",
+            "role": "ضبط-کلاس",
+            "pieces": []
+          },
+          {
+            "path": "session-39-01-09-2026/نمونه-ضربی-سه-گاه-لطفی.mp4",
+            "role": "نمونه",
+            "pieces": [
+              "ضربی-سه-گاه-لطفی"
+            ]
+          }
+        ],
+        "members": [
+          {
+            "key": "ضربی-سه-گاه-لطفی",
+            "roles": [
+              "تمرین-من",
+              "نمونه"
+            ]
+          }
+        ]
+      },
+      {
+        "n": 40,
+        "date": "2026-09-29",
+        "roster": [
+          "پیش-درامد-چهارگاه-فروتن",
+          "چهارمضراب-چهارگاه-عبادی"
+        ],
+        "rosterTrusted": true,
+        "resources": [
+          {
+            "path": "session-40-29-09-2026/ضبط-کلاس.mp4",
+            "role": "ضبط-کلاس",
+            "pieces": []
+          },
+          {
+            "path": "session-40-29-09-2026/نت-پیش-درامد-چهارگاه-فروتن.pdf",
+            "role": "نت",
+            "pieces": [
+              "پیش-درامد-چهارگاه-فروتن"
+            ]
+          },
+          {
+            "path": "session-40-29-09-2026/نت-چهارمضراب-چهارگاه-عبادی.pdf",
+            "role": "نت",
+            "pieces": [
+              "چهارمضراب-چهارگاه-عبادی"
+            ]
+          },
+          {
+            "path": "session-40-29-09-2026/نمونه.mp4",
+            "role": "نمونه",
+            "pieces": [
+              "پیش-درامد-چهارگاه-فروتن",
+              "چهارمضراب-چهارگاه-عبادی"
+            ]
+          }
+        ],
+        "members": [
+          {
+            "key": "پیش-درامد-چهارگاه-فروتن",
+            "roles": [
+              "تمرین-من",
+              "نت",
+              "نمونه"
+            ]
+          },
+          {
+            "key": "چهارمضراب-چهارگاه-عبادی",
+            "roles": [
+              "تمرین-من",
+              "نت",
+              "نمونه"
+            ]
+          }
+        ]
+      },
+      {
+        "n": 41,
+        "date": "2026-10-27",
+        "roster": [
+          "پیش-درامد-ابوعطا-لطفی"
+        ],
+        "rosterTrusted": true,
+        "resources": [
+          {
+            "path": "session-41-27-10-2026/ضبط-کلاس.mp4",
+            "role": "ضبط-کلاس",
+            "pieces": []
+          },
+          {
+            "path": "session-41-27-10-2026/نمونه-پیش-درامد-ابوعطا-لطفی.mp4",
+            "role": "نمونه",
+            "pieces": [
+              "پیش-درامد-ابوعطا-لطفی"
+            ]
+          }
+        ],
+        "members": [
+          {
+            "key": "پیش-درامد-ابوعطا-لطفی",
+            "roles": [
+              "نمونه"
+            ]
+          }
+        ]
+      }
+    ],
+    "diagnostics": [
+      {
+        "path": "session-39-01-09-2026/IMG_0001.mp4",
+        "code": "no-role"
+      },
+      {
+        "path": "session-39-01-09-2026/نمونه-ضربی-سه-گاه-لطفی-2.mov",
+        "code": "unsupported-type"
+      }
+    ],
+    "renames": [
+      {
+        "from": "session-39-01-09-2026/video-a.mp4",
+        "to": "session-39-01-09-2026/ضبط-کلاس-1.mp4"
+      },
+      {
+        "from": "session-39-01-09-2026/ضبط-کلاس-1.mp4",
+        "to": "session-39-01-09-2026/ضبط-کلاس.mp4"
+      },
+      {
+        "from": "session-40-29-09-2026/تمرین-من-نت-چهارمضراب-چهارگاه-عبادی.mp4",
+        "to": "session-40-29-09-2026/تمرین-من-چهارمضراب-چهارگاه-عبادی.mp4"
+      }
+    ],
+    "retainedNotDescribed": [
+      "session-39-01-09-2026/نت-ضربی-سه-گاه-لطفی.jpg"
+    ],
+    "pieces": [
+      "ضربی-سه-گاه-لطفی",
+      "پیش-درامد-چهارگاه-فروتن",
+      "چهارمضراب-چهارگاه-عبادی",
+      "پیش-درامد-ابوعطا-لطفی"
+    ]
+  },
+  "store": {
+    "_about": "A clean store importing the corrected index: three historical classes, no class 42, no deadline, every new piece resting.",
+    "sessions": [
+      39,
+      40,
+      41
+    ],
+    "noSession": 42
+  },
+  "class41": {
+    "_about": "The owner's schema-17 export shape (2026-10-30), with synthetic ids and words.",
+    "manualId": "L41-mine",
+    "boundId": "src-cc929680e96efa3a",
+    "date": "2026-10-27",
+    "number": 41,
+    "itemIds": [
+      "it-abouata",
+      "it-chahargah"
+    ],
+    "preparations": [
+      "prep-41-a",
+      "prep-41-b"
+    ],
+    "questions": [
+      "q-41-a",
+      "q-41-b"
+    ],
+    "classRecording": "session-41-27-10-2026/ضبط-کلاس.mp4"
+  }
+}

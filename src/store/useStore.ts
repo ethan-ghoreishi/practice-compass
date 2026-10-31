@@ -167,8 +167,8 @@ export type ThemePref = 'system' | 'light' | 'dark';
 
 export interface ArchiveCommitResult {
   ok: boolean;
-  /** 'applied' · 'unchanged' · 'stale' (re-preview) · 'refused' · 'unsaved'. */
-  status: 'applied' | 'unchanged' | 'stale' | 'refused' | 'unsaved';
+  /** 'applied' · 'unchanged' · 'stale' (re-preview) · 'refused' · 'unsaved' · 'held' (words in progress on a class it would fold). */
+  status: 'applied' | 'unchanged' | 'stale' | 'refused' | 'unsaved' | 'held';
   message: string;
   summary?: ImportSummary;
   /** On 'stale': the decisions whose premise moved, so the screen can drop them. */
@@ -1379,6 +1379,23 @@ export const useStore = create<StoreState>()(
             status: 'stale',
             message: 'Something you had already decided about has changed since. Look again before applying.',
             staleDecisions: plan.staleDecisions,
+          };
+        }
+
+        // WORDS IN PROGRESS ARE NEVER FOLDED AWAY (D8). Combining removes the
+        // archive twin's id; a notes recovery copy or a live question capture
+        // still naming it would then have no record to land on. Refused before
+        // anything is written, the words left exactly where they are.
+        const held = plan.merges.find(
+          (m) =>
+            heldNoteDrafts().some(({ owner }) => owner.kind === 'lesson' && owner.id === m.boundId) ||
+            useLiveQuestion.getState().capture?.owner.lessonId === m.boundId,
+        );
+        if (held) {
+          return {
+            ok: false,
+            status: 'held',
+            message: `Unsaved words are still open on the archive's Class ${held.sessionN}. They are kept; finish or save them, then Apply again.`,
           };
         }
 

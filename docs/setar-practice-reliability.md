@@ -339,6 +339,24 @@ is unlike any tick, the once-only claim, the visual ring and every readying
 door are unchanged, and Settings' Test sound and the practice screen's "Turn
 on sound" play exactly this cue.
 
+**Recovery stays reachable when the page says "ready" (2026-10-30).** A context
+the device left `running` with no output still reports ready, and the practice
+screen used to show nothing at all then — the one recovery tap was hidden by the
+very state that hid the failure. The block and routine screens now always offer
+a quiet **"No sound? Test it"** while ready, and after a constructor that refused
+once (a transient refusal, `refused` with Web Audio present) **"Try sound
+again"**; Settings no longer disables Test practice sound for such a refusal
+(`practiceSoundRetryable`; only a browser with no Web Audio has nothing to try).
+Each is the same `testPracticeSound` tap: close the page's context, create and
+resume a fresh one inside the tap, play the cue only if that tap's own resume
+lands. Nothing detects silence, nothing recovers in the background, no old cue
+is queued, no clock, marker or minute moves. A beat placed on the dead context
+goes with it (the replacement stops the metronome); Start beat then reuses the
+running fresh context — one scheduler. Proved on instrumented contexts in both
+engines (ac-6's existing title, extended: frozen-while-running on a long-lived
+block with a beat, a refused constructor, a routine, Settings); whether a
+speaker sounds is the owner's device check, never automation's.
+
 **The metronome** (`metronome.ts`, controls in `ActiveBlock.tsx`, shown on the
 ordinary/Plan block and the Routine runner). Opt-in and off by default; 80 BPM
 in 40–240 (−/+ and a typed value), three levels; one 1600 Hz triangle tick of

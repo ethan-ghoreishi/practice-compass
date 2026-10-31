@@ -9,7 +9,7 @@ import ItemNotes from '../components/ItemNotes';
 import { closeDraftFor, closeDraftKey, editHeldObservation } from '../components/closeDraft';
 import { PauseIcon, PlayIcon } from '../components/icons';
 import { useScreenAwake } from '../components/useScreenAwake';
-import { playPracticeCue, testPracticeSound, usePracticeSound } from '../components/practiceCue';
+import { playPracticeCue, practiceSoundRetryable, testPracticeSound, usePracticeSound } from '../components/practiceCue';
 import {
   BPM_MAX,
   BPM_MIN,
@@ -322,12 +322,30 @@ function MaterialDuringPractice({ itemId }: { itemId: string }) {
  * is always there; this never claims a speaker made a sound.
  */
 export function SoundNote({ state }: { state: ReturnType<typeof usePracticeSound> }) {
-  if (state === 'ready') return null;
+  // READY IS A CLAIM ABOUT THE ENGINE, NEVER ABOUT THE SPEAKER. A context the
+  // device left `running` but silent after a long idle says "ready" to the
+  // end, so the one recovery tap stays reachable — the same fresh-in-the-tap
+  // context as every other readying tap, nothing detected, nothing automatic.
+  if (state === 'ready') {
+    return (
+      <div className="row tiny faint" style={{ justifyContent: 'center' }}>
+        <button type="button" className="btn btn-ghost btn-sm btn-touch" onClick={testPracticeSound}>
+          No sound? Test it
+        </button>
+      </div>
+    );
+  }
   if (state === 'unavailable') {
     return (
-      <p className="tiny faint" style={{ textAlign: 'center' }}>
+      <div className="row tiny faint" style={{ justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span dir="ltr">This browser has no practice sound here — the ring still marks the target.</span>
-      </p>
+        {/* A constructor that refused once may not refuse the next tap. */}
+        {practiceSoundRetryable() && (
+          <button type="button" className="btn btn-sm btn-touch" onClick={testPracticeSound}>
+            Try sound again
+          </button>
+        )}
+      </div>
     );
   }
   return (

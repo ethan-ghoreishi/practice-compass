@@ -500,6 +500,88 @@ describe('the practice sound, through every door', () => {
         expect((await persisted(app)).active).toEqual(clockBefore);
         await discardBlock(page);
 
+        // --- SILENT BUT "READY": a long-lived block, a beat, a frozen context --
+        // The device left the context `running` with no output. The page still
+        // says ready — so the recovery tap must be there anyway, make a fresh
+        // context inside itself, stop the beat placed on the dead one, and
+        // touch no clock or marker.
+        const recoverFrozen = async (where: string) => {
+          await killLive(app, 'frozen');
+          const [dead] = await liveContexts(app);
+          expect(dead, where).toMatchObject({ state: 'running', dead: 'frozen' });
+          const before = await persisted(app);
+          const from = (await trace(app)).length;
+          await page.getByRole('button', { name: 'No sound? Test it' }).click();
+          const events = await since(app, from);
+          const made = events.filter((x) => x.e === 'ctor');
+          expect(made.map((x) => [x.during, x.activated]), where).toEqual([['click', true]]);
+          expect(events.filter((x) => x.e === 'resume' && x.ctx === made[0]!.ctx).map((x) => x.during), where).toEqual(['click']);
+          expect(events.filter((x) => x.e === 'close').map((x) => x.ctx), where).toEqual([dead!.id]);
+          expect(await liveContexts(app), where).toEqual([{ id: made[0]!.ctx, state: 'running', dead: null }]);
+          const after = await persisted(app);
+          expect([after.active, after.activeRoutine], where).toEqual([before.active, before.activeRoutine]);
+          return made[0]!.ctx as number;
+        };
+        await page.getByRole('button', { name: /Start · 10 min/ }).click();
+        await page.getByRole('button', { name: 'Finish' }).waitFor();
+        await page.clock.fastForward(300_000); // five idle minutes, the screen still mounted
+        await page.getByRole('button', { name: 'Start beat' }).click();
+        await page.getByRole('button', { name: 'Stop beat' }).waitFor();
+        const revivedCtx = await recoverFrozen('ordinary block');
+        // The beat placed on the dead context went with it: off until a tap.
+        await page.getByRole('button', { name: 'Start beat' }).waitFor();
+        const beatFrom = (await trace(app)).length;
+        await page.getByRole('button', { name: 'Start beat' }).click();
+        await page.getByRole('button', { name: 'Stop beat' }).waitFor();
+        await page.clock.runFor(1_000);
+        const beat = await since(app, beatFrom);
+        // ONE scheduler, on the fresh context: no second context, no stale pulse.
+        expect(count(beat, 'ctor'), 'metronome after recovery').toBe(0);
+        expect([...new Set(beat.filter((x) => x.e === 'start').map((x) => x.ctx))], 'metronome after recovery').toEqual([revivedCtx]);
+        await page.getByRole('button', { name: 'Stop beat' }).click();
+
+        // A TRANSIENT constructor refusal: unavailable, yet a tap can try again.
+        await setFlags(app, { ctorThrows: true });
+        await page.getByRole('button', { name: 'No sound? Test it' }).click();
+        await page.getByRole('button', { name: 'Try sound again' }).waitFor();
+        expect(await liveContexts(app)).toEqual([]);
+        await setFlags(app, { ctorThrows: false });
+        await primedBy(app, 'after a refused constructor', () => page.getByRole('button', { name: 'Try sound again' }).click());
+        await page.getByRole('button', { name: 'No sound? Test it' }).waitFor();
+        await discardBlock(page);
+
+        // The same on a routine run, its clock untouched.
+        await page.getByRole('button', { name: /^Routines/ }).click();
+        await page.getByRole('button', { name: 'Start Cue routine…' }).click();
+        await page.getByRole('region', { name: 'What this run will contain' }).waitFor();
+        await page.getByRole('button', { name: 'Start', exact: true }).click();
+        await page.getByRole('button', { name: 'Pause' }).waitFor();
+        await recoverFrozen('routine');
+        await finishRoutine(app);
+
+        // …and on a PLANNED block, its plan pointer untouched.
+        await goTo(app, '/plan');
+        await page.getByRole('button', { name: '30 min', exact: true }).click();
+        await page.getByRole('button', { name: 'Start plan' }).click();
+        await page.getByRole('button', { name: /^Start / }).first().click();
+        await page.getByRole('button', { name: 'Finish' }).waitFor();
+        const pointer = (await persisted(app)).activePlan!.pointer;
+        await recoverFrozen('planned block');
+        expect((await persisted(app)).activePlan!.pointer).toBe(pointer);
+        await page.getByRole('button', { name: 'Discard block' }).click();
+        await page.getByRole('button', { name: 'End the plan' }).click();
+        await page.getByRole('navigation', { name: 'Primary' }).waitFor();
+
+        // Settings never disables Test for a refusal a tap can retry.
+        await goTo(app, '/settings');
+        await setFlags(app, { ctorThrows: true });
+        await page.getByRole('button', { name: 'Test practice sound' }).click();
+        await page.getByText('The browser refused practice sound — a tap can try again.').waitFor();
+        await setFlags(app, { ctorThrows: false });
+        await primedBy(app, 'Settings Test after a refusal', () => page.getByRole('button', { name: 'Test practice sound', disabled: false }).click());
+        await page.getByText('Ready on this page.').waitFor();
+        await goTo(app, '/');
+
         // --- EVERY AUDIO FAILURE: practice goes on, nothing stacks or throws
         for (const flags of [
           { ctorThrows: true },

@@ -146,7 +146,10 @@ describe('reconciling the archive with the owner’s own records', () => {
     const dateAndNumber = lesson({ id: 'date-and-number', date: '2024-09-03', number: 13 });
     const weak = plan(baseDB({ lessons: [dateOnly, numberOnly, dateAndNumber] }));
     expect(weak.adoptedLessons).toEqual([]);
-    expect(weak.newLessons).toHaveLength(39);
+    // Date and number together, with no path, is the class the owner PLANNED:
+    // asked about, never given a silent competing twin (D3).
+    expect(weak.newLessons).toHaveLength(38);
+    expect(weak.questions.filter((x) => x.sessionN === 13).map((x) => x.candidates.map((c) => c.id))).toEqual([['date-and-number']]);
     // Two identical candidates do not pick the first: the owner is asked.
     const twin = { ...evidence, id: 'legacy-13-twin' };
     const ambiguous = plan(baseDB({ lessons: [evidence, twin] }));
@@ -2030,7 +2033,11 @@ describe('answered questions, until Apply', () => {
         const adopted = p.adoptedLessons.filter((l) => l.source?.sessionN === 13).map((l) => l.id);
         expect(adopted, label).toEqual(d.kind === 'link-lesson' ? ['legacy-13'] : []);
         expect(p.newLessons.filter((l) => l.source?.sessionN === 13).length, label).toBe(d.kind === 'create-lesson' ? 1 : 0);
-        expect(p.source.suppressions.some((x) => x.kind === 'session' && x.ref === '13'), label).toBe(d.kind === 'skip-lesson');
+        expect(p.source.suppressions.some((x) => x.kind === 'session' && x.ref === '13' && !x.itemId), label).toBe(d.kind === 'skip-lesson');
+        // Create separately says, durably, that each class it was asked against is another class.
+        expect(p.source.suppressions.filter((x) => x.kind === 'session' && x.ref === '13' && x.itemId).map((x) => x.itemId), label).toEqual(
+          d.kind === 'create-lesson' ? left : [],
+        )
       }
       // CLEARED there: OPEN again with the live candidates, and NOTHING
       // written — not the unasked default, which with no decision at all

@@ -214,6 +214,16 @@ export function testPracticeSound(): void {
   });
 }
 
+/**
+ * Can a tap TRY again? Yes whenever this browser has Web Audio at all — a
+ * constructor that threw once (a transient refusal) is retried by the next
+ * explicit tap, never by a loop of our own. Only a browser with no Web Audio
+ * has nothing to offer.
+ */
+export function practiceSoundRetryable(): boolean {
+  return !!audioCtor();
+}
+
 /** Subscribe to the page's sound state (a context running, paused, closed); returns the unsubscribe. */
 export function onSoundState(fn: () => void): () => void {
   listeners.add(fn);

@@ -1,4 +1,4 @@
-import { execFile } from 'node:child_process'
+import { execFile, execFileSync } from 'node:child_process'
 import { chmodSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer as createHttpServer } from 'node:http'
 import { createServer as createNetServer, type AddressInfo, type Server, type Socket } from 'node:net'
@@ -559,7 +559,17 @@ describe('the apt routing script', () => {
     mkdirSync(bin)
     writeFileSync(join(bin, 'sudo'), '#!/bin/sh\nexec "$@"\n')
     chmodSync(join(bin, 'sudo'), 0o755)
+    // EVERY probe is recorded, then handed to the real curl: what each probe
+    // was given is asserted directly, never inferred from how long a run took
+    // on a loaded machine.
+    const realCurl = execFileSync('sh', ['-c', 'command -v curl'], { encoding: 'utf8' }).trim()
+    const probeLog = join(root, 'probes.log')
+    writeFileSync(join(bin, 'curl'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${probeLog}'\nexec '${realCurl}' "$@"\n`)
+    chmodSync(join(bin, 'curl'), 0o755)
     const BOUND = 2
+    // A finite, generous guard against a run that never returns — a deadlock,
+    // never a speed budget: correct routing passes however slow the machine is.
+    const DEADLOCK_GUARD_MS = 60_000
 
     // live: the archive and a mirror; /missing has no suite.
     const live = createHttpServer((req, res) => {
@@ -589,10 +599,16 @@ describe('the apt routing script', () => {
     const SLOW = `http://localhost:${slowPort}/ubuntu/`
     const at = (port: number, path: string) => `http://127.0.0.1:${port}/${path}/`
     const ARCHIVE = at(livePort, 'ubuntu')
-    const run = async (env: Record<string, string> = {}) => {
-      const started = Date.now()
+    const run = async (env: Record<string, string> = {}, script = SCRIPT) => {
+      writeFileSync(probeLog, '')
+      const probes = () =>
+        readFileSync(probeLog, 'utf8')
+          .split('\n')
+          .filter(Boolean)
       try {
-        const out = await execFileAsync('bash', [SCRIPT], {
+        const out = await execFileAsync('bash', [script], {
+          timeout: DEADLOCK_GUARD_MS,
+          killSignal: 'SIGKILL',
           env: {
             ...process.env,
             PATH: `${bin}:${process.env.PATH}`,
@@ -603,11 +619,24 @@ describe('the apt routing script', () => {
             ...env,
           },
         })
-        return { code: 0, stdout: out.stdout, ms: Date.now() - started }
+        return { code: 0, stdout: out.stdout, probes: probes() }
       } catch (e) {
-        const err = e as { code: number; stdout: string }
-        return { code: err.code, stdout: err.stdout, ms: Date.now() - started }
+        const err = e as { code: number | null; stdout: string; killed?: boolean }
+        expect(err.killed, 'the routing script deadlocked past the guard').not.toBe(true)
+        return { code: err.code, stdout: err.stdout, probes: probes() }
       }
+    }
+    // Every probe carries the existing curl limit; the targets probed are exactly the expected ones.
+    const unbounded = (probes: string[]) => probes.filter((p) => !p.includes(`--max-time ${BOUND} `))
+    const targets = (probes: string[]) => probes.map((p) => p.split(' ').at(-1)).sort()
+    const probeOf = (mirror: string) => `${mirror}dists/noble/InRelease`
+    // The script with one safeguard removed, in scratch: the assertions above must catch it.
+    const weakened = (name: string, from: string, to: string) => {
+      const text = readFileSync(SCRIPT, 'utf8')
+      expect(text, `${name}: the safeguard is in the real script`).toContain(from)
+      const path = join(root, `${name}.sh`)
+      writeFileSync(path, text.replaceAll(from, to))
+      return path
     }
     const THIRD_PARTY = 'deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/ubuntu/24.04/prod noble main\n'
     const layout = (files: Record<string, string>) => {
@@ -649,9 +678,13 @@ describe('the apt routing script', () => {
       // Suites, components, the signing key and the third-party source: untouched.
       expect(read('sources.list.d/ubuntu.sources')).toBe(deb822('mirror+file:/etc/apt/apt-mirrors.txt'))
       expect(read('sources.list.d/microsoft-prod.list')).toBe(THIRD_PARTY)
-      // ONE bounded wait (the hung mirror), never one per mirror and never the install's ten minutes.
-      expect(routed.ms).toBeGreaterThanOrEqual((BOUND - 0.5) * 1000)
-      expect(routed.ms).toBeLessThan((2 * BOUND - 0.5) * 1000)
+      // Each mirror probed ONCE, every probe bounded — the hung one included, so
+      // it costs at most one bound, never the install's ten minutes. The slow
+      // route is never probed at all: it is bypassed by name.
+      expect(unbounded(routed.probes)).toEqual([])
+      expect(targets(routed.probes)).toEqual(
+        [at(hungPort, 'ubuntu'), at(livePort, 'ubuntu'), at(refusedPort, 'ubuntu'), at(livePort, 'missing'), at(livePort, 'mirror')].map(probeOf).sort(),
+      )
 
       // A liveness probe alone KEEPS the slow route — its index answers. That
       // is why it is bypassed by name rather than probed.
@@ -695,11 +728,37 @@ describe('the apt routing script', () => {
       const none = await run({ APT_FALLBACK_URI: at(refusedPort, 'ubuntu') })
       expect(none.code).toBe(1)
       expect(none.stdout).toContain('::error::no apt mirror in')
-      expect(none.ms).toBeLessThan(2 * BOUND * 1000)
+      expect(unbounded(none.probes)).toEqual([])
+      expect(targets(none.probes)).toEqual([at(refusedPort, 'ubuntu'), at(livePort, 'missing'), at(refusedPort, 'ubuntu')].map(probeOf).sort())
       layout({ 'sources.list.d/ubuntu.sources': deb822(SLOW) })
       const deadArchive = await run({ APT_FALLBACK_URI: at(refusedPort, 'ubuntu') })
       expect([deadArchive.code, read('sources.list.d/ubuntu.sources')]).toEqual([1, deb822(SLOW)])
       expect(deadArchive.stdout).toContain('::error::')
+
+      // --- A REMOVED SAFEGUARD FAILS THESE ASSERTIONS -------------------------
+      // (on live mirrors only, so a weakened script cannot hang the suite)
+      const liveOnly = [`${at(livePort, 'ubuntu')}\tpriority:1`, `${SLOW}\tpriority:2`, ''].join('\n')
+      layout({ 'apt-mirrors.txt': liveOnly, 'sources.list.d/ubuntu.sources': deb822('mirror+file:/etc/apt/apt-mirrors.txt') })
+      const noBound = await run({}, weakened('no-probe-bound', '--max-time "$bound" ', ''))
+      expect(unbounded(noBound.probes)).not.toEqual([])
+      layout({ 'apt-mirrors.txt': liveOnly, 'sources.list.d/ubuntu.sources': deb822('mirror+file:/etc/apt/apt-mirrors.txt') })
+      const noBypass = await run({}, weakened('no-bypass', 'bypassed "$url"', 'false'))
+      expect(read('apt-mirrors.txt')).not.toBe(`${at(livePort, 'ubuntu')}\tpriority:1\n`)
+      expect(targets(noBypass.probes)).toContain(probeOf(SLOW))
+      layout({ 'apt-mirrors.txt': `${at(livePort, 'missing')}\n`, 'sources.list.d/ubuntu.sources': deb822('mirror+file:/etc/apt/apt-mirrors.txt') })
+      const noFailure = await run({ APT_FALLBACK_URI: at(livePort, 'missing') }, weakened('no-failure', 'exit 1', 'exit 0'))
+      expect(noFailure.code).not.toBe(1)
+
+      // --- THE WORKFLOWS KEEP THEIR BOUNDS AND BOTH ENGINES --------------------
+      expect(runners().flatMap(boundsProblems)).toEqual([])
+      expect(auditAll().filter((w) => w.runsSuite).flatMap((w) => w.missing)).toEqual([])
+      const bounds = (text: string) => boundsProblems({ name: 'synthetic.yml', ...auditRunner(text) })
+      expect(bounds(SUITE_JOB())).toEqual([])
+      expect(bounds(SUITE_JOB({ job: '' }))).not.toEqual([])
+      expect(bounds(SUITE_JOB({ before: '' }))).not.toEqual([])
+      expect(bounds(SUITE_JOB().replace('install --with-deps chromium webkit\n        timeout-minutes: 10', 'install --with-deps chromium webkit'))).not.toEqual([])
+      expect(auditWorkflow(SUITE_JOB()).missing).toEqual([])
+      expect(auditWorkflow(SUITE_JOB().replace('chromium webkit', 'chromium')).missing).toEqual(['webkit'])
     } finally {
       for (const socket of held) socket.destroy()
       await Promise.all([live, slow, hung].map((srv) => new Promise((resolve) => srv.close(resolve))))

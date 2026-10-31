@@ -44,7 +44,7 @@ import { Field } from '../components/ui';
 import SchedulingExplanation from '../components/SchedulingExplanation';
 import ArchiveRefresh from '../components/ArchiveRefresh';
 import SetarSetupReview from '../components/SetarSetupReview';
-import { testPracticeSound, usePracticeSound } from '../components/practiceCue';
+import { practiceSoundRetryable, testPracticeSound, usePracticeSound } from '../components/practiceCue';
 import { DownloadIcon, PlusIcon, UploadIcon } from '../components/icons';
 
 const THEME_OPTIONS: { value: ThemePref; label: string }[] = [
@@ -930,10 +930,13 @@ function PracticeSoundSection() {
               : sound === 'paused'
                 ? 'Paused on this device — a tap can resume it.'
                 : sound === 'unavailable'
-                  ? 'This browser has no practice sound.'
+                  ? practiceSoundRetryable()
+                    ? 'The browser refused practice sound — a tap can try again.'
+                    : 'This browser has no practice sound.'
                   : 'Off until you start, resume or test.'}
           </span>
-          <button type="button" className="btn btn-sm" onClick={testPracticeSound} disabled={sound === 'unavailable'}>
+          {/* Never disabled for a refusal that a tap can retry; only a browser with no Web Audio has nothing to test. */}
+          <button type="button" className="btn btn-sm" onClick={testPracticeSound} disabled={!practiceSoundRetryable()}>
             Test practice sound
           </button>
         </div>

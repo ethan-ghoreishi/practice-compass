@@ -165,7 +165,10 @@ describe('the Setar archive, rendered', () => {
             (s) => (s.state as { db: Db }).db,
             (d) => d.lessons.length === 40 && d.items.length === 96,
           );
-          expect(after.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+          // 39 sessions bound: 35 the import created (history by marker), and the
+          // owner's 4 adopted legacy classes keep their own origin (all long past).
+          expect(after.lessons.filter((l) => l.source)).toHaveLength(39);
+          expect(after.lessons.filter((l) => l.origin === 'archive')).toHaveLength(35);
           expect(after.items.filter((i) => i.source)).toHaveLength(94);
           // The owner's own upcoming class 38 and the archive's class 38 both
           // exist, on their own dates.

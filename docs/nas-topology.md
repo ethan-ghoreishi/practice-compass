@@ -10,7 +10,9 @@ carried the deletions to the other copy. On this setup **a path's name says
 nothing about what it reaches**: SMB shows a server-side link as an ordinary
 folder, so nothing on the Mac can see one. Every repository tool therefore changes
 only what it can prove it wrote — proven by content it wrote, never by a path —
-never deletes, and never fails silently. Only the owner writes media.
+never deletes, and never fails silently. Only the owner writes media — and,
+since 2026‑10‑30, the guided maintenance route, which renames one file the owner
+confirmed and nothing else.
 
 Every fact below carries its date and source. "Planning" means the read-only
 measurements taken while planning the 2026‑10‑01 lane at `25d6767`. A DSM-side
@@ -37,9 +39,10 @@ fact that could not be measured from the Mac is marked **owner to confirm
 |---|---|---|---|
 | The owner | — | the media, either copy | the other copy, through Drive — deletions and renames included |
 | Synology Drive | both copies | both copies | — it IS the propagation |
-| NAS indexer (`run-setar-index.sh`, a DSM task every ~15 min, three copied files) | `PC_ARCHIVE_ROOT` | `setar-index.json` in its own work directory, which it never creates; one file on the `source-index` branch | GitHub only. Task, runtime directory and that `config.env` sits outside every served or synced share: **owner to confirm (ac‑11)** |
+| NAS indexer (`run-setar-index.sh`, DSM task id 3, as `setar-indexer`; intended every 15 min ALL day — on 2026‑10‑30 its repetition ended at 00:45, so it ran four times around midnight; four copied files) | `PC_ARCHIVE_ROOT` | `setar-index.json` in its own work directory, which it never creates; one file on the `source-index` branch | GitHub only. Task, runtime directory and that `config.env` sits outside every served or synced share: **owner to confirm (ac‑11)** |
 | Setar scanner by hand on the Mac | an archive root | its own previous index, or a new file, outside that root | nothing |
-| Setar scanner `--attention` (Mac or NAS, by hand) | an archive root, read twice and compared | nothing — a report on stdout only, archive-relative paths; `--out` is refused before anything is read | nothing. Only the owner edits `PIECES.csv` / `RENAME-LOG.csv` from it |
+| Setar scanner `--attention` (Mac or NAS, by hand) | an archive root, read twice and compared | nothing — a report on stdout only, archive-relative paths; `--out` is refused before anything is read | nothing |
+| `setar-archive-maintenance.mjs` (NAS, by hand, as an account that may write the archive; publishes through the job as `setar-indexer`, `PC_MAINT_PUBLISH`) | the archive root; its own `--state` folder | after an owner-confirmed preview only: `PIECES.csv`, `RENAME-LOG.csv` (temp + rename, never through a link), one renamed media file (bytes checked), and its private `--state` folder (outside the archive) | GitHub, through `run-setar-index.sh`; the archive edits travel to the Mac copy through Drive |
 | Course scanners (Mac, by hand) | `/Volumes/Sandisk/…` | `src/domain/courseData.ts` / `khonyagarData.ts` (default resolved from the script, never the CWD) | a commit, if the owner makes one |
 | `scripts/nas-mirror.mjs` | the repo's `dist/` | only inside a folder it created, or one holding its marker | the mirror's own origin |
 | The app | GitHub API; media only by opening a link | its own IndexedDB; the GitHub data repo through sync | other devices, through sync |
@@ -135,3 +138,30 @@ node scripts/scan-setar-classes.mjs --root /Volumes/Sandisk/video-courses/setar-
 (cd /Volumes/Sandisk/video-courses && find . -type f ! -name .DS_Store ! -path '*/@eaDir/*' -exec stat -f '%z %N' {} + | LC_ALL=C sort) > "$T/media.txt"
 wc -l < "$T/media.txt"; shasum -a 256 "$T/media.txt"
 ```
+
+## Live NAS repair of 2026‑10‑30 (issue #60)
+
+What the lane established read-only from the Mac, against the Drive copy of the
+archive (`/Volumes/Sandisk/video-courses/setar-classes`): the declarations and
+the scanned index match the runtime's last published one; a read-only scan
+publishes 41 sessions and 106 pieces with three diagnostics — the Session 40
+stacked-role personal take (`unregistered`), its held-back `نمونه.mp4`
+(`demo-unattributed`) and the unregistered Session 41 demonstration. The real
+inventory holds only `.mp4`, `.pdf` and `.jpg` in session folders. The rename
+log has an extra, sometimes non-empty `timestamp` column, which the maintenance
+route preserves.
+
+**Not yet done, and not claimed:** the task-schedule correction, the narrowing of
+the runtime/config permissions, the real-account run, the corrected scan hash on
+the NAS, the commit-pinned publication and its second-run no-commit result. Each
+needs the NAS itself (DSM or a shell as the owner's admin and as
+`setar-indexer`), which this session did not have; the archive declarations
+were deliberately NOT edited from the Mac, because Drive would carry a half-done
+repair to the NAS ahead of a job that could publish it. The redacted
+pre/post record and the rollback manifest belong here once that access is
+granted. What it needs: DSM Task Scheduler (task 3's schedule and next
+trigger); an admin shell to read real paths, modes and ACLs and to narrow only
+the runtime/config files; running the job as `setar-indexer`; and an
+archive-writing account for the two declaration edits and the one rename, with
+`PC_MAINT_PUBLISH` pointing the publish step at the job's own account.
+
