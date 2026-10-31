@@ -644,6 +644,7 @@ $M rename --from session-40-…/old.mp4 --to session-40-…/new.mp4
 #   → scratch scan → publish through run-setar-index.sh
 $M retry      # publication failed: the archive is valid, the old index still published — publish again
 $M rollback   # put the last change back from its private copy and publish that
+$M release-lock [--record <id>]   # a lock no run holds: shown, then released by its exact record
 ```
 
 - **No hand edits.** It appends one row or changes one cell, every other byte,
@@ -656,30 +657,41 @@ $M rollback   # put the last change back from its private copy and publish that
   outside the archive — checked at preview, apply and rollback), a `--state`
   inside the archive or written for another archive, and a preview the archive
   has moved on from (a concurrent edit). A refusal changes nothing.
-- **It never loses a declaration, its own or anyone else's.** Each write
-  checks the file still holds what was planned. A failure while editing, and
-  `rollback`, put back only what THIS change wrote: every file is judged
-  first, and a declaration changed since (another `--state` folder's row, a
-  hand edit), a renamed file whose bytes changed, or a moved folder refuses the
-  whole restore with nothing written. Every run takes the lock and reads the
-  journal under it. A lock whose process is gone is adopted by any run,
-  because every run that writes the archive first records what it is doing
-  (apply `prepared`, rollback `rolling-back`, each with its own token): the
-  journal then decides. Half-written means `rollback`; applied or restored but
-  not confirmed published means `retry`. A run killed in any phase, a
-  rollback or retry included, leaves a state one of those finishes. No run
-  takes a live lock or removes one it does not hold. Media bytes are only
-  ever renamed, checked by size and SHA-256.
+- **It never loses a declaration, its own or anyone else's.** Every write
+  proves, AT the write, the exact state it expects: a declaration is moved
+  aside (atomic), its bytes judged, and the new one linked in, which never
+  overwrites; a media file gets its new name by link (never over anything),
+  is judged by size and SHA-256, and only then loses its old name. An edit,
+  deletion or new file from anyone else at that instant is kept and the run
+  refuses. A failure while editing, and `rollback`, put back only what THIS
+  change wrote — judged first, and proved again at each write against what
+  this change wrote, never a fresh read. A run stopped with a declaration set
+  aside has it put back by the next run; one stopped between a move's two
+  names has the new name dropped by `rollback`.
+- **One owner per archive.** The lock is one dotfile in the archive's root,
+  shared by every `--state` folder, and every publisher checks it. A lock is
+  never adopted on a guess about a process: a run that finds one refuses and
+  names it. If nothing is running (check `ps`), `release-lock` shows the
+  record and `release-lock --record <id>` releases exactly that one, in any
+  form (a dead run's, a partial or foreign record). Then the journal decides:
+  half-written means `rollback`; applied or restored but not confirmed
+  published means `retry`.
 - **Publication is of the validated index, on evidence.** The job gets the
-  validated contentHash as its one argument and refuses, before any request
-  (exit 3), a scan that differs — another configured root, an archive changed
-  since. Success needs the publisher's last line `published-index <status>
-  <hash>` naming that hash. "The last good index is still published" is said
-  only on proof: the job's exit 2 (configuration refused), 3 (not the
-  validated index) or 4 (the scan, or the publisher before its ref write,
-  failed). Every other outcome — exit 1 or any other code, a signal, a lost
-  response after GitHub accepted the ref, an exit 0 without the evidence — is
-  reported as unconfirmed, never as published or as "nothing changed". A
+  validated contentHash and the run's lock token as its two arguments and
+  refuses, before any request (exit 3), a scan that differs. After reading the
+  branch and before writing anything, every publisher — the scheduled job
+  too — checks the archive's lock (absent, or held by the run that asked) and
+  scans again; an archive that moved on or is owned by a maintenance run
+  refuses (exit 4). A paused or orphaned publisher therefore never puts an
+  older index over a newer one. Success needs the publisher's last line
+  `published-index <status> <hash>` naming that hash.
+- **Unconfirmed stays unconfirmed.** Before any remote work the journal names
+  the attempt's validated hash and marks it open; every unconfirmed attempt's
+  hash stays in `unresolved` until a positive observation of the branch.
+  "This attempt published nothing; the branch is as it was" is said only when
+  the job proved it (exit 2, 3 or 4) AND no earlier attempt is open. Exit 1
+  or any other code, a signal, a lost response, an exit 0 without evidence,
+  or a proved failure after an open attempt is reported as unconfirmed. A
   publication the journal then fails to record is reported as published.
   Every case: `retry`, which makes no commit if the branch already holds the
   index.

@@ -6,11 +6,11 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 // @ts-expect-error — untyped operator tools; these are the real ones.
-import { applyMaintenance, planMaintenance, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
+import { applyMaintenance, Interrupted, planMaintenance, releaseLock, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
 // @ts-expect-error — see above.
 import { scanToIndex } from '../scripts/scan-setar-classes.mjs';
 // @ts-expect-error — see above.
-import { makeGitHubIndexTransport, publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../scripts/publish-setar-index.mjs';
+import { archiveConfirmation, ARCHIVE_LOCK, makeGitHubIndexTransport, publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../scripts/publish-setar-index.mjs';
 import { followRenames } from '../src/domain/sourceReconcile';
 import SOURCE from './fixtures/setar-lifecycle-source.json' with { type: 'json' };
 import EXPECTED from './fixtures/setar-lifecycle-expected.json' with { type: 'json' };
@@ -56,7 +56,8 @@ function media(root: string): Record<string, string> {
 }
 const declarations = (root: string) => ({ pieces: readFileSync(join(root, 'PIECES.csv'), 'utf8'), log: readFileSync(join(root, 'RENAME-LOG.csv'), 'utf8') });
 
-function fakeGit() {
+/** A fake Git boundary; its `publish` is the real publisher, confirming against `root` before every ref write. */
+function fakeGit(root: string) {
   const refs = new Map<string, string>([['main', 'c-main']]);
   const commits = new Map<string, Record<string, string>>([['c-main', { 'state.json': 'practice data' }]]);
   let n = 0;
@@ -82,9 +83,9 @@ function fakeGit() {
   };
   const calls: string[] = [];
   return {
-    publish: async (text: string, hash: string) => {
+    publish: async (text: string, hash: string, holder?: string) => {
       calls.push(hash);
-      return publishIndex({ transport, indexText: text, expectedContentHash: hash });
+      return publishIndex({ transport, indexText: text, expectedContentHash: hash, confirm: archiveConfirmation(root, holder) });
     },
     transport,
     requests: () => requests,
@@ -138,7 +139,15 @@ const oracle = (ns: number[]) =>
 describe('maintaining the Setar archive', () => {
   it('setar guided maintenance is reversible stale safe and idempotent without altering media', async () => {
     const { base, root, state } = scratch();
-    const git = fakeGit();
+    const git = fakeGit(root);
+    const lockFile = join(root, ARCHIVE_LOCK);
+    /** The operator's route for a lock no run will take: see the record, then release exactly it. */
+    const release = () => {
+      const id = /--record ([0-9a-f]{16})/.exec(releaseLock({ root }).lines.join('\n'))?.[1];
+      expect(id).toMatch(/^[0-9a-f]{16}$/);
+      expect(releaseLock({ root, record: id })).toMatchObject({ released: true });
+      expect(existsSync(lockFile)).toBe(false);
+    };
     const apply = (action: object, extra: object = {}) => {
       const plan = planMaintenance(root, action);
       return applyMaintenance({ root, state, action, previewId: plan.id, publish: git.publish, ...extra });
@@ -273,11 +282,11 @@ describe('maintaining the Setar archive', () => {
       const journalBefore = readFileSync(join(state, 'journal.json'), 'utf8');
       await expect(rollbackMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/PIECES.csv has changed since/);
       expect([declarations(root), git.calls.length, readFileSync(join(state, 'journal.json'), 'utf8')]).toEqual([withLater, callsLater, journalBefore]);
-      // A LIVE run's lock is never taken or removed by a rollback.
-      writeFileSync(join(state, 'lock'), `live-token ${process.pid}`);
-      await expect(rollbackMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/holds the lock/);
-      expect(readFileSync(join(state, 'lock'), 'utf8')).toBe(`live-token ${process.pid}`);
-      rmSync(join(state, 'lock'));
+      // A held ARCHIVE lock is never taken or removed by a rollback.
+      writeFileSync(lockFile, `live-token ${process.pid}`);
+      await expect(rollbackMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/maintenance lock is held/);
+      expect(readFileSync(lockFile, 'utf8')).toBe(`live-token ${process.pid}`);
+      rmSync(lockFile);
       // A --state folder answers only for its own archive.
       const elsewhere = scratch();
       await expect(rollbackMaintenance({ root: elsewhere.root, state, publish: git.publish })).rejects.toThrow(/another archive/);
@@ -297,9 +306,9 @@ describe('maintaining the Setar archive', () => {
       await expect(applyMaintenance({ root, state, action: { kind: 'roster', session: 41, pieces: [z] }, previewId: stalePlan.id, publish: git.publish })).rejects.toThrow(/changed since that preview/);
       expect(declarations(root)).toEqual(edited);
       writeFileSync(join(root, 'PIECES.csv'), beforeEdit.pieces); // the other editor withdraws theirs
-      writeFileSync(join(state, 'lock'), 'another run');
-      await expect(apply({ kind: 'roster', session: 41, pieces: [z] })).rejects.toThrow(/holds the lock/);
-      rmSync(join(state, 'lock'));
+      writeFileSync(lockFile, 'another run');
+      await expect(apply({ kind: 'roster', session: 41, pieces: [z] })).rejects.toThrow(/maintenance lock is held by a record not in this tool’s form/);
+      rmSync(lockFile);
 
       // --- AN INTERRUPTED APPLY: recoverable, last good index kept ---------
       const good = git.published();
@@ -313,10 +322,13 @@ describe('maintaining the Setar archive', () => {
         { env: { ...process.env, RUN: JSON.stringify(interruptedRun) } },
       ).then(() => 0, (e: { code: number }) => e.code);
       expect(child).toBe(7);
-      expect(existsSync(join(state, 'lock'))).toBe(true);
+      expect(existsSync(lockFile)).toBe(true);
       expect(declarations(root).pieces).not.toBe(pre.pieces);
       expect(git.published()).toBe(good);
-      await expect(apply({ kind: 'register', piece: 'یکی-دیگر' })).rejects.toThrow(/interrupted|did not finish/);
+      // Its lock stays: no run adopts it on a guess. The operator releases that exact record.
+      await expect(apply({ kind: 'register', piece: 'یکی-دیگر' })).rejects.toThrow(/maintenance lock is held by run .*release-lock --record/);
+      release();
+      await expect(apply({ kind: 'register', piece: 'یکی-دیگر' })).rejects.toThrow(/did not finish/);
       expect(await rollbackMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true });
       expect(declarations(root)).toEqual(pre);
       expect([git.published(), git.commits()]).toEqual([good, commitsBefore]); // nothing new to say: no commit
@@ -325,7 +337,7 @@ describe('maintaining the Setar archive', () => {
       git.fail(true);
       const failed = await apply({ kind: 'roster', session: 41, pieces: [z] });
       expect(failed).toMatchObject({ ok: false, status: 'publish-failed' });
-      expect(failed.message).toMatch(/last good index is still the published one.*retry/s);
+      expect(failed.message).toMatch(/This attempt published nothing, so the source-index branch is as it was.*retry/s);
       expect(git.published()).toBe(good);
       await expect(apply({ kind: 'register', piece: 'یکی-دیگر' })).rejects.toThrow(/retry/);
       git.fail(false);
@@ -342,12 +354,10 @@ describe('maintaining the Setar archive', () => {
       expect(JSON.parse(git.published()!).contentHash).toBe(JSON.parse(good!).contentHash);
       expect(git.main()).toEqual(['c-main', { 'state.json': 'practice data' }]);
 
-      // --- A RUN KILLED IN ANY PHASE: every entry point recovers its dead lock -
+      // --- A RUN KILLED IN ANY PHASE: refused until its exact lock is released -
       // A REAL child process dies at each phase of apply, rollback and retry.
-      // Its lock stays behind; each entry point adopts it (the journal, not the
-      // dead token, decides), refuses only what the journal forbids, and the
-      // route the refusal names finishes the job.
-      const lockFile = join(state, 'lock');
+      // Its lock stays behind and EVERY entry point refuses it unchanged; the
+      // operator releases that record, and the route the journal names finishes.
       const journal = () => JSON.parse(readFileSync(join(state, 'journal.json'), 'utf8'));
       const killed = (fn: string, args: object, interruptAfter?: string) =>
         run(
@@ -355,16 +365,21 @@ describe('maintaining the Setar archive', () => {
           ['--input-type=module', '-e', `const m = await import(${JSON.stringify(TOOL)}); const a = JSON.parse(process.env.RUN); await m.${fn}({ ...a, publish: async () => { process.kill(process.pid, 'SIGKILL'); await new Promise(() => {}); } }).catch((e) => { process.exitCode = e instanceof m.Interrupted ? 7 : 1; });`],
           { env: { ...process.env, RUN: JSON.stringify({ root, state, ...args, ...(interruptAfter ? { interruptAfter } : {}) }) } },
         ).then(() => 0, (e: { code: number | null; signal?: string }) => e.signal ?? e.code);
-      /** The dead run's lock, put back before each entry point so each must adopt it itself. */
-      const deadLock = () => {
-        const text = readFileSync(lockFile, 'utf8');
-        expect(Number(text.split(' ')[1])).not.toBe(process.pid);
-        return () => (existsSync(lockFile) ? undefined : writeFileSync(lockFile, text));
-      };
       const c2 = `${S39}/نمونه-ضربی-سه-گاه-لطفی-5.mp4`;
       const move = { kind: 'rename', from: c, to: c2 };
       const moveArgs = () => ({ action: move, previewId: planMaintenance(root, move).id });
       const another = { kind: 'register', piece: 'یکی-دیگر' };
+      /** Every entry point refuses the dead run's lock and changes nothing; then the operator releases it. */
+      const lockedOut = async (phase: string) => {
+        const held = readFileSync(lockFile, 'utf8');
+        const journalNow = readFileSync(join(state, 'journal.json'), 'utf8');
+        const archiveNow = [declarations(root), media(root)];
+        for (const entry of [() => apply(another), () => retryMaintenance({ root, state, publish: git.publish }), () => rollbackMaintenance({ root, state, publish: git.publish })]) {
+          await expect(entry(), phase).rejects.toThrow(/maintenance lock is held by run/);
+        }
+        expect([readFileSync(lockFile, 'utf8'), readFileSync(join(state, 'journal.json'), 'utf8'), declarations(root), media(root)], phase).toEqual([held, journalNow, ...archiveNow]);
+        release();
+      };
       const settled = { decl: declarations(root), media: media(root), index: git.published(), commits: git.commits() };
       const isSettled = () => expect([declarations(root), media(root), git.published(), git.commits()]).toEqual([settled.decl, settled.media, settled.index, settled.commits]);
 
@@ -372,84 +387,97 @@ describe('maintaining the Setar archive', () => {
       for (const phase of ['copy', 'registry', 'log', 'rename']) {
         expect(await killed('applyMaintenance', moveArgs(), phase), phase).toBe(7);
         expect(journal().status, phase).toBe('prepared');
-        const plant = deadLock();
+        await lockedOut(phase);
         await expect(apply(another), phase).rejects.toThrow(/apply did not finish. Run `rollback`/);
-        expect(existsSync(lockFile), phase).toBe(false); // adopted, then released: it was ours
-        plant();
+        expect(existsSync(lockFile), phase).toBe(false); // its own lock, released
         await expect(retryMaintenance({ root, state, publish: git.publish }), phase).rejects.toThrow(/did not finish; run `rollback`/);
-        plant();
         expect(await rollbackMaintenance({ root, state, publish: git.publish }), phase).toMatchObject({ ok: true });
         isSettled(); // put back exactly; the unchanged index made no commit
       }
-      // Apply killed DURING publication: applied, publication pending. Both routes work.
+      // Apply killed DURING publication: applied, publication pending FOR ITS HASH. Both routes work.
       expect(await killed('applyMaintenance', moveArgs())).toBe('SIGKILL');
-      expect(journal()).toMatchObject({ status: 'applied', publication: 'pending' });
-      let plant = deadLock();
+      expect(journal()).toMatchObject({ status: 'applied', publication: 'pending', contentHash: scanToIndex(root).contentHash, unresolved: [scanToIndex(root).contentHash] });
+      await lockedOut('apply publishing');
       await expect(apply(another)).rejects.toThrow(/not yet published .*Run `retry`/);
-      plant();
       expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, status: 'published' });
       expect(JSON.parse(git.published()!).contentHash).toBe(scanToIndex(root).contentHash);
+      expect(journal()).toMatchObject({ publication: 'published', unresolved: [] });
       expect(await rollbackMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, status: 'published' });
       settled.index = git.published();
       settled.commits = git.commits();
       expect(await killed('applyMaintenance', moveArgs())).toBe('SIGKILL');
-      deadLock()();
+      release();
       expect(await rollbackMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true });
       isSettled();
-      // Rollback killed after marking itself, before its first write: the mark
-      // carries ITS token, and the next rollback adopts it.
+      // Rollback killed after marking itself, before its first write.
       expect(await killed('applyMaintenance', moveArgs(), 'log')).toBe(7);
+      release();
       expect(await killed('rollbackMaintenance', {}, 'mark')).toBe(7);
-      expect(journal()).toMatchObject({ status: 'rolling-back', lockToken: readFileSync(lockFile, 'utf8').split(' ')[0] });
-      plant = deadLock();
+      expect(journal()).toMatchObject({ status: 'rolling-back', lockToken: JSON.parse(readFileSync(lockFile, 'utf8')).token });
+      await lockedOut('rollback mark');
       await expect(apply(another)).rejects.toThrow(/rollback did not finish. Run `rollback`/);
-      plant();
       await expect(retryMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/rollback did not finish; run `rollback`/);
-      plant();
       expect(await rollbackMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true });
       isSettled();
-      // Rollback killed DURING its publication: restored, not yet published.
+      // Rollback killed DURING its publication: restored, pending for the RESTORED hash.
       expect(await killed('applyMaintenance', moveArgs(), 'rename')).toBe(7);
+      release();
       expect(await killed('rollbackMaintenance', {})).toBe('SIGKILL');
-      expect(journal()).toMatchObject({ status: 'rolled-back', publication: 'pending' });
+      expect(journal()).toMatchObject({ status: 'rolled-back', publication: 'pending', contentHash: scanToIndex(root).contentHash });
       expect([declarations(root), media(root)]).toEqual([settled.decl, settled.media]);
-      plant = deadLock();
+      await lockedOut('rollback publishing');
       await expect(apply(another)).rejects.toThrow(/Run `retry`/);
-      plant();
       await expect(rollbackMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/already rolled back but not yet published; run `retry`/);
-      plant();
       expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
       isSettled();
-      // Retry killed during ITS publication, after adopting apply's dead lock.
+      // Retry killed during ITS publication.
       expect(await killed('applyMaintenance', moveArgs())).toBe('SIGKILL');
+      release();
       expect(await killed('retryMaintenance', {})).toBe('SIGKILL');
-      plant = deadLock();
+      await lockedOut('retry publishing');
       await expect(apply(another)).rejects.toThrow(/Run `retry`/);
-      plant();
       expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, status: 'published' });
       expect(await rollbackMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true });
       settled.index = git.published();
       settled.commits = git.commits();
-      // A run killed before it wrote any journal left only its lock: the
-      // finished journal stands, and the next run proceeds.
-      const gone = await run('node', ['-e', 'console.log(process.pid)']).then((o) => o.stdout.trim());
-      writeFileSync(lockFile, `never-journaled ${gone}`);
-      // ONE adopter at a time: while another live run holds the claim on that
-      // dead lock, every entry point refuses and writes nothing; a claim left
-      // by a dead claimer is cleared by the refusal, and the next run adopts.
-      const claim = join(state, 'lock.adopt.never-journaled');
-      writeFileSync(claim, `live-claimer ${process.pid}`);
+
+      // --- AMBIGUOUS OR PARTIAL LOCK RECORDS: refused, never adopted, released only by exact record -
+      const gone = Number(await run('node', ['-e', 'console.log(process.pid)']).then((o) => o.stdout.trim()));
+      const token = '0f0f0f0f-0000-4000-8000-000000000000';
+      const records = [
+        '',
+        token,
+        `${token} ${gone}`,
+        JSON.stringify({ token, pid: 'abc', host: 'h', since: 's' }),
+        JSON.stringify({ token, pid: 0, host: 'h', since: 's' }),
+        JSON.stringify({ token, pid: -4, host: 'h', since: 's' }),
+        JSON.stringify({ token, pid: 1.5, host: 'h', since: 's' }),
+        JSON.stringify({ token, pid: gone, host: 'h', since: 's' }).slice(0, -12), // truncated
+      ];
       const journalNow = readFileSync(join(state, 'journal.json'), 'utf8');
-      for (const entry of [() => apply(another), () => retryMaintenance({ root, state, publish: git.publish }), () => rollbackMaintenance({ root, state, publish: git.publish })]) {
-        await expect(entry()).rejects.toThrow(/taking over an interrupted run’s lock/);
+      for (const record of records) {
+        writeFileSync(lockFile, record);
+        for (const entry of [() => apply(another), () => retryMaintenance({ root, state, publish: git.publish }), () => rollbackMaintenance({ root, state, publish: git.publish })]) {
+          await expect(entry(), record).rejects.toThrow(/maintenance lock is held by a record not in this tool’s form.*release-lock --record/);
+        }
+        // The scheduled job refuses too.
+        await expect(publishIndex({ transport: git.transport, indexText: `${git.published()} `, confirm: archiveConfirmation(root) }), record).rejects.toMatchObject({
+          nothingPublished: true,
+          message: expect.stringMatching(/A maintenance run holds the archive; nothing was published/),
+        });
+        expect([readFileSync(lockFile, 'utf8'), readFileSync(join(state, 'journal.json'), 'utf8')], record).toEqual([record, journalNow]);
+        // A record other than the one shown is never released.
+        expect(() => releaseLock({ root, record: '0'.repeat(16) }), record).toThrow(/not the record you saw/);
+        expect(readFileSync(lockFile, 'utf8')).toBe(record);
+        release();
       }
-      expect([readFileSync(lockFile, 'utf8'), readFileSync(join(state, 'journal.json'), 'utf8'), existsSync(claim)]).toEqual([`never-journaled ${gone}`, journalNow, true]);
-      isSettled();
-      writeFileSync(claim, `dead-claimer ${gone}`);
-      await expect(retryMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/taking over/);
-      expect(existsSync(claim)).toBe(false);
+      // A COMPLETE record of a dead run is no different: shown, then released by hand, never adopted.
+      writeFileSync(lockFile, JSON.stringify({ token, pid: gone, host: 'h', since: 's' }));
+      await expect(retryMaintenance({ root, state, publish: git.publish })).rejects.toThrow(new RegExp(`held by run ${token.slice(0, 8)} \\(pid ${gone}`));
+      release();
       expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
       expect(existsSync(lockFile)).toBe(false);
+      expect(releaseLock({ root }).lines).toEqual(['The archive holds no maintenance lock. Nothing to do.']);
       isSettled();
 
       // --- GITHUB ACCEPTED THE WRITE, THE RESPONSE WAS LOST: unknown, never "nothing" -
@@ -464,7 +492,7 @@ describe('maintaining the Setar archive', () => {
         const lost = await applyMaintenance({ root, state, ...moveArgs(), publish: viaGitHub });
         expect(lost).toMatchObject({ ok: false, status: 'publish-failed' });
         expect(lost.message).toMatch(/could not be confirmed \(fetch failed.*may already be published.*Run `retry`/s);
-        expect(lost.message).not.toMatch(/last good index/);
+        expect(lost.message).not.toMatch(/branch is as it was/);
         expect(JSON.parse(git.published()!).contentHash).toBe(scanToIndex(root).contentHash);
         expect(journal().publication).toBe('unknown');
         await expect(apply(another)).rejects.toThrow(/unconfirmed\)\. Run `retry`/);
@@ -473,13 +501,13 @@ describe('maintaining the Setar archive', () => {
         expect(git.commits()).toBe(landed);
         // createRef likewise, on a repository with no source-index branch yet —
         // through ROLLBACK's publication this time.
-        const fresh = fakeGit();
+        const fresh = fakeGit(root);
         vi.stubGlobal('fetch', githubFetch(fresh.transport, lose));
         lose.add('POST git/refs');
         const lostCreate = await rollbackMaintenance({ root, state, publish: viaGitHub });
         expect(lostCreate).toMatchObject({ ok: false, status: 'publish-failed' });
         expect(lostCreate.message).toMatch(/could not be confirmed.*may already be published/s);
-        expect(lostCreate.message).not.toMatch(/last good index/);
+        expect(lostCreate.message).not.toMatch(/branch is as it was/);
         expect(JSON.parse(fresh.published()!).contentHash).toBe(scanToIndex(root).contentHash);
         expect(await retryMaintenance({ root, state, publish: viaGitHub })).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
         expect(fresh.commits()).toBe(1);
@@ -498,8 +526,8 @@ describe('maintaining the Setar archive', () => {
       isSettled();
 
       // --- PUBLISHED, BUT THE JOURNAL COULD NOT RECORD IT: said as published --
-      const thenBlockJournal = async (text: string, hash: string) => {
-        const out = await git.publish(text, hash);
+      const thenBlockJournal = async (text: string, hash: string, holder: string) => {
+        const out = await git.publish(text, hash, holder);
         mkdirSync(join(state, 'journal.json.tmp')); // the journal's next write fails
         return out;
       };
@@ -543,7 +571,7 @@ describe('maintaining the Setar archive', () => {
       const silent = await via('true');
       expect(silent.code).toBe(1);
       expect(silent.out).toMatch(/could not be confirmed.*without its publication evidence/s);
-      expect(silent.out).not.toMatch(/last good index is still/);
+      expect(silent.out).not.toMatch(/branch is as it was/);
       // Evidence naming another index is refused too.
       const stub = join(base, 'stub-job.mjs');
       writeFileSync(stub, `console.log('published-index published ' + (process.env.WRONG ? '0'.repeat(64) : process.argv[2]));`);
@@ -551,17 +579,18 @@ describe('maintaining the Setar archive', () => {
       expect([wrong.code, wrong.out]).toEqual([1, expect.stringMatching(/reports index 000000000000, not the validated/)]);
       // Only the job's own refusals (exit 2, 3, 4) prove nothing was published.
       // Any other exit, or a job killed by a signal, may have come after GitHub
-      // accepted the ref: unconfirmed, never "the last good index is still".
+      // accepted the ref: unconfirmed, never "the branch is as it was".
       const exits = join(base, 'exit-job.mjs');
       writeFileSync(exits, `process.stderr.write('stopped\\n'); process.exit(Number(process.env.EXIT));`);
       for (const [code, says] of [
         ['1', /could not be confirmed \(the NAS job exited 1: stopped\).*may already be published/s],
         ['137', /could not be confirmed \(the NAS job exited 137/],
-        ['4', /publication failed \(the NAS job exited 4 before publishing: stopped\).*last good index is still the published one/s],
+        // The job's exit 4 proves only THIS attempt: the earlier unconfirmed ones stay unconfirmed.
+        ['4', /could not be confirmed \(the NAS job exited 4 before publishing: stopped\); this attempt published nothing, but an earlier attempt is still unconfirmed/s],
       ] as const) {
         const r = await via(`node ${JSON.stringify(exits)}`, { EXIT: code });
         expect([r.code, r.out], code).toEqual([1, expect.stringMatching(says)]);
-        if (code !== '4') expect(r.out, code).not.toMatch(/last good index/);
+        expect(r.out, code).not.toMatch(/branch is as it was/);
       }
       const signalled = await via('kill -9 $$;:');
       expect([signalled.code, signalled.out]).toEqual([1, expect.stringMatching(/could not be confirmed \(the NAS job was stopped \(SIGKILL\)/)]);
@@ -570,7 +599,7 @@ describe('maintaining the Setar archive', () => {
       mkdirSync(noArchive);
       writeFileSync(join(noArchive, 'config.env'), `PC_ARCHIVE_ROOT=${join(noArchive, 'missing')}\nPC_INDEX_REPO=nobody/nothing\nPC_INDEX_TOKEN=not-a-token\nPC_INDEX_WORKDIR=${noArchive}\n`);
       const scanFailed = await via(undefined, { PC_INDEX_CONFIG: join(noArchive, 'config.env') });
-      expect([scanFailed.code, scanFailed.out]).toEqual([1, expect.stringMatching(/exited 4 before publishing: The scan failed; nothing was published.*last good index is still the published one/s)]);
+      expect([scanFailed.code, scanFailed.out]).toEqual([1, expect.stringMatching(/exited 4 before publishing: The scan failed; nothing was published.*an earlier attempt is still unconfirmed/s)]);
       // The REAL runner, configured for ANOTHER archive root, refuses before
       // any request — the published index is untouched, and it says so.
       const otherArchive = scratch();
@@ -580,7 +609,7 @@ describe('maintaining the Setar archive', () => {
       writeFileSync(config, `PC_ARCHIVE_ROOT=${otherArchive.root}\nPC_INDEX_REPO=nobody/nothing\nPC_INDEX_TOKEN=not-a-token\nPC_INDEX_WORKDIR=${work}\n`);
       const misrouted = await via(undefined, { PC_INDEX_CONFIG: config });
       expect(misrouted.code).toBe(1);
-      expect(misrouted.out).toMatch(/scanned a different index than the validated .*Refused: This index is .*nothing was published.*last good index is still the published one/s);
+      expect(misrouted.out).toMatch(/scanned a different index than the validated .*Refused: This index is .*nothing was published.*an earlier attempt is still unconfirmed/s);
       rmSync(otherArchive.base, { recursive: true, force: true });
       // And the publisher itself refuses an unvalidated index before ANY request.
       const requestsBefore = git.requests();
@@ -594,6 +623,321 @@ describe('maintaining the Setar archive', () => {
       expect(Object.values(after).sort()).toEqual(Object.values(media0).sort());
     } finally {
       rmSync(base, { recursive: true, force: true });
+    }
+
+    // =======================================================================
+    // THE CUT-POINT AND OVERLAPPING-WRITER MATRIX. Each case on its own scratch
+    // archive. `at(point, name)` runs just before each archive write — forward
+    // and recovery alike — and another writer acts there: its edit is kept,
+    // never overwritten, recreated or moved away, and the run refuses.
+    // =======================================================================
+    const boxes: string[] = [];
+    try {
+      const A = `${S39}/نمونه-ضربی-سه-گاه-لطفی.mp4`;
+      const B = `${S39}/نمونه-ضربی-سه-گاه-لطفی-1.mp4`;
+      const REG = { kind: 'register', piece: NEW_PIECE, session: 41 };
+      const MOVE = { kind: 'rename', from: A, to: B };
+      const box = (withLog = true) => {
+        const sc = scratch();
+        boxes.push(sc.base);
+        if (!withLog) rmSync(join(sc.root, 'RENAME-LOG.csv'));
+        const g = fakeGit(sc.root);
+        const at = (p: string) => join(sc.root, p);
+        const j = () => JSON.parse(readFileSync(join(sc.state, 'journal.json'), 'utf8'));
+        const go = (action: object, extra: object = {}) =>
+          applyMaintenance({ root: sc.root, state: sc.state, action, previewId: planMaintenance(sc.root, action).id, publish: g.publish, ...extra });
+        const back = (extra: object = {}) => rollbackMaintenance({ root: sc.root, state: sc.state, publish: g.publish, ...extra });
+        const again = (extra: object = {}) => retryMaintenance({ root: sc.root, state: sc.state, publish: g.publish, ...extra });
+        return { ...sc, g, at, j, go, back, again, lock: at(ARCHIVE_LOCK) };
+      };
+      /** Run `fn` the `nth` time the tool reaches `point` for `name`. */
+      const when = (...rules: [string, string, () => void, number?][]) => {
+        const seen = new Map<string, number>();
+        return (point: string, name: string) => {
+          for (const [p, n, fn, nth = 1] of rules) {
+            if (p !== point || n !== name) continue;
+            const k = `${p} ${n}`;
+            seen.set(k, (seen.get(k) ?? 0) + 1);
+            if (seen.get(k) === nth) fn();
+          }
+        };
+      };
+      const replaceWith = (path: string, text: string) => () => {
+        writeFileSync(`${path}.editor`, text);
+        renameSync(`${path}.editor`, path); // another editor's atomic save
+      };
+      const hidden = (root: string, prefix: string) => readdirSync(root).filter((f) => f.startsWith(prefix));
+
+      // --- FORWARD declaration writes: replaced, deleted, created, at both instants -
+      for (const [action, name, withLog] of [
+        [REG, 'PIECES.csv', true],
+        [MOVE, 'RENAME-LOG.csv', true],
+      ] as const) {
+        for (const edit of ['replace', 'delete'] as const) {
+          const k = box(withLog);
+          const pre = { media: media(k.root), index: k.g.published() };
+          const theirs = `theirs,${edit}\n`;
+          const out = k.go(action, { at: when(['capture', name, edit === 'replace' ? replaceWith(k.at(name), theirs) : () => rmSync(k.at(name))]) });
+          await expect(out, `${name} ${edit}`).rejects.toThrow(edit === 'replace' ? /changed while this ran; it was left as the other edit made it.*put back/s : /was removed while this ran.*put back/s);
+          expect(edit === 'replace' ? readFileSync(k.at(name), 'utf8') : existsSync(k.at(name)), `${name} ${edit}`).toBe(edit === 'replace' ? theirs : false);
+          expect([media(k.root), k.g.published(), k.g.calls, existsSync(k.lock)], `${name} ${edit}`).toEqual([pre.media, pre.index, [], false]);
+          expect(k.j(), `${name} ${edit}`).toMatchObject({ status: 'rolled-back', publication: 'not-needed' });
+          expect(hidden(k.root, `.${name}`), `${name} ${edit}`).toEqual([]);
+        }
+      }
+      {
+        // The log was ABSENT and another writer creates it at the write: theirs stands.
+        const k = box(false);
+        await expect(k.go(MOVE, { at: when(['capture', 'RENAME-LOG.csv', () => writeFileSync(k.at('RENAME-LOG.csv'), 'old_path,new_path\n')]) })).rejects.toThrow(/appeared while this ran/);
+        expect([readFileSync(k.at('RENAME-LOG.csv'), 'utf8'), existsSync(k.at(A)), existsSync(k.at(B))]).toEqual(['old_path,new_path\n', true, false]);
+        // Someone saves a NEW file in the instant ours was set aside: theirs stands, the one it replaced is kept.
+        const r = box();
+        const decl = declarations(r.root);
+        await expect(r.go(REG, { at: when(['install', 'PIECES.csv', () => writeFileSync(r.at('PIECES.csv'), 'saved meanwhile\n')]) })).rejects.toThrow(/written by someone else while this ran; theirs stands/);
+        expect(readFileSync(r.at('PIECES.csv'), 'utf8')).toBe('saved meanwhile\n');
+        const kept = hidden(r.root, '.PIECES.csv.captured-');
+        expect(kept.map((f) => readFileSync(r.at(f), 'utf8'))).toEqual([decl.pieces]);
+        // The next run never takes that kept copy for the declaration: it is renamed superseded, kept.
+        writeFileSync(r.at('PIECES.csv'), decl.pieces);
+        expect(await r.go(REG)).toMatchObject({ ok: true, status: 'published' });
+        expect([hidden(r.root, '.PIECES.csv.captured-'), hidden(r.root, '.PIECES.csv.superseded-').length]).toEqual([[], 1]);
+      }
+
+      // --- TWO LIVE RUNS through two --state folders: ONE archive lock ------
+      {
+        const k = box();
+        const otherState = join(k.base, 'other-state');
+        mkdirSync(otherState);
+        const later = { kind: 'register', piece: 'ردیف-بعدی' };
+        let second: Promise<unknown> | undefined;
+        const first = await k.go(REG, {
+          at: when(['capture', 'PIECES.csv', () => {
+            second = applyMaintenance({ root: k.root, state: otherState, action: later, previewId: planMaintenance(k.root, later).id, publish: k.g.publish });
+          }]),
+        });
+        await expect(second).rejects.toThrow(/maintenance lock is held by run/);
+        expect(first).toMatchObject({ ok: true, status: 'published' });
+        expect(declarations(k.root).pieces).not.toContain('ردیف-بعدی');
+        expect(k.g.calls).toHaveLength(1);
+      }
+
+      // --- RECOVERY writes (explicit rollback): replaced, deleted, at both instants -
+      for (const edit of ['replace', 'delete', 'create'] as const) {
+        const k = box();
+        expect(await k.go(REG)).toMatchObject({ ok: true });
+        const calls = k.g.calls.length;
+        const point = edit === 'create' ? 'install' : 'capture';
+        const hit = edit === 'replace' ? replaceWith(k.at('PIECES.csv'), 'theirs\n') : edit === 'delete' ? () => rmSync(k.at('PIECES.csv')) : () => writeFileSync(k.at('PIECES.csv'), 'theirs\n');
+        await expect(k.back({ at: when([point, 'PIECES.csv', hit]) }), edit).rejects.toThrow(/changed while this ran|was removed while this ran|written by someone else/);
+        expect(edit === 'delete' ? existsSync(k.at('PIECES.csv')) : readFileSync(k.at('PIECES.csv'), 'utf8'), edit).toBe(edit === 'delete' ? false : 'theirs\n');
+        expect([k.j().status, k.g.calls.length], edit).toEqual(['rolling-back', calls]);
+        // …and a later rollback still refuses rather than overwrite (or recreate) theirs.
+        if (edit !== 'delete') await expect(k.back(), edit).rejects.toThrow(/has changed since this change was made/);
+      }
+      {
+        // Another writer acts AFTER rollback judged the files and BEFORE it reaches the log
+        // (while it moves the media back): the log write still proves what THIS change wrote.
+        const k = box();
+        expect(await k.go(MOVE)).toMatchObject({ ok: true });
+        const theirs = `${readFileSync(k.at('RENAME-LOG.csv'), 'utf8')}x,y,\n`;
+        await expect(k.back({ at: when(['link', A, replaceWith(k.at('RENAME-LOG.csv'), theirs)]) })).rejects.toThrow(/RENAME-LOG.csv changed while this ran/);
+        expect(readFileSync(k.at('RENAME-LOG.csv'), 'utf8')).toBe(theirs);
+      }
+      {
+        // The log was ABSENT before: rollback takes it out of the archive only while it holds what this change wrote.
+        const k = box(false);
+        expect(await k.go(MOVE)).toMatchObject({ ok: true });
+        const written = readFileSync(k.at('RENAME-LOG.csv'), 'utf8');
+        await expect(k.back({ at: when(['capture', 'RENAME-LOG.csv', replaceWith(k.at('RENAME-LOG.csv'), `${written}x,y\n`)]) })).rejects.toThrow(/changed while this ran/);
+        expect(readFileSync(k.at('RENAME-LOG.csv'), 'utf8')).toBe(`${written}x,y\n`); // never moved out
+        // Unedited, it is taken out and what this change wrote is kept beside the private copy.
+        const k2 = box(false);
+        expect(await k2.go(MOVE)).toMatchObject({ ok: true });
+        const w2 = readFileSync(k2.at('RENAME-LOG.csv'), 'utf8');
+        expect(await k2.back()).toMatchObject({ ok: true });
+        expect(existsSync(k2.at('RENAME-LOG.csv'))).toBe(false);
+        const copyDir = join(k2.state, readdirSync(k2.state).find((d) => d.endsWith(planMaintenance(k2.root, MOVE).id))!);
+        expect(readdirSync(copyDir).filter((f) => f.startsWith('RENAME-LOG.csv.written-')).map((f) => readFileSync(join(copyDir, f), 'utf8'))).toEqual([w2]);
+      }
+
+      // --- AUTOMATIC recovery meets another writer: refused, theirs kept, `rollback` still offered -
+      {
+        const k = box();
+        const theirLog = 'old_path,new_path,when\nx,y,\n';
+        const out = k.go(MOVE, {
+          at: when(['link', B, () => writeFileSync(k.at(B), 'a new file at the destination')], ['capture', 'RENAME-LOG.csv', replaceWith(k.at('RENAME-LOG.csv'), theirLog), 2]),
+        });
+        await expect(out).rejects.toThrow(/appeared while this ran.*could not be put back automatically \(RENAME-LOG.csv changed while this ran/s);
+        expect([readFileSync(k.at(B), 'utf8'), readFileSync(k.at('RENAME-LOG.csv'), 'utf8'), existsSync(k.at(A)), k.j().status]).toEqual(['a new file at the destination', theirLog, true, 'prepared']);
+      }
+
+      // --- MEDIA, both directions ------------------------------------------
+      {
+        // Forward: the source changed after the preview — nothing moves.
+        const k = box();
+        await expect(k.go(MOVE, { at: when(['link', B, () => writeFileSync(k.at(A), Buffer.alloc(500, 7))]) })).rejects.toThrow(/does not hold the bytes this change recorded.*nothing was moved.*put back/s);
+        expect([sha(readFileSync(k.at(A))), existsSync(k.at(B)), k.j().status]).toEqual([sha(Buffer.alloc(500, 7)), false, 'rolled-back']);
+        // Rollback: a new file at the ORIGINAL name — both kept; the renamed bytes changed — nothing moves.
+        const r = box();
+        const bytes = readFileSync(r.at(A));
+        expect(await r.go(MOVE)).toMatchObject({ ok: true });
+        await expect(r.back({ at: when(['link', A, () => writeFileSync(r.at(A), 'new at the old name')]) })).rejects.toThrow(/appeared while this ran; nothing is ever overwritten/);
+        expect([readFileSync(r.at(A), 'utf8'), sha(readFileSync(r.at(B)))]).toEqual(['new at the old name', sha(bytes)]);
+        rmSync(r.at(A));
+        await expect(r.back({ at: when(['link', A, () => writeFileSync(r.at(B), 'changed after the check')]) })).rejects.toThrow(/does not hold the bytes this change recorded/);
+        expect([existsSync(r.at(A)), readFileSync(r.at(B), 'utf8')]).toEqual([false, 'changed after the check']);
+        // A run stopped BETWEEN a move's two names: the next rollback drops the new name, bytes kept.
+        const s = box();
+        const sBytes = sha(readFileSync(s.at(A)));
+        const stop = when(['unlink', A, () => {
+          throw new Interrupted('power cut between the names');
+        }]);
+        await expect(s.go(MOVE, { at: stop })).rejects.toThrow(/power cut/);
+        expect([existsSync(s.at(A)), existsSync(s.at(B)), s.j().status]).toEqual([true, true, 'prepared']);
+        expect(await s.back()).toMatchObject({ ok: true });
+        expect([sha(readFileSync(s.at(A))), existsSync(s.at(B))]).toEqual([sBytes, false]);
+        // A run stopped with a declaration SET ASIDE: the next run puts back that exact capture first.
+        const t = box();
+        const tDecl = declarations(t.root);
+        await expect(t.go(REG, { at: when(['install', 'PIECES.csv', () => {
+          throw new Interrupted('power cut with the registry set aside');
+        }]) })).rejects.toThrow(/power cut/);
+        expect([existsSync(t.at('PIECES.csv')), hidden(t.root, '.PIECES.csv.captured-').length]).toEqual([false, 1]);
+        expect(await t.back()).toMatchObject({ ok: true });
+        expect([declarations(t.root), hidden(t.root, '.PIECES.csv.captured-')]).toEqual([tDecl, []]);
+      }
+
+      // --- PUBLISHERS answer to the archive's owner, the scheduled job included -
+      {
+        const k = box();
+        let holder = '';
+        const during = await k.go(REG, {
+          publish: async (text: string, hash: string, h: string) => {
+            holder = h;
+            // The scheduled job, mid-maintenance: refused before it writes anything.
+            await expect(publishIndex({ transport: k.g.transport, indexText: text, confirm: archiveConfirmation(k.root) })).rejects.toMatchObject({
+              nothingPublished: true,
+              message: expect.stringMatching(/A maintenance run holds the archive/),
+            });
+            expect(k.g.published()).toBeNull();
+            return k.g.publish(text, hash, h);
+          },
+        });
+        expect(during).toMatchObject({ ok: true, status: 'published' });
+        // An orphaned publisher of that run, once its lock is gone (or another run's): refused.
+        const later = `${JSON.stringify(scanToIndex(k.root), null, 2)} \n`;
+        await expect(publishIndex({ transport: k.g.transport, indexText: later, confirm: archiveConfirmation(k.root, holder) })).rejects.toThrow(/no longer holds the archive/);
+        writeFileSync(k.lock, JSON.stringify({ token: '1f1f1f1f-0000-4000-8000-000000000000', pid: process.pid, host: 'h', since: 's' }));
+        await expect(publishIndex({ transport: k.g.transport, indexText: later, confirm: archiveConfirmation(k.root, holder) })).rejects.toThrow(/no longer holds the archive/);
+        rmSync(k.lock);
+      }
+      // An OLDER validated index never lands over a newer one, whenever the old publisher resumes.
+      for (const pauseAt of ['getRef', 'updateRef'] as const) {
+        const k = box();
+        expect(await k.go({ kind: 'roster', session: 40, pieces: ['ضربی-سه-گاه-لطفی'] })).toMatchObject({ ok: true }); // the branch exists
+        writeFileSync(k.at(`${S39}/نمونه-ضربی-سه-گاه-لطفی-9.mp4`), 'a file added by hand'); // the archive moves to H1
+        const h1 = `${JSON.stringify(scanToIndex(k.root), null, 2)}\n`;
+        let reached!: () => void;
+        let resume!: () => void;
+        const isPaused = new Promise<void>((r) => (reached = r));
+        const gate = new Promise<void>((r) => (resume = r));
+        let paused = false;
+        const t = k.g.transport as Record<string, (...a: unknown[]) => Promise<unknown>>;
+        const slow = {
+          ...t,
+          [pauseAt]: async (...args: unknown[]) => {
+            if (!paused) {
+              paused = true;
+              reached();
+              await gate;
+            }
+            return t[pauseAt]!(...args);
+          },
+        };
+        const old = publishIndex({ transport: slow, indexText: h1, confirm: archiveConfirmation(k.root) });
+        await isPaused;
+        expect(await k.go(REG)).toMatchObject({ ok: true, status: 'published' }); // H2, published while the old one waits
+        const h2 = k.g.published();
+        resume();
+        await expect(old, pauseAt).rejects.toMatchObject({ nothingPublished: true, message: expect.stringMatching(/archive has changed since this index was scanned/) });
+        expect(k.g.published(), pauseAt).toBe(h2);
+        expect(JSON.parse(h2!).contentHash, pauseAt).toBe(scanToIndex(k.root).contentHash);
+      }
+
+      // --- PUBLICATION STATE: open until a positive observation; every attempt bound to its index -
+      {
+        const k = box();
+        const t = k.g.transport as Record<string, (...a: unknown[]) => Promise<unknown>>;
+        const via = (overrides: Record<string, (...a: unknown[]) => Promise<unknown>>) => async (text: string, hash: string, holder: string) =>
+          publishIndex({ transport: { ...t, ...overrides }, indexText: text, expectedContentHash: hash, confirm: archiveConfirmation(k.root, holder) });
+        const failing = (method: string) => via({ [method]: async () => Promise.reject(new Error(`GitHub refused ${method} (HTTP 500)`)) });
+        const lossy = via({
+          createRef: async (...a: unknown[]) => (await t.createRef!(...a), Promise.reject(new TypeError('fetch failed: the response was lost'))),
+          updateRef: async (...a: unknown[]) => (await t.updateRef!(...a), Promise.reject(new TypeError('fetch failed: the response was lost'))),
+        });
+        /** The journal AT the publisher's call: it already names this attempt's index and says it is open. */
+        const seen: object[] = [];
+        const spy = (inner: (text: string, hash: string, holder: string) => Promise<unknown>) => async (text: string, hash: string, holder: string) => {
+          const j = k.j();
+          seen.push({ status: j.status, publication: j.publication, intended: j.contentHash === hash && j.unresolved.includes(hash), scanned: hash === scanToIndex(k.root).contentHash });
+          return inner(text, hash, holder);
+        };
+        const hashNow = () => scanToIndex(k.root).contentHash as string;
+
+        // A FIRST publication failing before its branch read: "as it was" — no promise that any index exists.
+        const first = await k.go(REG, { publish: spy(failing('getRef')) });
+        expect(first.message).toMatch(/This attempt published nothing, so the source-index branch is as it was/);
+        expect(first.message).not.toMatch(/last good|previous|still the published/);
+        expect([k.j().publication, k.j().unresolved, k.g.published()]).toEqual(['failed', [], null]);
+        // Accepted, response lost: unknown, bound to H.
+        const H = hashNow();
+        expect(await k.again({ publish: spy(lossy) })).toMatchObject({ ok: false, message: expect.stringMatching(/may already be published/) });
+        expect([k.j().publication, k.j().unresolved, JSON.parse(k.g.published()!).contentHash]).toEqual(['unknown', [H], H]);
+        // The archive moves on, so every later stage is reachable; a failure at ANY of them proves only its own attempt.
+        writeFileSync(k.at(`${S39}/نمونه-ضربی-سه-گاه-لطفی-9.mp4`), 'added by hand');
+        const H2 = hashNow();
+        for (const method of ['getRef', 'getFile', 'createBlob', 'getCommit', 'createTree', 'createCommit']) {
+          const r = await k.again({ publish: spy(failing(method)) });
+          expect(r.message, method).toMatch(/could not be confirmed .*this attempt published nothing, but an earlier attempt is still unconfirmed/s);
+          expect([k.j().publication, k.j().contentHash, k.j().unresolved], method).toEqual(['unknown', H2, [H]]);
+        }
+        // Rollback from that unknown: its pre-read failure leaves the applied attempt open, and says so.
+        rmSync(k.at(`${S39}/نمونه-ضربی-سه-گاه-لطفی-9.mp4`));
+        const rolled = await k.back({ publish: spy(failing('getRef')) });
+        expect(rolled.message).toMatch(/earlier attempt is still unconfirmed/);
+        const H0 = hashNow();
+        expect(H0).not.toBe(H);
+        expect([k.j().status, k.j().publication, k.j().contentHash, k.j().unresolved]).toEqual(['rolled-back', 'unknown', H0, [H]]);
+        await expect(k.go({ kind: 'register', piece: 'یکی-دیگر' })).rejects.toThrow(/Run `retry`/);
+        // A lost response whose unknown-journal write then fails: still pending (open), Apply still refused.
+        const blocked = k.again({
+          publish: async (text: string, hash: string, h: string) => {
+            try {
+              return await lossy(text, hash, h);
+            } finally {
+              mkdirSync(join(k.state, 'journal.json.tmp'));
+            }
+          },
+        });
+        await expect(blocked).rejects.toThrow(/could not be confirmed .*could not record that.*still says pending/s);
+        rmSync(join(k.state, 'journal.json.tmp'), { recursive: true });
+        expect([k.j().publication, k.j().unresolved]).toEqual(['pending', [H, H0]]);
+        await expect(k.go({ kind: 'register', piece: 'یکی-دیگر' })).rejects.toThrow(/Run `retry`/);
+        // A journal that cannot even say "pending" stops before any remote work.
+        mkdirSync(join(k.state, 'journal.json.tmp'));
+        const calls = k.g.calls.length;
+        await expect(k.again({ publish: spy(k.g.publish) })).rejects.toThrow();
+        expect(k.g.calls.length).toBe(calls);
+        rmSync(join(k.state, 'journal.json.tmp'), { recursive: true });
+        // Only a POSITIVE observation closes every open attempt.
+        expect(await k.again({ publish: spy(k.g.publish) })).toMatchObject({ ok: true });
+        expect([k.j().publication, k.j().unresolved, JSON.parse(k.g.published()!).contentHash]).toEqual(['published', [], H0]);
+        // Every call above saw its own index already written down as open, before any remote work.
+        expect(seen.every((x) => (x as { intended: boolean; scanned: boolean; publication: string }).intended && (x as { scanned: boolean }).scanned && (x as { publication: string }).publication === 'pending')).toBe(true);
+        expect(seen.map((x) => (x as { status: string }).status)).toEqual(['applied', 'applied', ...Array(6).fill('applied'), 'rolled-back', 'rolled-back']);
+      }
+    } finally {
+      for (const b of boxes) rmSync(b, { recursive: true, force: true });
     }
   });
 });

@@ -3,10 +3,16 @@
 # job: a DSM scheduled task runs THIS file, nothing else.
 #
 #   sh run-setar-index.sh                      # the scheduled task
-#   sh run-setar-index.sh <contentHash>        # the maintenance route: publish
+#   sh run-setar-index.sh <contentHash> <lock>  # the maintenance route: publish
 #                                              # only if THIS scan is the index
 #                                              # it validated (refused before
 #                                              # any request otherwise, exit 3)
+#                                              # and while that run still holds
+#                                              # the archive's maintenance lock
+#
+# Before its ref write the publisher scans the archive again and checks its
+# maintenance lock: the scheduled run refuses (exit 4) while a maintenance run
+# holds it, and any run refuses once the archive has moved on from its scan.
 #
 # Configuration comes from a protected operator file — never from the archive,
 # never from the app, never from a commit. Default location:
@@ -69,8 +75,10 @@ fi
 
 # Then publish. An unchanged index makes no commit. Its last stdout line,
 # `published-index <status> <contentHash>`, is the evidence a caller checks.
-if [ "$#" -gt 0 ]; then
-  "$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT" --expect "$1"
+if [ "$#" -gt 1 ]; then
+  "$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT" --root "$PC_ARCHIVE_ROOT" --expect "$1" --holder "$2"
+elif [ "$#" -gt 0 ]; then
+  "$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT" --root "$PC_ARCHIVE_ROOT" --expect "$1"
 else
-  "$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT"
+  "$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT" --root "$PC_ARCHIVE_ROOT"
 fi

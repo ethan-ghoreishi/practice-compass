@@ -2,7 +2,7 @@
 // Publish the scanned Setar index to ONE file on ONE branch of the private
 // data repository, and nothing else, ever.
 //
-//   node scripts/publish-setar-index.mjs --index <file> [--expect <contentHash>]
+//   node scripts/publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock token>]
 //     env: PC_INDEX_REPO=owner/name  PC_INDEX_TOKEN=<publisher token>
 //
 // On success the LAST stdout line is the evidence a caller checks:
@@ -11,6 +11,15 @@
 // the one the caller validated (exit 3: nothing was published). Exit 2: usage
 // refused; exit 4: it failed before its ref write (nothing was published). Any other failure,
 // exit 1 included, may have come after GitHub accepted the ref: unknown.
+//
+// THE ARCHIVE IS ASKED AGAIN BEFORE EVERY REF WRITE (`archiveConfirmation`):
+// the index must still be what `--root` scans to NOW, and the archive's
+// maintenance lock must be absent (the scheduled job) or held by `--holder`
+// (the maintenance run that asked for this publication). A publisher paused or
+// orphaned while the archive moved on, or while a maintenance run owns it,
+// therefore refuses (exit 4) instead of putting an older index over a newer
+// one; the ref write itself stays non-force from the commit read, so the last
+// publisher to confirm is the one whose index stands.
 //
 // WHY A SEPARATE BRANCH. The app's own sync writes main's whole tree with no
 // base_tree, so a sidecar placed beside state.json disappears on the next
@@ -27,9 +36,12 @@
 //
 // Node stdlib only.
 
+import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { scanToIndex } from './scan-setar-classes.mjs';
 
 /** The ONLY branch this publisher may write. */
 export const SOURCE_INDEX_BRANCH = 'source-index';
@@ -59,7 +71,7 @@ const MAX_ATTEMPTS = 4;
  *   a failure carries `nothingPublished: true`. A throw FROM the ref write (a
  *   lost response, a 5xx) does not: GitHub may have accepted it.
  */
-export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message, expectedContentHash }) {
+export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message, expectedContentHash, confirm }) {
   if (branch !== SOURCE_INDEX_BRANCH) throw new Error(`This publisher only writes the "${SOURCE_INDEX_BRANCH}" branch.`);
   if (path !== INDEX_PATH) throw new Error(`This publisher only writes "${INDEX_PATH}".`);
   if (PROTECTED_PREFIXES.some((p) => branch === p || branch.startsWith(p))) {
@@ -84,6 +96,14 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
       if (ref) {
         const current = await transport.getFile(ref.sha, path);
         if (current && current.text === indexText) return { status: 'unchanged', commit: ref.sha };
+      }
+      // Asked AFTER the ref is read, before anything is written: an archive
+      // that moved on (or a maintenance run that now owns it) since this index
+      // was scanned refuses. The ref write below is non-force from that read,
+      // so a publisher that confirmed later wins any race.
+      if (confirm) {
+        const now = await confirm();
+        if (now !== contentHashOf(indexText)) throw new Error('The archive has changed since this index was scanned; nothing was published (the next run publishes what it holds now).');
       }
 
       const blobSha = await transport.createBlob(indexText);
@@ -117,6 +137,54 @@ function nothingPublished(err) {
   const e = err instanceof Error ? err : new Error(String(err));
   e.nothingPublished = true;
   return e;
+}
+
+/** The archive's maintenance lock: ONE file in the archive root, which the scanner skips (a dotfile). */
+export const ARCHIVE_LOCK = '.setar-maintenance.lock';
+
+/**
+ * The lock as it stands: null (absent), its record, or `{ unreadable }` with
+ * the digest of bytes that are not a complete record in this tool's form —
+ * never guessed into one. A record is written whole before it is linked into
+ * place, so a partial one is never this tool's.
+ */
+export function readArchiveLock(root) {
+  let bytes;
+  try {
+    bytes = readFileSync(join(root, ARCHIVE_LOCK));
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null;
+    throw err;
+  }
+  const digest = createHash('sha256').update(bytes).digest('hex');
+  try {
+    const r = JSON.parse(bytes.toString('utf8'));
+    if (typeof r?.token === 'string' && /^[0-9a-f-]{36}$/.test(r.token) && Number.isInteger(r.pid) && r.pid > 0 && typeof r.host === 'string' && typeof r.since === 'string') {
+      return { ...r, digest };
+    }
+  } catch {
+    // not a record: said as unreadable below
+  }
+  return { unreadable: true, digest };
+}
+
+/**
+ * What a publisher asks before its ref write: who holds the archive, then what
+ * it scans to now. `holder` is the maintenance run's lock token; without one
+ * (the scheduled job) any lock refuses.
+ */
+export function archiveConfirmation(root, holder) {
+  return () => {
+    const held = readArchiveLock(root);
+    if (holder ? held?.token !== holder : held) {
+      throw new Error(
+        holder
+          ? 'The maintenance run that asked for this publication no longer holds the archive; nothing was published.'
+          : 'A maintenance run holds the archive; nothing was published. That run publishes when it finishes.',
+      );
+    }
+    return scanToIndex(root).contentHash;
+  };
 }
 
 function contentHashOf(indexText) {
@@ -222,11 +290,11 @@ export function makeGitHubIndexTransport({ repo, token }) {
 }
 
 async function main() {
-  const { values } = parseArgs({ options: { index: { type: 'string' }, expect: { type: 'string' } } });
+  const { values } = parseArgs({ options: { index: { type: 'string' }, root: { type: 'string' }, expect: { type: 'string' }, holder: { type: 'string' } } });
   const repo = process.env.PC_INDEX_REPO;
   const token = process.env.PC_INDEX_TOKEN;
-  if (!values.index || !repo || !token) {
-    console.error('Usage: publish-setar-index.mjs --index <file>');
+  if (!values.index || !values.root || !repo || !token) {
+    console.error('Usage: publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock token>]');
     console.error('  PC_INDEX_REPO=owner/name PC_INDEX_TOKEN=<publisher token> must be set.');
     process.exit(2);
   }
@@ -238,7 +306,12 @@ async function main() {
     process.exit(4);
   }
   try {
-    const result = await publishIndex({ transport: makeGitHubIndexTransport({ repo, token }), indexText, expectedContentHash: values.expect });
+    const result = await publishIndex({
+      transport: makeGitHubIndexTransport({ repo, token }),
+      indexText,
+      expectedContentHash: values.expect,
+      confirm: archiveConfirmation(values.root, values.holder),
+    });
     console.error(
       result.status === 'unchanged'
         ? 'Index unchanged — no commit.'
@@ -253,7 +326,7 @@ async function main() {
     // Never the URL, never the token, never the archive root.
     console.error(`Publish failed: ${err.message}`);
     if (err?.nothingPublished) {
-      console.error('The previously published index is still the one the app reads.');
+      console.error('This run published nothing; the source-index branch is as it was.');
       process.exit(4);
     }
     console.error('It may already be published; running the job again makes no new commit if so.');

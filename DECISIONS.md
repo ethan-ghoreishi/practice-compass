@@ -2,6 +2,42 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Setar maintenance: one owner per archive, writes proved at the write, publication open until observed (2026-10-31)
+
+Same lane, second sealed rejection; this supersedes the dead-lock adoption
+bullet of the entry below.
+
+- **The lock belongs to the ARCHIVE, not the `--state` folder.** It is one
+  dotfile in the archive root (the scanner skips it), written whole and then
+  linked into place, so two runs through two state folders serialise and a
+  record is never partial.
+- **No lock is adopted on a guess.** A pid can be reused, a truncated record
+  can name another process, and a publishing child outlives its killed
+  parent; every claim/adopt scheme raced on cleanup. A run that finds a lock
+  refuses and names it; the operator, having seen nothing running, releases
+  that exact record (`release-lock --record <id>`), and the journal then says
+  what to finish. An explicit step beats a silent wrong owner.
+- **Every archive write proves its expected state AT the write.** A
+  declaration is moved aside (atomic), its bytes judged, and the new file
+  linked in (never overwrites); media get the new name by link, are judged,
+  then lose the old one. Recovery passes what THIS change wrote as the
+  expectation, never a fresh read. A run stopped with a declaration set aside
+  has it put back by the next run. Writes through a handle already open on
+  the captured file remain a named limit (`ponytail:` in the tool).
+- **Publishers answer to the owner and to the archive as it is now.** Before
+  writing anything after reading the ref, the publisher checks the lock (absent
+  for the scheduled job, the caller's token for maintenance) and rescans; the
+  ref write stays non-force from that read. So a paused, conflicting or
+  orphaned publisher can never put an older index over a newer one.
+- **"Nothing published" is about one attempt.** The journal names each
+  attempt's validated hash as open before any remote work, keeps every
+  unconfirmed hash in `unresolved`, and clears them only on positive evidence
+  that the branch holds the index. A later failure proved for its own attempt
+  never resets an earlier unknown, and never promises a previous index exists.
+- **The NAS still runs the earlier tool.** Redeploying all four runtime files
+  together (the runner now forwards `--root` and the lock token) is the
+  owner's step; the live checks must then be rerun (`docs/nas-topology.md`).
+
 ## Setar recovery undoes only its own write; a link binds only a class still the same (2026-10-31)
 
 Same lane, after the sealed review asked for changes.

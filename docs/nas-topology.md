@@ -248,11 +248,16 @@ inside…"), the power schedule, the `web` bind mount, `http`'s read on the medi
 
 **Deployed versus the repository.** The NAS runs the four runtime files of
 `a4036a9` (hashes above). The repository's later versions add: the runner's
-optional validated-hash argument and the publisher's `--expect` refusal and
-`published-index` evidence line; restore preconditions, owned locks, archive
-binding and session-folder link refusal in the maintenance tool. Until the
+optional validated-hash and lock-token arguments, the publisher's `--expect`
+refusal, `published-index` evidence line and pre-write check (`--root`
+rescan, archive lock); the archive-wide lock (`.setar-maintenance.lock` in
+the archive root, released by hand only with `release-lock --record`),
+writes proved at the write, open-until-observed publication state, restore
+preconditions, archive binding and session-folder link refusal in the
+maintenance tool. All four files go together: the new runner passes `--root`,
+which the new publisher requires. Until the
 owner redeploys them, the NAS route has none of these. Redeploying needs, in
-the same step, the sudo rule to allow the one argument —
+the same step, the sudo rule to allow its arguments (the hash and the lock token) —
 `ethan ALL=(setar-indexer) NOPASSWD: /bin/sh /volume1/practice-compass-index/run-setar-index.sh, /bin/sh /volume1/practice-compass-index/run-setar-index.sh *`
 — or every apply ends `publish-failed`, reported as unconfirmed (sudo's
 refusal is exit 1, no proof by itself; in fact nothing ran), and `retry`

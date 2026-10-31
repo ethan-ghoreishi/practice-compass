@@ -8,6 +8,7 @@
 //     … each prints a PREVIEW and its id; run the same command again with --apply <id> to do it.
 //   node setar-archive-maintenance.mjs --root <archive> --state <dir> retry      # validate, scan and publish again
 //   node setar-archive-maintenance.mjs --root <archive> --state <dir> rollback   # put the last change back, then publish
+//   node setar-archive-maintenance.mjs --root <archive> release-lock [--record <id>]  # show, then release, a lock no run holds
 //
 // PIECES.csv and RENAME-LOG.csv beside the archive stay the ONLY declarations
 // (docs/setar-lesson-lifecycle.md, D9). This tool asks for the facts a
@@ -19,13 +20,16 @@
 // its bytes checked unchanged. Every refusal changes nothing.
 //
 // The scanner stays read-only; this is the only writer, and it writes only
-// PIECES.csv, RENAME-LOG.csv, the one file a `rename` names, and its own
-// --state folder. Node stdlib only.
+// PIECES.csv, RENAME-LOG.csv, the one file a `rename` names, its own dotfiles
+// in the archive root (the archive's lock, a write's temp and capture) and its
+// own --state folder. Every write is proved against the exact state it expects
+// at the moment it is made, under the archive's one lock. Node stdlib only.
 
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve, sep } from 'node:path';
+import { constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { hostname } from 'node:os';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import {
@@ -44,6 +48,7 @@ import {
   readTable,
   writeIndexAtomically,
 } from './scan-setar-classes.mjs';
+import { ARCHIVE_LOCK, readArchiveLock } from './publish-setar-index.mjs';
 
 const REGISTRY = 'PIECES.csv';
 const LOG = 'RENAME-LOG.csv';
@@ -255,9 +260,15 @@ const rootIdOf = (root) => sha(realpathSync.native(root).normalize('NFC'));
  * earlier version of this tool recorded neither its archive nor what it wrote,
  * so nothing may be recovered from it automatically; a finished one is simply
  * superseded by the next apply.
+ *
+ * `status` says what the ARCHIVE holds (prepared | applied | rolling-back |
+ * rolled-back), `publication` what is known of the source-index branch
+ * (pending | published | failed | unknown | not-needed), and `unresolved` the
+ * validated hashes of every attempt whose remote outcome is NOT known — kept
+ * until a positive observation of the branch, never reset by a later failure.
  */
 function journalFor(state, root, recovering) {
-  const j = readJournal(state);
+  let j = readJournal(state);
   if (!j) return null;
   if (!j.rootId) {
     if (recovering || j.status === 'prepared' || j.status === 'publish-failed') {
@@ -266,104 +277,249 @@ function journalFor(state, root, recovering) {
     return null;
   }
   if (j.rootId !== rootIdOf(root)) throw new Refusal('This --state folder belongs to another archive; nothing was changed. Use that archive’s own --state folder.');
-  // `status` says what the ARCHIVE holds (prepared | applied | rolling-back |
-  // rolled-back), `publication` whether the source-index branch says it
-  // (pending | published | failed | unknown | not-needed). An earlier version
-  // of this lane folded the two into one status; read it conservatively.
-  if (j.status === 'published') return { ...j, status: 'applied', publication: 'published' };
-  if (j.status === 'publish-failed') return { ...j, status: 'applied', publication: 'unknown' };
-  if (j.status === 'applied' || j.status === 'rolled-back') {
-    if (!j.publication) return { ...j, publication: 'pending' };
-    if (j.publication === 'unchanged' || j.publication === 'created') return { ...j, publication: 'published' };
-    if (j.publication === 'publish-failed') return { ...j, publication: 'unknown' };
+  // Earlier versions of this lane folded status and publication together; read them conservatively.
+  if (j.status === 'published') j = { ...j, status: 'applied', publication: 'published' };
+  else if (j.status === 'publish-failed') j = { ...j, status: 'applied', publication: 'unknown' };
+  else if (j.status === 'applied' || j.status === 'rolled-back') {
+    if (!j.publication) j = { ...j, publication: 'pending' };
+    else if (j.publication === 'unchanged' || j.publication === 'created') j = { ...j, publication: 'published' };
+    else if (j.publication === 'publish-failed') j = { ...j, publication: 'unknown' };
   }
-  return j;
+  // An open attempt from before `unresolved` existed stays open, under its hash if it recorded one.
+  const open = ['pending', 'unknown'].includes(j.publication) ? [j.contentHash ?? 'unrecorded'] : [];
+  return { ...j, unresolved: j.unresolved ?? open };
 }
 
-const lockPath = (state) => join(state, 'lock');
-const readLock = (state) => {
+// --- who owns the archive ----------------------------------------------------
+//
+// ONE lock per ARCHIVE (`ARCHIVE_LOCK` in its root, which the scanner skips),
+// never per --state folder: every route that writes the archive takes it, and
+// every publisher checks it before its ref write (`archiveConfirmation`), the
+// scheduled job included. A record is written whole and LINKED into place, so
+// it is never partial. A lock is never adopted on a guess about a process
+// (a pid can be reused, a publishing child outlives its parent): a run that
+// finds one refuses, and the operator — having seen no maintenance or
+// publication is running — releases that exact record (`release-lock`).
+
+const same = (a, b) => Boolean(a && b && a.ino === b.ino && a.dev === b.dev);
+const holderLine = (h) => (h.unreadable ? 'a record not in this tool’s form' : `run ${h.token.slice(0, 8)} (pid ${h.pid} on ${h.host}, since ${h.since})`);
+
+function lockRefusal(root) {
+  const held = readArchiveLock(root);
+  if (!held) return new Refusal('Another maintenance run was just releasing the archive’s lock; nothing was changed. Try again.');
+  return new Refusal(
+    `The archive’s maintenance lock is held by ${holderLine(held)}; nothing was changed. If that run is still going, wait for it. ` +
+      `If no maintenance run or publication is running (check with ps), release it with: release-lock --record ${held.digest.slice(0, 16)} — then the next run says what to finish.`,
+  );
+}
+
+/** Take the archive's lock, or refuse. Returns the token that proves ownership. */
+function lock(root) {
+  const token = randomUUID();
+  const tmp = join(root, `${ARCHIVE_LOCK}.${token}`);
+  writeFileSync(tmp, `${JSON.stringify({ token, pid: process.pid, host: hostname(), since: new Date().toISOString() })}\n`, { flag: 'wx' });
   try {
-    const [token, pid] = readFileSync(lockPath(state), 'utf8').split(' ');
-    return { token, pid: Number(pid) };
+    linkSync(tmp, join(root, ARCHIVE_LOCK));
+  } catch (err) {
+    if (err?.code === 'EEXIST') throw lockRefusal(root);
+    throw err;
+  } finally {
+    rmSync(tmp, { force: true });
+  }
+  try {
+    recoverCaptures(root);
+  } catch (err) {
+    unlock(root, token);
+    throw err;
+  }
+  return token;
+}
+
+/** Every archive write first proves this run still holds the lock (an operator may have released it). */
+function assertOwner(root, owner) {
+  if (readArchiveLock(root)?.token !== owner) throw new Refusal('This run no longer holds the archive’s maintenance lock (it was released by hand); it stopped before its next write.');
+}
+
+/**
+ * Remove the lock only while it is the one judged: it is MOVED aside first
+ * (atomic), then judged; anything else is put back, never over a newer lock.
+ */
+function removeLockIf(root, judge) {
+  const aside = capture(root, ARCHIVE_LOCK);
+  if (!aside) return false;
+  let record = null;
+  try {
+    const bytes = readFileSync(aside);
+    record = { digest: sha(bytes), token: (() => { try { return JSON.parse(bytes.toString('utf8'))?.token; } catch { return undefined; } })() };
+  } catch {
+    // unreadable: judged as no record
+  }
+  if (!record || !judge(record)) {
+    putBack(root, ARCHIVE_LOCK, aside);
+    return false;
+  }
+  rmSync(aside);
+  return true;
+}
+const unlock = (root, token) => {
+  if (readArchiveLock(root)?.token === token) removeLockIf(root, (r) => r.token === token);
+};
+
+/**
+ * The operator's explicit route for a lock no run will take: shown first, then
+ * released only by its exact record (a digest prefix of its bytes), whatever
+ * form it is in — a dead run's, a partial or foreign one.
+ */
+export function releaseLock({ root: rootArg, record }) {
+  const root = resolve(rootArg);
+  const held = readArchiveLock(root);
+  if (!held) return { released: false, lines: ['The archive holds no maintenance lock. Nothing to do.'] };
+  const id = held.digest.slice(0, 16);
+  if (!record) {
+    return {
+      released: false,
+      lines: [`The archive’s maintenance lock is held by ${holderLine(held)}.`, `Release it ONLY if no maintenance run or publication is running: release-lock --record ${id}`],
+    };
+  }
+  if (record !== id || !removeLockIf(root, (r) => r.digest === held.digest)) {
+    throw new Refusal('The lock is not the record you saw (it changed or was released since); nothing was changed. Run release-lock again to see it.');
+  }
+  return { released: true, lines: [`Released the lock of ${holderLine(held)}. The next run says what, if anything, it left to finish.`] };
+}
+
+// --- writing the archive, exactly --------------------------------------------
+
+/** Move whatever is at `name` aside — atomic: exactly what was there at that instant — or null when nothing was. */
+function capture(root, name, owner = randomUUID()) {
+  const aside = join(root, `.${name}.captured-${owner}`);
+  try {
+    renameSync(join(root, name), aside);
+    return aside;
   } catch (err) {
     if (err?.code === 'ENOENT') return null;
     throw err;
   }
-};
-const alive = (pid) => {
-  // A lock not in this tool's form names no process that could be judged gone.
-  if (!Number.isInteger(pid) || pid < 1) return true;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err?.code === 'EPERM';
-  }
-};
-
-/**
- * Take the --state folder's lock; returns the token that proves ownership.
- * A lock whose process is gone is ADOPTED by any run: every run that writes
- * the archive first records in the journal what it is doing (apply:
- * `prepared`, rollback: `rolling-back`), so the journal — read under the
- * lock, never the dead token — decides what may happen next. A live holder's
- * lock is never taken, and never removed.
- */
-function lock(state) {
-  const token = randomUUID();
-  try {
-    writeFileSync(lockPath(state), `${token} ${process.pid}`, { flag: 'wx' });
-    return token;
-  } catch (err) {
-    if (err?.code !== 'EEXIST') throw err;
-  }
-  const held = readLock(state);
-  if (held && !alive(held.pid)) {
-    // ONE adopter per dead token: the claim is exclusive, and the lock is
-    // re-read under it, so a second adopter (or a slow one that read the lock
-    // before another adopted it) refuses instead of renaming over a live lock.
-    const claim = `${lockPath(state)}.adopt.${held.token}`;
-    try {
-      writeFileSync(claim, `${token} ${process.pid}`, { flag: 'wx' });
-    } catch (err) {
-      if (err?.code !== 'EEXIST') throw err;
-      const by = Number(readFileSync(claim, 'utf8').split(' ')[1]);
-      // ponytail: a claimer killed mid-adoption is cleared here and this run
-      // refuses; the next run adopts. A per-claim lease if that ever recurs.
-      if (!alive(by)) rmSync(claim, { force: true });
-      throw new Refusal('Another run is taking over an interrupted run’s lock; nothing was changed. Try again.');
-    }
-    try {
-      const again = readLock(state);
-      if (again?.token === held.token && !alive(again.pid)) {
-        writeFileSync(`${lockPath(state)}.${token}`, `${token} ${process.pid}`, { flag: 'wx' });
-        renameSync(`${lockPath(state)}.${token}`, lockPath(state));
-        return token;
-      }
-    } finally {
-      rmSync(claim, { force: true });
-    }
-  }
-  throw new Refusal('Another maintenance run holds the lock; nothing was changed. Try again when it has finished.');
 }
-/** Remove the lock only if it is still OURS. */
-const unlock = (state, token) => {
-  if (readLock(state)?.token === token) rmSync(lockPath(state), { force: true });
-};
+
+/** Put a captured file back, never over anything that appeared meanwhile — then both are kept, and said. */
+function putBack(root, name, aside) {
+  const st = lstatSync(aside);
+  try {
+    if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), join(root, name));
+    else if (st.isFile()) linkSync(aside, join(root, name));
+    else throw new Refusal(`${name} was replaced by something that is not a file while this ran; it is kept as ${basename(aside)}. Put it back by hand.`);
+  } catch (err) {
+    if (err?.code === 'EEXIST') throw new Refusal(`${name} was replaced while this ran; the new one stands, and the one before is kept beside it as ${basename(aside)}.`);
+    throw err;
+  }
+  rmSync(aside);
+}
 
 /**
- * Replace a declaration through an exclusive temp and a rename — never
- * through a link, and only while it still holds `expected` (`null`: absent).
- * Another writer's edit since is never overwritten.
+ * A run that stopped between moving a declaration aside and putting one in its
+ * place left it missing: put back THIS tool's own capture, never a guess. A
+ * capture beside a present declaration is what that run replaced (or what a
+ * hand edit displaced): renamed `superseded`, kept, never a candidate again.
+ * Runs under the lock, before anything else.
  */
-function writeDeclaration(root, name, text, expected) {
+function recoverCaptures(root) {
+  for (const name of [REGISTRY, LOG]) {
+    const caps = readdirSync(root).filter((f) => f.startsWith(`.${name}.captured-`));
+    if (!caps.length) continue;
+    if (lstatOrNull(join(root, name))) {
+      for (const c of caps) renameSync(join(root, c), join(root, c.replace('.captured-', '.superseded-')));
+      continue;
+    }
+    if (caps.length > 1) throw new Refusal(`${name} is missing, and ${caps.length} copies set aside by interrupted runs exist (${caps.join(', ')}); nothing was changed. Put the right one back by hand.`);
+    putBack(root, name, join(root, caps[0]));
+  }
+}
+
+/**
+ * Replace a declaration (or, with `text` null, take it out of the archive) only
+ * while it holds exactly `expected` — a SHA-256, or null for absent — PROVED AT
+ * THE WRITE: the file is first moved aside (what was there at that instant;
+ * a later save makes a new file), its bytes judged, and the new one LINKED into
+ * place, which never overwrites. Replaced, deleted, created or a link: put
+ * back and refused, nothing anyone wrote lost. `at` is the test seam.
+ */
+function replaceDeclaration({ root, owner, at }, name, text, expected, keepDir) {
+  assertOwner(root, owner);
   const p = join(root, name);
-  const st = lstatOrNull(p);
-  if (st && !st.isFile()) throw new Refusal(`${name} is not a regular file.`);
-  if (readDeclaration(root, name, false) !== expected) throw new Refusal(`${name} changed while this ran; it was left as the other edit made it.`);
-  const tmp = join(root, `.${name}.maintenance-${process.pid}`);
-  writeFileSync(tmp, text, { flag: 'wx' });
-  renameSync(tmp, p);
+  const tmp = text === null ? null : join(root, `.${name}.maintenance-${owner}`);
+  if (tmp) writeFileSync(tmp, text, { flag: 'wx' });
+  try {
+    at('capture', name);
+    if (expected === null) {
+      // Planned absent: create, never overwrite.
+      try {
+        linkSync(tmp, p);
+      } catch (err) {
+        if (err?.code === 'EEXIST') throw new Refusal(`${name} appeared while this ran; it was left as the other edit made it.`);
+        throw err;
+      }
+      return;
+    }
+    const aside = capture(root, name, owner);
+    if (!aside) throw new Refusal(`${name} was removed while this ran; nothing was put in its place.`);
+    const st = lstatSync(aside);
+    if (!st.isFile() || sha(readFileSync(aside)) !== expected) {
+      putBack(root, name, aside);
+      throw new Refusal(`${name} changed while this ran; it was left as the other edit made it.`);
+    }
+    at('install', name);
+    try {
+      if (tmp) linkSync(tmp, p);
+      else copyFileSync(aside, join(keepDir, `${name}.written-${owner}`), constants.COPYFILE_EXCL);
+    } catch (err) {
+      if (tmp && err?.code === 'EEXIST') {
+        throw new Refusal(`${name} was written by someone else while this ran; theirs stands, and the one it replaced is kept beside it as ${basename(aside)}.`);
+      }
+      putBack(root, name, aside);
+      throw err;
+    }
+    // ponytail: a write INTO the captured file through a handle already open
+    // between its digest and this unlink is lost (Node cannot lock a path
+    // against an open handle); a same-volume quarantine folder if that is ever seen.
+    rmSync(aside);
+  } finally {
+    if (tmp) rmSync(tmp, { force: true });
+  }
+}
+
+/**
+ * Give one media file a new name, never overwriting and never moving bytes
+ * other than the recorded ones: the new name is LINKED (fails if anything is
+ * there), what it names is judged (same file, recorded size and SHA-256, both
+ * folders still real), and only then is the old name removed. A judged
+ * failure removes only the name this call made; nothing has moved.
+ */
+function moveExact({ root, owner, at }, fromRel, toRel, expect) {
+  assertOwner(root, owner);
+  const from = mediaPath(root, fromRel);
+  const to = mediaPath(root, toRel);
+  if (!lstatOrNull(from)?.isFile()) throw new Refusal(`"${fromRel}" is not a regular file in the archive any more; nothing was moved.`);
+  at('link', toRel);
+  try {
+    linkSync(from, to);
+  } catch (err) {
+    if (err?.code === 'EEXIST') throw new Refusal(`"${toRel}" appeared while this ran; nothing is ever overwritten, and nothing was moved.`);
+    if (err?.code === 'ENOENT') throw new Refusal(`"${fromRel}" went away while this ran; nothing was moved.`);
+    throw err;
+  }
+  const a = lstatOrNull(from);
+  const b = lstatOrNull(to);
+  const realFolders = [fromRel, toRel].every((rel) => lstatOrNull(join(root, rel.split('/')[0]))?.isDirectory());
+  const bytes = same(a, b) && b.isFile() ? readFileSync(to) : null;
+  if (!realFolders || !bytes || bytes.length !== expect.size || sha(bytes) !== expect.sha256) {
+    if (same(a, b)) rmSync(to);
+    throw new Refusal(`"${fromRel}" does not hold the bytes this change recorded (it changed since the preview, or its folder moved); nothing was moved.`);
+  }
+  at('unlink', fromRel);
+  // ponytail: judged, then unlinked — a different file renamed onto the old
+  // name in that instant would lose this name (its bytes stay at the new one).
+  if (!same(lstatOrNull(from), b)) throw new Refusal(`"${fromRel}" was replaced while this ran; both files are kept, the moved one as "${toRel}".`);
+  rmSync(from);
 }
 
 /** Thrown by the test seam to stand in for a process killed mid-apply. */
@@ -384,10 +540,10 @@ function validateAndScan(root, state, action) {
 }
 
 /**
- * Publication failed. `nothingPublished` is a CLAIM, made only when the job
- * proved it (it refused or failed before its ref write); every other failure —
- * a non-zero or signalled exit, a lost response, an ordinary exception — is
- * UNKNOWN and said so, never promised.
+ * Publication failed. `nothingPublished` is a CLAIM about THIS attempt only,
+ * made when the job proved it (it refused or failed before its ref write);
+ * every other failure — a non-zero or signalled exit, a lost response, an
+ * ordinary exception — is UNKNOWN and said so, never promised.
  */
 export class PublishFailed extends Error {
   constructor(message, nothingPublished) {
@@ -397,29 +553,46 @@ export class PublishFailed extends Error {
 }
 const PUBLISHED = new Set(['unchanged', 'published', 'created']);
 
-async function publishStep(state, journal, scanned, publish) {
+/**
+ * Publish `scanned` for the archive state `base` describes. The journal says
+ * which validated index this attempt intends, and that its outcome is open,
+ * BEFORE any remote work. Only positive evidence that the branch holds it
+ * closes every open attempt; a failure this attempt proved leaves the earlier
+ * open ones open, and a failure it did not prove adds itself to them.
+ */
+async function publishStep(state, base, scanned, publish, token) {
   const contentHash = scanned.index.contentHash;
+  const before = base.unresolved ?? [];
+  const attempt = { ...base, publication: 'pending', contentHash, unresolved: [...new Set([...before, contentHash])] };
+  writeJournal(state, attempt);
   let result;
   try {
-    result = await publish(scanned.text, contentHash);
-    // POSITIVE EVIDENCE or it did not happen: a publisher that returns no
-    // status has proved nothing.
+    result = await publish(scanned.text, contentHash, token);
+    // POSITIVE EVIDENCE or it did not happen: a publisher that returns no status has proved nothing.
     if (!PUBLISHED.has(result?.status)) throw new PublishFailed('the publisher reported no publication', false);
   } catch (err) {
-    const known = err?.nothingPublished === true;
-    writeJournal(state, { ...journal, publication: known ? 'failed' : 'unknown', contentHash });
+    const proved = err?.nothingPublished === true;
+    const unresolved = proved ? before : attempt.unresolved;
+    const publication = unresolved.length ? 'unknown' : 'failed';
+    const why = err?.message ?? 'unknown';
+    try {
+      writeJournal(state, { ...attempt, publication, unresolved });
+    } catch (e) {
+      throw new Error(`Publication ${publication === 'failed' ? 'failed' : 'could not be confirmed'} (${why}), and the private journal could not record that (${e.message}); it still says pending, which counts as unconfirmed. Run \`retry\`.`);
+    }
     return {
       ok: false,
       status: 'publish-failed',
       contentHash,
-      message: known
-        ? `The archive is changed and valid, but publication failed (${err?.message ?? 'unknown'}). The last good index is still the published one. Run \`retry\` to publish again.`
-        : `The archive is changed and valid, but publication could not be confirmed (${err?.message ?? 'unknown'}); it may already be published. Run \`retry\`: it makes no new commit if the source-index branch already holds this index.`,
+      message:
+        publication === 'failed'
+          ? `The archive is valid, but publication failed (${why}). This attempt published nothing, so the source-index branch is as it was. Run \`retry\` to publish again.`
+          : `The archive is valid, but publication could not be confirmed (${why}); ${proved ? 'this attempt published nothing, but an earlier attempt is still unconfirmed and may have been published' : 'it may already be published'}. Run \`retry\`: it makes no new commit if the source-index branch already holds this index.`,
     };
   }
   // Published: a failure to RECORD it is never reported as a failure to publish.
   try {
-    writeJournal(state, { ...journal, publication: 'published', contentHash });
+    writeJournal(state, { ...attempt, publication: 'published', unresolved: [] });
   } catch (err) {
     throw new Error(`Index ${contentHash.slice(0, 12)} was published, but the private journal could not record it (${err.message}). Run \`retry\` to record it; it makes no new commit.`);
   }
@@ -428,16 +601,20 @@ async function publishStep(state, journal, scanned, publish) {
 
 // --- applying ---------------------------------------------------------------
 
+const noSeam = () => {};
+
 /**
  * Apply a previewed action. `previewId` must be the id the preview printed
- * against the archive as it is now. `publish(text, contentHash)` is the
- * existing job (CLI) or a fake Git boundary (tests). `interruptAfter` is a
- * test seam: 'copy' | 'registry' | 'log' | 'rename'.
+ * against the archive as it is now. `publish(text, contentHash, lockToken)` is
+ * the existing job (CLI) or a fake Git boundary (tests). `interruptAfter` is a
+ * test seam: 'copy' | 'registry' | 'log' | 'rename'; `at(point, name)` another,
+ * called just before each archive write.
  */
-export async function applyMaintenance({ root: rootArg, state: stateArg, action, previewId, publish, interruptAfter }) {
+export async function applyMaintenance({ root: rootArg, state: stateArg, action, previewId, publish, interruptAfter, at = noSeam }) {
   const root = resolve(rootArg);
   const state = stateDir(root, stateArg);
-  const token = lock(state);
+  const token = lock(root);
+  const ctx = { root, owner: token, at };
   let interrupted = false;
   try {
     const prior = journalFor(state, root);
@@ -477,52 +654,52 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
     };
     step('copy');
 
-    // 2. The edit. Any failure here is put back from the copy, automatically.
+    // 2. The edit, each write proved against what the plan saw. Any failure is put back, automatically.
     let scanned;
+    // What THIS run has written so far: its automatic put-back judges only those.
+    const written = new Set();
     try {
-      if (plan.registry) writeDeclaration(root, REGISTRY, plan.registry.after, plan.registry.before);
+      if (plan.registry) replaceDeclaration(ctx, REGISTRY, plan.registry.after, digest(plan.registry.before));
+      if (plan.registry) written.add(REGISTRY);
       step('registry');
-      if (plan.log) writeDeclaration(root, LOG, plan.log.after, plan.log.before);
+      if (plan.log) replaceDeclaration(ctx, LOG, plan.log.after, digest(plan.log.before));
+      if (plan.log) written.add(LOG);
       step('log');
-      if (plan.rename) {
-        const from = mediaPath(root, plan.rename.from);
-        const to = mediaPath(root, plan.rename.to);
-        if (lstatOrNull(to)) throw new Refusal(`"${plan.rename.to}" appeared while this ran; nothing is ever overwritten.`);
-        renameSync(from, to);
-        const moved = readFileSync(mediaPath(root, plan.rename.to));
-        if (moved.length !== plan.rename.size || sha(moved) !== plan.rename.sha256) throw new Error('The renamed file does not hold the same bytes.');
-      }
+      // A refused move has moved nothing (or kept both files, said so); only a finished one is ours to undo.
+      if (plan.rename) moveExact(ctx, plan.rename.from, plan.rename.to, plan.rename);
+      if (plan.rename) written.add('rename');
       step('rename');
       scanned = validateAndScan(root, state, action);
     } catch (err) {
       if (err instanceof Interrupted) throw err;
       try {
-        restore(root, journal);
+        restore(ctx, journal, undefined, written);
       } catch (why) {
         // The journal stays `prepared`: `rollback` is still offered, never a false "put back".
         throw new Refusal(`The change did not validate (${err.message}), and it could not be put back automatically (${why.message}). The private copy is kept; check, then run \`rollback\`.`);
       }
-      // Back as it was before, which the last good index already says.
-      writeJournal(state, { ...journal, status: 'rolled-back', publication: 'not-needed' });
+      // This run published nothing, and the archive is as it was before it.
+      writeJournal(state, { ...journal, status: 'rolled-back', publication: 'not-needed', unresolved: [] });
       throw new Refusal(`The change did not validate (${err.message}); everything was put back from the private copy.`);
     }
-    const applied = { ...journal, status: 'applied', publication: 'pending' };
-    writeJournal(state, applied);
     // 3. Publication, through the existing job.
-    return { ...(await publishStep(state, applied, scanned, publish)), lines: plan.lines };
+    return { ...(await publishStep(state, { ...journal, status: 'applied', unresolved: [] }, scanned, publish, token)), lines: plan.lines };
   } finally {
-    if (!interrupted) unlock(state, token);
+    if (!interrupted) unlock(root, token);
   }
 }
 
 /**
  * Put back exactly what THIS change wrote — and nothing anyone wrote since.
  * Every file is judged BEFORE any is touched: a declaration still as it was
- * is left; one holding exactly what this change wrote is restored; anything
- * else (another run's row, a hand edit) refuses the whole restore. The renamed
- * file moves back only from its recorded name with its recorded bytes.
+ * is left; one holding exactly what this change wrote is restored, the write
+ * itself proving it still does; anything else (another run's row, a hand
+ * edit) refuses the whole restore. The renamed file moves back only from its
+ * recorded name with its recorded bytes. `only` (apply's automatic put-back)
+ * limits the judgement to what that run is known to have written.
  */
-function restore(root, journal, beforeWriting = () => {}) {
+function restore(ctx, journal, beforeWriting = () => {}, only = null) {
+  const { root } = ctx;
   const current = (name) => {
     const t = readDeclaration(root, name, false);
     return t === null ? null : sha(t);
@@ -532,26 +709,36 @@ function restore(root, journal, beforeWriting = () => {}) {
     [REGISTRY, journal.wrote.registry],
     [LOG, journal.wrote.log],
   ]) {
+    if (only && !only.has(name)) continue;
     const now = current(name);
     if (now === w.before) continue;
     if (now !== w.after) throw new Refusal(`${name} has changed since this change was made; it is left exactly as it is.`);
-    steps.push(() => {
-      const after = readDeclaration(root, name, false);
-      if (w.before === null) {
-        // The log did not exist before: keep what was written beside the copy, never delete it.
-        renameSync(join(root, name), join(journal.copy, `${name}.written`));
-      } else writeDeclaration(root, name, readFileSync(join(journal.copy, name), 'utf8'), after);
-    });
+    let back = null;
+    if (w.before !== null) {
+      back = readFileSync(join(journal.copy, name), 'utf8');
+      if (sha(back) !== w.before) throw new Refusal(`The private copy of ${name} is not what this change recorded; nothing was put back.`);
+    }
+    // The log did not exist before: what was written is kept beside the copy, never deleted.
+    steps.push(() => replaceDeclaration(ctx, name, back, w.after, journal.copy));
   }
-  const r = journal.rename;
+  const r = only && !only.has('rename') ? null : journal.rename;
   if (r) {
-    const from = lstatOrNull(mediaPath(root, r.from));
-    const to = lstatOrNull(mediaPath(root, r.to));
-    if (!from && to?.isFile()) {
-      const bytes = readFileSync(mediaPath(root, r.to));
-      if (bytes.length !== r.size || sha(bytes) !== r.sha256) throw new Refusal(`"${r.to}" no longer holds the renamed bytes; it is left as it is.`);
-      steps.unshift(() => renameSync(mediaPath(root, r.to), mediaPath(root, r.from)));
-    } else if (!(from?.isFile() && !to)) {
+    const fromSt = lstatOrNull(mediaPath(root, r.from));
+    const toSt = lstatOrNull(mediaPath(root, r.to));
+    const holds = (rel) => {
+      const bytes = readFileSync(mediaPath(root, rel));
+      return bytes.length === r.size && sha(bytes) === r.sha256;
+    };
+    if (!fromSt && toSt?.isFile()) {
+      if (!holds(r.to)) throw new Refusal(`"${r.to}" no longer holds the renamed bytes; it is left as it is.`);
+      steps.unshift(() => moveExact(ctx, r.to, r.from, r));
+    } else if (same(fromSt, toSt) && toSt.isFile() && holds(r.to)) {
+      // A move stopped between its two names: the new name is the one to drop.
+      steps.unshift(() => {
+        assertOwner(root, ctx.owner);
+        if (same(lstatOrNull(mediaPath(root, r.from)), lstatOrNull(mediaPath(root, r.to)))) rmSync(mediaPath(root, r.to));
+      });
+    } else if (!(fromSt?.isFile() && !toSt)) {
       throw new Refusal(`"${r.from}" and "${r.to}" are neither as this change left them nor as they were; they are left as they are.`);
     }
   }
@@ -563,16 +750,16 @@ function restore(root, journal, beforeWriting = () => {}) {
 export async function retryMaintenance({ root: rootArg, state: stateArg, publish }) {
   const root = resolve(rootArg);
   const state = stateDir(root, stateArg);
-  const token = lock(state);
+  const token = lock(root);
   try {
     const journal = journalFor(state, root, true);
     if (!journal) throw new Refusal('Nothing has been applied here yet.');
     if (journal.status === 'prepared' || journal.status === 'rolling-back') {
       throw new Refusal(`The last ${journal.status === 'prepared' ? 'apply' : 'rollback'} did not finish; run \`rollback\`.`);
     }
-    return await publishStep(state, { ...journal, lockToken: token }, validateAndScan(root, state, null), publish);
+    return await publishStep(state, { ...journal, lockToken: token }, validateAndScan(root, state, null), publish, token);
   } finally {
-    unlock(state, token);
+    unlock(root, token);
   }
 }
 
@@ -580,13 +767,14 @@ export async function retryMaintenance({ root: rootArg, state: stateArg, publish
  * Put the last change back from its private copy, then publish the restored
  * archive. The lock comes FIRST and the journal is read under it; the journal
  * says `rolling-back`, with this run's token, before the first write, so an
- * interruption anywhere leaves a state the next `rollback` finishes.
- * `interruptAfter: 'mark'` is the test seam for that.
+ * interruption anywhere leaves a state the next `rollback` finishes. Open
+ * publication attempts stay open through it. `interruptAfter: 'mark'` is the
+ * test seam for that; `at` as in apply.
  */
-export async function rollbackMaintenance({ root: rootArg, state: stateArg, publish, interruptAfter }) {
+export async function rollbackMaintenance({ root: rootArg, state: stateArg, publish, interruptAfter, at = noSeam }) {
   const root = resolve(rootArg);
   const state = stateDir(root, stateArg);
-  const token = lock(state);
+  const token = lock(root);
   let interrupted = false;
   try {
     const journal = journalFor(state, root, true);
@@ -597,18 +785,17 @@ export async function rollbackMaintenance({ root: rootArg, state: stateArg, publ
           : 'There is no change here to roll back.',
       );
     }
-    restore(root, journal, () => {
+    restore({ root, owner: token, at }, journal, () => {
       writeJournal(state, { ...journal, status: 'rolling-back', lockToken: token });
       if (interruptAfter === 'mark') {
         interrupted = true;
         throw new Interrupted('interrupted after mark');
       }
     });
-    const back = { ...journal, status: 'rolled-back', publication: 'pending', lockToken: token };
-    writeJournal(state, back);
-    return await publishStep(state, back, validateAndScan(root, state, null), publish);
+    const scanned = validateAndScan(root, state, null);
+    return await publishStep(state, { ...journal, status: 'rolled-back', lockToken: token }, scanned, publish, token);
   } finally {
-    if (!interrupted) unlock(state, token);
+    if (!interrupted) unlock(root, token);
   }
 }
 
@@ -622,18 +809,20 @@ export async function rollbackMaintenance({ root: rootArg, state: stateArg, publ
  * `sudo -n -u setar-indexer sh /volume1/practice-compass-index/run-setar-index.sh`);
  * without it, the runner beside this script runs as the caller.
  *
- * The validated contentHash goes to the job as its ONE argument (sudo keeps
- * arguments, not environment): the job's own scan is refused before any
- * request unless it is that index. Success needs the publisher's evidence line
- * naming that hash; anything less is a failure, never "published".
+ * The validated contentHash and this run's lock token go to the job as its two
+ * arguments (sudo keeps arguments, not environment): the job's own scan is
+ * refused before any request unless it is that index, and its ref write
+ * unless this run still holds the archive. Success needs the publisher's
+ * evidence line naming that hash; anything less is a failure, never "published".
  */
 export function publishWithRunner(expectedRoot) {
-  return async (_text, contentHash) => {
+  return async (_text, contentHash, holder) => {
     const runner = join(dirname(fileURLToPath(import.meta.url)), 'run-setar-index.sh');
     const custom = process.env.PC_MAINT_PUBLISH;
-    const out = spawnSync('sh', custom ? ['-c', `${custom} "$@"`, 'sh', contentHash] : [runner, contentHash], { encoding: 'utf8', env: process.env });
+    const args = [contentHash, holder];
+    const out = spawnSync('sh', custom ? ['-c', `${custom} "$@"`, 'sh', ...args] : [runner, ...args], { encoding: 'utf8', env: process.env });
     const last = (t) => (t || '').trim().split('\n').pop();
-    // Only the job's own refusals PROVE nothing was published: 2 (its
+    // Only the job's own refusals PROVE this attempt published nothing: 2 (its
     // configuration refused, nothing ran), 3 (the scan is not the validated
     // index, refused before any request) and 4 (the scan, or the publisher
     // before its ref write, failed). Any other exit, a signal or a failed
@@ -655,6 +844,7 @@ async function main() {
       root: { type: 'string' },
       state: { type: 'string' },
       apply: { type: 'string' },
+      record: { type: 'string' },
       piece: { type: 'string' },
       session: { type: 'string' },
       pieces: { type: 'string' },
@@ -667,13 +857,17 @@ async function main() {
   });
   const [kind] = positionals;
   if (!values.root || !kind) {
-    console.error('Usage: setar-archive-maintenance.mjs --root <archive> --state <private dir> status|register|roster|rename|retry|rollback …');
+    console.error('Usage: setar-archive-maintenance.mjs --root <archive> --state <private dir> status|register|roster|rename|retry|rollback|release-lock …');
     process.exit(2);
   }
   const publish = publishWithRunner(values.root);
   try {
     if (kind === 'status') {
       process.stdout.write(formatAttention(attentionReport(readStableSource(values.root))));
+      return;
+    }
+    if (kind === 'release-lock') {
+      console.log(releaseLock({ root: values.root, record: values.record }).lines.join('\n'));
       return;
     }
     if (kind === 'retry' || kind === 'rollback') {

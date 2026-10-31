@@ -166,17 +166,21 @@ automatic put-back of a failed apply) undoes only what that change wrote,
 judging every file before writing any, under the lock, for its own archive
 only. Repeat runs are no-ops.
 
-Two maintenance invariants, each over every phase. **A killed run is always
-recoverable**: any later run adopts a dead lock (one adopter per token) and
-the journal decides: half-written means `rollback`, unconfirmed means `retry`.
-The consumers are lock/unlock, apply, retry and rollback, the automatic
-put-back and the journal's status/publication split. Its classes are a kill
-after copy, registry, log or rename, during publication, after rollback's
-mark, during rollback's or retry's publication, and before any journal.
-**"Nothing published" is said only on proof**: the job's exit 2/3/4, or a
-publisher failure before its ref write. A lost ref-write response, any other
-exit, a signal, or an exit 0 without evidence is unconfirmed. A journal write
-failing after publication still reports published. The consumers are
-publishIndex, updateRef/createRef, the publisher CLI, the runner,
-publishWithRunner and publishStep. ac-2 proves both with real killed
-children, the real transport over a fake `fetch`, and the real runner.
+Three maintenance invariants. **Every archive write proves the exact state
+it expects at the write** (capture-by-rename then link for declarations, link
+then judge then unlink for media); consumers: apply's registry/log/rename,
+the automatic put-back and `rollback` (expecting what THIS change wrote),
+recovery of a capture a stopped run left. **One owner per archive**: one lock
+in the archive root, never adopted on a guess, released only by its exact
+record (`release-lock`); consumers: apply, retry, rollback across `--state`
+folders, every publisher's pre-write check (scheduled job, maintenance child,
+orphan). **Publication is open until observed**: each attempt's validated
+hash is written as open before remote work, `unresolved` survives every later
+failure, only positive evidence closes it, and a publisher rescans after its
+ref read so an older index never lands over a newer one; consumers:
+publishStep, publishWithRunner, the runner, publishIndex and its conflict
+loop. ac-2 proves all three with real killed children, a cut-point and
+overlapping-writer matrix (both declarations, both log-presence branches,
+both media directions, every entry point, two `--state` folders), paused
+publishers in both H1/H2 schedules, the real transport over a fake `fetch`,
+and the real runner.
