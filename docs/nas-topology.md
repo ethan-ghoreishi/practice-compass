@@ -250,7 +250,9 @@ inside…"), the power schedule, the `web` bind mount, `http`'s read on the medi
 `a4036a9` (hashes above). The repository's later versions add: the runner's
 optional validated-hash and lock-token arguments, the publisher's `--expect`
 refusal, `published-index` evidence line and pre-write check (`--root`
-rescan, archive lock); the archive-wide lock (`.setar-maintenance.lock` in
+rescan, archive lock), the publisher seat (a localhost port, optional `PC_INDEX_SEAT_PORT` in
+`config.env`, default 47391; one publisher at a time) and its unanswered-write
+record `setar-publish-intent.json` in the work folder; the archive-wide lock (`.setar-maintenance.lock` in
 the archive root, released by hand only with `release-lock --record`),
 writes proved at the write, open-until-observed publication state, restore
 preconditions, archive binding and session-folder link refusal in the

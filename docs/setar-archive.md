@@ -660,10 +660,15 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
 - **It never loses a declaration, its own or anyone else's.** Every write
   proves, AT the write, the exact state it expects: a declaration is moved
   aside (atomic), its bytes judged, and the new one linked in, which never
-  overwrites; a media file gets its new name by link (never over anything),
-  is judged by size and SHA-256, and only then loses its old name. An edit,
-  deletion or new file from anyone else at that instant is kept and the run
-  refuses. A failure while editing, and `rollback`, put back only what THIS
+  overwrites; the declaration it replaced is KEPT beside it as
+  `.<name>.superseded-<run>` (the scanner skips dotfiles), never unlinked, so a
+  program still holding it open writes into a kept file whenever it writes. A
+  media file gets its new name by link (never over anything), is judged by
+  size and SHA-256, and only then loses its old name — and any name is dropped
+  only after it is first moved to a private name and judged THERE, so a file
+  renamed onto it meanwhile keeps its name (put back, never overwritten). An
+  edit, deletion or new file from anyone else at that instant is kept and the
+  run refuses. A failure while editing, and `rollback`, put back only what THIS
   change wrote — judged first, and proved again at each write against what
   this change wrote, never a fresh read. A run stopped with a declaration set
   aside has it put back by the next run; one stopped between a move's two
@@ -684,10 +689,19 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   scans again; an archive that moved on or is owned by a maintenance run
   refuses (exit 4). It asks again immediately before the ref write, so a
   newer decision that moved no ref (an `unchanged` publication) is seen too.
+  And only ONE publisher runs at a time, from its ref read to its ref write's
+  answer: each holds the NAS's publisher seat, a localhost port
+  (`PC_INDEX_SEAT_PORT` in `config.env`, default 47391) that the kernel frees
+  the instant its holder exits — no file to clean up, no pid to guess. The
+  scheduled job finding it taken refuses (exit 4); a maintenance publication
+  waits for it (up to two minutes, then exit 4). So every newer decision, an
+  `unchanged` one included, is made after the older write was answered. A
+  write asked for but never answered (its publisher died, or lost the answer)
+  is recorded first in `setar-publish-intent.json` in the job's work folder;
+  unless the branch already holds that commit, the next publisher moves the
+  ref (a commit even for unchanged content), so it can never land afterwards.
   A paused or orphaned publisher therefore never puts an older index over a
-  newer one — except in the one instant between that last check and the ref
-  write, which the read-only scheduled job cannot lock; the next scheduled
-  run then sees branch ≠ archive and republishes. Success needs the publisher's last line
+  newer one. Success needs the publisher's last line
   `published-index <status> <hash>` naming that hash.
 - **Unconfirmed stays unconfirmed.** Before any remote work the journal names
   the attempt's validated hash and marks it open; every unconfirmed attempt's

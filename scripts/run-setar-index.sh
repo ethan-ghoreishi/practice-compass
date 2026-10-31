@@ -52,7 +52,7 @@ fi
 for v in PC_ARCHIVE_ROOT PC_INDEX_REPO PC_INDEX_TOKEN; do
   eval "[ -n \"\${$v:-}\" ]" || { echo "$v is not set; nothing was published." >&2; exit 2; }
 done
-export PC_INDEX_REPO PC_INDEX_TOKEN
+export PC_INDEX_REPO PC_INDEX_TOKEN PC_INDEX_SEAT_PORT  # the seat port, if set, must be the same for every publisher here
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 NODE="${PC_NODE:-node}"

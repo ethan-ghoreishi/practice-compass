@@ -22,16 +22,27 @@ bullet of the entry below.
   linked in (never overwrites); media get the new name by link, are judged,
   then lose the old one. Recovery passes what THIS change wrote as the
   expectation, never a fresh read. A run stopped with a declaration set aside
-  has it put back by the next run. Writes through a handle already open on
-  the captured file remain a named limit (`ponytail:` in the tool).
+  has it put back by the next run. The replaced declaration is kept
+  (`.<name>.superseded-<run>`), never unlinked: a handle still open on it can
+  write at any time, even after the run, so only keeping the inode named loses
+  nothing. A media name is dropped only after being moved to a private name
+  and judged there, so a file renamed onto it in that instant keeps its name.
 - **Publishers answer to the owner and to the archive as it is now.** Before
   writing anything after reading the ref, the publisher checks the lock (absent
   for the scheduled job, the caller's token for maintenance) and rescans; the
   ref write stays non-force from that read; it asks once more immediately
   before the ref write, so an `unchanged` newer decision (no ref move) is seen
-  too. The instant between that last check and the ref write is a named
-  limit: closing it would need a lock the read-only scheduled job could take,
-  and the next scheduled run republishes (branch ≠ archive, no lock held).
+  too. That alone cannot stop a publisher stalled after its last check (a
+  slow request, a paused process): GitHub's non-force update guards only
+  ancestry, so a newer decision that moves no ref — a rollback to what the
+  branch already holds — cannot invalidate it. So publishers take turns: a
+  localhost port is the seat, held from ref read to the ref write's answer
+  and freed by the kernel when the holder exits (the read-only scheduled job
+  can take it; no pid, no cleanup). Maintenance waits, the scheduled job
+  refuses. A write asked for but never answered is recorded first; the next
+  publisher, unless the branch shows it landed, moves the ref even for
+  unchanged content — the one case that commits without new content, and
+  only after a publisher died or lost its answer.
 - **"Nothing published" is about one attempt.** The journal names each
   attempt's validated hash as open before any remote work, keeps every
   unconfirmed hash in `unresolved`, and clears them only on positive evidence

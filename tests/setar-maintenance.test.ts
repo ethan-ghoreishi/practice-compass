@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, appendFileSync, renameSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -10,7 +10,7 @@ import { applyMaintenance, Interrupted, planMaintenance, releaseLock, retryMaint
 // @ts-expect-error — see above.
 import { scanToIndex } from '../scripts/scan-setar-classes.mjs';
 // @ts-expect-error — see above.
-import { archiveConfirmation, ARCHIVE_LOCK, makeGitHubIndexTransport, publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../scripts/publish-setar-index.mjs';
+import { archiveConfirmation, ARCHIVE_LOCK, DEFAULT_SEAT_PORT, makeGitHubIndexTransport, publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../scripts/publish-setar-index.mjs';
 import { followRenames } from '../src/domain/sourceReconcile';
 import SOURCE from './fixtures/setar-lifecycle-source.json' with { type: 'json' };
 import EXPECTED from './fixtures/setar-lifecycle-expected.json' with { type: 'json' };
@@ -82,11 +82,15 @@ function fakeGit(root: string) {
     createRef: async (b: string, s: string) => (refs.has(b) ? 'HTTP 422' : (refs.set(b, s), 'ok')),
   };
   const calls: string[] = [];
+  /** What every publisher on this "NAS" shares, as the CLI wires it: the seat and the unanswered-write record. */
+  const shared = { seat: { port: DEFAULT_SEAT_PORT, wait: 0, onBusy: undefined as (() => void) | undefined }, intent: join(dirname(root), 'setar-publish-intent.json') };
   return {
     publish: async (text: string, hash: string, holder?: string) => {
       calls.push(hash);
-      return publishIndex({ transport, indexText: text, expectedContentHash: hash, confirm: archiveConfirmation(root, holder) });
+      // A maintenance publication waits for the seat, as the CLI's --holder route does.
+      return publishIndex({ transport, indexText: text, expectedContentHash: hash, confirm: archiveConfirmation(root, holder), ...shared, seat: { ...shared.seat, wait: holder ? 10_000 : 0 } });
     },
+    shared,
     transport,
     requests: () => requests,
     published: () => commits.get(refs.get(SOURCE_INDEX_BRANCH) ?? '')?.[INDEX_PATH] ?? null,
@@ -697,10 +701,30 @@ describe('maintaining the Setar archive', () => {
         expect(readFileSync(r.at('PIECES.csv'), 'utf8')).toBe('saved meanwhile\n');
         const kept = hidden(r.root, '.PIECES.csv.captured-');
         expect(kept.map((f) => readFileSync(r.at(f), 'utf8'))).toEqual([decl.pieces]);
-        // The next run never takes that kept copy for the declaration: it is renamed superseded, kept.
+        // The next run never takes that kept copy for the declaration: it is renamed superseded, kept —
+        // beside the one this run replaced, which is kept too (never unlinked).
         writeFileSync(r.at('PIECES.csv'), decl.pieces);
         expect(await r.go(REG)).toMatchObject({ ok: true, status: 'published' });
-        expect([hidden(r.root, '.PIECES.csv.captured-'), hidden(r.root, '.PIECES.csv.superseded-').length]).toEqual([[], 1]);
+        expect([hidden(r.root, '.PIECES.csv.captured-'), hidden(r.root, '.PIECES.csv.superseded-').map((f) => readFileSync(r.at(f), 'utf8'))]).toEqual([[], [decl.pieces, decl.pieces]]);
+      }
+      // A program holding a declaration OPEN writes through that handle — after the run judged
+      // the file, and again after the run is over: every byte it writes is kept, never unlinked.
+      for (const [action, name] of [
+        [REG, 'PIECES.csv'],
+        [MOVE, 'RENAME-LOG.csv'],
+      ] as const) {
+        const k = box();
+        const before = readFileSync(k.at(name), 'utf8');
+        const fd = openSync(k.at(name), 'r+');
+        try {
+          const out = await k.go(action, { at: when(['install', name, () => writeSync(fd, 'held,', Buffer.byteLength(before))]) });
+          expect(out, name).toMatchObject({ ok: true, status: 'published' });
+          writeSync(fd, 'later\n', Buffer.byteLength(before) + 5);
+        } finally {
+          closeSync(fd);
+        }
+        expect(hidden(k.root, `.${name}.superseded-`).map((f) => readFileSync(k.at(f), 'utf8')), name).toEqual([`${before}held,later\n`]);
+        expect(JSON.parse(k.g.published()!).contentHash, name).toBe(scanToIndex(k.root).contentHash);
       }
 
       // --- TWO LIVE RUNS through two --state folders: ONE archive lock ------
@@ -758,6 +782,8 @@ describe('maintaining the Setar archive', () => {
         expect(existsSync(k2.at('RENAME-LOG.csv'))).toBe(false);
         const copyDir = join(k2.state, readdirSync(k2.state).find((d) => d.endsWith(planMaintenance(k2.root, MOVE).id))!);
         expect(readdirSync(copyDir).filter((f) => f.startsWith('RENAME-LOG.csv.written-')).map((f) => readFileSync(join(copyDir, f), 'utf8'))).toEqual([w2]);
+        // …and the file itself is never unlinked: a handle still open on it keeps writing into a kept copy.
+        expect(hidden(k2.root, '.RENAME-LOG.csv.superseded-').map((f) => readFileSync(k2.at(f), 'utf8'))).toEqual([w2]);
       }
 
       // --- AUTOMATIC recovery meets another writer: refused, theirs kept, `rollback` still offered -
@@ -796,6 +822,29 @@ describe('maintaining the Setar archive', () => {
         expect([existsSync(s.at(A)), existsSync(s.at(B)), s.j().status]).toEqual([true, true, 'prepared']);
         expect(await s.back()).toMatchObject({ ok: true });
         expect([sha(readFileSync(s.at(A))), existsSync(s.at(B))]).toEqual([sBytes, false]);
+        // A name is dropped only while it still names the moved file, judged on a private name it was
+        // first moved to: a file renamed onto that name in the instant before the drop keeps its name —
+        // the final unlink of a move, its judged-failure undo, and a stopped move's recovery alike.
+        const swapIn = (path: string, text: string) => () => {
+          writeFileSync(`${path}.saved`, text);
+          renameSync(`${path}.saved`, path);
+        };
+        const f = box();
+        const fBytes = sha(readFileSync(f.at(A)));
+        await expect(f.go(MOVE, { at: when(['judge-drop', f.at(A), swapIn(f.at(A), 'swapped in at the old name')]) })).resolves.toMatchObject({ ok: true });
+        expect([readFileSync(f.at(A), 'utf8'), sha(readFileSync(f.at(B)))]).toEqual(['swapped in at the old name', fBytes]);
+        const u = box();
+        const undo = when(['link', B, () => writeFileSync(u.at(A), Buffer.alloc(500, 7))], ['judge-drop', u.at(B), swapIn(u.at(B), 'swapped in at the new name')]);
+        await expect(u.go(MOVE, { at: undo })).rejects.toThrow(/does not hold the bytes this change recorded/);
+        expect([sha(readFileSync(u.at(A))), readFileSync(u.at(B), 'utf8')]).toEqual([sha(Buffer.alloc(500, 7)), 'swapped in at the new name']);
+        const v = box();
+        const vBytes = sha(readFileSync(v.at(A)));
+        await expect(v.go(MOVE, { at: when(['unlink', A, () => {
+          throw new Interrupted('power cut between the names');
+        }]) })).rejects.toThrow(/power cut/);
+        expect(await v.back({ at: when(['judge-drop', v.at(B), swapIn(v.at(B), 'swapped in at the new name')]) })).toMatchObject({ ok: true });
+        expect([sha(readFileSync(v.at(A))), readFileSync(v.at(B), 'utf8')]).toEqual([vBytes, 'swapped in at the new name']);
+        for (const x of [f, u, v]) expect(readdirSync(join(x.root, S39)).filter((n) => n.includes('.dropping-'))).toEqual([]);
         // A run stopped with a declaration SET ASIDE: the next run puts back that exact capture first.
         const t = box();
         const tDecl = declarations(t.root);
@@ -831,44 +880,99 @@ describe('maintaining the Setar archive', () => {
         await expect(publishIndex({ transport: k.g.transport, indexText: later, confirm: archiveConfirmation(k.root, holder) })).rejects.toThrow(/no longer holds the archive/);
         rmSync(k.lock);
       }
-      // An OLDER validated index never lands over a newer one, whenever the old publisher resumes —
-      // after a newer publication that moved the ref (getRef, updateRef) or one that moved none (createCommit).
-      for (const pauseAt of ['getRef', 'updateRef', 'createCommit'] as const) {
-        const k = box();
-        expect(await k.go({ kind: 'roster', session: 40, pieces: ['ضربی-سه-گاه-لطفی'] })).toMatchObject({ ok: true }); // the branch exists
-        writeFileSync(k.at(`${S39}/نمونه-ضربی-سه-گاه-لطفی-9.mp4`), 'a file added by hand'); // the archive moves to H1
-        const h1 = `${JSON.stringify(scanToIndex(k.root), null, 2)}\n`;
-        let reached!: () => void;
-        let resume!: () => void;
-        const isPaused = new Promise<void>((r) => (reached = r));
-        const gate = new Promise<void>((r) => (resume = r));
-        let paused = false;
-        const t = k.g.transport as Record<string, (...a: unknown[]) => Promise<unknown>>;
-        const slow = {
-          ...t,
-          [pauseAt]: async (...args: unknown[]) => {
+      // An OLDER validated index never lands over a newer one, wherever the old (scheduled) publisher
+      // stalls — at its ref read, before its commit, or with its ref write already asked for (after
+      // its last archive check) — and whatever the newer decision is: an apply that moves the ref, a
+      // retry or a rollback that decides "unchanged" and moves none. The newer publisher waits for
+      // the older one's seat, so it decides after that write is answered.
+      const added = `${S39}/نمونه-ضربی-سه-گاه-لطفی-9.mp4`;
+      for (const pauseAt of ['getRef', 'createCommit', 'lastCheck', 'updateRef'] as const) {
+        for (const newer of ['apply', 'retry', 'rollback'] as const) {
+          const cell = `${pauseAt} / ${newer}`;
+          const k = box();
+          expect(await k.go({ kind: 'roster', session: 40, pieces: ['ضربی-سه-گاه-لطفی'] })).toMatchObject({ ok: true }); // the branch holds X
+          if (newer === 'rollback') {
+            // An apply whose publication failed BEFORE its ref write: the archive is H1, the branch still X.
+            const failing = async (text: string, hash: string, h: string) =>
+              publishIndex({ transport: { ...k.g.transport, getRef: async () => Promise.reject(new Error('GitHub refused getRef (HTTP 500)')) }, indexText: text, expectedContentHash: hash, confirm: archiveConfirmation(k.root, h) });
+            expect(await k.go(REG, { publish: failing }), cell).toMatchObject({ ok: false });
+          } else {
+            writeFileSync(k.at(added), 'a file added by hand'); // the archive moves to H1
+          }
+          const h1 = `${JSON.stringify(scanToIndex(k.root), null, 2)}\n`;
+          let reached!: () => void;
+          let resume!: () => void;
+          const isPaused = new Promise<void>((r) => (reached = r));
+          const gate = new Promise<void>((r) => (resume = r));
+          let paused = false;
+          const t = k.g.transport as Record<string, (...a: unknown[]) => Promise<unknown>>;
+          const hold = async () => {
             if (!paused) {
               paused = true;
               reached();
               await gate;
             }
-            return t[pauseAt]!(...args);
-          },
-        };
-        const old = publishIndex({ transport: slow, indexText: h1, confirm: archiveConfirmation(k.root) });
-        await isPaused;
-        if (pauseAt === 'createCommit') {
-          // The newer decision is "unchanged": the hand-added file goes, the archive is what the branch holds, no ref moves.
-          rmSync(k.at(`${S39}/نمونه-ضربی-سه-گاه-لطفی-9.mp4`));
-          expect(await k.again()).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
-        } else {
-          expect(await k.go(REG)).toMatchObject({ ok: true, status: 'published' }); // H2, published while the old one waits
+          };
+          // 'lastCheck': stalled the instant AFTER its last archive check passed, before its ref write is recorded or asked for.
+          let checks = 0;
+          const check = archiveConfirmation(k.root);
+          const confirm = async () => {
+            const now = check();
+            if (pauseAt === 'lastCheck' && (checks += 1) === 2) await hold();
+            return now;
+          };
+          const slow = pauseAt === 'lastCheck' ? t : {
+            ...t,
+            [pauseAt]: async (...args: unknown[]) => {
+              await hold();
+              return t[pauseAt]!(...args);
+            },
+          };
+          const old = publishIndex({ transport: slow, indexText: h1, confirm, ...k.g.shared }).then(
+            (r) => r,
+            (e) => e,
+          );
+          await isPaused;
+          // The scheduled job meanwhile finds the seat taken: refused, nothing published.
+          await expect(publishIndex({ transport: t, indexText: h1, confirm: archiveConfirmation(k.root), ...k.g.shared }), cell).rejects.toMatchObject({ nothingPublished: true, message: expect.stringMatching(/publisher seat/) });
+          const waiting = new Promise<void>((r) => (k.g.shared.seat.onBusy = r));
+          if (newer === 'retry') rmSync(k.at(added)); // the archive is X again
+          const decided = newer === 'apply' ? k.go(REG) : newer === 'retry' ? k.again() : k.back();
+          // Resumed once the newer publisher is waiting for the seat — or, if it never waits, once it has decided.
+          await Promise.race([waiting, decided]);
+          resume();
+          expect(await decided, cell).toMatchObject({ ok: true });
+          const was = await old;
+          if (pauseAt === 'updateRef' || pauseAt === 'lastCheck') expect(was, cell).toMatchObject({ status: 'published' }); // answered before the newer decision
+          else expect(was, cell).toMatchObject({ nothingPublished: true, message: expect.stringMatching(/maintenance run holds the archive/) });
+          expect(JSON.parse(k.g.published()!).contentHash, cell).toBe(scanToIndex(k.root).contentHash);
+          k.g.shared.seat.onBusy = undefined;
         }
-        const h2 = k.g.published();
-        resume();
-        await expect(old, pauseAt).rejects.toMatchObject({ nothingPublished: true, message: expect.stringMatching(/archive has changed since this index was scanned/) });
-        expect(k.g.published(), pauseAt).toBe(h2);
-        expect(JSON.parse(h2!).contentHash, pauseAt).toBe(scanToIndex(k.root).contentHash);
+      }
+      // A ref write ASKED FOR and never answered (its publisher died, or lost the answer) may land
+      // later: the next publisher moves the ref even for unchanged content, so it never can; a write
+      // that did land is seen, and nothing more is committed. Then no further run commits anything.
+      for (const lands of ['after', 'before'] as const) {
+        const k = box();
+        expect(await k.go({ kind: 'roster', session: 40, pieces: ['ضربی-سه-گاه-لطفی'] })).toMatchObject({ ok: true });
+        const x = k.g.published();
+        writeFileSync(k.at(added), 'a file added by hand');
+        const h1 = `${JSON.stringify(scanToIndex(k.root), null, 2)}\n`;
+        const t = k.g.transport;
+        let late!: () => Promise<string>;
+        const dying = { ...t, updateRef: async (b: string, s: string, e: string) => ((late = () => t.updateRef(b, s, e)), Promise.reject(new TypeError('fetch failed: the publisher died'))) };
+        await expect(publishIndex({ transport: dying, indexText: h1, confirm: archiveConfirmation(k.root), ...k.g.shared }), lands).rejects.not.toHaveProperty('nothingPublished');
+        expect(existsSync(k.g.shared.intent), lands).toBe(true);
+        rmSync(k.at(added)); // the newer decision: the archive is X again, which the branch holds
+        if (lands === 'before') expect(await late(), lands).toBe('ok');
+        const commits = k.g.commits();
+        expect(await k.again(), lands).toMatchObject({ ok: true, publication: { status: 'published' } });
+        expect(k.g.commits(), lands).toBe(commits + 1);
+        if (lands === 'after') expect(await late(), lands).toBe('HTTP 422');
+        expect([k.g.published(), existsSync(k.g.shared.intent)], lands).toEqual([x, false]);
+        expect(await k.again(), lands).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
+        expect(await publishIndex({ transport: t, indexText: x!, confirm: archiveConfirmation(k.root), ...k.g.shared }), lands).toMatchObject({ status: 'unchanged' });
+        expect(k.g.commits(), lands).toBe(commits + 1);
       }
 
       // --- PUBLICATION STATE: open until a positive observation; every attempt bound to its index -

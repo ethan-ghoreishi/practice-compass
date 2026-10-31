@@ -18,8 +18,19 @@
 // (the maintenance run that asked for this publication). A publisher paused or
 // orphaned while the archive moved on, or while a maintenance run owns it,
 // therefore refuses (exit 4) instead of putting an older index over a newer
-// one; the ref write itself stays non-force from the commit read, so the last
-// publisher to confirm is the one whose index stands.
+// one; the ref write itself stays non-force from the commit read.
+//
+// ONE PUBLISHER AT A TIME, from its ref read to its ref write's answer: each
+// holds this NAS's publisher SEAT (a localhost port, `PC_INDEX_SEAT_PORT`,
+// default 47391), which the kernel frees the instant its holder exits — never
+// a file to clean up, never a pid to guess. The scheduled job finding it taken
+// refuses (exit 4); a maintenance publication (`--holder`) waits for it. So a
+// newer decision — even an `unchanged` one that moves no ref — is always made
+// after the older publisher's write has been answered. A write asked for but
+// never answered (its publisher died, or the answer was lost) is recorded
+// first in `setar-publish-intent.json` beside the index: the next publisher,
+// unless the branch already holds that commit, moves the ref (a commit even
+// for unchanged content), so the unanswered write can never land after it.
 //
 // WHY A SEPARATE BRANCH. The app's own sync writes main's whole tree with no
 // base_tree, so a sidecar placed beside state.json disappears on the next
@@ -37,8 +48,9 @@
 // Node stdlib only.
 
 import { createHash } from 'node:crypto';
-import { readFileSync, realpathSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { scanToIndex } from './scan-setar-classes.mjs';
@@ -51,6 +63,47 @@ export const INDEX_PATH = 'setar/index.json';
 const PROTECTED_PREFIXES = ['main', 'master', 'archive/'];
 
 const MAX_ATTEMPTS = 4;
+/** The publisher seat's default port, and how long a maintenance publication waits for it. */
+export const DEFAULT_SEAT_PORT = 47391;
+const MAINTENANCE_SEAT_WAIT_MS = 120_000;
+
+/**
+ * Take this NAS's publisher seat: listen on a localhost port, which no second
+ * process can, and which the kernel releases when this one exits however it
+ * exits. Taken: wait up to `wait` ms (`onBusy` is told each time), then refuse
+ * — nothing was published. Returns the release.
+ */
+export async function takeSeat({ port = DEFAULT_SEAT_PORT, wait = 0, onBusy }) {
+  const until = Date.now() + wait;
+  for (;;) {
+    const server = createServer();
+    const err = await new Promise((done) => {
+      server.once('error', done);
+      server.listen({ port, host: '127.0.0.1', exclusive: true }, () => done(null));
+    });
+    if (!err) return () => new Promise((done) => server.close(() => done()));
+    if (err.code !== 'EADDRINUSE') throw nothingPublished(err);
+    if (Date.now() >= until) {
+      throw nothingPublished(new Error(`Another publication holds this NAS's publisher seat (port ${port}); nothing was published. The next run publishes what the archive holds.`));
+    }
+    onBusy?.();
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+/** A ref write asked for and not yet answered: `{ parent, commit }`, or null. Unreadable counts as open. */
+const readIntent = (file) => {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null;
+    return { parent: undefined, commit: undefined };
+  }
+};
+const writeIntent = (file, intent) => {
+  writeFileSync(`${file}.tmp`, `${JSON.stringify(intent)}\n`);
+  renameSync(`${file}.tmp`, file);
+};
 
 /**
  * Publish `indexText` as a single commit on the source-index branch.
@@ -71,7 +124,7 @@ const MAX_ATTEMPTS = 4;
  *   a failure carries `nothingPublished: true`. A throw FROM the ref write (a
  *   lost response, a 5xx) does not: GitHub may have accepted it.
  */
-export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message, expectedContentHash, confirm }) {
+export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message, expectedContentHash, confirm, seat, intent }) {
   if (branch !== SOURCE_INDEX_BRANCH) throw new Error(`This publisher only writes the "${SOURCE_INDEX_BRANCH}" branch.`);
   if (path !== INDEX_PATH) throw new Error(`This publisher only writes "${INDEX_PATH}".`);
   if (PROTECTED_PREFIXES.some((p) => branch === p || branch.startsWith(p))) {
@@ -91,50 +144,67 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
     const now = await confirm();
     if (now !== contentHashOf(indexText)) throw new Error('The archive has changed since this index was scanned; nothing was published (the next run publishes what it holds now).');
   };
-  let lastConflict = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    let ref;
-    let commitSha;
-    try {
-      ref = await transport.getRef(branch);
-
-      if (ref) {
-        const current = await transport.getFile(ref.sha, path);
-        if (current && current.text === indexText) return { status: 'unchanged', commit: ref.sha };
-      }
-      // Asked AFTER the ref is read, before anything is written: an archive
-      // that moved on (or a maintenance run that now owns it) since this index
-      // was scanned refuses, leaving no objects behind.
-      await confirmed();
-
-      const blobSha = await transport.createBlob(indexText);
-      const baseTreeSha = ref ? (await transport.getCommit(ref.sha)).treeSha : null;
-      const treeSha = await transport.createTree({ baseTreeSha, path, blobSha });
-      commitSha = await transport.createCommit({
-        message: message ?? 'Update Setar source index',
-        treeSha,
-        parents: ref ? [ref.sha] : [],
-      });
-      // …and again immediately before the ref write: a newer decision that
-      // moved no ref (an `unchanged` publication) is still seen. The ref write
-      // is non-force from the read above, so a publisher that confirmed later
-      // wins any race that does move the ref.
-      // ponytail: a pause exactly between this check and the ref write cannot
-      // be closed without a lock the read-only scheduled job could take; the
-      // next scheduled run sees branch ≠ archive and republishes.
-      await confirmed();
-    } catch (err) {
-      throw nothingPublished(err);
-    }
-
-    // A conflict answer is GitHub refusing the write; a throw here is unknown.
-    const outcome = ref
-      ? await transport.updateRef(branch, commitSha, ref.sha)
-      : await transport.createRef(branch, commitSha);
-    if (outcome === 'ok') return { status: ref ? 'published' : 'created', commit: commitSha };
-    lastConflict = outcome;
+  const leave = seat ? await takeSeat(seat) : async () => {};
+  try {
+    return await attempts();
+  } finally {
+    await leave();
   }
-  throw nothingPublished(new Error(`Another publisher updated the index while this one was writing (${lastConflict}); nothing was overwritten.`));
+
+  async function attempts() {
+    let lastConflict = null;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      let ref;
+      let commitSha;
+      try {
+        ref = await transport.getRef(branch);
+        // An earlier ref write asked for and never answered may still land —
+        // unless the branch already shows it did, this write moves the ref
+        // (even for unchanged content), after which that one never can.
+        const unanswered = intent ? readIntent(intent) : null;
+        const mustMove = Boolean(unanswered) && ref?.sha !== unanswered.commit;
+        if (unanswered && !mustMove) rmSync(intent, { force: true });
+
+        if (ref && !mustMove) {
+          const current = await transport.getFile(ref.sha, path);
+          if (current && current.text === indexText) return { status: 'unchanged', commit: ref.sha };
+        }
+        // Asked AFTER the ref is read, before anything is written: an archive
+        // that moved on (or a maintenance run that now owns it) since this index
+        // was scanned refuses, leaving no objects behind.
+        await confirmed();
+
+        const blobSha = await transport.createBlob(indexText);
+        const baseTreeSha = ref ? (await transport.getCommit(ref.sha)).treeSha : null;
+        const treeSha = await transport.createTree({ baseTreeSha, path, blobSha });
+        commitSha = await transport.createCommit({
+          message: message ?? 'Update Setar source index',
+          treeSha,
+          parents: ref ? [ref.sha] : [],
+        });
+        // …and again immediately before the ref write: a newer decision that
+        // moved no ref (an `unchanged` publication) is still seen. The ref write
+        // is non-force from the read above, so a publisher that confirmed later
+        // wins any race that does move the ref.
+        // No newer decision is made between this and the ref write's answer:
+        // every other publisher waits for this one's seat.
+        await confirmed();
+        // Recorded BEFORE it is asked for: if no answer comes, the next publisher knows.
+        if (intent) writeIntent(intent, { parent: ref?.sha ?? null, commit: commitSha });
+      } catch (err) {
+        throw nothingPublished(err);
+      }
+
+      // A conflict answer is GitHub refusing the write; a throw here is unknown (the intent stays).
+      const outcome = ref
+        ? await transport.updateRef(branch, commitSha, ref.sha)
+        : await transport.createRef(branch, commitSha);
+      if (intent) rmSync(intent, { force: true });
+      if (outcome === 'ok') return { status: ref ? 'published' : 'created', commit: commitSha };
+      lastConflict = outcome;
+    }
+    throw nothingPublished(new Error(`Another publisher updated the index while this one was writing (${lastConflict}); nothing was overwritten.`));
+  }
 }
 
 /** Refused before any request: nothing was published. */
@@ -320,6 +390,8 @@ async function main() {
       indexText,
       expectedContentHash: values.expect,
       confirm: archiveConfirmation(values.root, values.holder),
+      seat: { port: Number(process.env.PC_INDEX_SEAT_PORT || DEFAULT_SEAT_PORT), wait: values.holder ? MAINTENANCE_SEAT_WAIT_MS : 0 },
+      intent: join(dirname(resolve(values.index)), 'setar-publish-intent.json'),
     });
     console.error(
       result.status === 'unchanged'

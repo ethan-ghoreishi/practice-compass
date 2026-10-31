@@ -483,10 +483,10 @@ function replaceDeclaration({ root, owner, at }, name, text, expected, keepDir) 
       putBack(root, name, aside);
       throw err;
     }
-    // ponytail: a write INTO the captured file through a handle already open
-    // between its digest and this unlink is lost (Node cannot lock a path
-    // against an open handle); a same-volume quarantine folder if that is ever seen.
-    rmSync(aside);
+    // The replaced file is KEPT, never unlinked: a program still holding it
+    // open writes into this inode whenever it writes, so nothing it saves is
+    // ever lost — it lands in the kept copy, beside the declaration.
+    renameSync(aside, aside.replace('.captured-', '.superseded-'));
   } finally {
     if (tmp) rmSync(tmp, { force: true });
   }
@@ -517,14 +517,35 @@ function moveExact({ root, owner, at }, fromRel, toRel, expect) {
   const realFolders = [fromRel, toRel].every((rel) => lstatOrNull(join(root, rel.split('/')[0]))?.isDirectory());
   const bytes = same(a, b) && b.isFile() ? readFileSync(to) : null;
   if (!realFolders || !bytes || bytes.length !== expect.size || sha(bytes) !== expect.sha256) {
-    if (same(a, b)) rmSync(to);
+    if (same(a, b)) dropName(to, a, at);
     throw new Refusal(`"${fromRel}" does not hold the bytes this change recorded (it changed since the preview, or its folder moved); nothing was moved.`);
   }
   at('unlink', fromRel);
-  // ponytail: judged, then unlinked — a different file renamed onto the old
-  // name in that instant would lose this name (its bytes stay at the new one).
-  if (!same(lstatOrNull(from), b)) throw new Refusal(`"${fromRel}" was replaced while this ran; both files are kept, the moved one as "${toRel}".`);
-  rmSync(from);
+  if (!dropName(from, b, at)) throw new Refusal(`"${fromRel}" was replaced while this ran; both files are kept, the moved one as "${toRel}".`);
+}
+
+/**
+ * Remove the name `path` only while it names the file `inode` (an lstat) —
+ * judged on a PRIVATE name it was first moved to (atomic: whatever held the
+ * name at that instant), so no file renamed onto `path` meanwhile can lose its
+ * name. Anything else is put back, never over a newer file. Returns whether
+ * the name was removed; the bytes always stay under their other name.
+ */
+function dropName(path, inode, at) {
+  const aside = join(dirname(path), `.${basename(path)}.dropping-${randomUUID()}`);
+  try {
+    renameSync(path, aside);
+  } catch (err) {
+    if (err?.code === 'ENOENT') return false;
+    throw err;
+  }
+  at('judge-drop', path);
+  if (!same(lstatSync(aside), inode)) {
+    putBack(dirname(path), basename(path), aside);
+    return false;
+  }
+  rmSync(aside);
+  return true;
 }
 
 /** Thrown by the test seam to stand in for a process killed mid-apply. */
@@ -741,7 +762,8 @@ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
       // A move stopped between its two names: the new name is the one to drop.
       steps.unshift(() => {
         assertOwner(root, ctx.owner);
-        if (same(lstatOrNull(mediaPath(root, r.from)), lstatOrNull(mediaPath(root, r.to)))) rmSync(mediaPath(root, r.to));
+        const kept = lstatOrNull(mediaPath(root, r.from));
+        if (same(kept, lstatOrNull(mediaPath(root, r.to)))) dropName(mediaPath(root, r.to), kept, ctx.at);
       });
     } else if (!(fromSt?.isFile() && !toSt)) {
       throw new Refusal(`"${r.from}" and "${r.to}" are neither as this change left them nor as they were; they are left as they are.`);
