@@ -831,8 +831,9 @@ describe('maintaining the Setar archive', () => {
         await expect(publishIndex({ transport: k.g.transport, indexText: later, confirm: archiveConfirmation(k.root, holder) })).rejects.toThrow(/no longer holds the archive/);
         rmSync(k.lock);
       }
-      // An OLDER validated index never lands over a newer one, whenever the old publisher resumes.
-      for (const pauseAt of ['getRef', 'updateRef'] as const) {
+      // An OLDER validated index never lands over a newer one, whenever the old publisher resumes —
+      // after a newer publication that moved the ref (getRef, updateRef) or one that moved none (createCommit).
+      for (const pauseAt of ['getRef', 'updateRef', 'createCommit'] as const) {
         const k = box();
         expect(await k.go({ kind: 'roster', session: 40, pieces: ['ضربی-سه-گاه-لطفی'] })).toMatchObject({ ok: true }); // the branch exists
         writeFileSync(k.at(`${S39}/نمونه-ضربی-سه-گاه-لطفی-9.mp4`), 'a file added by hand'); // the archive moves to H1
@@ -856,7 +857,13 @@ describe('maintaining the Setar archive', () => {
         };
         const old = publishIndex({ transport: slow, indexText: h1, confirm: archiveConfirmation(k.root) });
         await isPaused;
-        expect(await k.go(REG)).toMatchObject({ ok: true, status: 'published' }); // H2, published while the old one waits
+        if (pauseAt === 'createCommit') {
+          // The newer decision is "unchanged": the hand-added file goes, the archive is what the branch holds, no ref moves.
+          rmSync(k.at(`${S39}/نمونه-ضربی-سه-گاه-لطفی-9.mp4`));
+          expect(await k.again()).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
+        } else {
+          expect(await k.go(REG)).toMatchObject({ ok: true, status: 'published' }); // H2, published while the old one waits
+        }
         const h2 = k.g.published();
         resume();
         await expect(old, pauseAt).rejects.toMatchObject({ nothingPublished: true, message: expect.stringMatching(/archive has changed since this index was scanned/) });

@@ -299,7 +299,8 @@ function journalFor(state, root, recovering) {
 // it is never partial. A lock is never adopted on a guess about a process
 // (a pid can be reused, a publishing child outlives its parent): a run that
 // finds one refuses, and the operator — having seen no maintenance or
-// publication is running — releases that exact record (`release-lock`).
+// publication process is running, the indexer's sudo'd job included —
+// releases that exact record (`release-lock`).
 
 const same = (a, b) => Boolean(a && b && a.ino === b.ino && a.dev === b.dev);
 const holderLine = (h) => (h.unreadable ? 'a record not in this tool’s form' : `run ${h.token.slice(0, 8)} (pid ${h.pid} on ${h.host}, since ${h.since})`);
@@ -309,7 +310,7 @@ function lockRefusal(root) {
   if (!held) return new Refusal('Another maintenance run was just releasing the archive’s lock; nothing was changed. Try again.');
   return new Refusal(
     `The archive’s maintenance lock is held by ${holderLine(held)}; nothing was changed. If that run is still going, wait for it. ` +
-      `If no maintenance run or publication is running (check with ps), release it with: release-lock --record ${held.digest.slice(0, 16)} — then the next run says what to finish.`,
+      `If no maintenance run or publication is running — no setar-archive-maintenance.mjs, run-setar-index.sh or publish-setar-index.mjs process, including one run as setar-indexer through sudo (ps -ef) — release it with: release-lock --record ${held.digest.slice(0, 16)}; then the next run says what to finish.`,
   );
 }
 
@@ -378,7 +379,11 @@ export function releaseLock({ root: rootArg, record }) {
   if (!record) {
     return {
       released: false,
-      lines: [`The archive’s maintenance lock is held by ${holderLine(held)}.`, `Release it ONLY if no maintenance run or publication is running: release-lock --record ${id}`],
+      lines: [
+        `The archive’s maintenance lock is held by ${holderLine(held)}.`,
+        'Release it ONLY if no setar-archive-maintenance.mjs, run-setar-index.sh or publish-setar-index.mjs process is running, including one run as setar-indexer through sudo (ps -ef):',
+        `release-lock --record ${id}`,
+      ],
     };
   }
   if (record !== id || !removeLockIf(root, (r) => r.digest === held.digest)) {

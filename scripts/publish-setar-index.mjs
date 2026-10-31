@@ -86,6 +86,11 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
     if (actual !== expectedContentHash) throw new ExpectationRefused(`This index is ${String(actual).slice(0, 12)}, not the validated ${String(expectedContentHash).slice(0, 12)}; nothing was published.`);
   }
 
+  const confirmed = async () => {
+    if (!confirm) return;
+    const now = await confirm();
+    if (now !== contentHashOf(indexText)) throw new Error('The archive has changed since this index was scanned; nothing was published (the next run publishes what it holds now).');
+  };
   let lastConflict = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     let ref;
@@ -99,12 +104,8 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
       }
       // Asked AFTER the ref is read, before anything is written: an archive
       // that moved on (or a maintenance run that now owns it) since this index
-      // was scanned refuses. The ref write below is non-force from that read,
-      // so a publisher that confirmed later wins any race.
-      if (confirm) {
-        const now = await confirm();
-        if (now !== contentHashOf(indexText)) throw new Error('The archive has changed since this index was scanned; nothing was published (the next run publishes what it holds now).');
-      }
+      // was scanned refuses, leaving no objects behind.
+      await confirmed();
 
       const blobSha = await transport.createBlob(indexText);
       const baseTreeSha = ref ? (await transport.getCommit(ref.sha)).treeSha : null;
@@ -114,6 +115,14 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
         treeSha,
         parents: ref ? [ref.sha] : [],
       });
+      // …and again immediately before the ref write: a newer decision that
+      // moved no ref (an `unchanged` publication) is still seen. The ref write
+      // is non-force from the read above, so a publisher that confirmed later
+      // wins any race that does move the ref.
+      // ponytail: a pause exactly between this check and the ref write cannot
+      // be closed without a lock the read-only scheduled job could take; the
+      // next scheduled run sees branch ≠ archive and republishes.
+      await confirmed();
     } catch (err) {
       throw nothingPublished(err);
     }

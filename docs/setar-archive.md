@@ -682,8 +682,12 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   branch and before writing anything, every publisher — the scheduled job
   too — checks the archive's lock (absent, or held by the run that asked) and
   scans again; an archive that moved on or is owned by a maintenance run
-  refuses (exit 4). A paused or orphaned publisher therefore never puts an
-  older index over a newer one. Success needs the publisher's last line
+  refuses (exit 4). It asks again immediately before the ref write, so a
+  newer decision that moved no ref (an `unchanged` publication) is seen too.
+  A paused or orphaned publisher therefore never puts an older index over a
+  newer one — except in the one instant between that last check and the ref
+  write, which the read-only scheduled job cannot lock; the next scheduled
+  run then sees branch ≠ archive and republishes. Success needs the publisher's last line
   `published-index <status> <hash>` naming that hash.
 - **Unconfirmed stays unconfirmed.** Before any remote work the journal names
   the attempt's validated hash and marks it open; every unconfirmed attempt's

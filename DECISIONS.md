@@ -27,8 +27,11 @@ bullet of the entry below.
 - **Publishers answer to the owner and to the archive as it is now.** Before
   writing anything after reading the ref, the publisher checks the lock (absent
   for the scheduled job, the caller's token for maintenance) and rescans; the
-  ref write stays non-force from that read. So a paused, conflicting or
-  orphaned publisher can never put an older index over a newer one.
+  ref write stays non-force from that read; it asks once more immediately
+  before the ref write, so an `unchanged` newer decision (no ref move) is seen
+  too. The instant between that last check and the ref write is a named
+  limit: closing it would need a lock the read-only scheduled job could take,
+  and the next scheduled run republishes (branch ≠ archive, no lock held).
 - **"Nothing published" is about one attempt.** The journal names each
   attempt's validated hash as open before any remote work, keeps every
   unconfirmed hash in `unresolved`, and clears them only on positive evidence
