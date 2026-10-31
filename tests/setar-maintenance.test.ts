@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
+import { closeSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -10,7 +10,7 @@ import { applyMaintenance, Interrupted, planMaintenance, releaseLock, retryMaint
 // @ts-expect-error — see above.
 import { scanToIndex } from '../scripts/scan-setar-classes.mjs';
 // @ts-expect-error — see above.
-import { archiveConfirmation, ARCHIVE_LOCK, DEFAULT_SEAT_PORT, makeGitHubIndexTransport, publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../scripts/publish-setar-index.mjs';
+import { archiveConfirmation, ARCHIVE_LOCK, DEFAULT_SEAT_PORT, makeGitHubIndexTransport, publishIndex, readArchiveLock, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../scripts/publish-setar-index.mjs';
 import { followRenames } from '../src/domain/sourceReconcile';
 import SOURCE from './fixtures/setar-lifecycle-source.json' with { type: 'json' };
 import EXPECTED from './fixtures/setar-lifecycle-expected.json' with { type: 'json' };
@@ -62,6 +62,7 @@ function fakeGit(root: string) {
   const commits = new Map<string, Record<string, string>>([['c-main', { 'state.json': 'practice data' }]]);
   let n = 0;
   let failing = false;
+  let refusing = 0;
   let requests = 0;
   const transport = {
     getRef: async (b: string) => ((requests += 1), refs.has(b) ? { sha: refs.get(b)! } : null),
@@ -78,7 +79,8 @@ function fakeGit(root: string) {
       commits.set(s, JSON.parse(treeSha));
       return s;
     },
-    updateRef: async (b: string, s: string, e: string) => (refs.get(b) === e ? (refs.set(b, s), 'ok') : 'HTTP 422'),
+    // GitHub may answer 422 WITHOUT the ref having moved (validation, endpoint spam): `refuse(n)` models that.
+    updateRef: async (b: string, s: string, e: string) => (refusing > 0 ? ((refusing -= 1), 'HTTP 422') : refs.get(b) === e ? (refs.set(b, s), 'ok') : 'HTTP 422'),
     createRef: async (b: string, s: string) => (refs.has(b) ? 'HTTP 422' : (refs.set(b, s), 'ok')),
   };
   const calls: string[] = [];
@@ -97,6 +99,7 @@ function fakeGit(root: string) {
     commits: () => n,
     main: () => [refs.get('main'), commits.get('c-main')],
     fail: (on: boolean) => (failing = on),
+    refuse: (n: number) => (refusing = n),
     calls,
   };
 }
@@ -172,6 +175,8 @@ describe('maintaining the Setar archive', () => {
         [{ kind: 'rename', from: `${S40}/نمونه.mp4`, to: `${S40}/video.mp4` }, /no known role/],
         [{ kind: 'rename', from: `${S41}/نمونه-${NEW_PIECE}.mp4`, to: `${S41}/نمونه-نامعلوم.mp4` }, /not registered/],
         [{ kind: 'rename', from: `${S40}/missing.mp4`, to: `${S40}/نمونه-2.mp4` }, /not in the archive/],
+        // A move stays in one folder: every write is then made inside that ONE bound folder.
+        [{ kind: 'rename', from: `${S40}/نمونه.mp4`, to: `${S39}/نمونه-2.mp4` }, /stays inside its session folder/],
       ];
       for (const [action, why] of refusals) expect(() => planMaintenance(root, action), JSON.stringify(action)).toThrow(why);
       expect([media(root), declarations(root), git.calls]).toEqual([media0, decl0, []]);
@@ -186,8 +191,7 @@ describe('maintaining the Setar archive', () => {
       renameSync(join(root, S39), outside);
       writeFileSync(join(outside, 'نمونه.mp4'), 'outside bytes');
       symlinkSync(outside, join(root, S39));
-      expect(() => planMaintenance(root, { kind: 'rename', from: `${S39}/نمونه.mp4`, to: `${S40}/نمونه-2.mp4` })).toThrow(/not a real folder/);
-      expect(() => planMaintenance(root, { kind: 'rename', from: `${S40}/نمونه.mp4`, to: `${S39}/نمونه-2.mp4` })).toThrow(/not a real folder/);
+      expect(() => planMaintenance(root, { kind: 'rename', from: `${S39}/نمونه.mp4`, to: `${S39}/نمونه-2.mp4` })).toThrow(/not a real folder/);
       expect(readFileSync(join(outside, 'نمونه.mp4'), 'utf8')).toBe('outside bytes');
       rmSync(join(root, S39));
       rmSync(join(outside, 'نمونه.mp4'));
@@ -375,13 +379,13 @@ describe('maintaining the Setar archive', () => {
       const another = { kind: 'register', piece: 'یکی-دیگر' };
       /** Every entry point refuses the dead run's lock and changes nothing; then the operator releases it. */
       const lockedOut = async (phase: string) => {
-        const held = readFileSync(lockFile, 'utf8');
+        const held = readArchiveLock(root)?.digest;
         const journalNow = readFileSync(join(state, 'journal.json'), 'utf8');
         const archiveNow = [declarations(root), media(root)];
         for (const entry of [() => apply(another), () => retryMaintenance({ root, state, publish: git.publish }), () => rollbackMaintenance({ root, state, publish: git.publish })]) {
           await expect(entry(), phase).rejects.toThrow(/maintenance lock is held by run/);
         }
-        expect([readFileSync(lockFile, 'utf8'), readFileSync(join(state, 'journal.json'), 'utf8'), declarations(root), media(root)], phase).toEqual([held, journalNow, ...archiveNow]);
+        expect([readArchiveLock(root)?.digest, readFileSync(join(state, 'journal.json'), 'utf8'), declarations(root), media(root)], phase).toEqual([held, journalNow, ...archiveNow]);
         release();
       };
       const settled = { decl: declarations(root), media: media(root), index: git.published(), commits: git.commits() };
@@ -417,7 +421,7 @@ describe('maintaining the Setar archive', () => {
       expect(await killed('applyMaintenance', moveArgs(), 'log')).toBe(7);
       release();
       expect(await killed('rollbackMaintenance', {}, 'mark')).toBe(7);
-      expect(journal()).toMatchObject({ status: 'rolling-back', lockToken: JSON.parse(readFileSync(lockFile, 'utf8')).token });
+      expect(journal()).toMatchObject({ status: 'rolling-back', lockToken: readArchiveLock(root).token });
       await lockedOut('rollback mark');
       await expect(apply(another)).rejects.toThrow(/rollback did not finish. Run `rollback`/);
       await expect(retryMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/rollback did not finish; run `rollback`/);
@@ -459,8 +463,15 @@ describe('maintaining the Setar archive', () => {
         JSON.stringify({ token: deadRun, pid: gone, host: 'h', since: 's' }).slice(0, -12), // truncated
       ];
       const journalNow = readFileSync(join(state, 'journal.json'), 'utf8');
-      for (const record of records) {
-        writeFileSync(lockFile, record);
+      /** A record as an earlier version (a file at the lock's name) or as this one (the lock's folder) would hold it. */
+      const plant = (record: string, asFolder: boolean) => {
+        if (!asFolder) return writeFileSync(lockFile, record);
+        mkdirSync(lockFile);
+        writeFileSync(join(lockFile, `${deadRun}.json`), record);
+      };
+      const planted = (asFolder: boolean) => readFileSync(asFolder ? join(lockFile, `${deadRun}.json`) : lockFile, 'utf8');
+      for (const [record, asFolder] of records.flatMap((r) => [[r, false], [r, true]] as const)) {
+        plant(record, asFolder);
         for (const entry of [() => apply(another), () => retryMaintenance({ root, state, publish: git.publish }), () => rollbackMaintenance({ root, state, publish: git.publish })]) {
           await expect(entry(), record).rejects.toThrow(/maintenance lock is held by a record not in this tool’s form.*release-lock --record/);
         }
@@ -469,14 +480,14 @@ describe('maintaining the Setar archive', () => {
           nothingPublished: true,
           message: expect.stringMatching(/A maintenance run holds the archive; nothing was published/),
         });
-        expect([readFileSync(lockFile, 'utf8'), readFileSync(join(state, 'journal.json'), 'utf8')], record).toEqual([record, journalNow]);
+        expect([planted(asFolder), readFileSync(join(state, 'journal.json'), 'utf8')], record).toEqual([record, journalNow]);
         // A record other than the one shown is never released.
         expect(() => releaseLock({ root, record: '0'.repeat(16) }), record).toThrow(/not the record you saw/);
-        expect(readFileSync(lockFile, 'utf8')).toBe(record);
+        expect(planted(asFolder)).toBe(record);
         release();
       }
       // A COMPLETE record of a dead run is no different: shown, then released by hand, never adopted.
-      writeFileSync(lockFile, JSON.stringify({ token: deadRun, pid: gone, host: 'h', since: 's' }));
+      plant(JSON.stringify({ token: deadRun, pid: gone, host: 'h', since: 's' }), true);
       await expect(retryMaintenance({ root, state, publish: git.publish })).rejects.toThrow(new RegExp(`held by run ${deadRun.slice(0, 8)} \\(pid ${gone}`));
       release();
       expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
@@ -682,7 +693,7 @@ describe('maintaining the Setar archive', () => {
           const pre = { media: media(k.root), index: k.g.published() };
           const theirs = `theirs,${edit}\n`;
           const out = k.go(action, { at: when(['capture', name, edit === 'replace' ? replaceWith(k.at(name), theirs) : () => rmSync(k.at(name))]) });
-          await expect(out, `${name} ${edit}`).rejects.toThrow(edit === 'replace' ? /changed while this ran; it was left as the other edit made it.*put back/s : /was removed while this ran.*put back/s);
+          await expect(out, `${name} ${edit}`).rejects.toThrow(edit === 'replace' ? /changed while this ran; it was left as the other edit made it.*it had changed nothing in the archive/s : /was removed while this ran.*it had changed nothing in the archive/s);
           expect(edit === 'replace' ? readFileSync(k.at(name), 'utf8') : existsSync(k.at(name)), `${name} ${edit}`).toBe(edit === 'replace' ? theirs : false);
           expect([media(k.root), k.g.published(), k.g.calls, existsSync(k.lock)], `${name} ${edit}`).toEqual([pre.media, pre.index, [], false]);
           expect(k.j(), `${name} ${edit}`).toMatchObject({ status: 'rolled-back', publication: 'not-needed' });
@@ -699,10 +710,10 @@ describe('maintaining the Setar archive', () => {
         const decl = declarations(r.root);
         await expect(r.go(REG, { at: when(['install', 'PIECES.csv', () => writeFileSync(r.at('PIECES.csv'), 'saved meanwhile\n')]) })).rejects.toThrow(/written by someone else while this ran; theirs stands/);
         expect(readFileSync(r.at('PIECES.csv'), 'utf8')).toBe('saved meanwhile\n');
-        const kept = hidden(r.root, '.PIECES.csv.captured-');
-        expect(kept.map((f) => readFileSync(r.at(f), 'utf8'))).toEqual([decl.pieces]);
-        // The next run never takes that kept copy for the declaration: it is renamed superseded, kept —
-        // beside the one this run replaced, which is kept too (never unlinked).
+        const kept = hidden(r.root, '.PIECES.csv.superseded-');
+        expect([kept.map((f) => readFileSync(r.at(f), 'utf8')), hidden(r.root, '.PIECES.csv.captured-')]).toEqual([[decl.pieces], []]);
+        // The next run never takes that kept copy for the declaration: it stays kept —
+        // beside the one this run replaces, which is kept too (never unlinked).
         writeFileSync(r.at('PIECES.csv'), decl.pieces);
         expect(await r.go(REG)).toMatchObject({ ok: true, status: 'published' });
         expect([hidden(r.root, '.PIECES.csv.captured-'), hidden(r.root, '.PIECES.csv.superseded-').map((f) => readFileSync(r.at(f), 'utf8'))]).toEqual([[], [decl.pieces, decl.pieces]]);
@@ -844,41 +855,206 @@ describe('maintaining the Setar archive', () => {
         }]) })).rejects.toThrow(/power cut/);
         expect(await v.back({ at: when(['judge-drop', v.at(B), swapIn(v.at(B), 'swapped in at the new name')]) })).toMatchObject({ ok: true });
         expect([sha(readFileSync(v.at(A))), readFileSync(v.at(B), 'utf8')]).toEqual([vBytes, 'swapped in at the new name']);
-        // A run STOPPED at that judgement leaves a name on its private aside: the next run puts back
-        // someone else's file (the only name it has), or drops a second name of ours — at all three sites.
+        // A run STOPPED at that judgement leaves a name on its private aside. Nothing recovers it
+        // automatically (a name proves nothing about whose file it is): every entry point refuses,
+        // naming it, and the operator renames it back — never over anything; then `rollback` judges.
         const cut = () => {
           throw new Interrupted('power cut at the drop');
         };
+        const leftovers = (x: { root: string }) => [
+          ...hidden(x.root, '.PIECES.csv.captured-'),
+          ...hidden(x.root, '.RENAME-LOG.csv.captured-'),
+          ...readdirSync(join(x.root, S39)).filter((n) => n.includes('.dropping-')).map((n) => `${S39}/${n}`),
+        ];
+        /** Every entry point refuses while a private name is left, changing nothing; then the operator renames each back. */
+        const handBack = async (x: ReturnType<typeof box>) => {
+          const left = leftovers(x);
+          expect(left.length).toBeGreaterThan(0);
+          const now = [declarations(x.root), media(x.root), readFileSync(join(x.state, 'journal.json'), 'utf8')];
+          for (const entry of [() => x.back(), () => x.again(), () => x.go({ kind: 'register', piece: 'یکی-دیگر' })]) {
+            await expect(entry()).rejects.toThrow(/stopped in the middle of a write and left a file under a private name; nothing was changed/);
+          }
+          await expect(x.back()).rejects.toThrow(new RegExp(left.map((f) => f.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')));
+          expect([declarations(x.root), media(x.root), readFileSync(join(x.state, 'journal.json'), 'utf8'), existsSync(x.lock)]).toEqual([...now, false]);
+          for (const f of left) {
+            const name = f.replace(/^(.*\/)?\.(.+)\.(captured|dropping)-.*$/, '$1$2');
+            if (existsSync(x.at(name))) renameSync(x.at(f), x.at(f.replace('.captured-', '.superseded-')));
+            else renameSync(x.at(f), x.at(name));
+          }
+          expect(leftovers(x)).toEqual([]);
+        };
+        // Someone else's file renamed onto the old name in that instant — and it has ANOTHER hard
+        // link elsewhere: it is never deleted for being "a second name"; it keeps its public name.
         const g = box();
         const gBytes = sha(readFileSync(g.at(A)));
-        await expect(g.go(MOVE, { at: when(['unlink', A, swapIn(g.at(A), 'theirs at the old name')], ['judge-drop', g.at(A), cut]) })).rejects.toThrow(/power cut/);
+        const alias = join(g.base, 'their-alias.mp4');
+        writeFileSync(alias, 'theirs at the old name');
+        await expect(g.go(MOVE, { at: when(['unlink', A, () => {
+          linkSync(alias, `${g.at(A)}.saved`);
+          renameSync(`${g.at(A)}.saved`, g.at(A));
+        }], ['judge-drop', g.at(A), cut]) })).rejects.toThrow(/power cut/);
+        const theirAside = leftovers(g)[0]!;
+        expect([readFileSync(g.at(theirAside), 'utf8'), lstatSync(g.at(theirAside)).nlink]).toEqual(['theirs at the old name', 2]);
+        await handBack(g);
         await expect(g.back()).rejects.toThrow(/neither as this change left them nor as they were/);
-        expect([readFileSync(g.at(A), 'utf8'), sha(readFileSync(g.at(B)))]).toEqual(['theirs at the old name', gBytes]);
+        expect([readFileSync(g.at(A), 'utf8'), lstatSync(g.at(A)).ino, sha(readFileSync(g.at(B)))]).toEqual(['theirs at the old name', lstatSync(alias).ino, gBytes]);
         const h = box();
         const hBytes = sha(readFileSync(h.at(A)));
         await expect(h.go(MOVE, { at: when(['judge-drop', h.at(A), cut]) })).rejects.toThrow(/power cut/);
+        await handBack(h);
         expect(await h.back()).toMatchObject({ ok: true });
         expect([sha(readFileSync(h.at(A))), existsSync(h.at(B))]).toEqual([hBytes, false]);
         const w = box();
         await expect(w.go(MOVE, { at: when(['link', B, () => writeFileSync(w.at(A), Buffer.alloc(500, 7))], ['judge-drop', w.at(B), cut]) })).rejects.toThrow(/power cut/);
+        await handBack(w);
         expect(await w.back()).toMatchObject({ ok: true });
         expect([sha(readFileSync(w.at(A))), existsSync(w.at(B))]).toEqual([sha(Buffer.alloc(500, 7)), false]);
         const y = box();
         const yBytes = sha(readFileSync(y.at(A)));
         await expect(y.go(MOVE, { at: when(['unlink', A, cut]) })).rejects.toThrow(/power cut/);
         await expect(y.back({ at: when(['judge-drop', y.at(B), cut]) })).rejects.toThrow(/power cut/);
+        await handBack(y);
         expect(await y.back()).toMatchObject({ ok: true });
         expect([sha(readFileSync(y.at(A))), existsSync(y.at(B))]).toEqual([yBytes, false]);
-        for (const x of [f, u, v, g, h, w, y]) expect(readdirSync(join(x.root, S39)).filter((n) => n.includes('.dropping-'))).toEqual([]);
-        // A run stopped with a declaration SET ASIDE: the next run puts back that exact capture first.
+        for (const x of [f, u, v, g, h, w, y]) expect(leftovers(x)).toEqual([]);
+        // A run stopped with a declaration SET ASIDE: refused, named, put back by hand, then rolled back exactly.
         const t = box();
         const tDecl = declarations(t.root);
         await expect(t.go(REG, { at: when(['install', 'PIECES.csv', () => {
           throw new Interrupted('power cut with the registry set aside');
         }]) })).rejects.toThrow(/power cut/);
         expect([existsSync(t.at('PIECES.csv')), hidden(t.root, '.PIECES.csv.captured-').length]).toEqual([false, 1]);
+        const tSet = hidden(t.root, '.PIECES.csv.captured-')[0]!;
+        await expect(t.back()).rejects.toThrow(/stopped in the middle of a write/);
+        renameSync(t.at(tSet), t.at('PIECES.csv'));
         expect(await t.back()).toMatchObject({ ok: true });
-        expect([declarations(t.root), hidden(t.root, '.PIECES.csv.captured-')]).toEqual([tDecl, []]);
+        expect([declarations(t.root), leftovers(t)]).toEqual([tDecl, []]);
+        // A file under a private name that THIS tool never wrote is never taken for the
+        // declaration — not even with the declaration missing: refused, kept, nothing installed.
+        for (const missing of [true, false]) {
+          const n = box();
+          const nDecl = declarations(n.root);
+          if (missing) renameSync(n.at('PIECES.csv'), join(n.base, 'PIECES.csv.away'));
+          writeFileSync(n.at('.PIECES.csv.captured-unrelated'), 'not this tool’s\n');
+          await expect(n.again()).rejects.toThrow(/\.PIECES\.csv\.captured-unrelated/);
+          await expect(n.back()).rejects.toThrow(/\.PIECES\.csv\.captured-unrelated/);
+          expect([existsSync(n.at('PIECES.csv')), readFileSync(n.at('.PIECES.csv.captured-unrelated'), 'utf8')]).toEqual([!missing, 'not this tool’s\n']);
+          if (!missing) expect(declarations(n.root)).toEqual(nDecl);
+        }
+      }
+
+      // --- FAILURES AFTER A WRITE: put back exactly, said only when true, nothing kept is ever lost -
+      {
+        // An I/O error AFTER the new registry is in place (keeping the replaced one fails): the
+        // write is already recorded, so the automatic put-back judges it — never "nothing needed".
+        const k = box();
+        const decl = declarations(k.root);
+        const eio = Object.assign(new Error('EIO: i/o error (injected)'), { code: 'EIO' });
+        await expect(k.go(REG, { at: when(['keep', 'PIECES.csv', () => {
+          throw eio;
+        }]) })).rejects.toThrow(/did not validate \(EIO.*everything it changed was put back from the private copy/s);
+        expect([declarations(k.root), k.j().status, k.g.calls]).toEqual([decl, 'rolled-back', []]);
+        // The registry that write replaced is still under its private name: the next run names it.
+        await expect(k.go(REG)).rejects.toThrow(/\.PIECES\.csv\.captured-/);
+        renameSync(k.at(hidden(k.root, '.PIECES.csv.captured-')[0]!), k.at(hidden(k.root, '.PIECES.csv.captured-')[0]!.replace('.captured-', '.superseded-')));
+        expect(await k.go(REG)).toMatchObject({ ok: true, status: 'published' });
+        // A program holding the ORIGINAL registry open while apply writes AND its automatic
+        // put-back writes again (a scan failure): each replaced file keeps its own name, so the
+        // program's later save is kept — never displaced by the put-back's own kept copy.
+        const o = box();
+        const before = readFileSync(o.at('PIECES.csv'), 'utf8');
+        const fd = openSync(o.at('PIECES.csv'), 'r+');
+        try {
+          await expect(o.go(REG, { at: when(['scan', 'archive', () => {
+            throw new Error('the scan failed (injected)');
+          }]) })).rejects.toThrow(/did not validate \(the scan failed.*everything it changed was put back/s);
+          writeSync(fd, 'saved through the open file\n', Buffer.byteLength(before));
+        } finally {
+          closeSync(fd);
+        }
+        expect([readFileSync(o.at('PIECES.csv'), 'utf8'), o.j().status]).toEqual([before, 'rolled-back']);
+        expect(hidden(o.root, '.PIECES.csv.superseded-').map((f) => readFileSync(o.at(f), 'utf8')).sort()).toEqual(
+          [`${before}saved through the open file\n`, `${before}${NEW_PIECE},,,,,,,41,,\n`].sort(),
+        );
+      }
+
+      // --- A SESSION FOLDER SWAPPED FOR A LINK mid-move: nothing is written outside the archive -
+      {
+        const k = box();
+        const moved = join(k.base, 'moved-39');
+        const decoy = join(k.base, 'decoy');
+        mkdirSync(decoy);
+        writeFileSync(join(decoy, A.split('/')[1]!), 'an unrelated folder');
+        await expect(k.go(MOVE, { at: when(['link', B, () => {
+          renameSync(k.at(S39), moved);
+          symlinkSync(decoy, k.at(S39));
+        }]) })).rejects.toThrow(/moved or replaced while this ran/);
+        // The unrelated folder is exactly as it was; the real folder, wherever it went, holds only what it held.
+        expect(readdirSync(decoy)).toEqual([A.split('/')[1]]);
+        expect(readdirSync(moved).filter((n) => n === B.split('/')[1] || n.includes('.dropping-'))).toEqual([]);
+        expect(existsSync(join(moved, A.split('/')[1]!))).toBe(true);
+        expect(k.j().status).toBe('prepared'); // its put-back refused the link too: `rollback` once the folder is back
+        rmSync(k.at(S39));
+        renameSync(moved, k.at(S39));
+        expect(await k.back()).toMatchObject({ ok: true });
+      }
+
+      // --- RELEASES never take a NEWER run's lock --------------------------
+      {
+        // Two operators release the same dead record; between the first's release and the
+        // second's removal, run C takes the archive (and D tries): C's lock is never moved.
+        const k = box();
+        const dead = ['2f2f2f2f', '0000', '4000', '8000', '000000000000'].join('-');
+        mkdirSync(k.lock);
+        writeFileSync(join(k.lock, `${dead}.json`), JSON.stringify({ token: dead, pid: 1, host: 'h', since: 's' }));
+        const id = readArchiveLock(k.root).digest.slice(0, 16);
+        let resume!: () => void;
+        const gate = new Promise<void>((r) => (resume = r));
+        let c: Promise<unknown> | undefined;
+        let d: Promise<unknown> | undefined;
+        let cHolder = '';
+        const cPublish = async (text: string, hash: string, h: string) => {
+          cHolder = h;
+          await gate;
+          return k.g.publish(text, hash, h);
+        };
+        expect(() =>
+          releaseLock({
+            root: k.root,
+            record: id,
+            at: when(['release', ARCHIVE_LOCK, () => {
+              expect(releaseLock({ root: k.root, record: id })).toMatchObject({ released: true });
+              c = k.go(REG, { publish: cPublish });
+              d = k.go({ kind: 'register', piece: 'یکی-دیگر' });
+            }]),
+          }),
+        ).toThrow(/not the record you saw/);
+        await expect(d).rejects.toThrow(/maintenance lock is held by run/);
+        expect(readArchiveLock(k.root).token).toBe(cHolder);
+        resume();
+        expect(await c).toMatchObject({ ok: true, status: 'published' });
+        expect(existsSync(k.lock)).toBe(false);
+        // A run whose lock was released by hand, while ANOTHER run now holds the archive: its own
+        // release at the end removes only its own record — the newer run's lock stands.
+        const k2 = box();
+        const otherState = join(k2.base, 'other-state');
+        mkdirSync(otherState);
+        let resumeC!: () => void;
+        const gateC = new Promise<void>((r) => (resumeC = r));
+        let resumeD!: () => void;
+        const gateD = new Promise<void>((r) => (resumeD = r));
+        let dHolder = '';
+        const c2 = k2.go(REG, { publish: async (text: string, hash: string, h: string) => (await gateC, k2.g.publish(text, hash, h)) });
+        const shown = /--record ([0-9a-f]{16})/.exec(releaseLock({ root: k2.root }).lines.join('\n'))![1];
+        expect(releaseLock({ root: k2.root, record: shown })).toMatchObject({ released: true });
+        const later = { kind: 'register', piece: 'ردیف-بعدی' };
+        const d2 = applyMaintenance({ root: k2.root, state: otherState, action: later, previewId: planMaintenance(k2.root, later).id, publish: async (text: string, hash: string, h: string) => ((dHolder = h), await gateD, k2.g.publish(text, hash, h)) });
+        resumeC();
+        expect(await c2).toMatchObject({ ok: false, message: expect.stringMatching(/no longer holds the archive/) });
+        expect(readArchiveLock(k2.root).token).toBe(dHolder);
+        resumeD();
+        expect(await d2).toMatchObject({ ok: true, status: 'published' });
+        expect(existsSync(k2.lock)).toBe(false);
       }
 
       // --- PUBLISHERS answer to the archive's owner, the scheduled job included -
@@ -901,9 +1077,11 @@ describe('maintaining the Setar archive', () => {
         // An orphaned publisher of that run, once its lock is gone (or another run's): refused.
         const later = `${JSON.stringify(scanToIndex(k.root), null, 2)} \n`;
         await expect(publishIndex({ transport: k.g.transport, indexText: later, confirm: archiveConfirmation(k.root, holder) })).rejects.toThrow(/no longer holds the archive/);
-        writeFileSync(k.lock, JSON.stringify({ token: ['1f1f1f1f', '0000', '4000', '8000', '000000000000'].join('-'), pid: process.pid, host: 'h', since: 's' }));
+        const another = ['1f1f1f1f', '0000', '4000', '8000', '000000000000'].join('-');
+        mkdirSync(k.lock);
+        writeFileSync(join(k.lock, `${another}.json`), JSON.stringify({ token: another, pid: process.pid, host: 'h', since: 's' }));
         await expect(publishIndex({ transport: k.g.transport, indexText: later, confirm: archiveConfirmation(k.root, holder) })).rejects.toThrow(/no longer holds the archive/);
-        rmSync(k.lock);
+        rmSync(k.lock, { recursive: true });
       }
       // An OLDER validated index never lands over a newer one, wherever the old (scheduled) publisher
       // stalls — at its ref read, before its commit, or with its ref write already asked for (after
@@ -998,6 +1176,36 @@ describe('maintaining the Setar archive', () => {
         expect(await k.again(), lands).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
         expect(await publishIndex({ transport: t, indexText: x!, confirm: archiveConfirmation(k.root), ...k.g.shared }), lands).toMatchObject({ status: 'unchanged' });
         expect(k.g.commits(), lands).toBe(commits + 1);
+      }
+      // GitHub REFUSES the protective write without the ref having moved (a 422 that is not a
+      // conflict): the older unanswered write is still guarded — never "unchanged" while it can
+      // land. Refused once, the next attempt moves the ref; refused every time, the outcome stays
+      // unconfirmed, and once the old write lands the next run publishes over it.
+      for (const refusals of [1, 4]) {
+        const k = box();
+        expect(await k.go({ kind: 'roster', session: 40, pieces: ['ضربی-سه-گاه-لطفی'] })).toMatchObject({ ok: true });
+        const x = k.g.published();
+        writeFileSync(k.at(added), 'a file added by hand');
+        const h1 = `${JSON.stringify(scanToIndex(k.root), null, 2)}\n`;
+        const t = k.g.transport;
+        let late!: () => Promise<string>;
+        const dying = { ...t, updateRef: async (b: string, s: string, e: string) => ((late = () => t.updateRef(b, s, e)), Promise.reject(new TypeError('fetch failed: the publisher died'))) };
+        await expect(publishIndex({ transport: dying, indexText: h1, confirm: archiveConfirmation(k.root), ...k.g.shared })).rejects.not.toHaveProperty('nothingPublished');
+        rmSync(k.at(added)); // the archive is X again, which the branch still holds
+        k.g.refuse(refusals);
+        const settledNow = await k.again();
+        if (refusals === 1) {
+          expect(settledNow, 'refused once').toMatchObject({ ok: true, publication: { status: 'published' } });
+          expect([await late(), k.g.published(), existsSync(k.g.shared.intent)], 'refused once').toEqual(['HTTP 422', x, false]);
+        } else {
+          expect(settledNow, 'refused always').toMatchObject({ ok: false, message: expect.stringMatching(/could not be confirmed.*may already be published/s) });
+          expect([existsSync(k.g.shared.intent), k.j().publication], 'refused always').toEqual([true, 'unknown']);
+          expect(await late(), 'refused always').toBe('ok'); // the old write lands after all
+          expect(JSON.parse(k.g.published()!).contentHash).toBe(JSON.parse(h1).contentHash);
+          expect(await k.again(), 'refused always').toMatchObject({ ok: true, publication: { status: 'published' } });
+          expect([k.g.published(), existsSync(k.g.shared.intent)], 'refused always').toEqual([x, false]);
+        }
+        expect(await k.again()).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
       }
 
       // --- PUBLICATION STATE: open until a positive observation; every attempt bound to its index -

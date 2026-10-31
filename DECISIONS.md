@@ -2,6 +2,36 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Setar maintenance stops and asks rather than recover on a guess (2026-10-31)
+
+Same lane, third sealed rejection; this supersedes the recovery and lock
+bullets below. The owner's direction: the tool is used rarely, so a smaller
+automatic surface that is correct beats recovery that guesses.
+
+- **No automatic recovery from a private name.** A file under one of the
+  tool's private names (`.<declaration>.captured-…`, `.<leaf>.dropping-…`)
+  proves nothing about whose it is; deleting a "second name" or installing a
+  capture lost someone's file. Every run now refuses while one exists, naming
+  each with the `mv -n` that puts it back; `rollback`'s exact judgement then
+  finishes. Only a killed run leaves one, and that run already needs a hand
+  `release-lock`.
+- **A write is recorded the instant the archive changes**, so a failure after
+  it (keeping the replaced file, cleanup, the scan) is judged by the automatic
+  put-back, which says "put back" only when it did. Every set-aside copy gets
+  its own name, so no put-back can displace a kept file a handle still writes.
+- **The lock is a folder holding one `<token>.json`**, renamed into place and
+  released only by unlinking that exact name: no release, stale or concurrent,
+  can take a newer run's lock (POSIX has no compare-and-delete by path; unique
+  names make one).
+- **A rename stays inside one session folder**, and every media write runs in
+  that folder bound by inode (its leaf names only), so swapping the folder for
+  a link cannot carry a write outside.
+- **An unanswered ref write is retired only by evidence.** A non-force write
+  from P can land only while the branch is at P: it stays guarded until the
+  branch is observed elsewhere or a later write is accepted. A refused write
+  (GitHub's 422 can mean validation, not movement) never retires it, and a run
+  that ends while one is guarded never claims "nothing published".
+
 ## Setar maintenance: one owner per archive, writes proved at the write, publication open until observed (2026-10-31)
 
 Same lane, second sealed rejection; this supersedes the dead-lock adoption

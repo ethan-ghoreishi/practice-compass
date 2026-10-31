@@ -27,7 +27,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,6 +53,8 @@ import { ARCHIVE_LOCK, readArchiveLock } from './publish-setar-index.mjs';
 const REGISTRY = 'PIECES.csv';
 const LOG = 'RENAME-LOG.csv';
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
+/** The test seams' default: `at(point, name)` is called just before each archive write. */
+const noSeam = () => {};
 
 /** A refusal: nothing was changed. */
 export class Refusal extends Error {}
@@ -192,6 +194,7 @@ export function planMaintenance(rootArg, action) {
       }
     }
     if (from === to) throw new Refusal('The old and new names are the same.');
+    if (from.split('/')[0] !== to.split('/')[0]) throw new Refusal('A rename stays inside its session folder (both names in the same session-N-DD-MM-YYYY folder).');
     const parsed = parseAssetStem(stemOf(to));
     if (!parsed) throw new Refusal(`"${to}" carries no known role; name it <role>-<piece>.<ext>.`);
     if (parsed.piece && !byKey.has(parsed.piece)) {
@@ -295,8 +298,9 @@ function journalFor(state, root, recovering) {
 // ONE lock per ARCHIVE (`ARCHIVE_LOCK` in its root, which the scanner skips),
 // never per --state folder: every route that writes the archive takes it, and
 // every publisher checks it before its ref write (`archiveConfirmation`), the
-// scheduled job included. A record is written whole and LINKED into place, so
-// it is never partial. A lock is never adopted on a guess about a process
+// scheduled job included. A record is written whole in a private folder that
+// is RENAMED into place, so it is never partial, and removed only by its own
+// unique name, so no release ever takes a newer run's lock. A lock is never adopted on a guess about a process
 // (a pid can be reused, a publishing child outlives its parent): a run that
 // finds one refuses, and the operator — having seen no maintenance or
 // publication process is running, the indexer's sudo'd job included —
@@ -314,22 +318,28 @@ function lockRefusal(root) {
   );
 }
 
-/** Take the archive's lock, or refuse. Returns the token that proves ownership. */
+/**
+ * Take the archive's lock, or refuse. The record is written whole in a private
+ * folder that is then RENAMED into place — which fails while any lock stands,
+ * and replaces only the empty folder a release leaves. Returns the token that
+ * proves ownership. A run that stopped mid-write left a file under one of this
+ * tool's private names: it is never recovered from automatically (a name proves
+ * nothing about whose file it is); the run refuses and names it.
+ */
 function lock(root) {
   const token = randomUUID();
   const tmp = join(root, `${ARCHIVE_LOCK}.${token}`);
-  writeFileSync(tmp, `${JSON.stringify({ token, pid: process.pid, host: hostname(), since: new Date().toISOString() })}\n`, { flag: 'wx' });
+  mkdirSync(tmp);
   try {
-    linkSync(tmp, join(root, ARCHIVE_LOCK));
+    writeFileSync(join(tmp, `${token}.json`), `${JSON.stringify({ token, pid: process.pid, host: hostname(), since: new Date().toISOString() })}\n`, { flag: 'wx' });
+    renameSync(tmp, join(root, ARCHIVE_LOCK));
   } catch (err) {
-    if (err?.code === 'EEXIST') throw lockRefusal(root);
+    rmSync(tmp, { recursive: true, force: true }); // this run's own private folder
+    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR'].includes(err?.code)) throw lockRefusal(root);
     throw err;
-  } finally {
-    rmSync(tmp, { force: true });
   }
   try {
-    recoverCaptures(root);
-    recoverDrops(root);
+    refuseLeftovers(root);
   } catch (err) {
     unlock(root, token);
     throw err;
@@ -339,40 +349,37 @@ function lock(root) {
 
 /** Every archive write first proves this run still holds the lock (an operator may have released it). */
 function assertOwner(root, owner) {
-  if (readArchiveLock(root)?.token !== owner) throw new Refusal('This run no longer holds the archive’s maintenance lock (it was released by hand); it stopped before its next write.');
+  if (!lstatOrNull(join(root, ARCHIVE_LOCK, `${owner}.json`))?.isFile()) throw new Refusal('This run no longer holds the archive’s maintenance lock (it was released by hand); it stopped before its next write.');
 }
 
-/**
- * Remove the lock only while it is the one judged: it is MOVED aside first
- * (atomic), then judged; anything else is put back, never over a newer lock.
- */
-function removeLockIf(root, judge) {
-  const aside = capture(root, ARCHIVE_LOCK);
-  if (!aside) return false;
-  let record = null;
+/** Remove the lock's folder once empty — never one holding anyone's record. */
+function dropEmptyLock(root) {
   try {
-    const bytes = readFileSync(aside);
-    record = { digest: sha(bytes), token: (() => { try { return JSON.parse(bytes.toString('utf8'))?.token; } catch { return undefined; } })() };
+    rmdirSync(join(root, ARCHIVE_LOCK));
   } catch {
-    // unreadable: judged as no record
+    // not empty (a newer run holds it), already gone, or not a folder: left as it is
   }
-  if (!record || !judge(record)) {
-    putBack(root, ARCHIVE_LOCK, aside);
-    return false;
-  }
-  rmSync(aside);
-  return true;
 }
-const unlock = (root, token) => {
-  if (readArchiveLock(root)?.token === token) removeLockIf(root, (r) => r.token === token);
-};
+
+/** Release THIS run's lock: only its own record, by its unique name; a newer run's is never touched. */
+function unlock(root, token) {
+  try {
+    unlinkSync(join(root, ARCHIVE_LOCK, `${token}.json`));
+  } catch (err) {
+    if (err?.code === 'ENOENT') return; // released by hand already
+    throw err;
+  }
+  dropEmptyLock(root);
+}
 
 /**
  * The operator's explicit route for a lock no run will take: shown first, then
- * released only by its exact record (a digest prefix of its bytes), whatever
- * form it is in — a dead run's, a partial or foreign one.
+ * released only by its exact record (a digest prefix of what is there), whatever
+ * form it is in — a dead run's, a partial or foreign one. Only the entries that
+ * record named are removed, each by its own name, so a lock taken since is never
+ * touched. `at` is the test seam.
  */
-export function releaseLock({ root: rootArg, record }) {
+export function releaseLock({ root: rootArg, record, at = noSeam }) {
   const root = resolve(rootArg);
   const held = readArchiveLock(root);
   if (!held) return { released: false, lines: ['The archive holds no maintenance lock. Nothing to do.'] };
@@ -387,19 +394,57 @@ export function releaseLock({ root: rootArg, record }) {
       ],
     };
   }
-  if (record !== id || !removeLockIf(root, (r) => r.digest === held.digest)) {
-    throw new Refusal('The lock is not the record you saw (it changed or was released since); nothing was changed. Run release-lock again to see it.');
+  const stale = () => new Refusal('The lock is not the record you saw (it changed or was released since); nothing was changed. Run release-lock again to see it.');
+  if (record !== id) throw stale();
+  at('release', ARCHIVE_LOCK);
+  let removed = 0;
+  // Something at the lock's name that is not a folder is never this version's lock: unlink removes only it.
+  for (const p of held.names ? held.names.map((n) => join(root, ARCHIVE_LOCK, n)) : [join(root, ARCHIVE_LOCK)]) {
+    try {
+      unlinkSync(p);
+      removed += 1;
+    } catch (err) {
+      if (err?.code !== 'ENOENT') throw err;
+    }
   }
+  dropEmptyLock(root);
+  if (!removed) throw stale();
   return { released: true, lines: [`Released the lock of ${holderLine(held)}. The next run says what, if anything, it left to finish.`] };
+}
+
+/**
+ * A run stopped in the middle of a write leaves a file under one of this
+ * tool's private names: a declaration set aside (`.<name>.captured-…`, root)
+ * or a media name being dropped (`.<leaf>.dropping-…`, a session folder).
+ * Nothing guesses whose it is. The run refuses, naming each, and the operator
+ * renames it back — never over anything — before running again; the journal's
+ * own exact judgement (`rollback`) then finishes.
+ */
+function refuseLeftovers(root) {
+  const found = [];
+  for (const d of readdirSync(root, { withFileTypes: true })) {
+    if (d.isFile() || d.isSymbolicLink()) {
+      const m = /^\.(PIECES\.csv|RENAME-LOG\.csv)\.captured-/.exec(d.name);
+      if (m) found.push(`  mv -n '${d.name}' '${m[1]}'   (if ${m[1]} is there, it is the copy a write replaced: mv -n '${d.name}' '${d.name.replace('.captured-', '.superseded-')}')`);
+    } else if (d.isDirectory() && parseSessionFolderName(d.name)) {
+      for (const f of readdirSync(join(root, d.name))) {
+        const m = /^\.(.+)\.dropping-/.exec(f);
+        if (m) found.push(`  mv -n '${d.name}/${f}' '${d.name}/${m[1]}'   (if that name is taken, keep both and compare them)`);
+      }
+    }
+  }
+  if (found.length) {
+    throw new Refusal(`A run stopped in the middle of a write and left a file under a private name; nothing was changed. Put each back by hand, never over anything, then run again:\n${found.join('\n')}`);
+  }
 }
 
 // --- writing the archive, exactly --------------------------------------------
 
-/** Move whatever is at `name` aside — atomic: exactly what was there at that instant — or null when nothing was. */
-function capture(root, name, owner = randomUUID()) {
-  const aside = join(root, `.${name}.captured-${owner}`);
+/** Move whatever is at `name` aside — atomic: exactly what was there at that instant — or null when nothing was. A fresh name every time. */
+function capture(dir, name) {
+  const aside = join(dir, `.${name}.captured-${randomUUID()}`);
   try {
-    renameSync(join(root, name), aside);
+    renameSync(join(dir, name), aside);
     return aside;
   } catch (err) {
     if (err?.code === 'ENOENT') return null;
@@ -408,11 +453,11 @@ function capture(root, name, owner = randomUUID()) {
 }
 
 /** Put a captured file back, never over anything that appeared meanwhile — then both are kept, and said. */
-function putBack(root, name, aside) {
+function putBack(dir, name, aside) {
   const st = lstatSync(aside);
   try {
-    if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), join(root, name));
-    else if (st.isFile()) linkSync(aside, join(root, name));
+    if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), join(dir, name));
+    else if (st.isFile()) linkSync(aside, join(dir, name));
     else throw new Refusal(`${name} was replaced by something that is not a file while this ran; it is kept as ${basename(aside)}. Put it back by hand.`);
   } catch (err) {
     if (err?.code === 'EEXIST') throw new Refusal(`${name} was replaced while this ran; the new one stands, and the one before is kept beside it as ${basename(aside)}.`);
@@ -421,46 +466,12 @@ function putBack(root, name, aside) {
   rmSync(aside);
 }
 
-/**
- * A run that stopped between moving a declaration aside and putting one in its
- * place left it missing: put back THIS tool's own capture, never a guess. A
- * capture beside a present declaration is what that run replaced (or what a
- * hand edit displaced): renamed `superseded`, kept, never a candidate again.
- * Runs under the lock, before anything else.
- */
-function recoverCaptures(root) {
-  for (const name of [REGISTRY, LOG]) {
-    const caps = readdirSync(root).filter((f) => f.startsWith(`.${name}.captured-`));
-    if (!caps.length) continue;
-    if (lstatOrNull(join(root, name))) {
-      for (const c of caps) renameSync(join(root, c), join(root, c.replace('.captured-', '.superseded-')));
-      continue;
-    }
-    if (caps.length > 1) throw new Refusal(`${name} is missing, and ${caps.length} copies set aside by interrupted runs exist (${caps.join(', ')}); nothing was changed. Put the right one back by hand.`);
-    putBack(root, name, join(root, caps[0]));
-  }
-}
-
-/**
- * A run stopped inside `dropName` left a media name on its private aside. A
- * second name of a file still named elsewhere is dropped (the bytes stay
- * there: the drop it was making). The ONLY name of a file — someone else's,
- * renamed onto the public name in that instant — is put back at that name,
- * never over a newer one; if it is taken, it is kept and named. Under the lock.
- */
-function recoverDrops(root) {
-  for (const d of readdirSync(root, { withFileTypes: true })) {
-    if (!d.isDirectory()) continue;
-    for (const f of readdirSync(join(root, d.name))) {
-      const m = /^\.(.+)\.dropping-[0-9a-f-]{36}$/.exec(f);
-      if (!m) continue;
-      const aside = join(root, d.name, f);
-      const st = lstatSync(aside);
-      if (st.isFile() && st.nlink > 1) rmSync(aside);
-      else putBack(join(root, d.name), m[1], aside);
-    }
-  }
-}
+/** A replaced declaration is KEPT, never unlinked, under a name no other write uses. */
+const keep = (aside) => {
+  const kept = aside.replace('.captured-', '.superseded-');
+  renameSync(aside, kept);
+  return kept;
+};
 
 /**
  * Replace a declaration (or, with `text` null, take it out of the archive) only
@@ -468,12 +479,14 @@ function recoverDrops(root) {
  * THE WRITE: the file is first moved aside (what was there at that instant;
  * a later save makes a new file), its bytes judged, and the new one LINKED into
  * place, which never overwrites. Replaced, deleted, created or a link: put
- * back and refused, nothing anyone wrote lost. `at` is the test seam.
+ * back and refused, nothing anyone wrote lost. The instant the archive changes
+ * it is recorded in `written`, so a later failure is judged, never skipped.
+ * `at` is the test seam.
  */
-function replaceDeclaration({ root, owner, at }, name, text, expected, keepDir) {
+function replaceDeclaration({ root, owner, at, written }, name, text, expected, keepDir) {
   assertOwner(root, owner);
   const p = join(root, name);
-  const tmp = text === null ? null : join(root, `.${name}.maintenance-${owner}`);
+  const tmp = text === null ? null : join(root, `.${name}.maintenance-${randomUUID()}`);
   if (tmp) writeFileSync(tmp, text, { flag: 'wx' });
   try {
     at('capture', name);
@@ -485,9 +498,10 @@ function replaceDeclaration({ root, owner, at }, name, text, expected, keepDir) 
         if (err?.code === 'EEXIST') throw new Refusal(`${name} appeared while this ran; it was left as the other edit made it.`);
         throw err;
       }
+      written?.add(name);
       return;
     }
-    const aside = capture(root, name, owner);
+    const aside = capture(root, name);
     if (!aside) throw new Refusal(`${name} was removed while this ran; nothing was put in its place.`);
     const st = lstatSync(aside);
     if (!st.isFile() || sha(readFileSync(aside)) !== expected) {
@@ -497,73 +511,106 @@ function replaceDeclaration({ root, owner, at }, name, text, expected, keepDir) 
     at('install', name);
     try {
       if (tmp) linkSync(tmp, p);
-      else copyFileSync(aside, join(keepDir, `${name}.written-${owner}`), constants.COPYFILE_EXCL);
+      else copyFileSync(aside, join(keepDir, `${name}.written-${randomUUID()}`), constants.COPYFILE_EXCL);
     } catch (err) {
       if (tmp && err?.code === 'EEXIST') {
-        throw new Refusal(`${name} was written by someone else while this ran; theirs stands, and the one it replaced is kept beside it as ${basename(aside)}.`);
+        throw new Refusal(`${name} was written by someone else while this ran; theirs stands, and the one it replaced is kept beside it as ${basename(keep(aside))}.`);
       }
       putBack(root, name, aside);
       throw err;
     }
+    written?.add(name);
+    at('keep', name);
     // The replaced file is KEPT, never unlinked: a program still holding it
     // open writes into this inode whenever it writes, so nothing it saves is
     // ever lost — it lands in the kept copy, beside the declaration.
-    renameSync(aside, aside.replace('.captured-', '.superseded-'));
+    keep(aside);
   } finally {
     if (tmp) rmSync(tmp, { force: true });
   }
 }
 
 /**
- * Give one media file a new name, never overwriting and never moving bytes
- * other than the recorded ones: the new name is LINKED (fails if anything is
- * there), what it names is judged (same file, recorded size and SHA-256, both
- * folders still real), and only then is the old name removed. A judged
- * failure removes only the name this call made; nothing has moved.
+ * Run `fn(stillBound)` INSIDE one session folder, bound by its inode: it must
+ * be a real folder directly in the archive at the instant this starts (never a
+ * link), and every name `fn` touches is a bare leaf resolved against that
+ * bound folder — never the folder's path again, so swapping the folder for a
+ * link cannot carry a write outside. `stillBound()` says whether the folder
+ * still stands at its name; `fn` asks before each step that commits anything.
  */
-function moveExact({ root, owner, at }, fromRel, toRel, expect) {
-  assertOwner(root, owner);
-  const from = mediaPath(root, fromRel);
-  const to = mediaPath(root, toRel);
-  if (!lstatOrNull(from)?.isFile()) throw new Refusal(`"${fromRel}" is not a regular file in the archive any more; nothing was moved.`);
-  at('link', toRel);
+// ponytail: process-wide cwd, the only stdlib way to resolve names against a
+// bound directory (Node has no linkat/openat); the tool is single-threaded.
+function inFolder(root, folder, fn) {
+  const st = lstatOrNull(join(root, folder));
+  if (!st?.isDirectory()) throw new Refusal(`The folder "${folder}" is not a real folder in the archive (a link is never followed); nothing was moved.`);
+  const back = process.cwd();
+  process.chdir(join(root, folder));
   try {
-    linkSync(from, to);
-  } catch (err) {
-    if (err?.code === 'EEXIST') throw new Refusal(`"${toRel}" appeared while this ran; nothing is ever overwritten, and nothing was moved.`);
-    if (err?.code === 'ENOENT') throw new Refusal(`"${fromRel}" went away while this ran; nothing was moved.`);
-    throw err;
+    if (!same(statSync('.'), st)) throw new Refusal(`The folder "${folder}" changed while this ran; nothing was moved.`);
+    return fn(() => same(lstatOrNull(join(root, folder)), st));
+  } finally {
+    process.chdir(back);
   }
-  const a = lstatOrNull(from);
-  const b = lstatOrNull(to);
-  const realFolders = [fromRel, toRel].every((rel) => lstatOrNull(join(root, rel.split('/')[0]))?.isDirectory());
-  const bytes = same(a, b) && b.isFile() ? readFileSync(to) : null;
-  if (!realFolders || !bytes || bytes.length !== expect.size || sha(bytes) !== expect.sha256) {
-    if (same(a, b)) dropName(to, a, at);
-    throw new Refusal(`"${fromRel}" does not hold the bytes this change recorded (it changed since the preview, or its folder moved); nothing was moved.`);
-  }
-  at('unlink', fromRel);
-  if (!dropName(from, b, at)) throw new Refusal(`"${fromRel}" was replaced while this ran; both files are kept, the moved one as "${toRel}".`);
 }
 
 /**
- * Remove the name `path` only while it names the file `inode` (an lstat) —
- * judged on a PRIVATE name it was first moved to (atomic: whatever held the
- * name at that instant), so no file renamed onto `path` meanwhile can lose its
- * name. Anything else is put back, never over a newer file. Returns whether
- * the name was removed; the bytes always stay under their other name.
+ * Give one media file a new name in its folder, never overwriting and never
+ * moving bytes other than the recorded ones: the new name is LINKED (fails if
+ * anything is there), what it names is judged (same file, recorded size and
+ * SHA-256, the folder still at its name), and only then is the old name
+ * removed. A judged failure removes only the name this call made — inside the
+ * bound folder, wherever it now is; nothing has moved.
  */
-function dropName(path, inode, at) {
-  const aside = join(dirname(path), `.${basename(path)}.dropping-${randomUUID()}`);
+function moveExact({ root, owner, at, written }, fromRel, toRel, expect) {
+  assertOwner(root, owner);
+  const [from, to] = [fromRel, toRel].map((rel) => rel.split('/')[1]);
+  inFolder(root, fromRel.split('/')[0], (stillBound) => {
+    if (!lstatOrNull(from)?.isFile()) throw new Refusal(`"${fromRel}" is not a regular file in the archive any more; nothing was moved.`);
+    at('link', toRel);
+    try {
+      linkSync(from, to);
+    } catch (err) {
+      if (err?.code === 'EEXIST') throw new Refusal(`"${toRel}" appeared while this ran; nothing is ever overwritten, and nothing was moved.`);
+      if (err?.code === 'ENOENT') throw new Refusal(`"${fromRel}" went away while this ran; nothing was moved.`);
+      throw err;
+    }
+    written?.add('rename');
+    const a = lstatOrNull(from);
+    const b = lstatOrNull(to);
+    const bound = stillBound();
+    const bytes = bound && same(a, b) && b.isFile() ? readFileSync(to) : null;
+    if (!bytes || bytes.length !== expect.size || sha(bytes) !== expect.sha256) {
+      if (same(a, b)) dropName(to, a, at, join(root, toRel));
+      throw new Refusal(
+        bound
+          ? `"${fromRel}" does not hold the bytes this change recorded (it changed since the preview); nothing was moved.`
+          : `The folder of "${fromRel}" was moved or replaced while this ran; the name this run made there was removed again, and nothing outside it was touched.`,
+      );
+    }
+    at('unlink', fromRel);
+    if (!dropName(from, b, at, join(root, fromRel))) throw new Refusal(`"${fromRel}" was replaced while this ran; both files are kept, the moved one as "${toRel}".`);
+  });
+}
+
+/**
+ * Remove the leaf name `name` (inside a bound folder) only while it names the
+ * file `inode` (an lstat) — judged on a PRIVATE name it was first moved to
+ * (atomic: whatever held the name at that instant), so no file renamed onto it
+ * meanwhile can lose its name. Anything else is put back, never over a newer
+ * file. Returns whether the name was removed; the bytes always stay under
+ * their other name. `label` is what the test seam is told.
+ */
+function dropName(name, inode, at, label) {
+  const aside = `.${name}.dropping-${randomUUID()}`;
   try {
-    renameSync(path, aside);
+    renameSync(name, aside);
   } catch (err) {
     if (err?.code === 'ENOENT') return false;
     throw err;
   }
-  at('judge-drop', path);
+  at('judge-drop', label);
   if (!same(lstatSync(aside), inode)) {
-    putBack(dirname(path), basename(path), aside);
+    putBack('.', name, aside);
     return false;
   }
   rmSync(aside);
@@ -649,7 +696,6 @@ async function publishStep(state, base, scanned, publish, token) {
 
 // --- applying ---------------------------------------------------------------
 
-const noSeam = () => {};
 
 /**
  * Apply a previewed action. `previewId` must be the id the preview printed
@@ -662,7 +708,8 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
   const root = resolve(rootArg);
   const state = stateDir(root, stateArg);
   const token = lock(root);
-  const ctx = { root, owner: token, at };
+  // What THIS run has changed in the archive, recorded at the instant of each change: its automatic put-back judges only those.
+  const ctx = { root, owner: token, at, written: new Set() };
   let interrupted = false;
   try {
     const prior = journalFor(state, root);
@@ -704,31 +751,26 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
 
     // 2. The edit, each write proved against what the plan saw. Any failure is put back, automatically.
     let scanned;
-    // What THIS run has written so far: its automatic put-back judges only those.
-    const written = new Set();
     try {
       if (plan.registry) replaceDeclaration(ctx, REGISTRY, plan.registry.after, digest(plan.registry.before));
-      if (plan.registry) written.add(REGISTRY);
       step('registry');
       if (plan.log) replaceDeclaration(ctx, LOG, plan.log.after, digest(plan.log.before));
-      if (plan.log) written.add(LOG);
       step('log');
-      // A refused move has moved nothing (or kept both files, said so); only a finished one is ours to undo.
       if (plan.rename) moveExact(ctx, plan.rename.from, plan.rename.to, plan.rename);
-      if (plan.rename) written.add('rename');
       step('rename');
+      at('scan', 'archive');
       scanned = validateAndScan(root, state, action);
     } catch (err) {
       if (err instanceof Interrupted) throw err;
       try {
-        restore(ctx, journal, undefined, written);
+        restore({ ...ctx, written: null }, journal, undefined, ctx.written);
       } catch (why) {
         // The journal stays `prepared`: `rollback` is still offered, never a false "put back".
         throw new Refusal(`The change did not validate (${err.message}), and it could not be put back automatically (${why.message}). The private copy is kept; check, then run \`rollback\`.`);
       }
       // This run published nothing, and the archive is as it was before it.
       writeJournal(state, { ...journal, status: 'rolled-back', publication: 'not-needed', unresolved: [] });
-      throw new Refusal(`The change did not validate (${err.message}); everything was put back from the private copy.`);
+      throw new Refusal(`The change did not validate (${err.message}); ${ctx.written.size ? 'everything it changed was put back from the private copy' : 'it had changed nothing in the archive'}.`);
     }
     // 3. Publication, through the existing job.
     return { ...(await publishStep(state, { ...journal, status: 'applied', unresolved: [] }, scanned, publish, token)), lines: plan.lines };
@@ -780,12 +822,17 @@ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
     if (!fromSt && toSt?.isFile()) {
       if (!holds(r.to)) throw new Refusal(`"${r.to}" no longer holds the renamed bytes; it is left as it is.`);
       steps.unshift(() => moveExact(ctx, r.to, r.from, r));
-    } else if (same(fromSt, toSt) && toSt.isFile() && holds(r.to)) {
-      // A move stopped between its two names: the new name is the one to drop.
+    } else if (same(fromSt, toSt) && toSt.isFile()) {
+      // A move stopped between its two names: the new name is the one to drop — the bytes stay at the old one, whatever they are.
       steps.unshift(() => {
         assertOwner(root, ctx.owner);
-        const kept = lstatOrNull(mediaPath(root, r.from));
-        if (same(kept, lstatOrNull(mediaPath(root, r.to)))) dropName(mediaPath(root, r.to), kept, ctx.at);
+        const [from, to] = [r.from, r.to].map((rel) => rel.split('/')[1]);
+        inFolder(root, r.from.split('/')[0], (stillBound) => {
+          const kept = lstatOrNull(from);
+          if (!stillBound() || !same(kept, lstatOrNull(to)) || !dropName(to, kept, ctx.at, join(root, r.to))) {
+            throw new Refusal(`"${r.to}" changed while this ran; it is left as it is, and nothing was put back there.`);
+          }
+        });
       });
     } else if (!(fromSt?.isFile() && !toSt)) {
       throw new Refusal(`"${r.from}" and "${r.to}" are neither as this change left them nor as they were; they are left as they are.`);

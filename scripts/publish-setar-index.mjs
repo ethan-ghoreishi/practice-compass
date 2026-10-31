@@ -28,9 +28,11 @@
 // newer decision — even an `unchanged` one that moves no ref — is always made
 // after the older publisher's write has been answered. A write asked for but
 // never answered (its publisher died, or the answer was lost) is recorded
-// first in `setar-publish-intent.json` beside the index: the next publisher,
-// unless the branch already holds that commit, moves the ref (a commit even
-// for unchanged content), so the unanswered write can never land after it.
+// first in `setar-publish-intent.json` beside the index: while the branch is
+// still at that write's parent, every later publisher moves the ref (a commit
+// even for unchanged content), so it can never land after them; only the
+// branch observed elsewhere, or a later write's own success, retires it —
+// never a refused write.
 //
 // WHY A SEPARATE BRANCH. The app's own sync writes main's whole tree with no
 // base_tree, so a sidecar placed beside state.json disappears on the next
@@ -48,7 +50,7 @@
 // Node stdlib only.
 
 import { createHash } from 'node:crypto';
-import { readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -91,17 +93,23 @@ export async function takeSeat({ port = DEFAULT_SEAT_PORT, wait = 0, onBusy }) {
   }
 }
 
-/** A ref write asked for and not yet answered: `{ parent, commit }`, or null. Unreadable counts as open. */
-const readIntent = (file) => {
+/**
+ * Ref writes asked for and not yet answered, each `{ parent, commit }`: a
+ * non-force write from `parent` can land only while the branch is AT `parent`.
+ * Unreadable counts as one that may land on any head.
+ */
+const readIntents = (file) => {
+  let v;
   try {
-    return JSON.parse(readFileSync(file, 'utf8'));
+    v = JSON.parse(readFileSync(file, 'utf8'));
   } catch (err) {
-    if (err?.code === 'ENOENT') return null;
-    return { parent: undefined, commit: undefined };
+    return err?.code === 'ENOENT' ? [] : [{ unknown: true }];
   }
+  return (Array.isArray(v) ? v : [v]).map((e) => (typeof e?.commit === 'string' && (e.parent === null || typeof e.parent === 'string') ? { parent: e.parent, commit: e.commit } : { unknown: true }));
 };
-const writeIntent = (file, intent) => {
-  writeFileSync(`${file}.tmp`, `${JSON.stringify(intent)}\n`);
+const writeIntents = (file, list) => {
+  if (!list.length) return rmSync(file, { force: true });
+  writeFileSync(`${file}.tmp`, `${JSON.stringify(list)}\n`);
   renameSync(`${file}.tmp`, file);
 };
 
@@ -153,19 +161,27 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
 
   async function attempts() {
     let lastConflict = null;
+    let guarded = false;
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       let ref;
       let commitSha;
+      let open = [];
       try {
         ref = await transport.getRef(branch);
-        // An earlier ref write asked for and never answered may still land —
-        // unless the branch already shows it did, this write moves the ref
-        // (even for unchanged content), after which that one never can.
-        const unanswered = intent ? readIntent(intent) : null;
-        const mustMove = Boolean(unanswered) && ref?.sha !== unanswered.commit;
-        if (unanswered && !mustMove) rmSync(intent, { force: true });
+        const head = ref?.sha ?? null;
+        // An earlier write asked for and never answered can still land while
+        // the branch is at its parent (and has not already landed). Only an
+        // OBSERVED head elsewhere, or this run's own accepted write, retires
+        // one; a refused write never does. While one is open this write moves
+        // the ref (a commit even for unchanged content), after which it cannot.
+        if (intent) {
+          const all = readIntents(intent);
+          open = all.filter((e) => e.unknown || (e.parent === head && e.commit !== head));
+          if (open.length !== all.length) writeIntents(intent, open);
+        }
+        guarded = open.length > 0;
 
-        if (ref && !mustMove) {
+        if (ref && !guarded) {
           const current = await transport.getFile(ref.sha, path);
           if (current && current.text === indexText) return { status: 'unchanged', commit: ref.sha };
         }
@@ -190,20 +206,26 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
         // every other publisher waits for this one's seat.
         await confirmed();
         // Recorded BEFORE it is asked for: if no answer comes, the next publisher knows.
-        if (intent) writeIntent(intent, { parent: ref?.sha ?? null, commit: commitSha });
+        if (intent) writeIntents(intent, [...open, { parent: head, commit: commitSha }]);
       } catch (err) {
-        throw nothingPublished(err);
+        // Nothing of THIS run was asked for; an earlier unanswered write still may land.
+        throw guarded ? err : nothingPublished(err);
       }
 
-      // A conflict answer is GitHub refusing the write; a throw here is unknown (the intent stays).
+      // A conflict answer is GitHub refusing THIS write; a throw here is unknown (the intent stays).
       const outcome = ref
         ? await transport.updateRef(branch, commitSha, ref.sha)
         : await transport.createRef(branch, commitSha);
-      if (intent) rmSync(intent, { force: true });
-      if (outcome === 'ok') return { status: ref ? 'published' : 'created', commit: commitSha };
+      if (outcome === 'ok') {
+        // The branch is at a commit no earlier write had as its parent: none of them can land now.
+        if (intent) rmSync(intent, { force: true });
+        return { status: ref ? 'published' : 'created', commit: commitSha };
+      }
       lastConflict = outcome;
     }
-    throw nothingPublished(new Error(`Another publisher updated the index while this one was writing (${lastConflict}); nothing was overwritten.`));
+    const e = new Error(`Another publisher updated the index while this one was writing (${lastConflict}); nothing was overwritten.`);
+    // Every write of this run was refused — but one asked for earlier may still land: unknown, never "nothing".
+    throw guarded ? e : nothingPublished(e);
   }
 }
 
@@ -218,33 +240,54 @@ function nothingPublished(err) {
   return e;
 }
 
-/** The archive's maintenance lock: ONE file in the archive root, which the scanner skips (a dotfile). */
+/**
+ * The archive's maintenance lock: ONE folder in the archive root (the scanner
+ * skips dotfiles) holding exactly one record, `<token>.json`. A run builds the
+ * folder privately and renames it into place, which fails while a lock stands,
+ * so a record is never partial; a record is removed only by its own unique
+ * name, so no remover can ever take a NEWER run's lock.
+ */
 export const ARCHIVE_LOCK = '.setar-maintenance.lock';
 
+const digestOf = (bytes) => createHash('sha256').update(bytes).digest('hex');
+
 /**
- * The lock as it stands: null (absent), its record, or `{ unreadable }` with
- * the digest of bytes that are not a complete record in this tool's form —
- * never guessed into one. A record is written whole before it is linked into
- * place, so a partial one is never this tool's.
+ * The lock as it stands: null (absent, or an empty folder a release left), its
+ * record `{ token, pid, host, since, digest, names }`, or `{ unreadable }` with
+ * a digest of what is there when it is not exactly one record in this tool's
+ * form — never guessed into one. `names` are the entries a release removes;
+ * null for something at the lock's name that is not a folder.
  */
 export function readArchiveLock(root) {
-  let bytes;
+  const p = join(root, ARCHIVE_LOCK);
+  let st;
   try {
-    bytes = readFileSync(join(root, ARCHIVE_LOCK));
+    st = lstatSync(p);
   } catch (err) {
     if (err?.code === 'ENOENT') return null;
     throw err;
   }
-  const digest = createHash('sha256').update(bytes).digest('hex');
-  try {
-    const r = JSON.parse(bytes.toString('utf8'));
-    if (typeof r?.token === 'string' && /^[0-9a-f-]{36}$/.test(r.token) && Number.isInteger(r.pid) && r.pid > 0 && typeof r.host === 'string' && typeof r.since === 'string') {
-      return { ...r, digest };
-    }
-  } catch {
-    // not a record: said as unreadable below
+  if (!st.isDirectory()) {
+    return { unreadable: true, names: null, digest: digestOf(st.isFile() ? readFileSync(p) : st.isSymbolicLink() ? `link:${readlinkSync(p)}` : `${st.mode}`) };
   }
-  return { unreadable: true, digest };
+  const names = readdirSync(p).sort();
+  if (!names.length) return null;
+  const parts = names.map((n) => {
+    const e = lstatSync(join(p, n));
+    return [n, e.isFile() ? readFileSync(join(p, n)) : null];
+  });
+  const digest = digestOf(JSON.stringify(parts.map(([n, b]) => [n, b ? digestOf(b) : 'not a file'])));
+  if (parts.length === 1 && parts[0][1]) {
+    try {
+      const r = JSON.parse(parts[0][1].toString('utf8'));
+      if (typeof r?.token === 'string' && /^[0-9a-f-]{36}$/.test(r.token) && names[0] === `${r.token}.json` && Number.isInteger(r.pid) && r.pid > 0 && typeof r.host === 'string' && typeof r.since === 'string') {
+        return { ...r, digest, names };
+      }
+    } catch {
+      // not a record: said as unreadable below
+    }
+  }
+  return { unreadable: true, digest, names };
 }
 
 /**

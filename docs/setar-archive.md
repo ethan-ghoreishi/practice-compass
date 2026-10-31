@@ -661,22 +661,33 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   proves, AT the write, the exact state it expects: a declaration is moved
   aside (atomic), its bytes judged, and the new one linked in, which never
   overwrites; the declaration it replaced is KEPT beside it as
-  `.<name>.superseded-<run>` (the scanner skips dotfiles), never unlinked, so a
-  program still holding it open writes into a kept file whenever it writes. A
+  `.<name>.superseded-<id>` (the scanner skips dotfiles; a fresh id for every
+  write), never unlinked, so a program still holding it open writes into a
+  kept file whenever it writes. A
   media file gets its new name by link (never over anything), is judged by
   size and SHA-256, and only then loses its old name — and any name is dropped
   only after it is first moved to a private name and judged THERE, so a file
-  renamed onto it meanwhile keeps its name (put back, never overwritten); a
-  run stopped there has the next run put that file back at its name, or drop
-  the private name when it is a second name of the moved file. An
-  edit, deletion or new file from anyone else at that instant is kept and the
-  run refuses. A failure while editing, and `rollback`, put back only what THIS
-  change wrote — judged first, and proved again at each write against what
-  this change wrote, never a fresh read. A run stopped with a declaration set
-  aside has it put back by the next run; one stopped between a move's two
-  names has the new name dropped by `rollback`.
-- **One owner per archive.** The lock is one dotfile in the archive's root,
-  shared by every `--state` folder, and every publisher checks it. A lock is
+  renamed onto it meanwhile keeps its name (put back, never overwritten). A
+  rename stays inside its session folder, and every media write runs inside
+  that folder bound by inode, so a folder swapped for a link meanwhile cannot
+  carry a write outside the archive. An edit, deletion or new file from
+  anyone else at that instant is kept and the run refuses. A failure after
+  the archive changed, and `rollback`, put back only what THIS change wrote —
+  each write recorded the instant it is made, judged first, and proved again
+  at each write against what this change wrote, never a fresh read; "put
+  back" is said only when it was.
+- **A stopped run is finished by hand, never on a guess.** A run killed in
+  the middle of a write leaves a file under a private name
+  (`.<declaration>.captured-…` in the root, `.<file>.dropping-…` in a session
+  folder). Nothing recovers it automatically — a name proves nothing about
+  whose file it is — so every run refuses while one exists, naming each with
+  the `mv -n` that puts it back (never over anything); then `rollback`
+  finishes from the journal (it drops the new name of a move stopped between
+  its two names).
+- **One owner per archive.** The lock is one dot-folder in the archive's root
+  holding one `<run>.json`, shared by every `--state` folder, and every
+  publisher checks it; a release removes only that exact record, so it never
+  takes a newer run's lock. A lock is
   never adopted on a guess about a process: a run that finds one refuses and
   names it. If nothing is running (check `ps`), `release-lock` shows the
   record and `release-lock --record <id>` releases exactly that one, in any
@@ -700,9 +711,12 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   `unchanged` one included, is made after the older write was answered. A
   write asked for but never answered (its publisher died, or lost the answer)
   is recorded first in `setar-publish-intent.json` in the job's work folder;
-  unless the branch already holds that commit, the next publisher moves the
-  ref (a commit even for unchanged content), so it can never land afterwards.
-  A paused or orphaned publisher therefore never puts an older index over a
+  while the branch is still at that write's parent, every publisher moves the
+  ref (a commit even for unchanged content), so it can never land afterwards;
+  only the branch observed elsewhere, or a later write's own acceptance,
+  retires it — never a refused write (a 422 need not mean the ref moved), and
+  a run that ends while one is still guarded is unconfirmed, never "nothing
+  published". A paused or orphaned publisher therefore never puts an older index over a
   newer one. Success needs the publisher's last line
   `published-index <status> <hash>` naming that hash. The runner is the only
   entry point on the NAS: its work folder holds the intent record every

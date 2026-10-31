@@ -170,10 +170,13 @@ Three maintenance invariants. **Every archive write proves the exact state
 it expects at the write** (capture-by-rename then link for declarations, link
 then judge, then drop the old name only from a private aside; the replaced
 declaration is kept, never unlinked); consumers: apply's registry/log/rename,
-the automatic put-back and `rollback` (expecting what THIS change wrote),
-recovery of a capture a stopped run left. **One owner per archive**: one lock
-in the archive root, never adopted on a guess, released only by its exact
-record (`release-lock`); consumers: apply, retry, rollback across `--state`
+the automatic put-back and `rollback` (expecting what THIS change wrote,
+recorded the instant it is written); a file a stopped run left under a private
+name is never recovered automatically — every run refuses, naming it, until
+the operator puts it back by hand. **One owner per archive**: one lock
+folder in the archive root holding one `<run>.json`, never adopted on a guess,
+released only by that exact record's own name (`release-lock`, a run's own
+release), so no release takes a newer run's lock; consumers: apply, retry, rollback across `--state`
 folders, every publisher's pre-write check (scheduled job, maintenance child,
 orphan). **Publication is open until observed**: each attempt's validated
 hash is written as open before remote work, `unresolved` survives every later
