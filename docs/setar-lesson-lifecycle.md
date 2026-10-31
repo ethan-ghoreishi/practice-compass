@@ -165,3 +165,18 @@ validated index and must print its evidence. Recovery (`rollback`, and the
 automatic put-back of a failed apply) undoes only what that change wrote,
 judging every file before writing any, under the lock, for its own archive
 only. Repeat runs are no-ops.
+
+Two maintenance invariants, each over every phase. **A killed run is always
+recoverable**: any later run adopts a dead lock (one adopter per token) and
+the journal decides: half-written means `rollback`, unconfirmed means `retry`.
+The consumers are lock/unlock, apply, retry and rollback, the automatic
+put-back and the journal's status/publication split. Its classes are a kill
+after copy, registry, log or rename, during publication, after rollback's
+mark, during rollback's or retry's publication, and before any journal.
+**"Nothing published" is said only on proof**: the job's exit 2/3/4, or a
+publisher failure before its ref write. A lost ref-write response, any other
+exit, a signal, or an exit 0 without evidence is unconfirmed. A journal write
+failing after publication still reports published. The consumers are
+publishIndex, updateRef/createRef, the publisher CLI, the runner,
+publishWithRunner and publishStep. ac-2 proves both with real killed
+children, the real transport over a fake `fetch`, and the real runner.

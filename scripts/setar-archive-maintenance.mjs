@@ -266,6 +266,17 @@ function journalFor(state, root, recovering) {
     return null;
   }
   if (j.rootId !== rootIdOf(root)) throw new Refusal('This --state folder belongs to another archive; nothing was changed. Use that archive’s own --state folder.');
+  // `status` says what the ARCHIVE holds (prepared | applied | rolling-back |
+  // rolled-back), `publication` whether the source-index branch says it
+  // (pending | published | failed | unknown | not-needed). An earlier version
+  // of this lane folded the two into one status; read it conservatively.
+  if (j.status === 'published') return { ...j, status: 'applied', publication: 'published' };
+  if (j.status === 'publish-failed') return { ...j, status: 'applied', publication: 'unknown' };
+  if (j.status === 'applied' || j.status === 'rolled-back') {
+    if (!j.publication) return { ...j, publication: 'pending' };
+    if (j.publication === 'unchanged' || j.publication === 'created') return { ...j, publication: 'published' };
+    if (j.publication === 'publish-failed') return { ...j, publication: 'unknown' };
+  }
   return j;
 }
 
@@ -280,6 +291,8 @@ const readLock = (state) => {
   }
 };
 const alive = (pid) => {
+  // A lock not in this tool's form names no process that could be judged gone.
+  if (!Number.isInteger(pid) || pid < 1) return true;
   try {
     process.kill(pid, 0);
     return true;
@@ -290,11 +303,13 @@ const alive = (pid) => {
 
 /**
  * Take the --state folder's lock; returns the token that proves ownership.
- * `recover` (rollback only) may ADOPT exactly one other lock: the one an
- * interrupted apply left, named by its own `prepared` journal, whose process
- * is gone. A live holder's lock is never taken, and never removed.
+ * A lock whose process is gone is ADOPTED by any run: every run that writes
+ * the archive first records in the journal what it is doing (apply:
+ * `prepared`, rollback: `rolling-back`), so the journal — read under the
+ * lock, never the dead token — decides what may happen next. A live holder's
+ * lock is never taken, and never removed.
  */
-function lock(state, recover) {
+function lock(state) {
   const token = randomUUID();
   try {
     writeFileSync(lockPath(state), `${token} ${process.pid}`, { flag: 'wx' });
@@ -303,12 +318,33 @@ function lock(state, recover) {
     if (err?.code !== 'EEXIST') throw err;
   }
   const held = readLock(state);
-  if (recover && held && recover.status === 'prepared' && held.token === recover.lockToken && !alive(held.pid)) {
-    writeFileSync(`${lockPath(state)}.${token}`, `${token} ${process.pid}`, { flag: 'wx' });
-    renameSync(`${lockPath(state)}.${token}`, lockPath(state));
-    return token;
+  if (held && !alive(held.pid)) {
+    // ONE adopter per dead token: the claim is exclusive, and the lock is
+    // re-read under it, so a second adopter (or a slow one that read the lock
+    // before another adopted it) refuses instead of renaming over a live lock.
+    const claim = `${lockPath(state)}.adopt.${held.token}`;
+    try {
+      writeFileSync(claim, `${token} ${process.pid}`, { flag: 'wx' });
+    } catch (err) {
+      if (err?.code !== 'EEXIST') throw err;
+      const by = Number(readFileSync(claim, 'utf8').split(' ')[1]);
+      // ponytail: a claimer killed mid-adoption is cleared here and this run
+      // refuses; the next run adopts. A per-claim lease if that ever recurs.
+      if (!alive(by)) rmSync(claim, { force: true });
+      throw new Refusal('Another run is taking over an interrupted run’s lock; nothing was changed. Try again.');
+    }
+    try {
+      const again = readLock(state);
+      if (again?.token === held.token && !alive(again.pid)) {
+        writeFileSync(`${lockPath(state)}.${token}`, `${token} ${process.pid}`, { flag: 'wx' });
+        renameSync(`${lockPath(state)}.${token}`, lockPath(state));
+        return token;
+      }
+    } finally {
+      rmSync(claim, { force: true });
+    }
   }
-  throw new Refusal('Another maintenance run holds the lock, or one was interrupted. Run `rollback` to put the last change back (or `retry` if it was applied), then try again.');
+  throw new Refusal('Another maintenance run holds the lock; nothing was changed. Try again when it has finished.');
 }
 /** Remove the lock only if it is still OURS. */
 const unlock = (state, token) => {
@@ -349,8 +385,9 @@ function validateAndScan(root, state, action) {
 
 /**
  * Publication failed. `nothingPublished` is a CLAIM, made only when the job
- * proved it (it refused or failed before its atomic ref update); otherwise the
- * outcome is unknown and said so, never promised.
+ * proved it (it refused or failed before its ref write); every other failure —
+ * a non-zero or signalled exit, a lost response, an ordinary exception — is
+ * UNKNOWN and said so, never promised.
  */
 export class PublishFailed extends Error {
   constructor(message, nothingPublished) {
@@ -361,25 +398,32 @@ export class PublishFailed extends Error {
 const PUBLISHED = new Set(['unchanged', 'published', 'created']);
 
 async function publishStep(state, journal, scanned, publish) {
+  const contentHash = scanned.index.contentHash;
+  let result;
   try {
-    const result = await publish(scanned.text, scanned.index.contentHash);
+    result = await publish(scanned.text, contentHash);
     // POSITIVE EVIDENCE or it did not happen: a publisher that returns no
     // status has proved nothing.
     if (!PUBLISHED.has(result?.status)) throw new PublishFailed('the publisher reported no publication', false);
-    writeJournal(state, { ...journal, status: 'published', contentHash: scanned.index.contentHash, publication: result.status });
-    return { ok: true, status: 'published', contentHash: scanned.index.contentHash, publication: result };
   } catch (err) {
-    writeJournal(state, { ...journal, status: 'publish-failed', contentHash: scanned.index.contentHash });
-    const known = !(err instanceof PublishFailed) || err.nothingPublished;
+    const known = err?.nothingPublished === true;
+    writeJournal(state, { ...journal, publication: known ? 'failed' : 'unknown', contentHash });
     return {
       ok: false,
       status: 'publish-failed',
-      contentHash: scanned.index.contentHash,
+      contentHash,
       message: known
         ? `The archive is changed and valid, but publication failed (${err?.message ?? 'unknown'}). The last good index is still the published one. Run \`retry\` to publish again.`
-        : `The archive is changed and valid, but publication could not be confirmed (${err.message}). Check what the source-index branch now holds, then run \`retry\`.`,
+        : `The archive is changed and valid, but publication could not be confirmed (${err?.message ?? 'unknown'}); it may already be published. Run \`retry\`: it makes no new commit if the source-index branch already holds this index.`,
     };
   }
+  // Published: a failure to RECORD it is never reported as a failure to publish.
+  try {
+    writeJournal(state, { ...journal, publication: 'published', contentHash });
+  } catch (err) {
+    throw new Error(`Index ${contentHash.slice(0, 12)} was published, but the private journal could not record it (${err.message}). Run \`retry\` to record it; it makes no new commit.`);
+  }
+  return { ok: true, status: 'published', contentHash, publication: result };
 }
 
 // --- applying ---------------------------------------------------------------
@@ -397,12 +441,11 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
   let interrupted = false;
   try {
     const prior = journalFor(state, root);
-    if (prior && (prior.status === 'prepared' || prior.status === 'publish-failed')) {
-      throw new Refusal(
-        prior.status === 'prepared'
-          ? 'An earlier apply did not finish. Run `rollback` first; nothing else was changed.'
-          : 'An earlier change is applied but not yet published. Run `retry` first.',
-      );
+    if (prior?.status === 'prepared' || prior?.status === 'rolling-back') {
+      throw new Refusal(`An earlier ${prior.status === 'prepared' ? 'apply' : 'rollback'} did not finish. Run \`rollback\` first; nothing else was changed.`);
+    }
+    if (prior && !['published', 'not-needed'].includes(prior.publication)) {
+      throw new Refusal('An earlier change is not yet published (or its publication is unconfirmed). Run `retry` first; nothing else was changed.');
     }
     const plan = planMaintenance(root, action);
     if (plan.id !== previewId) throw new Refusal('The archive changed since that preview (or the preview is for something else). Preview again; nothing was changed.');
@@ -459,10 +502,11 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
         // The journal stays `prepared`: `rollback` is still offered, never a false "put back".
         throw new Refusal(`The change did not validate (${err.message}), and it could not be put back automatically (${why.message}). The private copy is kept; check, then run \`rollback\`.`);
       }
-      writeJournal(state, { ...journal, status: 'rolled-back' });
+      // Back as it was before, which the last good index already says.
+      writeJournal(state, { ...journal, status: 'rolled-back', publication: 'not-needed' });
       throw new Refusal(`The change did not validate (${err.message}); everything was put back from the private copy.`);
     }
-    const applied = { ...journal, status: 'applied' };
+    const applied = { ...journal, status: 'applied', publication: 'pending' };
     writeJournal(state, applied);
     // 3. Publication, through the existing job.
     return { ...(await publishStep(state, applied, scanned, publish)), lines: plan.lines };
@@ -478,7 +522,7 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
  * else (another run's row, a hand edit) refuses the whole restore. The renamed
  * file moves back only from its recorded name with its recorded bytes.
  */
-function restore(root, journal) {
+function restore(root, journal, beforeWriting = () => {}) {
   const current = (name) => {
     const t = readDeclaration(root, name, false);
     return t === null ? null : sha(t);
@@ -511,40 +555,60 @@ function restore(root, journal) {
       throw new Refusal(`"${r.from}" and "${r.to}" are neither as this change left them nor as they were; they are left as they are.`);
     }
   }
+  beforeWriting();
   for (const s of steps) s();
 }
 
-/** Validate, scan and publish again from the retained state — after a failed publication. */
+/** Validate, scan and publish again from the retained state — after a failed, unconfirmed or interrupted publication. */
 export async function retryMaintenance({ root: rootArg, state: stateArg, publish }) {
   const root = resolve(rootArg);
   const state = stateDir(root, stateArg);
   const token = lock(state);
   try {
     const journal = journalFor(state, root, true);
-    if (!journal || journal.status === 'prepared') throw new Refusal(journal ? 'The last apply did not finish; run `rollback`.' : 'Nothing has been applied here yet.');
-    return await publishStep(state, journal, validateAndScan(root, state, null), publish);
+    if (!journal) throw new Refusal('Nothing has been applied here yet.');
+    if (journal.status === 'prepared' || journal.status === 'rolling-back') {
+      throw new Refusal(`The last ${journal.status === 'prepared' ? 'apply' : 'rollback'} did not finish; run \`rollback\`.`);
+    }
+    return await publishStep(state, { ...journal, lockToken: token }, validateAndScan(root, state, null), publish);
   } finally {
     unlock(state, token);
   }
 }
 
-/** Put the last change back from its private copy, then publish the restored archive. */
-export async function rollbackMaintenance({ root: rootArg, state: stateArg, publish }) {
+/**
+ * Put the last change back from its private copy, then publish the restored
+ * archive. The lock comes FIRST and the journal is read under it; the journal
+ * says `rolling-back`, with this run's token, before the first write, so an
+ * interruption anywhere leaves a state the next `rollback` finishes.
+ * `interruptAfter: 'mark'` is the test seam for that.
+ */
+export async function rollbackMaintenance({ root: rootArg, state: stateArg, publish, interruptAfter }) {
   const root = resolve(rootArg);
   const state = stateDir(root, stateArg);
-  const journal = journalFor(state, root, true);
-  if (!journal || journal.status === 'rolled-back') throw new Refusal('There is no change here to roll back.');
-  const token = lock(state, journal);
+  const token = lock(state);
+  let interrupted = false;
   try {
-    restore(root, journal);
-    const back = { ...journal, status: 'rolled-back' };
+    const journal = journalFor(state, root, true);
+    if (!journal || journal.status === 'rolled-back') {
+      throw new Refusal(
+        journal && !['published', 'not-needed'].includes(journal.publication)
+          ? 'The last change is already rolled back but not yet published; run `retry`.'
+          : 'There is no change here to roll back.',
+      );
+    }
+    restore(root, journal, () => {
+      writeJournal(state, { ...journal, status: 'rolling-back', lockToken: token });
+      if (interruptAfter === 'mark') {
+        interrupted = true;
+        throw new Interrupted('interrupted after mark');
+      }
+    });
+    const back = { ...journal, status: 'rolled-back', publication: 'pending', lockToken: token };
     writeJournal(state, back);
-    const scanned = validateAndScan(root, state, null);
-    const out = await publishStep(state, back, scanned, publish);
-    writeJournal(state, { ...back, publication: out.status });
-    return out;
+    return await publishStep(state, back, validateAndScan(root, state, null), publish);
   } finally {
-    unlock(state, token);
+    if (!interrupted) unlock(state, token);
   }
 }
 
@@ -569,10 +633,14 @@ export function publishWithRunner(expectedRoot) {
     const custom = process.env.PC_MAINT_PUBLISH;
     const out = spawnSync('sh', custom ? ['-c', `${custom} "$@"`, 'sh', contentHash] : [runner, contentHash], { encoding: 'utf8', env: process.env });
     const last = (t) => (t || '').trim().split('\n').pop();
-    // A non-zero exit is the job's own proof that its ref never moved: it
-    // stops at a failed scan, a refused expectation or a failed atomic update.
+    // Only the job's own refusals PROVE nothing was published: 2 (its
+    // configuration refused, nothing ran), 3 (the scan is not the validated
+    // index, refused before any request) and 4 (the scan, or the publisher
+    // before its ref write, failed). Any other exit, a signal or a failed
+    // spawn may have come after GitHub accepted the ref: unknown.
     if (out.status === 3) throw new PublishFailed(`the job scanned a different index than the validated ${contentHash.slice(0, 12)} — is its archive root ${expectedRoot}? (${last(out.stderr)})`, true);
-    if (out.status !== 0) throw new PublishFailed(`the NAS job exited ${out.status}: ${last(out.stderr)}`, true);
+    if (out.status === 2 || out.status === 4) throw new PublishFailed(`the NAS job exited ${out.status} before publishing: ${last(out.stderr)}`, true);
+    if (out.status !== 0) throw new PublishFailed(`the NAS job ${out.status === null ? `was stopped (${out.signal ?? out.error?.message ?? 'no exit status'})` : `exited ${out.status}`}: ${last(out.stderr)}`, false);
     const evidence = /^published-index (unchanged|published|created) ([0-9a-f]{64})$/.exec(last(out.stdout));
     if (!evidence) throw new PublishFailed('the job exited 0 without its publication evidence line', false);
     if (evidence[2] !== contentHash) throw new PublishFailed(`the job reports index ${evidence[2].slice(0, 12)}, not the validated ${contentHash.slice(0, 12)}`, false);

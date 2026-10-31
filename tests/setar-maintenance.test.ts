@@ -4,13 +4,13 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 // @ts-expect-error — untyped operator tools; these are the real ones.
 import { applyMaintenance, planMaintenance, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
 // @ts-expect-error — see above.
 import { scanToIndex } from '../scripts/scan-setar-classes.mjs';
 // @ts-expect-error — see above.
-import { publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../scripts/publish-setar-index.mjs';
+import { makeGitHubIndexTransport, publishIndex, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../scripts/publish-setar-index.mjs';
 import { followRenames } from '../src/domain/sourceReconcile';
 import SOURCE from './fixtures/setar-lifecycle-source.json' with { type: 'json' };
 import EXPECTED from './fixtures/setar-lifecycle-expected.json' with { type: 'json' };
@@ -93,6 +93,38 @@ function fakeGit() {
     main: () => [refs.get('main'), commits.get('c-main')],
     fail: (on: boolean) => (failing = on),
     calls,
+  };
+}
+
+type Transport = ReturnType<typeof fakeGit>['transport'];
+/**
+ * GitHub's REST surface over a fake store, for the REAL transport. A request
+ * named in `lose` is carried out and then its response is lost — GitHub
+ * accepted it, this process never hears so.
+ */
+function githubFetch(t: Transport, lose: Set<string>) {
+  return async (url: string, init: { method?: string; body?: string } = {}) => {
+    const method = init.method ?? 'GET';
+    const ep = url.split('/repos/o/r/')[1]!;
+    const body = init.body ? JSON.parse(init.body) : {};
+    const reply = (status: number, json: unknown = {}) => ({ ok: status < 300, status, json: async () => json });
+    let res;
+    if (method === 'GET' && ep.startsWith('git/ref/heads/')) {
+      const r = await t.getRef(ep.slice(14));
+      res = r ? reply(200, { object: { sha: r.sha } }) : reply(404);
+    } else if (method === 'GET' && ep.startsWith('contents/')) {
+      const [path, ref] = ep.slice(9).split('?ref=');
+      const f = await t.getFile(ref!, path!);
+      res = f ? reply(200, { content: Buffer.from(f.text).toString('base64') }) : reply(404);
+    } else if (method === 'GET' && ep.startsWith('git/commits/')) res = reply(200, { tree: { sha: (await t.getCommit(ep.slice(12))).treeSha } });
+    else if (ep === 'git/blobs') res = reply(201, { sha: await t.createBlob(body.content) });
+    else if (ep === 'git/trees') res = reply(201, { sha: await t.createTree({ baseTreeSha: body.base_tree ?? null, path: body.tree[0].path, blobSha: body.tree[0].sha }) });
+    else if (ep === 'git/commits') res = reply(201, { sha: await t.createCommit({ treeSha: body.tree }) });
+    else if (method === 'PATCH') res = reply((await t.updateRef(ep.slice(15), body.sha, body.expected_head_sha)) === 'ok' ? 200 : 422);
+    else if (ep === 'git/refs') res = reply((await t.createRef(body.ref.slice(11), body.sha)) === 'ok' ? 201 : 422);
+    else throw new Error(`unexpected ${method} ${ep}`);
+    if (lose.delete(method === 'PATCH' ? 'PATCH' : `${method} ${ep}`)) throw new TypeError('fetch failed: the response was lost');
+    return res;
   };
 }
 
@@ -310,6 +342,179 @@ describe('maintaining the Setar archive', () => {
       expect(JSON.parse(git.published()!).contentHash).toBe(JSON.parse(good!).contentHash);
       expect(git.main()).toEqual(['c-main', { 'state.json': 'practice data' }]);
 
+      // --- A RUN KILLED IN ANY PHASE: every entry point recovers its dead lock -
+      // A REAL child process dies at each phase of apply, rollback and retry.
+      // Its lock stays behind; each entry point adopts it (the journal, not the
+      // dead token, decides), refuses only what the journal forbids, and the
+      // route the refusal names finishes the job.
+      const lockFile = join(state, 'lock');
+      const journal = () => JSON.parse(readFileSync(join(state, 'journal.json'), 'utf8'));
+      const killed = (fn: string, args: object, interruptAfter?: string) =>
+        run(
+          'node',
+          ['--input-type=module', '-e', `const m = await import(${JSON.stringify(TOOL)}); const a = JSON.parse(process.env.RUN); await m.${fn}({ ...a, publish: async () => { process.kill(process.pid, 'SIGKILL'); await new Promise(() => {}); } }).catch((e) => { process.exitCode = e instanceof m.Interrupted ? 7 : 1; });`],
+          { env: { ...process.env, RUN: JSON.stringify({ root, state, ...args, ...(interruptAfter ? { interruptAfter } : {}) }) } },
+        ).then(() => 0, (e: { code: number | null; signal?: string }) => e.signal ?? e.code);
+      /** The dead run's lock, put back before each entry point so each must adopt it itself. */
+      const deadLock = () => {
+        const text = readFileSync(lockFile, 'utf8');
+        expect(Number(text.split(' ')[1])).not.toBe(process.pid);
+        return () => (existsSync(lockFile) ? undefined : writeFileSync(lockFile, text));
+      };
+      const c2 = `${S39}/نمونه-ضربی-سه-گاه-لطفی-5.mp4`;
+      const move = { kind: 'rename', from: c, to: c2 };
+      const moveArgs = () => ({ action: move, previewId: planMaintenance(root, move).id });
+      const another = { kind: 'register', piece: 'یکی-دیگر' };
+      const settled = { decl: declarations(root), media: media(root), index: git.published(), commits: git.commits() };
+      const isSettled = () => expect([declarations(root), media(root), git.published(), git.commits()]).toEqual([settled.decl, settled.media, settled.index, settled.commits]);
+
+      // Apply killed before publication: the archive half-written, `prepared`.
+      for (const phase of ['copy', 'registry', 'log', 'rename']) {
+        expect(await killed('applyMaintenance', moveArgs(), phase), phase).toBe(7);
+        expect(journal().status, phase).toBe('prepared');
+        const plant = deadLock();
+        await expect(apply(another), phase).rejects.toThrow(/apply did not finish. Run `rollback`/);
+        expect(existsSync(lockFile), phase).toBe(false); // adopted, then released: it was ours
+        plant();
+        await expect(retryMaintenance({ root, state, publish: git.publish }), phase).rejects.toThrow(/did not finish; run `rollback`/);
+        plant();
+        expect(await rollbackMaintenance({ root, state, publish: git.publish }), phase).toMatchObject({ ok: true });
+        isSettled(); // put back exactly; the unchanged index made no commit
+      }
+      // Apply killed DURING publication: applied, publication pending. Both routes work.
+      expect(await killed('applyMaintenance', moveArgs())).toBe('SIGKILL');
+      expect(journal()).toMatchObject({ status: 'applied', publication: 'pending' });
+      let plant = deadLock();
+      await expect(apply(another)).rejects.toThrow(/not yet published .*Run `retry`/);
+      plant();
+      expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, status: 'published' });
+      expect(JSON.parse(git.published()!).contentHash).toBe(scanToIndex(root).contentHash);
+      expect(await rollbackMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, status: 'published' });
+      settled.index = git.published();
+      settled.commits = git.commits();
+      expect(await killed('applyMaintenance', moveArgs())).toBe('SIGKILL');
+      deadLock()();
+      expect(await rollbackMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true });
+      isSettled();
+      // Rollback killed after marking itself, before its first write: the mark
+      // carries ITS token, and the next rollback adopts it.
+      expect(await killed('applyMaintenance', moveArgs(), 'log')).toBe(7);
+      expect(await killed('rollbackMaintenance', {}, 'mark')).toBe(7);
+      expect(journal()).toMatchObject({ status: 'rolling-back', lockToken: readFileSync(lockFile, 'utf8').split(' ')[0] });
+      plant = deadLock();
+      await expect(apply(another)).rejects.toThrow(/rollback did not finish. Run `rollback`/);
+      plant();
+      await expect(retryMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/rollback did not finish; run `rollback`/);
+      plant();
+      expect(await rollbackMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true });
+      isSettled();
+      // Rollback killed DURING its publication: restored, not yet published.
+      expect(await killed('applyMaintenance', moveArgs(), 'rename')).toBe(7);
+      expect(await killed('rollbackMaintenance', {})).toBe('SIGKILL');
+      expect(journal()).toMatchObject({ status: 'rolled-back', publication: 'pending' });
+      expect([declarations(root), media(root)]).toEqual([settled.decl, settled.media]);
+      plant = deadLock();
+      await expect(apply(another)).rejects.toThrow(/Run `retry`/);
+      plant();
+      await expect(rollbackMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/already rolled back but not yet published; run `retry`/);
+      plant();
+      expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
+      isSettled();
+      // Retry killed during ITS publication, after adopting apply's dead lock.
+      expect(await killed('applyMaintenance', moveArgs())).toBe('SIGKILL');
+      expect(await killed('retryMaintenance', {})).toBe('SIGKILL');
+      plant = deadLock();
+      await expect(apply(another)).rejects.toThrow(/Run `retry`/);
+      plant();
+      expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, status: 'published' });
+      expect(await rollbackMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true });
+      settled.index = git.published();
+      settled.commits = git.commits();
+      // A run killed before it wrote any journal left only its lock: the
+      // finished journal stands, and the next run proceeds.
+      const gone = await run('node', ['-e', 'console.log(process.pid)']).then((o) => o.stdout.trim());
+      writeFileSync(lockFile, `never-journaled ${gone}`);
+      // ONE adopter at a time: while another live run holds the claim on that
+      // dead lock, every entry point refuses and writes nothing; a claim left
+      // by a dead claimer is cleared by the refusal, and the next run adopts.
+      const claim = join(state, 'lock.adopt.never-journaled');
+      writeFileSync(claim, `live-claimer ${process.pid}`);
+      const journalNow = readFileSync(join(state, 'journal.json'), 'utf8');
+      for (const entry of [() => apply(another), () => retryMaintenance({ root, state, publish: git.publish }), () => rollbackMaintenance({ root, state, publish: git.publish })]) {
+        await expect(entry()).rejects.toThrow(/taking over an interrupted run’s lock/);
+      }
+      expect([readFileSync(lockFile, 'utf8'), readFileSync(join(state, 'journal.json'), 'utf8'), existsSync(claim)]).toEqual([`never-journaled ${gone}`, journalNow, true]);
+      isSettled();
+      writeFileSync(claim, `dead-claimer ${gone}`);
+      await expect(retryMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/taking over/);
+      expect(existsSync(claim)).toBe(false);
+      expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
+      expect(existsSync(lockFile)).toBe(false);
+      isSettled();
+
+      // --- GITHUB ACCEPTED THE WRITE, THE RESPONSE WAS LOST: unknown, never "nothing" -
+      // The REAL transport over a fake GitHub. updateRef lands, its answer is
+      // lost: publication is unconfirmed (the branch DOES hold the new index),
+      // and `retry` settles it without a second commit.
+      const lose = new Set<string>();
+      const viaGitHub = (text: string, hash: string) => publishIndex({ transport: makeGitHubIndexTransport({ repo: 'o/r', token: 't' }), indexText: text, expectedContentHash: hash });
+      try {
+        vi.stubGlobal('fetch', githubFetch(git.transport, lose));
+        lose.add('PATCH');
+        const lost = await applyMaintenance({ root, state, ...moveArgs(), publish: viaGitHub });
+        expect(lost).toMatchObject({ ok: false, status: 'publish-failed' });
+        expect(lost.message).toMatch(/could not be confirmed \(fetch failed.*may already be published.*Run `retry`/s);
+        expect(lost.message).not.toMatch(/last good index/);
+        expect(JSON.parse(git.published()!).contentHash).toBe(scanToIndex(root).contentHash);
+        expect(journal().publication).toBe('unknown');
+        await expect(apply(another)).rejects.toThrow(/unconfirmed\)\. Run `retry`/);
+        const landed = git.commits();
+        expect(await retryMaintenance({ root, state, publish: viaGitHub })).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
+        expect(git.commits()).toBe(landed);
+        // createRef likewise, on a repository with no source-index branch yet —
+        // through ROLLBACK's publication this time.
+        const fresh = fakeGit();
+        vi.stubGlobal('fetch', githubFetch(fresh.transport, lose));
+        lose.add('POST git/refs');
+        const lostCreate = await rollbackMaintenance({ root, state, publish: viaGitHub });
+        expect(lostCreate).toMatchObject({ ok: false, status: 'publish-failed' });
+        expect(lostCreate.message).toMatch(/could not be confirmed.*may already be published/s);
+        expect(lostCreate.message).not.toMatch(/last good index/);
+        expect(JSON.parse(fresh.published()!).contentHash).toBe(scanToIndex(root).contentHash);
+        expect(await retryMaintenance({ root, state, publish: viaGitHub })).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
+        expect(fresh.commits()).toBe(1);
+        // A failure BEFORE the ref write is proved: the last good index stands.
+        fresh.fail(true);
+        await expect(viaGitHub(fresh.published()!, JSON.parse(fresh.published()!).contentHash.replace(/./, 'x'))).rejects.toMatchObject({ nothingPublished: true });
+        await expect(publishIndex({ transport: makeGitHubIndexTransport({ repo: 'o/r', token: 't' }), indexText: `${fresh.published()} ` })).rejects.toMatchObject({ nothingPublished: true });
+        fresh.fail(false);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+      // The rollback above went to `fresh`; say it to `git` too.
+      expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true });
+      settled.index = git.published();
+      settled.commits = git.commits();
+      isSettled();
+
+      // --- PUBLISHED, BUT THE JOURNAL COULD NOT RECORD IT: said as published --
+      const thenBlockJournal = async (text: string, hash: string) => {
+        const out = await git.publish(text, hash);
+        mkdirSync(join(state, 'journal.json.tmp')); // the journal's next write fails
+        return out;
+      };
+      const unrecorded = applyMaintenance({ root, state, ...moveArgs(), publish: thenBlockJournal });
+      await expect(unrecorded).rejects.toThrow(/was published, but the private journal could not record it .*Run `retry` to record it/s);
+      rmSync(join(state, 'journal.json.tmp'), { recursive: true });
+      expect(JSON.parse(git.published()!).contentHash).toBe(scanToIndex(root).contentHash);
+      expect(journal()).toMatchObject({ status: 'applied', publication: 'pending' });
+      await expect(apply(another)).rejects.toThrow(/Run `retry`/);
+      const recorded = git.commits();
+      expect(await retryMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true, publication: { status: 'unchanged' } });
+      expect([git.commits(), journal().publication]).toEqual([recorded, 'published']);
+      expect(await rollbackMaintenance({ root, state, publish: git.publish })).toMatchObject({ ok: true });
+      expect([declarations(root), media(root)]).toEqual([settled.decl, settled.media]);
+
       // --- THE CLI asks, then publishes through the existing job itself ----
       const cli = (args: string[]) =>
         run('node', [TOOL, '--root', root, '--state', state, ...args], { env: { ...process.env, PC_INDEX_CONFIG: join(base, 'no-config.env') } }).then(
@@ -344,6 +549,28 @@ describe('maintaining the Setar archive', () => {
       writeFileSync(stub, `console.log('published-index published ' + (process.env.WRONG ? '0'.repeat(64) : process.argv[2]));`);
       const wrong = await via(`node ${JSON.stringify(stub)}`, { WRONG: '1' });
       expect([wrong.code, wrong.out]).toEqual([1, expect.stringMatching(/reports index 000000000000, not the validated/)]);
+      // Only the job's own refusals (exit 2, 3, 4) prove nothing was published.
+      // Any other exit, or a job killed by a signal, may have come after GitHub
+      // accepted the ref: unconfirmed, never "the last good index is still".
+      const exits = join(base, 'exit-job.mjs');
+      writeFileSync(exits, `process.stderr.write('stopped\\n'); process.exit(Number(process.env.EXIT));`);
+      for (const [code, says] of [
+        ['1', /could not be confirmed \(the NAS job exited 1: stopped\).*may already be published/s],
+        ['137', /could not be confirmed \(the NAS job exited 137/],
+        ['4', /publication failed \(the NAS job exited 4 before publishing: stopped\).*last good index is still the published one/s],
+      ] as const) {
+        const r = await via(`node ${JSON.stringify(exits)}`, { EXIT: code });
+        expect([r.code, r.out], code).toEqual([1, expect.stringMatching(says)]);
+        if (code !== '4') expect(r.out, code).not.toMatch(/last good index/);
+      }
+      const signalled = await via('kill -9 $$;:');
+      expect([signalled.code, signalled.out]).toEqual([1, expect.stringMatching(/could not be confirmed \(the NAS job was stopped \(SIGKILL\)/)]);
+      // The REAL runner whose scan fails stops before publishing: exit 4, proved.
+      const noArchive = join(base, 'scan-fails');
+      mkdirSync(noArchive);
+      writeFileSync(join(noArchive, 'config.env'), `PC_ARCHIVE_ROOT=${join(noArchive, 'missing')}\nPC_INDEX_REPO=nobody/nothing\nPC_INDEX_TOKEN=not-a-token\nPC_INDEX_WORKDIR=${noArchive}\n`);
+      const scanFailed = await via(undefined, { PC_INDEX_CONFIG: join(noArchive, 'config.env') });
+      expect([scanFailed.code, scanFailed.out]).toEqual([1, expect.stringMatching(/exited 4 before publishing: The scan failed; nothing was published.*last good index is still the published one/s)]);
       // The REAL runner, configured for ANOTHER archive root, refuses before
       // any request — the published index is untouched, and it says so.
       const otherArchive = scratch();

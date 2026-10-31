@@ -254,7 +254,9 @@ binding and session-folder link refusal in the maintenance tool. Until the
 owner redeploys them, the NAS route has none of these. Redeploying needs, in
 the same step, the sudo rule to allow the one argument —
 `ethan ALL=(setar-indexer) NOPASSWD: /bin/sh /volume1/practice-compass-index/run-setar-index.sh, /bin/sh /volume1/practice-compass-index/run-setar-index.sh *`
-— or every apply ends `publish-failed` (safe: nothing published). After a
+— or every apply ends `publish-failed`, reported as unconfirmed (sudo's
+refusal is exit 1, no proof by itself; in fact nothing ran), and `retry`
+after fixing the rule. After a
 redeploy the journal of 2026‑10‑31 is an earlier version's, so `rollback`
 refuses it; undo the Session 41 registration by hand like the Session 40
 rename below.
@@ -296,9 +298,9 @@ rename below.
   `config.env` as is unless reverting `PC_NODE` too, then run
   `synoacltool -enforce-inherit` on each file.
 - **Sudo.** Delete `/etc/sudoers.d/practice-compass-maint`.
-  - A DSM update may remove it too. The failure is safe: an apply ends
-    `publish-failed`, and the last good index stays published. Reinstall the
-    one line and run `… retry`.
+  - A DSM update may remove it too. The failure is safe: the job never runs,
+    the last good index stays published, and an apply ends `publish-failed`
+    (reported as unconfirmed). Reinstall the one line and run `… retry`.
 
 **Still broader than needed (recorded, not changed):** through the runtime
 share's inherited ACE, `setar-indexer` can write its own scripts and

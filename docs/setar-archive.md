@@ -221,7 +221,9 @@ target is refused before a request is made.
   `expected_head_sha`, so a racing publisher loses the update rather than
   overwriting it; the retry re-reads before deciding anything.
 - An interruption before the ref advances leaves the previous index published —
-  a blob and a commit nothing points at are invisible.
+  a blob and a commit nothing points at are invisible. Such a failure exits 4.
+  A failure of the ref write itself (a lost response, a 5xx) may have landed:
+  exit 1, said as unknown, and a rerun makes no commit if it did.
 - Error messages are built from the HTTP status and the endpoint name only.
   **No token, no repository URL and no archive path ever reaches a log.**
 
@@ -659,17 +661,28 @@ $M rollback   # put the last change back from its private copy and publish that
   `rollback`, put back only what THIS change wrote: every file is judged
   first, and a declaration changed since (another `--state` folder's row, a
   hand edit), a renamed file whose bytes changed, or a moved folder refuses the
-  whole restore with nothing written. `rollback` takes the lock like every
-  run; it adopts only the lock its own interrupted apply left (that apply's
-  journal names it and its process is gone), and no run removes a lock it does
-  not hold. Media bytes are only ever renamed, checked by size and SHA-256.
+  whole restore with nothing written. Every run takes the lock and reads the
+  journal under it. A lock whose process is gone is adopted by any run,
+  because every run that writes the archive first records what it is doing
+  (apply `prepared`, rollback `rolling-back`, each with its own token): the
+  journal then decides. Half-written means `rollback`; applied or restored but
+  not confirmed published means `retry`. A run killed in any phase, a
+  rollback or retry included, leaves a state one of those finishes. No run
+  takes a live lock or removes one it does not hold. Media bytes are only
+  ever renamed, checked by size and SHA-256.
 - **Publication is of the validated index, on evidence.** The job gets the
   validated contentHash as its one argument and refuses, before any request
   (exit 3), a scan that differs — another configured root, an archive changed
   since. Success needs the publisher's last line `published-index <status>
-  <hash>` naming that hash. A non-zero exit leaves the last good index
-  published, and says so; an exit 0 without that evidence is reported as
-  unconfirmed, never as published or as "nothing changed". Either way: `retry`.
+  <hash>` naming that hash. "The last good index is still published" is said
+  only on proof: the job's exit 2 (configuration refused), 3 (not the
+  validated index) or 4 (the scan, or the publisher before its ref write,
+  failed). Every other outcome — exit 1 or any other code, a signal, a lost
+  response after GitHub accepted the ref, an exit 0 without the evidence — is
+  reported as unconfirmed, never as published or as "nothing changed". A
+  publication the journal then fails to record is reported as published.
+  Every case: `retry`, which makes no commit if the branch already holds the
+  index.
 - **Repeat is a no-op**, and an unchanged archive makes no commit.
 - Ordinary, correctly named supported files for registered pieces need
   NOTHING: put them in the session folder; the job publishes; Refresh.

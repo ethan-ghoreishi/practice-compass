@@ -8,7 +8,9 @@
 // On success the LAST stdout line is the evidence a caller checks:
 //   published-index <unchanged|published|created> <contentHash>
 // `--expect` refuses, before any request, an index whose contentHash is not
-// the one the caller validated (exit 3: nothing was published).
+// the one the caller validated (exit 3: nothing was published). Exit 2: usage
+// refused; exit 4: it failed before its ref write (nothing was published). Any other failure,
+// exit 1 included, may have come after GitHub accepted the ref: unknown.
 //
 // WHY A SEPARATE BRANCH. The app's own sync writes main's whole tree with no
 // base_tree, so a sidecar placed beside state.json disappears on the next
@@ -53,7 +55,9 @@ const MAX_ATTEMPTS = 4;
  *   second publisher racing this one loses the update-ref rather than
  *   overwriting it, and the retry re-reads before deciding anything.
  * - An interruption before the ref advances leaves the previous index as the
- *   published one: a blob and a commit nothing points at are invisible.
+ *   published one: a blob and a commit nothing points at are invisible. Such
+ *   a failure carries `nothingPublished: true`. A throw FROM the ref write (a
+ *   lost response, a 5xx) does not: GitHub may have accepted it.
  */
 export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message, expectedContentHash }) {
   if (branch !== SOURCE_INDEX_BRANCH) throw new Error(`This publisher only writes the "${SOURCE_INDEX_BRANCH}" branch.`);
@@ -72,33 +76,48 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
 
   let lastConflict = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const ref = await transport.getRef(branch);
+    let ref;
+    let commitSha;
+    try {
+      ref = await transport.getRef(branch);
 
-    if (ref) {
-      const current = await transport.getFile(ref.sha, path);
-      if (current && current.text === indexText) return { status: 'unchanged', commit: ref.sha };
+      if (ref) {
+        const current = await transport.getFile(ref.sha, path);
+        if (current && current.text === indexText) return { status: 'unchanged', commit: ref.sha };
+      }
+
+      const blobSha = await transport.createBlob(indexText);
+      const baseTreeSha = ref ? (await transport.getCommit(ref.sha)).treeSha : null;
+      const treeSha = await transport.createTree({ baseTreeSha, path, blobSha });
+      commitSha = await transport.createCommit({
+        message: message ?? 'Update Setar source index',
+        treeSha,
+        parents: ref ? [ref.sha] : [],
+      });
+    } catch (err) {
+      throw nothingPublished(err);
     }
 
-    const blobSha = await transport.createBlob(indexText);
-    const baseTreeSha = ref ? (await transport.getCommit(ref.sha)).treeSha : null;
-    const treeSha = await transport.createTree({ baseTreeSha, path, blobSha });
-    const commitSha = await transport.createCommit({
-      message: message ?? 'Update Setar source index',
-      treeSha,
-      parents: ref ? [ref.sha] : [],
-    });
-
+    // A conflict answer is GitHub refusing the write; a throw here is unknown.
     const outcome = ref
       ? await transport.updateRef(branch, commitSha, ref.sha)
       : await transport.createRef(branch, commitSha);
     if (outcome === 'ok') return { status: ref ? 'published' : 'created', commit: commitSha };
     lastConflict = outcome;
   }
-  throw new Error(`Another publisher updated the index while this one was writing (${lastConflict}); nothing was overwritten.`);
+  throw nothingPublished(new Error(`Another publisher updated the index while this one was writing (${lastConflict}); nothing was overwritten.`));
 }
 
 /** Refused before any request: nothing was published. */
-export class ExpectationRefused extends Error {}
+export class ExpectationRefused extends Error {
+  nothingPublished = true;
+}
+
+function nothingPublished(err) {
+  const e = err instanceof Error ? err : new Error(String(err));
+  e.nothingPublished = true;
+  return e;
+}
 
 function contentHashOf(indexText) {
   try {
@@ -216,7 +235,7 @@ async function main() {
     indexText = readFileSync(values.index, 'utf8');
   } catch {
     console.error('Could not read the scanned index; the published one is unchanged.');
-    process.exit(1);
+    process.exit(4);
   }
   try {
     const result = await publishIndex({ transport: makeGitHubIndexTransport({ repo, token }), indexText, expectedContentHash: values.expect });
@@ -233,7 +252,11 @@ async function main() {
     }
     // Never the URL, never the token, never the archive root.
     console.error(`Publish failed: ${err.message}`);
-    console.error('The previously published index is still the one the app reads.');
+    if (err?.nothingPublished) {
+      console.error('The previously published index is still the one the app reads.');
+      process.exit(4);
+    }
+    console.error('It may already be published; running the job again makes no new commit if so.');
     process.exit(1);
   }
 }

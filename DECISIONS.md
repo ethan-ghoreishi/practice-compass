@@ -17,15 +17,22 @@ Same lane, after the sealed review asked for changes.
   every file (and the renamed media) before writing any, and refuse otherwise.
   The per-folder lock could never see another `--state` folder; the digest
   check can.
-- **Lock ownership is a token, adoption needs a dead process.** `rollback` may
-  take over only the lock its own `prepared` journal names, and only when that
-  process is gone. Same-process interruption is not a dead process, so the
-  test kills a real child.
+- **A dead lock is adopted by any run; the journal decides.** Every run that
+  writes the archive records what it is doing (`prepared`, `rolling-back`)
+  before its first write, so a lock whose process is gone guards nothing the
+  journal does not already say. Adopting only the lock a `prepared` journal
+  named left a run killed during publication, or during a rollback or retry,
+  locked out for good. Archive state (`status`) and publication
+  (`publication`) are separate fields. Same-process interruption is not a
+  dead process, so the test kills real children.
 - **The job proves it published the validated index.** Comparing the scan's
   hash after a scan-and-publish job is too late. So the hash goes in as the
   runner's one argument (sudo keeps arguments, not environment), and the
   publisher refuses before Git. Success needs its evidence line. "The last
-  good index is still published" is said only on a non-zero exit.
+  good index is still published" is said only on proof (exit 2, 3 or 4: the
+  job stopped before its ref write). Any other failure, including a lost
+  response after GitHub accepted the ref, is unconfirmed: a non-zero exit is
+  no proof the ref did not move. `retry` settles it.
 - **The NAS is not redeployed by this rework.** The owner's call. The sudo rule
   pins the runner's exact arguments, so a redeploy must widen it in the same
   step (`docs/nas-topology.md`).
