@@ -36,7 +36,7 @@ no lesson and no deadline.
 | D5 | Combine keeps the owner's lesson id, moves the binding onto it, and folds the archive row in: notes (both kept when both differ), item links (union), references (union by row; a shared path with different metadata stays two rows), agenda entries (`lessonId` and `detachedFromLessonId` rebound, ids/text/asked/answers untouched) and lesson attachments (`ownerId` rebound; blobs keyed by attachment id, untouched). Never `deleteLesson`: no blob deletion, no agenda detach, no suppression. | `consolidateLesson` (`lessonReconcile.ts`), applied inside `applyArchiveImport` |
 | D6 | Keep separate is durable: a `session` suppression scoped to the lesson (`{kind:'session', ref:N, itemId:<lessonId>}`). It never hides the session (only an unscoped one does), passes the v17 validator unchanged, and stops the question for that pair only. Create separately on a first-time question writes the same marker for each named candidate. | `planArchiveImport`, `isLessonKeptSeparate` |
 | D7 | Provenance is not scheduling intent. Adopting/combining keeps the owner lesson's `origin` (absent ⇒ planned); only a lesson the import CREATES carries `origin:'archive'` (history even when future-dated). Every "upcoming" reader goes through `isUpcomingLesson`. | `lessonForSession`, adoption branches, `isUpcomingLesson` |
-| D8 | A decision is about the state seen: a combine whose lesson is gone, bound, moved, renumbered or redated, or whose archive row changed, is stale and re-previewed. A held notes recovery draft or a live question capture on either lesson refuses the combine with the words kept. | `planArchiveImport` (stale), `commitArchiveImport` (draft guard) |
+| D8 | A decision is about the state seen: a combine or a Link whose lesson is gone, bound, moved, renumbered or redated (a Link adopts only a lesson still among the session's candidates), or whose archive row changed, is stale, named in the refusal before any rebase question, and re-asked. A held notes recovery draft or a live question capture on either lesson refuses the combine with the words kept. | `planArchiveImport` (stale), `commitArchiveImport` (draft guard) |
 | D9 | `PIECES.csv` and `RENAME-LOG.csv` beside the archive stay the only declarations. One guided operator route edits them (preview first, rollback copy, validation, scan, publish); the scanner stays read-only. | `scripts/setar-archive-maintenance.mjs` |
 | D10 | Every diagnostic carries a `code` (additive, index stays `version: 1`) so Refresh groups messages and names the action without parsing text. | scanner `buildIndex`, `decodeSourceIndex`, `ArchiveRefresh` |
 
@@ -160,4 +160,8 @@ declarations were not edited from the Mac (`docs/nas-topology.md`, live repair).
 `docs/setar-archive.md`): `register`, `roster`, `rename`, each previewed, then
 applied only with `--apply --preview <hash>`; it copies the declarations
 privately first, re-validates with the scanner's own grammar, scans to a scratch
-file, then publishes through the existing runner. Repeat runs are no-ops.
+file, then publishes through the existing runner, which publishes only that
+validated index and must print its evidence. Recovery (`rollback`, and the
+automatic put-back of a failed apply) undoes only what that change wrote,
+judging every file before writing any, under the lock, for its own archive
+only. Repeat runs are no-ops.

@@ -2024,14 +2024,20 @@ describe('answered questions, until Apply', () => {
       for (const d of [linkFirst, answers[4], answers[5]]) {
         const label = `${d.kind} with ${left.length} left`;
         const p = planArchiveImport({ db: renumber(moved), index: INDEX, instrumentId: SETAR, decisions: [d], now: NOW });
-        expect(p.questions.some((q) => q.sessionN === 13), label).toBe(false);
-        expect(p.staleDecisions, label).toEqual([]);
-        const shown = p.answered.find((q) => q.sessionN === 13)!;
-        expect([shown.answer, shown.ambiguous, shown.label], label).toEqual([d, false, askedClass.label]);
-        const offered = d.kind === 'link-lesson' && !left.includes('legacy-13') ? [...left, 'legacy-13'] : left;
-        expect(shown.candidates.map((c) => c.id), label).toEqual(offered);
+        // A link to a class RENUMBERED since the preview is no longer a link
+        // to this session's class: stale, asked again with the live
+        // candidates, nothing adopted or created — never bound regardless.
+        const stale = d.kind === 'link-lesson' && moved.includes('legacy-13');
+        expect(p.staleDecisions, label).toEqual(stale ? [d] : []);
+        expect(p.questions.filter((q) => q.sessionN === 13).map((q) => q.candidates.map((c) => c.id)), label).toEqual(stale ? [left] : []);
+        const shown = p.answered.find((q) => q.sessionN === 13);
+        if (stale) expect(shown, label).toBeUndefined();
+        else {
+          expect([shown!.answer, shown!.ambiguous, shown!.label], label).toEqual([d, false, askedClass.label]);
+          expect(shown!.candidates.map((c) => c.id), label).toEqual(left);
+        }
         const adopted = p.adoptedLessons.filter((l) => l.source?.sessionN === 13).map((l) => l.id);
-        expect(adopted, label).toEqual(d.kind === 'link-lesson' ? ['legacy-13'] : []);
+        expect(adopted, label).toEqual(d.kind === 'link-lesson' && !stale ? ['legacy-13'] : []);
         expect(p.newLessons.filter((l) => l.source?.sessionN === 13).length, label).toBe(d.kind === 'create-lesson' ? 1 : 0);
         expect(p.source.suppressions.some((x) => x.kind === 'session' && x.ref === '13' && !x.itemId), label).toBe(d.kind === 'skip-lesson');
         // Create separately says, durably, that each class it was asked against is another class.

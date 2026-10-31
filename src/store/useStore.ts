@@ -1358,27 +1358,29 @@ export const useStore = create<StoreState>()(
         const before = get();
         const rebased = before.rev !== decidedFromRev;
         const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, verifiedBase, now: at });
-        if (rebased && plan.questions.length > 0) {
-          return {
-            ok: false,
-            status: 'stale',
-            message: 'Your practice data changed while the index was being read, and this refresh now needs a decision. Look again.',
-          };
-        }
         // AND A DECISION WHOSE PREMISE MOVED IS NOT A DECISION ANY MORE. A new
         // QUESTION is not the only way a rebase invalidates an answer: the
         // owner choosing the archive's composer over an empty field, then
         // typing one of their own before pressing Apply, raised no question at
         // all and overwrote the words they had just written. The plan reports
         // both kinds of premise now — a moved value and a link target that has
-        // been deleted, bound elsewhere or moved instrument — and this refuses
-        // on either, whether or not `rev` moved.
+        // been deleted, bound elsewhere, moved instrument, date or number — and
+        // this refuses on either, whether or not `rev` moved. FIRST, because a
+        // stale link re-asks its question: refused as a rebase question
+        // instead, the dead answer would go unnamed and be resubmitted for ever.
         if (plan.staleDecisions.length > 0) {
           return {
             ok: false,
             status: 'stale',
             message: 'Something you had already decided about has changed since. Look again before applying.',
             staleDecisions: plan.staleDecisions,
+          };
+        }
+        if (rebased && plan.questions.length > 0) {
+          return {
+            ok: false,
+            status: 'stale',
+            message: 'Your practice data changed while the index was being read, and this refresh now needs a decision. Look again.',
           };
         }
 

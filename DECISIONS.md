@@ -2,6 +2,34 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Setar recovery undoes only its own write; a link binds only a class still the same (2026-10-31)
+
+Same lane, after the sealed review asked for changes.
+
+- **A Link is about the class the owner saw.** It adopts only a lesson still
+  among the session's candidates (same instrument, date and number, unbound).
+  Re-dated or renumbered before Apply, it is stale and asked again. The store
+  names a stale decision before it raises a rebase question, so Refresh drops
+  it instead of resubmitting it for ever.
+- **Recovery is a compare, not an overwrite.** The journal records digests of
+  what each declaration held before and after this change. `rollback` and the
+  automatic put-back restore a file only from exactly that "after", judge
+  every file (and the renamed media) before writing any, and refuse otherwise.
+  The per-folder lock could never see another `--state` folder; the digest
+  check can.
+- **Lock ownership is a token, adoption needs a dead process.** `rollback` may
+  take over only the lock its own `prepared` journal names, and only when that
+  process is gone. Same-process interruption is not a dead process, so the
+  test kills a real child.
+- **The job proves it published the validated index.** Comparing the scan's
+  hash after a scan-and-publish job is too late. So the hash goes in as the
+  runner's one argument (sudo keeps arguments, not environment), and the
+  publisher refuses before Git. Success needs its evidence line. "The last
+  good index is still published" is said only on a non-zero exit.
+- **The NAS is not redeployed by this rework.** The owner's call. The sudo rule
+  pins the runner's exact arguments, so a redeploy must widen it in the same
+  step (`docs/nas-topology.md`).
+
 ## Setar NAS job: who may write what (2026-10-31)
 
 Same lane, live NAS repair (record and rollback: `docs/nas-topology.md`).

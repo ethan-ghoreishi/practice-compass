@@ -2,8 +2,13 @@
 // Publish the scanned Setar index to ONE file on ONE branch of the private
 // data repository, and nothing else, ever.
 //
-//   node scripts/publish-setar-index.mjs --index <file>
+//   node scripts/publish-setar-index.mjs --index <file> [--expect <contentHash>]
 //     env: PC_INDEX_REPO=owner/name  PC_INDEX_TOKEN=<publisher token>
+//
+// On success the LAST stdout line is the evidence a caller checks:
+//   published-index <unchanged|published|created> <contentHash>
+// `--expect` refuses, before any request, an index whose contentHash is not
+// the one the caller validated (exit 3: nothing was published).
 //
 // WHY A SEPARATE BRANCH. The app's own sync writes main's whole tree with no
 // base_tree, so a sidecar placed beside state.json disappears on the next
@@ -50,13 +55,20 @@ const MAX_ATTEMPTS = 4;
  * - An interruption before the ref advances leaves the previous index as the
  *   published one: a blob and a commit nothing points at are invisible.
  */
-export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message }) {
+export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message, expectedContentHash }) {
   if (branch !== SOURCE_INDEX_BRANCH) throw new Error(`This publisher only writes the "${SOURCE_INDEX_BRANCH}" branch.`);
   if (path !== INDEX_PATH) throw new Error(`This publisher only writes "${INDEX_PATH}".`);
   if (PROTECTED_PREFIXES.some((p) => branch === p || branch.startsWith(p))) {
     throw new Error('Refusing to write a protected branch.');
   }
   if (typeof indexText !== 'string' || !indexText.trim()) throw new Error('There is no index to publish.');
+  // WHAT WAS VALIDATED IS WHAT IS PUBLISHED, decided before Git is touched:
+  // a job scanning another root, or an archive changed since validation, is
+  // refused here — never compared after the ref has already moved.
+  if (expectedContentHash !== undefined) {
+    const actual = contentHashOf(indexText);
+    if (actual !== expectedContentHash) throw new ExpectationRefused(`This index is ${String(actual).slice(0, 12)}, not the validated ${String(expectedContentHash).slice(0, 12)}; nothing was published.`);
+  }
 
   let lastConflict = null;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
@@ -83,6 +95,17 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
     lastConflict = outcome;
   }
   throw new Error(`Another publisher updated the index while this one was writing (${lastConflict}); nothing was overwritten.`);
+}
+
+/** Refused before any request: nothing was published. */
+export class ExpectationRefused extends Error {}
+
+function contentHashOf(indexText) {
+  try {
+    return JSON.parse(indexText).contentHash ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +203,7 @@ export function makeGitHubIndexTransport({ repo, token }) {
 }
 
 async function main() {
-  const { values } = parseArgs({ options: { index: { type: 'string' } } });
+  const { values } = parseArgs({ options: { index: { type: 'string' }, expect: { type: 'string' } } });
   const repo = process.env.PC_INDEX_REPO;
   const token = process.env.PC_INDEX_TOKEN;
   if (!values.index || !repo || !token) {
@@ -196,13 +219,18 @@ async function main() {
     process.exit(1);
   }
   try {
-    const result = await publishIndex({ transport: makeGitHubIndexTransport({ repo, token }), indexText });
+    const result = await publishIndex({ transport: makeGitHubIndexTransport({ repo, token }), indexText, expectedContentHash: values.expect });
     console.error(
       result.status === 'unchanged'
         ? 'Index unchanged — no commit.'
         : `Index ${result.status} as ${result.commit.slice(0, 12)}.`,
     );
+    console.log(`published-index ${result.status} ${contentHashOf(indexText)}`);
   } catch (err) {
+    if (err instanceof ExpectationRefused) {
+      console.error(`Refused: ${err.message}`);
+      process.exit(3);
+    }
     // Never the URL, never the token, never the archive root.
     console.error(`Publish failed: ${err.message}`);
     console.error('The previously published index is still the one the app reads.');

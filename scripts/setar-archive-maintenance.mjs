@@ -22,9 +22,9 @@
 // PIECES.csv, RENAME-LOG.csv, the one file a `rename` names, and its own
 // --state folder. Node stdlib only.
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -78,6 +78,19 @@ function readDeclaration(root, name, required) {
 const eolOf = (text) => (text.includes('\r\n') ? '\r\n' : '\n');
 /** Append ONE line, every existing byte kept exactly. */
 const appendLine = (text, line) => `${text}${text.length && !text.endsWith('\n') ? eolOf(text) : ''}${line}${eolOf(text)}`;
+
+/**
+ * A media path the tool may touch: `<session folder>/<leaf>` where the session
+ * folder is a REAL directory directly in the archive — never a link, which
+ * would carry a read, a hash or a rename outside it. Checked at every use
+ * (planning, apply, restore), never once and trusted.
+ */
+function mediaPath(root, rel) {
+  const folder = rel.split('/')[0];
+  const st = lstatOrNull(join(root, folder));
+  if (!st?.isDirectory()) throw new Refusal(`The folder of "${rel}" is not a real folder in the archive (a link is never followed).`);
+  return join(root, rel);
+}
 
 function stemOf(path) {
   const name = path.split('/').pop();
@@ -181,8 +194,8 @@ export function planMaintenance(rootArg, action) {
     }
     const rows = logText === null ? [] : readTable(logText, ['old_path', 'new_path']).map((r) => ({ from: r.old_path.trim(), to: r.new_path.trim() }));
     const logged = rows.some((r) => r.from === from && r.to === to);
-    const src = lstatOrNull(join(root, from));
-    const dst = lstatOrNull(join(root, to));
+    const src = lstatOrNull(mediaPath(root, from));
+    const dst = lstatOrNull(mediaPath(root, to));
     if (logged && !src && dst?.isFile()) {
       plan.noop = true;
       plan.lines.push(`"${from}" was already renamed to "${to}" and logged. Nothing to do.`);
@@ -191,13 +204,11 @@ export function planMaintenance(rootArg, action) {
     if (!src) throw new Refusal(`"${from}" is not in the archive.`);
     if (!src.isFile()) throw new Refusal(`"${from}" is not a regular file (a link is never renamed).`);
     if (dst) throw new Refusal(`"${to}" already exists; nothing is ever overwritten.`);
-    const folder = lstatOrNull(join(root, to.split('/')[0]));
-    if (!folder?.isDirectory()) throw new Refusal(`The folder of "${to}" is not a real folder in the archive.`);
     // The log stays a function: never a fork, never a loop, never two names into one.
     if (rows.some((r) => r.from === from && r.to !== to)) throw new Refusal(`The log already renames "${from}" to another name; a second destination would make it unreadable.`);
     if (rows.some((r) => r.from === to)) throw new Refusal(`The log already renames "${to}" onward; this would make a loop.`);
     if (rows.some((r) => r.to === to && r.from !== from)) throw new Refusal(`The log already names another file as "${to}".`);
-    const bytes = readFileSync(join(root, from));
+    const bytes = readFileSync(mediaPath(root, from));
     plan.rename = { from, to, size: bytes.length, sha256: sha(bytes) };
     const logHeader = logText === null ? ['old_path', 'new_path'] : parseCsvCells(logText)[0].values.map((h) => h.trim());
     const row = logHeader.map((h) => (h === 'old_path' ? csvCell(from) : h === 'new_path' ? csvCell(to) : '')).join(',');
@@ -236,23 +247,84 @@ const writeJournal = (state, j) => {
   renameSync(`${journalPath(state)}.tmp`, journalPath(state));
 };
 
-function lock(state) {
-  try {
-    writeFileSync(join(state, 'lock'), String(process.pid), { flag: 'wx' });
-  } catch (err) {
-    if (err?.code === 'EEXIST') {
-      throw new Refusal('Another maintenance run holds the lock, or one was interrupted. Run `rollback` to put the last change back (or `retry` if it was applied), then try again.');
+/** Which archive a --state folder serves: a digest, never the path itself. */
+const rootIdOf = (root) => sha(realpathSync.native(root).normalize('NFC'));
+
+/**
+ * The journal, refused when it was written for another archive. One from an
+ * earlier version of this tool recorded neither its archive nor what it wrote,
+ * so nothing may be recovered from it automatically; a finished one is simply
+ * superseded by the next apply.
+ */
+function journalFor(state, root, recovering) {
+  const j = readJournal(state);
+  if (!j) return null;
+  if (!j.rootId) {
+    if (recovering || j.status === 'prepared' || j.status === 'publish-failed') {
+      throw new Refusal('The last change here was made by an earlier version of this tool, which did not record what it wrote; nothing was changed. Put its private copy back by hand (docs/nas-topology.md, rollback manifest).');
     }
+    return null;
+  }
+  if (j.rootId !== rootIdOf(root)) throw new Refusal('This --state folder belongs to another archive; nothing was changed. Use that archive’s own --state folder.');
+  return j;
+}
+
+const lockPath = (state) => join(state, 'lock');
+const readLock = (state) => {
+  try {
+    const [token, pid] = readFileSync(lockPath(state), 'utf8').split(' ');
+    return { token, pid: Number(pid) };
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null;
     throw err;
   }
-}
-const unlock = (state) => rmSync(join(state, 'lock'), { force: true });
+};
+const alive = (pid) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err?.code === 'EPERM';
+  }
+};
 
-/** Replace a declaration through an exclusive temp and a rename — never through a link. */
-function writeDeclaration(root, name, text) {
+/**
+ * Take the --state folder's lock; returns the token that proves ownership.
+ * `recover` (rollback only) may ADOPT exactly one other lock: the one an
+ * interrupted apply left, named by its own `prepared` journal, whose process
+ * is gone. A live holder's lock is never taken, and never removed.
+ */
+function lock(state, recover) {
+  const token = randomUUID();
+  try {
+    writeFileSync(lockPath(state), `${token} ${process.pid}`, { flag: 'wx' });
+    return token;
+  } catch (err) {
+    if (err?.code !== 'EEXIST') throw err;
+  }
+  const held = readLock(state);
+  if (recover && held && recover.status === 'prepared' && held.token === recover.lockToken && !alive(held.pid)) {
+    writeFileSync(`${lockPath(state)}.${token}`, `${token} ${process.pid}`, { flag: 'wx' });
+    renameSync(`${lockPath(state)}.${token}`, lockPath(state));
+    return token;
+  }
+  throw new Refusal('Another maintenance run holds the lock, or one was interrupted. Run `rollback` to put the last change back (or `retry` if it was applied), then try again.');
+}
+/** Remove the lock only if it is still OURS. */
+const unlock = (state, token) => {
+  if (readLock(state)?.token === token) rmSync(lockPath(state), { force: true });
+};
+
+/**
+ * Replace a declaration through an exclusive temp and a rename — never
+ * through a link, and only while it still holds `expected` (`null`: absent).
+ * Another writer's edit since is never overwritten.
+ */
+function writeDeclaration(root, name, text, expected) {
   const p = join(root, name);
   const st = lstatOrNull(p);
   if (st && !st.isFile()) throw new Refusal(`${name} is not a regular file.`);
+  if (readDeclaration(root, name, false) !== expected) throw new Refusal(`${name} changed while this ran; it was left as the other edit made it.`);
   const tmp = join(root, `.${name}.maintenance-${process.pid}`);
   writeFileSync(tmp, text, { flag: 'wx' });
   renameSync(tmp, p);
@@ -275,18 +347,37 @@ function validateAndScan(root, state, action) {
   return { index, text };
 }
 
+/**
+ * Publication failed. `nothingPublished` is a CLAIM, made only when the job
+ * proved it (it refused or failed before its atomic ref update); otherwise the
+ * outcome is unknown and said so, never promised.
+ */
+export class PublishFailed extends Error {
+  constructor(message, nothingPublished) {
+    super(message);
+    this.nothingPublished = nothingPublished;
+  }
+}
+const PUBLISHED = new Set(['unchanged', 'published', 'created']);
+
 async function publishStep(state, journal, scanned, publish) {
   try {
     const result = await publish(scanned.text, scanned.index.contentHash);
-    writeJournal(state, { ...journal, status: 'published', contentHash: scanned.index.contentHash, publication: result?.status ?? 'published' });
+    // POSITIVE EVIDENCE or it did not happen: a publisher that returns no
+    // status has proved nothing.
+    if (!PUBLISHED.has(result?.status)) throw new PublishFailed('the publisher reported no publication', false);
+    writeJournal(state, { ...journal, status: 'published', contentHash: scanned.index.contentHash, publication: result.status });
     return { ok: true, status: 'published', contentHash: scanned.index.contentHash, publication: result };
   } catch (err) {
     writeJournal(state, { ...journal, status: 'publish-failed', contentHash: scanned.index.contentHash });
+    const known = !(err instanceof PublishFailed) || err.nothingPublished;
     return {
       ok: false,
       status: 'publish-failed',
       contentHash: scanned.index.contentHash,
-      message: `The archive is changed and valid, but publication failed (${err?.message ?? 'unknown'}). The last good index is still the published one. Run \`retry\` to publish again.`,
+      message: known
+        ? `The archive is changed and valid, but publication failed (${err?.message ?? 'unknown'}). The last good index is still the published one. Run \`retry\` to publish again.`
+        : `The archive is changed and valid, but publication could not be confirmed (${err.message}). Check what the source-index branch now holds, then run \`retry\`.`,
     };
   }
 }
@@ -302,10 +393,10 @@ async function publishStep(state, journal, scanned, publish) {
 export async function applyMaintenance({ root: rootArg, state: stateArg, action, previewId, publish, interruptAfter }) {
   const root = resolve(rootArg);
   const state = stateDir(root, stateArg);
-  lock(state);
+  const token = lock(state);
   let interrupted = false;
   try {
-    const prior = readJournal(state);
+    const prior = journalFor(state, root);
     if (prior && (prior.status === 'prepared' || prior.status === 'publish-failed')) {
       throw new Refusal(
         prior.status === 'prepared'
@@ -321,10 +412,18 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
     const copy = join(state, `${new Date().toISOString().replace(/[:.]/g, '-')}-${plan.id}`);
     mkdirSync(copy);
     // BOTH declarations, whatever this action edits: a rollback restores the pair as it was.
-    const logWasPresent = readDeclaration(root, LOG, false) !== null;
-    copyFileSync(join(root, REGISTRY), join(copy, REGISTRY));
-    if (logWasPresent) copyFileSync(join(root, LOG), join(copy, LOG));
-    const journal = { id: plan.id, action, copy, logWasPresent, rename: plan.rename, status: 'prepared' };
+    const registryBefore = readDeclaration(root, REGISTRY, true);
+    const logBefore = readDeclaration(root, LOG, false);
+    const logWasPresent = logBefore !== null;
+    writeFileSync(join(copy, REGISTRY), registryBefore, { flag: 'wx' });
+    if (logWasPresent) writeFileSync(join(copy, LOG), logBefore, { flag: 'wx' });
+    // What this change WROTE, by digest: the only state a restore may undo.
+    const digest = (t) => (t === null ? null : sha(t));
+    const wrote = {
+      registry: { before: digest(registryBefore), after: digest(plan.registry ? plan.registry.after : registryBefore) },
+      log: { before: digest(logBefore), after: digest(plan.log ? plan.log.after : logBefore) },
+    };
+    const journal = { id: plan.id, action, copy, rootId: rootIdOf(root), logWasPresent, wrote, rename: plan.rename, lockToken: token, status: 'prepared' };
     writeFileSync(join(copy, 'manifest.json'), `${JSON.stringify(journal, null, 2)}\n`);
     writeJournal(state, journal);
     const step = (name) => {
@@ -338,20 +437,28 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
     // 2. The edit. Any failure here is put back from the copy, automatically.
     let scanned;
     try {
-      if (plan.registry) writeDeclaration(root, REGISTRY, plan.registry.after);
+      if (plan.registry) writeDeclaration(root, REGISTRY, plan.registry.after, plan.registry.before);
       step('registry');
-      if (plan.log) writeDeclaration(root, LOG, plan.log.after);
+      if (plan.log) writeDeclaration(root, LOG, plan.log.after, plan.log.before);
       step('log');
       if (plan.rename) {
-        renameSync(join(root, plan.rename.from), join(root, plan.rename.to));
-        const moved = readFileSync(join(root, plan.rename.to));
+        const from = mediaPath(root, plan.rename.from);
+        const to = mediaPath(root, plan.rename.to);
+        if (lstatOrNull(to)) throw new Refusal(`"${plan.rename.to}" appeared while this ran; nothing is ever overwritten.`);
+        renameSync(from, to);
+        const moved = readFileSync(mediaPath(root, plan.rename.to));
         if (moved.length !== plan.rename.size || sha(moved) !== plan.rename.sha256) throw new Error('The renamed file does not hold the same bytes.');
       }
       step('rename');
       scanned = validateAndScan(root, state, action);
     } catch (err) {
       if (err instanceof Interrupted) throw err;
-      restore(root, journal);
+      try {
+        restore(root, journal);
+      } catch (why) {
+        // The journal stays `prepared`: `rollback` is still offered, never a false "put back".
+        throw new Refusal(`The change did not validate (${err.message}), and it could not be put back automatically (${why.message}). The private copy is kept; check, then run \`rollback\`.`);
+      }
       writeJournal(state, { ...journal, status: 'rolled-back' });
       throw new Refusal(`The change did not validate (${err.message}); everything was put back from the private copy.`);
     }
@@ -360,40 +467,64 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
     // 3. Publication, through the existing job.
     return { ...(await publishStep(state, applied, scanned, publish)), lines: plan.lines };
   } finally {
-    if (!interrupted) unlock(state);
+    if (!interrupted) unlock(state, token);
   }
 }
 
-/** Put the declarations and the one renamed file back exactly as the copy holds them. */
+/**
+ * Put back exactly what THIS change wrote — and nothing anyone wrote since.
+ * Every file is judged BEFORE any is touched: a declaration still as it was
+ * is left; one holding exactly what this change wrote is restored; anything
+ * else (another run's row, a hand edit) refuses the whole restore. The renamed
+ * file moves back only from its recorded name with its recorded bytes.
+ */
 function restore(root, journal) {
-  const reg = readFileSync(join(journal.copy, REGISTRY), 'utf8');
-  if (readDeclaration(root, REGISTRY, true) !== reg) writeDeclaration(root, REGISTRY, reg);
-  if (journal.logWasPresent) {
-    const log = readFileSync(join(journal.copy, LOG), 'utf8');
-    if (readDeclaration(root, LOG, false) !== log) writeDeclaration(root, LOG, log);
-  } else if (lstatOrNull(join(root, LOG))?.isFile()) {
-    // The log did not exist before: keep what was written beside the copy, never delete it.
-    renameSync(join(root, LOG), join(journal.copy, `${LOG}.written`));
+  const current = (name) => {
+    const t = readDeclaration(root, name, false);
+    return t === null ? null : sha(t);
+  };
+  const steps = [];
+  for (const [name, w] of [
+    [REGISTRY, journal.wrote.registry],
+    [LOG, journal.wrote.log],
+  ]) {
+    const now = current(name);
+    if (now === w.before) continue;
+    if (now !== w.after) throw new Refusal(`${name} has changed since this change was made; it is left exactly as it is.`);
+    steps.push(() => {
+      const after = readDeclaration(root, name, false);
+      if (w.before === null) {
+        // The log did not exist before: keep what was written beside the copy, never delete it.
+        renameSync(join(root, name), join(journal.copy, `${name}.written`));
+      } else writeDeclaration(root, name, readFileSync(join(journal.copy, name), 'utf8'), after);
+    });
   }
   const r = journal.rename;
-  if (r && !lstatOrNull(join(root, r.from)) && lstatOrNull(join(root, r.to))?.isFile()) {
-    const bytes = readFileSync(join(root, r.to));
-    if (bytes.length !== r.size || sha(bytes) !== r.sha256) throw new Refusal(`"${r.to}" no longer holds the renamed bytes; it is left as it is.`);
-    renameSync(join(root, r.to), join(root, r.from));
+  if (r) {
+    const from = lstatOrNull(mediaPath(root, r.from));
+    const to = lstatOrNull(mediaPath(root, r.to));
+    if (!from && to?.isFile()) {
+      const bytes = readFileSync(mediaPath(root, r.to));
+      if (bytes.length !== r.size || sha(bytes) !== r.sha256) throw new Refusal(`"${r.to}" no longer holds the renamed bytes; it is left as it is.`);
+      steps.unshift(() => renameSync(mediaPath(root, r.to), mediaPath(root, r.from)));
+    } else if (!(from?.isFile() && !to)) {
+      throw new Refusal(`"${r.from}" and "${r.to}" are neither as this change left them nor as they were; they are left as they are.`);
+    }
   }
+  for (const s of steps) s();
 }
 
 /** Validate, scan and publish again from the retained state — after a failed publication. */
 export async function retryMaintenance({ root: rootArg, state: stateArg, publish }) {
   const root = resolve(rootArg);
   const state = stateDir(root, stateArg);
-  const journal = readJournal(state);
-  if (!journal || journal.status === 'prepared') throw new Refusal(journal ? 'The last apply did not finish; run `rollback`.' : 'Nothing has been applied here yet.');
-  lock(state);
+  const token = lock(state);
   try {
+    const journal = journalFor(state, root, true);
+    if (!journal || journal.status === 'prepared') throw new Refusal(journal ? 'The last apply did not finish; run `rollback`.' : 'Nothing has been applied here yet.');
     return await publishStep(state, journal, validateAndScan(root, state, null), publish);
   } finally {
-    unlock(state);
+    unlock(state, token);
   }
 }
 
@@ -401,16 +532,20 @@ export async function retryMaintenance({ root: rootArg, state: stateArg, publish
 export async function rollbackMaintenance({ root: rootArg, state: stateArg, publish }) {
   const root = resolve(rootArg);
   const state = stateDir(root, stateArg);
-  const journal = readJournal(state);
+  const journal = journalFor(state, root, true);
   if (!journal || journal.status === 'rolled-back') throw new Refusal('There is no change here to roll back.');
-  restore(root, journal);
-  const back = { ...journal, status: 'rolled-back' };
-  writeJournal(state, back);
-  unlock(state);
-  const scanned = validateAndScan(root, state, null);
-  const out = await publishStep(state, back, scanned, publish);
-  writeJournal(state, { ...back, publication: out.status });
-  return out;
+  const token = lock(state, journal);
+  try {
+    restore(root, journal);
+    const back = { ...journal, status: 'rolled-back' };
+    writeJournal(state, back);
+    const scanned = validateAndScan(root, state, null);
+    const out = await publishStep(state, back, scanned, publish);
+    writeJournal(state, { ...back, publication: out.status });
+    return out;
+  } finally {
+    unlock(state, token);
+  }
 }
 
 // --- the CLI ----------------------------------------------------------------
@@ -422,19 +557,26 @@ export async function rollbackMaintenance({ root: rootArg, state: stateArg, publ
  * names the command that runs the job as its own account (for example
  * `sudo -n -u setar-indexer sh /volume1/practice-compass-index/run-setar-index.sh`);
  * without it, the runner beside this script runs as the caller.
+ *
+ * The validated contentHash goes to the job as its ONE argument (sudo keeps
+ * arguments, not environment): the job's own scan is refused before any
+ * request unless it is that index. Success needs the publisher's evidence line
+ * naming that hash; anything less is a failure, never "published".
  */
-function publishWithRunner(expectedRoot) {
+export function publishWithRunner(expectedRoot) {
   return async (_text, contentHash) => {
     const runner = join(dirname(fileURLToPath(import.meta.url)), 'run-setar-index.sh');
     const custom = process.env.PC_MAINT_PUBLISH;
-    const out = spawnSync('sh', custom ? ['-c', custom] : [runner], { encoding: 'utf8', env: process.env });
-    if (out.status !== 0) throw new Error(`the NAS job exited ${out.status}: ${(out.stderr || '').trim().split('\n').pop()}`);
-    // The job scans ITS configured root: it must have published what this run validated.
-    const printed = /\(([0-9a-f]{12})\)/.exec(out.stderr ?? '')?.[1];
-    if (printed && printed !== contentHash.slice(0, 12)) {
-      throw new Error(`the job published index ${printed}, not the repaired ${contentHash.slice(0, 12)} — is its archive root ${expectedRoot}?`);
-    }
-    return { status: /unchanged/i.test(out.stdout + out.stderr) ? 'unchanged' : 'published' };
+    const out = spawnSync('sh', custom ? ['-c', `${custom} "$@"`, 'sh', contentHash] : [runner, contentHash], { encoding: 'utf8', env: process.env });
+    const last = (t) => (t || '').trim().split('\n').pop();
+    // A non-zero exit is the job's own proof that its ref never moved: it
+    // stops at a failed scan, a refused expectation or a failed atomic update.
+    if (out.status === 3) throw new PublishFailed(`the job scanned a different index than the validated ${contentHash.slice(0, 12)} — is its archive root ${expectedRoot}? (${last(out.stderr)})`, true);
+    if (out.status !== 0) throw new PublishFailed(`the NAS job exited ${out.status}: ${last(out.stderr)}`, true);
+    const evidence = /^published-index (unchanged|published|created) ([0-9a-f]{64})$/.exec(last(out.stdout));
+    if (!evidence) throw new PublishFailed('the job exited 0 without its publication evidence line', false);
+    if (evidence[2] !== contentHash) throw new PublishFailed(`the job reports index ${evidence[2].slice(0, 12)}, not the validated ${contentHash.slice(0, 12)}`, false);
+    return { status: evidence[1] };
   };
 }
 

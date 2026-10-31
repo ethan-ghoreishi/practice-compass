@@ -246,13 +246,28 @@ behind the Mac's.
 inside…"), the power schedule, the `web` bind mount, `http`'s read on the media
 (Web Station serves it), and the empty Session 42 folder.
 
+**Deployed versus the repository.** The NAS runs the four runtime files of
+`a4036a9` (hashes above). The repository's later versions add: the runner's
+optional validated-hash argument and the publisher's `--expect` refusal and
+`published-index` evidence line; restore preconditions, owned locks, archive
+binding and session-folder link refusal in the maintenance tool. Until the
+owner redeploys them, the NAS route has none of these. Redeploying needs, in
+the same step, the sudo rule to allow the one argument —
+`ethan ALL=(setar-indexer) NOPASSWD: /bin/sh /volume1/practice-compass-index/run-setar-index.sh, /bin/sh /volume1/practice-compass-index/run-setar-index.sh *`
+— or every apply ends `publish-failed` (safe: nothing published). After a
+redeploy the journal of 2026‑10‑31 is an earlier version's, so `rollback`
+refuses it; undo the Session 41 registration by hand like the Session 40
+rename below.
+
 **Rollback manifest** (root shell on the NAS; private copies under
 `/volume1/@practice-compass-rollback/20261031/`, root-only):
 
 - **Archive declarations.**
-  - **Session 41 registration** (the last change): run `… rollback` as `ethan`
-    with the same `--state` and `PC_MAINT_PUBLISH`. It restores both CSVs from
-    that apply's private copy and publishes.
+  - **Session 41 registration** (the last change): with the deployed
+    `a4036a9` tool, run `… rollback` as `ethan` with the same `--state` and
+    `PC_MAINT_PUBLISH`. It restores both CSVs from that apply's private copy
+    and publishes. With a later tool, restore by hand (steps 1 and 4 below,
+    from that apply's own private copy).
   - **Session 40 rename** (`rollback` only undoes the last journaled change, and
     a reverse `rename` is refused as a loop): as `ethan`, in this order.
     1. Put both CSVs back from the private copy in

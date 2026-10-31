@@ -2,7 +2,11 @@
 # Scan the Setar archive and publish its index. This is the whole production
 # job: a DSM scheduled task runs THIS file, nothing else.
 #
-#   sh run-setar-index.sh
+#   sh run-setar-index.sh                      # the scheduled task
+#   sh run-setar-index.sh <contentHash>        # the maintenance route: publish
+#                                              # only if THIS scan is the index
+#                                              # it validated (refused before
+#                                              # any request otherwise, exit 3)
 #
 # Configuration comes from a protected operator file — never from the archive,
 # never from the app, never from a commit. Default location:
@@ -58,5 +62,10 @@ fi
 # Scan first. If it fails, stop here: the published index is still the good one.
 "$NODE" "$HERE/scan-setar-classes.mjs" --root "$PC_ARCHIVE_ROOT" --out "$OUT"
 
-# Then publish. An unchanged index makes no commit.
-"$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT"
+# Then publish. An unchanged index makes no commit. Its last stdout line,
+# `published-index <status> <contentHash>`, is the evidence a caller checks.
+if [ "$#" -gt 0 ]; then
+  "$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT" --expect "$1"
+else
+  "$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT"
+fi

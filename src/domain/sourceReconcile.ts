@@ -752,19 +752,24 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       | undefined;
     if (linked) {
       // The SAME conditions the candidate list is built from — a link may only
-      // adopt a record that is still unbound and still this instrument's.
-      // Deleted, bound elsewhere or moved since the preview, the decision is
-      // STALE, never silently turned into "create a new class instead".
+      // adopt a record that is still one of THIS session's candidates: unbound,
+      // this instrument's, and still the archive's date AND number. Deleted,
+      // bound elsewhere, moved instrument, or re-dated/renumbered since the
+      // preview (a sync, an import, the owner's own edit), the decision is
+      // STALE and the question is asked again — never silently turned into
+      // "create a new class instead", never bound to a class it no longer is.
       acted(linked);
-      const target = db.lessons.find((l) => l.id === linked.lessonId);
-      if (target && !target.source && target.instrumentId === instrumentId) {
+      const target = all.find((l) => l.id === linked.lessonId);
+      if (target) {
         // The owner's lesson keeps its own `origin`: binding the archive's
         // material is provenance, never a cancelled plan (D7).
         adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n } });
-        answer(ask, ambiguous, linked, lessonCandidate(target));
+        answer(ask, ambiguous, linked);
         continue;
       }
       staleDecisions.push(linked);
+      questions.push(ask);
+      continue;
     }
 
     if (all.length === 1 && evidenced.length === 1) {

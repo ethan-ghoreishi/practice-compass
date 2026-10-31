@@ -650,13 +650,26 @@ $M rollback   # put the last change back from its private copy and publish that
 - **It refuses rather than guesses**: a "piece" that starts with a role (a
   filename mistake, shown as such — never a new identity), an already
   registered key, an unregistered key in a new filename, an overwrite, a fork,
-  a loop, a link, a `--state` inside the archive, and a preview the archive has
-  moved on from (a concurrent edit). A refusal changes nothing.
-- **It never loses a declaration.** A failure while editing restores from the
-  private copy; an interrupted run leaves the lock, and the next run says to
-  `rollback`; a failed publication leaves the last good index published and
-  says to `retry`. Media bytes are only ever renamed, checked by size and
-  SHA-256.
+  a loop, a link (a declaration, a media file, or a session folder that leads
+  outside the archive — checked at preview, apply and rollback), a `--state`
+  inside the archive or written for another archive, and a preview the archive
+  has moved on from (a concurrent edit). A refusal changes nothing.
+- **It never loses a declaration, its own or anyone else's.** Each write
+  checks the file still holds what was planned. A failure while editing, and
+  `rollback`, put back only what THIS change wrote: every file is judged
+  first, and a declaration changed since (another `--state` folder's row, a
+  hand edit), a renamed file whose bytes changed, or a moved folder refuses the
+  whole restore with nothing written. `rollback` takes the lock like every
+  run; it adopts only the lock its own interrupted apply left (that apply's
+  journal names it and its process is gone), and no run removes a lock it does
+  not hold. Media bytes are only ever renamed, checked by size and SHA-256.
+- **Publication is of the validated index, on evidence.** The job gets the
+  validated contentHash as its one argument and refuses, before any request
+  (exit 3), a scan that differs — another configured root, an archive changed
+  since. Success needs the publisher's last line `published-index <status>
+  <hash>` naming that hash. A non-zero exit leaves the last good index
+  published, and says so; an exit 0 without that evidence is reported as
+  unconfirmed, never as published or as "nothing changed". Either way: `retry`.
 - **Repeat is a no-op**, and an unchanged archive makes no commit.
 - Ordinary, correctly named supported files for registered pieces need
   NOTHING: put them in the session folder; the job publishes; Refresh.

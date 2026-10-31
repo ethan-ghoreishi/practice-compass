@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 // @ts-expect-error — untyped operator tools; these are the real ones.
-import { applyMaintenance, planMaintenance, retryMaintenance, rollbackMaintenance, Interrupted } from '../scripts/setar-archive-maintenance.mjs';
+import { applyMaintenance, planMaintenance, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
 // @ts-expect-error — see above.
 import { scanToIndex } from '../scripts/scan-setar-classes.mjs';
 // @ts-expect-error — see above.
@@ -61,8 +61,9 @@ function fakeGit() {
   const commits = new Map<string, Record<string, string>>([['c-main', { 'state.json': 'practice data' }]]);
   let n = 0;
   let failing = false;
+  let requests = 0;
   const transport = {
-    getRef: async (b: string) => (refs.has(b) ? { sha: refs.get(b)! } : null),
+    getRef: async (b: string) => ((requests += 1), refs.has(b) ? { sha: refs.get(b)! } : null),
     getCommit: async (s: string) => ({ treeSha: s }),
     getFile: async (s: string, p: string) => (commits.get(s)?.[p] === undefined ? null : { text: commits.get(s)![p]! }),
     createBlob: async (t: string) => {
@@ -83,8 +84,10 @@ function fakeGit() {
   return {
     publish: async (text: string, hash: string) => {
       calls.push(hash);
-      return publishIndex({ transport, indexText: text });
+      return publishIndex({ transport, indexText: text, expectedContentHash: hash });
     },
+    transport,
+    requests: () => requests,
     published: () => commits.get(refs.get(SOURCE_INDEX_BRANCH) ?? '')?.[INDEX_PATH] ?? null,
     commits: () => n,
     main: () => [refs.get('main'), commits.get('c-main')],
@@ -132,6 +135,18 @@ describe('maintaining the Setar archive', () => {
       symlinkSync(join(root, `${S40}/نمونه.mp4`), join(root, `${S40}/نمونه-1.mp4`));
       expect(() => planMaintenance(root, { kind: 'rename', from: `${S40}/نمونه-1.mp4`, to: `${S40}/نمونه-3.mp4` })).toThrow(/not a regular file/);
       rmSync(join(root, `${S40}/نمونه-1.mp4`));
+      // A SESSION FOLDER that is a link leads outside the archive: refused at
+      // planning, before any read or hash, as a source and as a destination.
+      const outside = join(base, 'outside-39');
+      renameSync(join(root, S39), outside);
+      writeFileSync(join(outside, 'نمونه.mp4'), 'outside bytes');
+      symlinkSync(outside, join(root, S39));
+      expect(() => planMaintenance(root, { kind: 'rename', from: `${S39}/نمونه.mp4`, to: `${S40}/نمونه-2.mp4` })).toThrow(/not a real folder/);
+      expect(() => planMaintenance(root, { kind: 'rename', from: `${S40}/نمونه.mp4`, to: `${S39}/نمونه-2.mp4` })).toThrow(/not a real folder/);
+      expect(readFileSync(join(outside, 'نمونه.mp4'), 'utf8')).toBe('outside bytes');
+      rmSync(join(root, S39));
+      rmSync(join(outside, 'نمونه.mp4'));
+      renameSync(outside, join(root, S39));
       const linkedState = join(base, 'linked-state');
       symlinkSync(state, linkedState);
       await expect(applyMaintenance({ root, state: linkedState, action: { kind: 'register', piece: NEW_PIECE }, previewId: 'x', publish: git.publish })).rejects.toThrow(/real folder/);
@@ -171,6 +186,22 @@ describe('maintaining the Setar archive', () => {
       expect(await apply({ kind: 'rename', from, to })).toMatchObject({ ok: true, status: 'published' });
       expect(existsSync(join(root, from))).toBe(false);
       expect(sha(readFileSync(join(root, to)))).toBe(sha(before));
+      // RESTORE judges every file before touching any: renamed bytes changed,
+      // or the session folder swapped for a link, refuse the whole rollback —
+      // the declarations are NOT put back first, nothing is published.
+      const renamed = declarations(root);
+      const callsAtRename = git.calls.length;
+      writeFileSync(join(root, to), 'changed meanwhile');
+      await expect(rollbackMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/no longer holds the renamed bytes/);
+      expect([declarations(root), readFileSync(join(root, to), 'utf8'), git.calls.length]).toEqual([renamed, 'changed meanwhile', callsAtRename]);
+      writeFileSync(join(root, to), before);
+      const folder40 = join(base, 'outside-40');
+      renameSync(join(root, S40), folder40);
+      symlinkSync(folder40, join(root, S40));
+      await expect(rollbackMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/not a real folder/);
+      expect([existsSync(join(folder40, to.split('/')[1]!)), declarations(root), git.calls.length]).toEqual([true, renamed, callsAtRename]);
+      rmSync(join(root, S40));
+      renameSync(folder40, join(root, S40));
       // One row appended under the log's own header; nonempty timestamps kept.
       expect(declarations(root).log).toBe(`${decl0.log}${from},${to},\n`);
       // The SOURCE family's own oracle for sessions 40 and 41, reused rather than re-derived.
@@ -198,6 +229,34 @@ describe('maintaining the Setar archive', () => {
       expect(await apply({ kind: 'roster', session: 40, pieces: [z] })).toMatchObject({ ok: true });
       expect(declarations(root).pieces.split('\n').find((l) => l.startsWith(`${z},`))).toBe(zRow.replace(',39,"', ',"39,40","'));
 
+      // --- RECOVERY NEVER UNDOES SOMEONE ELSE'S LATER CHANGE --------------
+      // A row added through ANOTHER --state folder after this roster: rolling
+      // the roster back is refused, the later row kept, nothing published.
+      const other = join(base, 'other-state');
+      mkdirSync(other);
+      const later = { kind: 'register', piece: 'ردیف-بعدی' };
+      expect(await applyMaintenance({ root, state: other, action: later, previewId: planMaintenance(root, later).id, publish: git.publish })).toMatchObject({ ok: true });
+      const withLater = declarations(root);
+      const callsLater = git.calls.length;
+      const journalBefore = readFileSync(join(state, 'journal.json'), 'utf8');
+      await expect(rollbackMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/PIECES.csv has changed since/);
+      expect([declarations(root), git.calls.length, readFileSync(join(state, 'journal.json'), 'utf8')]).toEqual([withLater, callsLater, journalBefore]);
+      // A LIVE run's lock is never taken or removed by a rollback.
+      writeFileSync(join(state, 'lock'), `live-token ${process.pid}`);
+      await expect(rollbackMaintenance({ root, state, publish: git.publish })).rejects.toThrow(/holds the lock/);
+      expect(readFileSync(join(state, 'lock'), 'utf8')).toBe(`live-token ${process.pid}`);
+      rmSync(join(state, 'lock'));
+      // A --state folder answers only for its own archive.
+      const elsewhere = scratch();
+      await expect(rollbackMaintenance({ root: elsewhere.root, state, publish: git.publish })).rejects.toThrow(/another archive/);
+      await expect(retryMaintenance({ root: elsewhere.root, state, publish: git.publish })).rejects.toThrow(/another archive/);
+      expect(declarations(elsewhere.root)).toEqual(decl0);
+      rmSync(elsewhere.base, { recursive: true, force: true });
+      // The later change's OWN folder may put it back, and that leaves the roster.
+      expect(await rollbackMaintenance({ root, state: other, publish: git.publish })).toMatchObject({ ok: true });
+      expect(declarations(root).pieces).not.toContain('ردیف-بعدی');
+      expect(declarations(root).pieces.split('\n').find((l) => l.startsWith(`${z},`))).toBe(zRow.replace(',39,"', ',"39,40","'));
+
       // --- A STALE PREVIEW or a concurrent edit is refused -----------------
       const stalePlan = planMaintenance(root, { kind: 'roster', session: 41, pieces: [z] });
       const beforeEdit = declarations(root);
@@ -214,7 +273,15 @@ describe('maintaining the Setar archive', () => {
       const good = git.published();
       const commitsBefore = git.commits();
       const pre = declarations(root);
-      await expect(apply({ kind: 'roster', session: 41, pieces: [z] }, { interruptAfter: 'registry' })).rejects.toBeInstanceOf(Interrupted);
+      // A REAL process, gone mid-apply: its lock and `prepared` journal remain.
+      const interruptedRun = { root, state, action: { kind: 'roster', session: 41, pieces: [z] }, previewId: planMaintenance(root, { kind: 'roster', session: 41, pieces: [z] }).id };
+      const child = await run(
+        'node',
+        ['--input-type=module', '-e', `const m = await import(${JSON.stringify(TOOL)}); await m.applyMaintenance({ ...JSON.parse(process.env.RUN), publish: async () => { throw new Error('unreached'); }, interruptAfter: 'registry' }).catch((e) => { process.exitCode = e instanceof m.Interrupted ? 7 : 1; });`],
+        { env: { ...process.env, RUN: JSON.stringify(interruptedRun) } },
+      ).then(() => 0, (e: { code: number }) => e.code);
+      expect(child).toBe(7);
+      expect(existsSync(join(state, 'lock'))).toBe(true);
       expect(declarations(root).pieces).not.toBe(pre.pieces);
       expect(git.published()).toBe(good);
       await expect(apply({ kind: 'register', piece: 'یکی-دیگر' })).rejects.toThrow(/interrupted|did not finish/);
@@ -257,6 +324,44 @@ describe('maintaining the Setar archive', () => {
       expect(done.code).toBe(1);
       expect(done.out).toMatch(/publication failed .*NAS job exited 2.*retry/s);
       expect(declarations(root).pieces).toContain('یکی-دیگر,');
+
+      // --- THE REAL WRAPPER publishes only the validated index, on evidence -
+      const validated = scanToIndex(root).contentHash as string;
+      const via = (cmd: string | undefined, extra: Record<string, string> = {}) =>
+        run('node', [TOOL, '--root', root, '--state', state, 'retry'], {
+          env: { ...process.env, PC_INDEX_CONFIG: join(base, 'no-config.env'), ...(cmd ? { PC_MAINT_PUBLISH: cmd } : {}), ...extra },
+        }).then(
+          (o) => ({ code: 0, out: o.stdout + o.stderr }),
+          (e: { code: number; stdout: string; stderr: string }) => ({ code: e.code, out: e.stdout + e.stderr }),
+        );
+      // A job that does nothing and says nothing has not published.
+      const silent = await via('true');
+      expect(silent.code).toBe(1);
+      expect(silent.out).toMatch(/could not be confirmed.*without its publication evidence/s);
+      expect(silent.out).not.toMatch(/last good index is still/);
+      // Evidence naming another index is refused too.
+      const stub = join(base, 'stub-job.mjs');
+      writeFileSync(stub, `console.log('published-index published ' + (process.env.WRONG ? '0'.repeat(64) : process.argv[2]));`);
+      const wrong = await via(`node ${JSON.stringify(stub)}`, { WRONG: '1' });
+      expect([wrong.code, wrong.out]).toEqual([1, expect.stringMatching(/reports index 000000000000, not the validated/)]);
+      // The REAL runner, configured for ANOTHER archive root, refuses before
+      // any request — the published index is untouched, and it says so.
+      const otherArchive = scratch();
+      const work = join(otherArchive.base, 'work');
+      mkdirSync(work);
+      const config = join(otherArchive.base, 'config.env');
+      writeFileSync(config, `PC_ARCHIVE_ROOT=${otherArchive.root}\nPC_INDEX_REPO=nobody/nothing\nPC_INDEX_TOKEN=not-a-token\nPC_INDEX_WORKDIR=${work}\n`);
+      const misrouted = await via(undefined, { PC_INDEX_CONFIG: config });
+      expect(misrouted.code).toBe(1);
+      expect(misrouted.out).toMatch(/scanned a different index than the validated .*Refused: This index is .*nothing was published.*last good index is still the published one/s);
+      rmSync(otherArchive.base, { recursive: true, force: true });
+      // And the publisher itself refuses an unvalidated index before ANY request.
+      const requestsBefore = git.requests();
+      await expect(publishIndex({ transport: git.transport, indexText: git.published()!, expectedContentHash: validated })).rejects.toThrow(/nothing was published/);
+      expect(git.requests()).toBe(requestsBefore);
+      // The job's evidence for exactly the validated hash: published.
+      const ok = await via(`node ${JSON.stringify(stub)}`);
+      expect([ok.code, ok.out]).toEqual([0, expect.stringContaining(`Published index ${validated.slice(0, 12)} (published)`)]);
       // And media were never altered by any of it — only the two exact renames moved bytes.
       const after = media(root);
       expect(Object.values(after).sort()).toEqual(Object.values(media0).sort());

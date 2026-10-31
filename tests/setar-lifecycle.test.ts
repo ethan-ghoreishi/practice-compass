@@ -448,6 +448,25 @@ describe('one class, one record', () => {
     const linked = applyArchiveImport(planned, planArchiveImport({ db: planned, index, instrumentId: SETAR, decisions: [link], now: NOW }), [link]);
     expect(linked.lessons.filter((l) => l.source?.sessionN === 41).map((l) => [l.id, l.origin])).toEqual([[C41.manualId, undefined]]);
     expect(linked.lessonAgenda).toEqual(planned.lessonAgenda);
+    // A LINK WHOSE CLASS MOVED after the preview — re-dated or renumbered by a
+    // sync, an import or the owner's own edit before Apply — is stale through
+    // the store's real commit, whether or not `rev` moved: the question comes
+    // back, and nothing is bound, created or suppressed.
+    for (const moved of [{ date: '2026-11-24' }, { number: 42 }]) {
+      load(planned);
+      const { rev } = s().previewArchiveImport({ index, instrumentId: SETAR, decisions: [link], now: NOW });
+      const changed = { ...planned, lessons: planned.lessons.map((l) => (l.id === C41.manualId ? { ...l, ...moved } : l)) };
+      for (const decidedFromRev of [rev, rev - 1]) {
+        useStore.setState({ db: changed, rev: decidedFromRev === rev ? rev : rev + 1 });
+        const refused = await commit([link], decidedFromRev);
+        // The dead answer is NAMED in both branches, so Refresh drops it.
+        expect(refused, JSON.stringify(moved)).toMatchObject({ ok: false, status: 'stale', staleDecisions: [link] });
+        expect(s().db).toBe(changed);
+        const again = s().previewArchiveImport({ index, instrumentId: SETAR, decisions: [link], now: NOW }).plan;
+        expect([again.staleDecisions, again.adoptedLessons, again.newLessons.filter((l) => l.source?.sessionN === 41)]).toEqual([[link], [], []]);
+        expect(again.questions.filter((q) => q.sessionN === 41).map((q) => q.kind)).toEqual(['lesson']);
+      }
+    }
     // Create separately says so durably: no twin question afterwards.
     const create = { kind: 'create-lesson', sessionN: 41 } as const;
     const apart = applyArchiveImport(planned, planArchiveImport({ db: planned, index, instrumentId: SETAR, decisions: [create], now: NOW }), [create]);
