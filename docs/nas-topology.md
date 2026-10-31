@@ -26,12 +26,12 @@ fact that could not be measured from the Mac is marked **owner to confirm
 | NAS | Synology DSM at `192.168.0.20` | measured 2026‑09‑18 |
 | Media, Mac copy | `/Volumes/Sandisk/video-courses/{setar-classes,tar-classes,classical-guitar}` | planning 2026‑10‑01 |
 | Media, NAS copy | `homes/ethan/SNDK/video-courses/…` | owner report 2026‑09‑30 |
-| Drive pairing | Synology Drive pairs `/Volumes/Sandisk` with NAS `homes/ethan/SNDK`, both ways; `.SynologyWorkingDirectory` sits at the drive root | owner statement; `.SynologyWorkingDirectory` measured, planning 2026‑10‑01. Exact pair: **owner to confirm (ac‑11)** |
+| Drive pairing | Synology Drive pairs `/Volumes/Sandisk` with NAS `homes/ethan/SNDK`, both ways; `.SynologyWorkingDirectory` sits at the drive root | measured 2026‑10‑31 in the Mac client's session table: share `home`, remote `/SNDK/` ↔ `/Volumes/Sandisk/`, bidirectional, local removals propagate. The only other pair (`/Image Warehouse/` ↔ `/Volumes/Warehouse/`) touches nothing here |
 | `web` share | mounted on the Mac at `/Volumes/web` (DSM `/volume1/web`) | planning 2026‑10‑01 |
-| `/Volumes/web/practice-compass` | shows the media tree `homes/ethan/SNDK/video-courses`. Symlink, shared-folder mapping or Web Station root: **owner to confirm (ac‑11)**. Left exactly as it is. | owner report 2026‑09‑30 |
+| `/Volumes/web/practice-compass` | a btrfs **bind mount** of `homes/ethan/SNDK/video-courses` (same inode; `/proc/mounts`), so writing through it writes the media. Left exactly as it is. | measured 2026‑10‑31 |
 | Media over HTTPS | `https://192.168.0.20:5010/setar-classes/` is the Mac's media base (self-signed, a secure context) | measured 2026‑09‑18 |
 | `https://192.168.0.20/practice-compass/` | answers **403** — no mirror is being served there | measured 2026‑09‑18 and planning 2026‑10‑01 |
-| Web Station roots (what `:443` and `:5010` serve) | **owner to confirm (ac‑11)** | — |
+| Web Station roots (what `:443` and `:5010` serve) | `:443`/`:80` serve `/volume1/web`; `:5010` proxies to Apache on `127.0.0.1:915`, `DocumentRoot /volume1/web/practice-compass` (the bind mount above) | measured 2026‑10‑31 |
 
 ## Who writes where
 
@@ -39,10 +39,10 @@ fact that could not be measured from the Mac is marked **owner to confirm
 |---|---|---|---|
 | The owner | — | the media, either copy | the other copy, through Drive — deletions and renames included |
 | Synology Drive | both copies | both copies | — it IS the propagation |
-| NAS indexer (`run-setar-index.sh`, DSM task id 3, as `setar-indexer`; intended every 15 min ALL day — on 2026‑10‑30 its repetition ended at 00:45, so it ran four times around midnight; four copied files) | `PC_ARCHIVE_ROOT` | `setar-index.json` in its own work directory, which it never creates; one file on the `source-index` branch | GitHub only. Task, runtime directory and that `config.env` sits outside every served or synced share: **owner to confirm (ac‑11)** |
+| NAS indexer (`run-setar-index.sh`, DSM task id 3, as `setar-indexer`; every 15 min 00:00–23:45 since 2026‑10‑31 — before that its repetition ended at 00:45; it runs only while the NAS is powered, and DSM's power schedule is on 09:00, off 20:00) | `PC_ARCHIVE_ROOT` | `setar-index.json` in its own work directory, which it never creates; one file on the `source-index` branch | GitHub only. The runtime folder `/volume1/practice-compass-index` is its own SMB share (ACL-only), outside every Drive pair and Web Station root; since 2026‑10‑31 only `ethan`, `setar-indexer`, `administrators` and the built-in `admin` hold ACEs on it, and `setar-indexer` only READS the archive |
 | Setar scanner by hand on the Mac | an archive root | its own previous index, or a new file, outside that root | nothing |
 | Setar scanner `--attention` (Mac or NAS, by hand) | an archive root, read twice and compared | nothing — a report on stdout only, archive-relative paths; `--out` is refused before anything is read | nothing |
-| `setar-archive-maintenance.mjs` (NAS, by hand, as an account that may write the archive; publishes through the job as `setar-indexer`, `PC_MAINT_PUBLISH`) | the archive root; its own `--state` folder | after an owner-confirmed preview only: `PIECES.csv`, `RENAME-LOG.csv` (temp + rename, never through a link), one renamed media file (bytes checked), and its private `--state` folder (outside the archive) | GitHub, through `run-setar-index.sh`; the archive edits travel to the Mac copy through Drive |
+| `setar-archive-maintenance.mjs` (NAS, by hand, as `ethan`, who owns the archive; publishes through the job as `setar-indexer`, `PC_MAINT_PUBLISH`, by the one-command sudo rule of 2026‑10‑31) | the archive root; its own `--state` folder | after an owner-confirmed preview only: `PIECES.csv`, `RENAME-LOG.csv` (temp + rename, never through a link), one renamed media file (bytes checked), and its private `--state` folder (outside the archive) | GitHub, through `run-setar-index.sh`; the archive edits travel to the Mac copy through Drive |
 | Course scanners (Mac, by hand) | `/Volumes/Sandisk/…` | `src/domain/courseData.ts` / `khonyagarData.ts` (default resolved from the script, never the CWD) | a commit, if the owner makes one |
 | `scripts/nas-mirror.mjs` | the repo's `dist/` | only inside a folder it created, or one holding its marker | the mirror's own origin |
 | The app | GitHub API; media only by opening a link | its own IndexedDB; the GitHub data repo through sync | other devices, through sync |
@@ -88,8 +88,8 @@ then prints the destination, its parent's entries and what it would create or
 replace. It writes nothing at the destination.
 
 - **Use a NEW folder.** For example `/Volumes/web/pc-mirror`, served at
-  `https://192.168.0.20/pc-mirror/` if Web Station serves the `web` share there
-  (**owner to confirm (ac‑11)**). The base is derived from the folder name
+  `https://192.168.0.20/pc-mirror/`: Web Station's `:443` root is `/volume1/web`
+  (measured 2026‑10‑31). The base is derived from the folder name
   (`/pc-mirror/`); `--base` overrides it.
 - **It refuses** a folder it did not create, even an empty one. It also refuses
   a destination that is itself a link, anything it finds there that it never
@@ -139,29 +139,131 @@ node scripts/scan-setar-classes.mjs --root /Volumes/Sandisk/video-courses/setar-
 wc -l < "$T/media.txt"; shasum -a 256 "$T/media.txt"
 ```
 
-## Live NAS repair of 2026‑10‑30 (issue #60)
+## Live NAS repair of 2026‑10‑30/31 (issue #60)
 
-What the lane established read-only from the Mac, against the Drive copy of the
-archive (`/Volumes/Sandisk/video-courses/setar-classes`): the declarations and
-the scanned index match the runtime's last published one; a read-only scan
-publishes 41 sessions and 106 pieces with three diagnostics — the Session 40
-stacked-role personal take (`unregistered`), its held-back `نمونه.mp4`
-(`demo-unattributed`) and the unregistered Session 41 demonstration. The real
-inventory holds only `.mp4`, `.pdf` and `.jpg` in session folders. The rename
-log has an extra, sometimes non-empty `timestamp` column, which the maintenance
-route preserves.
+Done on the NAS itself on 2026‑10‑31 (00:14–01:00 NAS time, GMT) over SSH as
+`ethan` with a root shell. Archive paths below are relative to `PC_ARCHIVE_ROOT`.
+No credential appears here. The private rollback copies sit in a root-only
+folder on the NAS outside every share; they are not reproduced here.
 
-**Not yet done, and not claimed:** the task-schedule correction, the narrowing of
-the runtime/config permissions, the real-account run, the corrected scan hash on
-the NAS, the commit-pinned publication and its second-run no-commit result. Each
-needs the NAS itself (DSM or a shell as the owner's admin and as
-`setar-indexer`), which this session did not have; the archive declarations
-were deliberately NOT edited from the Mac, because Drive would carry a half-done
-repair to the NAS ahead of a job that could publish it. The redacted
-pre/post record and the rollback manifest belong here once that access is
-granted. What it needs: DSM Task Scheduler (task 3's schedule and next
-trigger); an admin shell to read real paths, modes and ACLs and to narrow only
-the runtime/config files; running the job as `setar-indexer`; and an
-archive-writing account for the two declaration edits and the one rename, with
-`PC_MAINT_PUBLISH` pointing the publish step at the job's own account.
+**Found (pre-state).**
 
+- Task 3 ("Practice Compass Setar Index", run as `setar-indexer`, `sh …/run-setar-index.sh`):
+  daily, every 15 min, `last work hour=0`, so it stopped at 00:45. The crontab
+  line was `0,15,30,45 0 * * *`. Last run 00:00 Success.
+- The runtime held the 2026‑10‑06 scripts, not this lane's.
+- `PC_ARCHIVE_ROOT` resolves to itself (no link) under the `homes` share, inside
+  the Drive pair above.
+- Published head `c23e808`: index `0e268c044106`, 41 sessions, 106 pieces, three
+  diagnostics:
+  - Session 40's stacked-role take `تمرین-من-نت-چهارمضراب-چهارگاه-عبادی.mp4`
+  - its held-back `نمونه.mp4`
+  - Session 41's unregistered `نمونه-پیش-درامد-ابوعطا-لطفی.mp4`
+- `session-42-24-11-2026` is empty.
+- Permissions were broader than the design:
+  - `group:http` (Web Station) had full control of the runtime share, token-bearing
+    `config.env` included.
+  - `setar-indexer` held full control on the `homes` share root, so it could
+    WRITE the archive and read every home.
+  - It also belongs to `http`, which reads the media.
+
+**Changed, in order.** Each change was checked right after it.
+
+1. **Task 3.** Set through DSM's own API (`SYNO.Core.TaskScheduler` `set`, v4),
+   changing only `last_work_hour` 0 → 23, then `synoschedtask --sync`.
+   - It now shows "Repeat every 15 min until 23:45".
+   - The crontab line is `0,15,30,45 0,1,…,23`.
+   - The 01:00 run, the first ever past hour 0, ran (Success).
+   - DSM's power schedule (on 09:00, off 20:00) is unchanged, so "all day" means
+     while powered.
+2. **Runtime share.** Removed the `group:http` ACE. `http` can no longer read
+   `config.env`; `setar-indexer` still can.
+3. **Archive access.** Added `user:setar-indexer:allow:r-x---a-R-c--:fd--` on
+   `PC_ARCHIVE_ROOT`, then removed the indexer's full-control ACE from the `homes`
+   root (DSM's share permissions for `homes` ARE that ACL; it has no RW/RO lists).
+   - Measured as `setar-indexer`: reads the archive and media; cannot write a
+     declaration or the folder; cannot list another home folder; its own home
+     still works.
+   - `ethan` still writes the archive.
+4. **Runtime files.** Copied the four runtime files from lane commit `a4036a9`
+   (SHA‑256 prefixes: scanner `e00454df`, publisher `b136e940`, runner `d48f32eb`,
+   maintenance `5e297716`).
+   - On DSM, `chmod` drops a file's ACL, so the copies were put back under the
+     folder's inherited ACL with `synoacltool -enforce-inherit`.
+5. **`config.env`.** Appended `PC_NODE=/usr/local/bin/node` in place; the token
+   was untouched. Under `sudo` the secure path has no `/usr/local/bin`, so the
+   job failed `node: command not found` (exit 127) and published nothing. DSM's
+   task environment has it.
+6. **Owner-approved hand-off.** Added `/etc/sudoers.d/practice-compass-maint`
+   (root, 0440), parsed by `sudo -l` (DSM ships no `visudo`):
+   `ethan ALL=(setar-indexer) NOPASSWD: /bin/sh /volume1/practice-compass-index/run-setar-index.sh`.
+   Any other command as `setar-indexer` still asks for a password.
+   - Maintenance runs as `ethan` (who owns the archive) with
+     `PC_MAINT_PUBLISH="sudo -n -u setar-indexer /bin/sh /volume1/practice-compass-index/run-setar-index.sh"`
+     and `--state` in a private 0700 folder in ethan's home, outside both Drive
+     pairs.
+
+**Publications** (`source-index`, every file read back at its commit and decoded
+by this lane's `parseSourceIndex` AND by production's, `main` `7c9e8e4`; both
+accepted all three).
+
+| Commit | Index | What | Sessions / pieces / diagnostics |
+|---|---|---|---|
+| `e1ba1f9` | `8fc585617d09` | intended-account run with the new scanner, archive unchanged (adds `code` to each diagnostic) | 41 / 106 / 3 |
+| `dcb9586` | `38413b3c0e9a` | `rename` of Session 40's take to `تمرین-من-چهارمضراب-چهارگاه-عبادی.mp4` (preview `c8c77a84974c2484`) | 41 / 106 / 1 |
+| `4d570c6` | `153200303541` | `register --piece پیش-درامد-ابوعطا-لطفی --session 41`, no musical fields (preview `4d119eaafd510e4d`) | 41 / 107 / 0 |
+
+- **Session 40:** roster trusted, `پیش-درامد-چهارگاه-فروتن` and
+  `چهارمضراب-چهارگاه-عبادی`; `نمونه.mp4` is attributed to both; each score PDF is
+  attributed to its own piece; personal takes are membership roles only, never
+  resources.
+- **Session 41:** roster is `پیش-درامد-ابوعطا-لطفی`, its demonstration is scoped
+  to it, and the class recording is kept.
+- **Session 42:** absent. No `نت-…` piece exists.
+
+**Unchanged reruns made no commit:**
+
+- the scheduled 00:45 run (new scripts, before the repair);
+- a manual intended-account run after the repair ("Index unchanged — no commit");
+- the scheduled 01:00 run (Success; next trigger 01:15).
+
+The head stayed `4d570c6` throughout. The NAS clock ran about ten minutes
+behind the Mac's.
+
+**Bytes.**
+
+- All eight Session 40/41 media files hash the same before and after, the
+  renamed take included (`0839ec841c82…`).
+- The whole-archive size+path fingerprint (296 files) differs only by that one
+  name and the two CSVs.
+- Both CSVs are append-only: the old bytes are an exact prefix, plus one row
+  each.
+- The Mac's Drive copy converged: both CSVs are byte-identical, the renamed file
+  has the same hash, the old name is gone, and there are no conflict copies.
+
+**Not touched:** the 83 older rename-log names not on disk (§"Things sitting
+inside…"), the power schedule, the `web` bind mount, `http`'s read on the media
+(Web Station serves it), and the empty Session 42 folder.
+
+**Rollback manifest** (root shell on the NAS; private copies under
+`/volume1/@practice-compass-rollback/20261031/`, root-only):
+
+- **Archive declarations.** Run the guided route, never a hand edit: `… rollback`,
+  as `ethan`, with the same `--state`. It restores both CSVs from the latest
+  private copy and publishes. Run it again to step back one more change. A
+  rename is undone the same way, and its bytes are checked.
+- **Index.** Commit an earlier `setar/index.json` forward on `source-index`
+  (for example the blob at `c23e808`); never force-push.
+- **Task 3.** The same API `set` with `last_work_hour=0` (saved as
+  `task3-api-before.json`), then `synoschedtask --sync`. DSM also keeps
+  `3.task` copies in `…/synoschedule.d/root/3.backup/`.
+- **ACLs.**
+  - `synoacltool -add /volume1/homes user:setar-indexer:allow:rwxpdDaARWc--:fd--`
+  - `synoacltool -del <PC_ARCHIVE_ROOT> <index of the indexer's read ACE>`
+  - `synoacltool -add /volume1/practice-compass-index group:http:allow:rwxpdDaARWc--:fd--`
+
+  The pre-state of each is in `acl-before.txt`.
+- **Runtime.** Copy `runtime/*` from the rollback folder back, keeping
+  `config.env` as is unless reverting `PC_NODE` too, then run
+  `synoacltool -enforce-inherit` on each file.
+- **Sudo.** Delete `/etc/sudoers.d/practice-compass-maint`.

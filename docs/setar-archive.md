@@ -248,7 +248,8 @@ two scripts by hand; that is the development fallback, not the deployment.
 
 1. **Runtime.** Install a supported Node runtime (Package Center → Node.js).
    Record the actual binary path — `which node` under the task's own shell — and
-   set `PC_NODE` if it is not on `PATH`.
+   set `PC_NODE` in `config.env` (on the production NAS `/usr/local/bin/node`): DSM's
+   task has it on `PATH`, but `sudo`'s secure path does not, and `PC_MAINT_PUBLISH` runs the job through `sudo`.
 2. **Directories.** Create a runtime/output directory *outside* the archive,
    e.g. `/volume1/practice-compass-index/`, owned by a non-admin service user.
    Copy `scripts/scan-setar-classes.mjs`, `scripts/publish-setar-index.mjs` and
@@ -550,8 +551,9 @@ fix is the route, not a setting:
 - **For a phone — the HTTPS mirror.** Publish the build into a NEW, app-only folder with
   `node scripts/nas-mirror.mjs --dest <folder>` (a dry run), then again with `--apply`, and
   open it over `https://192.168.0.20/<folder>/`. What is measured: an HTTPS origin is a
-  secure context even with a self-signed Synology certificate (`:5010`, 2026‑09‑18). What is
-  not: that Web Station serves the `web` share at that URL (owner to confirm), and whether
+  secure context even with a self-signed Synology certificate (`:5010`, 2026‑09‑18), and
+  Web Station's `:443` root is `/volume1/web` (2026‑10‑31). What is
+  not: whether
   iOS runs a service worker from a self-signed origin. `https://192.168.0.20/practice-compass/`
   still answered **403** on 2026‑10‑01, and `/Volumes/web/practice-compass` shows the media
   tree, so the mirror refuses it. `docs/nas-topology.md` has the map and what each testing
@@ -618,13 +620,14 @@ nothing until the archive's own declarations change, so first tell which it is:
 ### The guided maintenance route
 
 `setar-archive-maintenance.mjs` lives beside the other three runtime files on
-the NAS and is run there against the archive root, as an account that may
-write the archive (the indexer's service user stays read-only on it). Its
-publish step runs the existing job as the job's own account, named by
-`PC_MAINT_PUBLISH` (e.g. `sudo -n -u setar-indexer sh …/run-setar-index.sh`),
-because only that account reads the token-bearing `config.env`. The exact
-account pairing is settled on the NAS during the live repair
-(`docs/nas-topology.md`). It
+the NAS and is run there against the archive root as `ethan`, who owns the
+archive (the indexer's service user only reads it, since 2026‑10‑31). Its
+publish step runs the existing job as the job's own account, so the published
+index and its scratch file stay the indexer's:
+`PC_MAINT_PUBLISH="sudo -n -u setar-indexer /bin/sh /volume1/practice-compass-index/run-setar-index.sh"`,
+allowed by a one-command sudo rule (`docs/nas-topology.md`, live repair). Run it
+as `ethan`, never as root: its temp-and-rename writes would leave root-owned
+declarations for Drive to carry. It
 asks only for what a filename cannot say, shows exactly what it will change,
 and does nothing until you repeat the command with that preview's id:
 

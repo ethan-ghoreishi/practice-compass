@@ -2,6 +2,22 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Setar NAS job: who may write what (2026-10-31)
+
+Same lane, live NAS repair (record and rollback: `docs/nas-topology.md`).
+
+- **The archive has one writer account, `ethan`, who owns it.** `setar-indexer`
+  had inherited full control of the whole `homes` share. It now holds only a
+  read grant on the Setar archive. `http` lost its grant on the token-bearing
+  runtime share, because Web Station had no reason to read the token.
+- **The maintenance hand-off is a one-command sudo rule, approved by the owner.**
+  `ethan` may run exactly `/bin/sh …/run-setar-index.sh` as `setar-indexer`,
+  so every publication comes from the job's own account and files. Running as
+  root was rejected because it leaves root-owned declarations for Drive to carry.
+  Publishing as `ethan` was rejected because it skips the job's account.
+- **"All day" means every 15 minutes, 00:00–23:45, while the NAS is powered.**
+  The owner's power schedule was left unchanged.
+
 ## One Setar class, one record — from planned lesson to archive session (2026-10-30)
 
 Lane `20261030-keep-setar-lessons-and-preparation-coher-d2ee` (issue #60). The
