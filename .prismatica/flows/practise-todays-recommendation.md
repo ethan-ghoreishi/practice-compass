@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:55.493Z
-        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
+        at: 2026-11-01T19:46:15.543Z
+        commit: 549651b216dbd6678e4a518bf7ead722c36dc745
     - actor: Practice Compass
       action: Scores every item of that instrument from the one candidate pool Today,
         a plan's build, regeneration and swaps share — work already practised
@@ -38,8 +38,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:55.493Z
-        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
+        at: 2026-11-01T19:46:15.543Z
+        commit: 549651b216dbd6678e4a518bf7ead722c36dc745
     - actor: The musician
       action: Taps 'Start · 10 min'.
       shows: "The active block screen: item title, mode and focus chips, a running
@@ -51,8 +51,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:55.493Z
-        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
+        at: 2026-11-01T19:46:15.543Z
+        commit: 549651b216dbd6678e4a518bf7ead722c36dc745
     - actor: The musician
       action: Practises, optionally opening 'About this piece' or jotting a passing
         note; pauses and resumes as needed.
@@ -79,8 +79,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:55.493Z
-        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
+        at: 2026-11-01T19:46:15.543Z
+        commit: 549651b216dbd6678e4a518bf7ead722c36dc745
     - actor: The musician
       action: Taps 'Finish'.
       shows: The close screen, with the minutes already filled in.
@@ -88,8 +88,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:55.493Z
-        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
+        at: 2026-11-01T19:46:15.543Z
+        commit: 549651b216dbd6678e4a518bf7ead722c36dc745
     - actor: The musician
       action: Says what the block covered — focused work on a part or one aspect (the
         default) or an explicit whole-item check — picks one of the six results,
@@ -106,8 +106,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:55.493Z
-        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
+        at: 2026-11-01T19:46:15.543Z
+        commit: 549651b216dbd6678e4a518bf7ead722c36dc745
     - actor: The musician
       action: Taps 'Save block'.
       shows: Back to Today (or to the running plan), with the item's stats and status
@@ -121,8 +121,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:55.493Z
-        commit: 9ec4b0bc5c83a0d2da1537d98ff479eb8e356625
+        at: 2026-11-01T19:46:15.543Z
+        commit: 549651b216dbd6678e4a518bf7ead722c36dc745
   endsWith: "The session is recorded honestly: one block, one result, one next
     action — and the item knows when it should come back."
   variations:
