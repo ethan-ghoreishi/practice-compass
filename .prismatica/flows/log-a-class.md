@@ -65,20 +65,19 @@ truth:
         commit: de7881e74b40926f06088028875f5183b506f7a9
     - actor: The musician
       action: Links or quick-adds the practice items that came out of the class, and
-        flags the ones to be ready for next time.
-      shows: Each linked item with its status and a 'For next class' toggle. A piece
-        the class's Setar archive lists appears too, labelled '· in this class’s
-        archive'; the item's own page names the same classes.
+        commits the ones to be ready for a class with 'Prepare for Class N ·
+        date'.
+      shows: Each linked item with its status; a piece the class’s Setar archive lists
+        appears too, labelled '· in this class’s archive'; the item’s own page
+        names the same classes.
       changes: The lesson keeps a link to the item (never ownership — unlinking keeps
         the item); unlinking an archive-listed piece records only that one
-        decision and linking it again lifts it — nothing is copied into the
-        lesson’s own links; a flagged item gains a priority boost that climbs as
-        that instrument's next class approaches.
+        decision; a preparation names that one class, whose date is the deadline
+        that raises the item’s priority as it nears.
       assumes: []
       evidence:
-        method: manual
-        at: 2026-10-29T21:06:34.532Z
-        commit: de7881e74b40926f06088028875f5183b506f7a9
+        method: inferred
+        at: 2026-10-30T23:13:30.267Z
     - actor: The musician
       action: Optionally attaches small hand-outs (a PDF, a photo, a short audio).
       shows: Files over 10 MB and any video are warned about; over 40 MB is refused
@@ -89,8 +88,25 @@ truth:
         method: manual
         at: 2026-10-29T21:06:34.532Z
         commit: de7881e74b40926f06088028875f5183b506f7a9
-  endsWith: The class is on record, its material is real practice items, and the
-    work due before the next class is prioritised automatically.
+    - actor: The musician
+      action: After the class, puts its recording and material in the ordinary
+        session-N-DD-MM-YYYY folder on the NAS; the scheduled job publishes the
+        index; Refresh Setar archive asks whether that session is the class
+        planned in Compass.
+      shows: "'Is this the class you planned in Compass?' with Link / Create
+        separately / Skip, and anything the archive could not read grouped by
+        the one action it needs (register, roster, rename, file type)."
+      changes: "Link binds the session to the SAME lesson: its id, commitments,
+        questions and notes stay; the archive’s files are composed onto it; it
+        stays upcoming until its date. Repeating Refresh changes nothing."
+      assumes:
+        - The NAS job has published the session
+      evidence:
+        method: inferred
+        at: 2026-10-30T23:13:30.267Z
+  endsWith: The class is on record once, with its archive material, its material
+    is real practice items, and the work due before the next class is
+    prioritised automatically.
   variations:
     - name: No NAS base URL yet
       differs: The link shows 'Set your NAS base URL in Settings to open this' and the
@@ -100,10 +116,16 @@ truth:
       differs: An unparseable base is reported as such and nothing is opened, rather
         than resolving to a wrong in-app address.
       status: works
-    - name: Import the Setar class history
-      differs: Settings → 'Import Setar classes' adds the logged sessions as lessons
-        with their recording and score links, additively and idempotently,
-        backfilling refs missing from classes already imported.
+    - name: A class that appears twice
+      differs: A session already imported beside the owner’s planned class of the same
+        date and number is offered as Combine into my class (the owner’s lesson
+        survives with every note, link, agenda entry and attachment of both;
+        nothing deleted or hidden) or Keep separate (remembered). Unsaved words
+        on the archive copy refuse the combine, kept.
+      status: works
+    - name: Archive-only history
+      differs: A session no planned class matches arrives as a historical lesson,
+        never upcoming even when its date is ahead of the device clock.
       status: works
     - name: Wide screen
       differs: At 1000px and above the class list sits beside the open class, giving
@@ -115,6 +137,8 @@ truth:
     - A lesson link to an item is a link, never ownership.
     - The next class is the one sanctioned deadline — per instrument, never
       guilt-toned.
+    - "One real class is one lesson: the archive binds to the owner’s lesson,
+      never a competing copy."
   involves:
     - The musician
     - The teacher (indirectly)
@@ -123,8 +147,12 @@ mechanics:
   touchpoints:
     - src/pages/Lessons.tsx
     - src/components/Attachments.tsx
-    - src/domain/recordings.ts
     - src/domain/setarClasses.ts
+    - src/components/ArchiveRefresh.tsx
+    - src/components/LessonReconcile.tsx
+    - src/domain/recordings.ts
+    - src/domain/sourceReconcile.ts
+    - src/domain/lessonReconcile.ts
     - src/domain/files.ts
     - src/domain/selectors.ts
     - src/store/useStore.ts
@@ -156,11 +184,19 @@ mechanics:
       steps:
         - 1
         - 3
+    - file: tests/setar-lifecycle.browser.test.ts
+      steps:
+        - 1
+        - 5
+        - 7
+    - file: tests/setar-lifecycle.test.ts
+      steps:
+        - 7
 approval:
-  hash: 41ced7594e689bba9ced5062e8979a0c236a66e5173db812c4726381534a9762
-  at: 2026-10-24T02:13:09.223Z
+  hash: 759ca1a121c29dc607e64028432fb88f0a92bc63fb3a6ac71e44e54896b0b86e
+  at: 2026-11-01T19:44:10.057Z
   by: owner
-  signature: WZJAmxa4hh8nhxDFvyBTT3Mlm4Z7YDRQqG/ssBfp7ZAsz/SX/zPrkZIg6LF8nx3Z19XiS2r3R7iH4TAoZUgBAw==
+  signature: fAlaqC1QrPcjMCvT0J8cG9AZprySIUkNo0LZxJnOcjgaA4GJIDcrcVyFPYv6JbaR58mEZy4G71a2tBFjPLELBg==
   publicKey: |
     -----BEGIN PUBLIC KEY-----
     MCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=
@@ -169,7 +205,7 @@ approval:
 
 # Log a class and its follow-up work
 
-_Works now · approved 2026-10-24T02:13:09.223Z by owner (signed)_
+_Works now · approved 2026-11-01T19:44:10.057Z by owner (signed)_
 
 ## Goal
 
@@ -202,23 +238,29 @@ The musician taps 'Add a class' on the Lessons screen for one instrument.
    - Changes: Nothing is stored or downloaded into the app; removing a link never touches the NAS file.
    - Only if: A NAS base URL is set in Settings and the NAS is reachable from this device
 
-5. **The musician** Links or quick-adds the practice items that came out of the class, and flags the ones to be ready for next time.
-   - Shows: Each linked item with its status and a 'For next class' toggle. A piece the class's Setar archive lists appears too, labelled '· in this class’s archive'; the item's own page names the same classes.
-   - Changes: The lesson keeps a link to the item (never ownership — unlinking keeps the item); unlinking an archive-listed piece records only that one decision and linking it again lifts it — nothing is copied into the lesson’s own links; a flagged item gains a priority boost that climbs as that instrument's next class approaches.
+5. **The musician** Links or quick-adds the practice items that came out of the class, and commits the ones to be ready for a class with 'Prepare for Class N · date'.
+   - Shows: Each linked item with its status; a piece the class’s Setar archive lists appears too, labelled '· in this class’s archive'; the item’s own page names the same classes.
+   - Changes: The lesson keeps a link to the item (never ownership — unlinking keeps the item); unlinking an archive-listed piece records only that one decision; a preparation names that one class, whose date is the deadline that raises the item’s priority as it nears.
 
 6. **The musician** Optionally attaches small hand-outs (a PDF, a photo, a short audio).
    - Shows: Files over 10 MB and any video are warned about; over 40 MB is refused with a clear message.
    - Changes: Small blobs are stored on the device and travel with backups and sync.
 
+7. **The musician** After the class, puts its recording and material in the ordinary session-N-DD-MM-YYYY folder on the NAS; the scheduled job publishes the index; Refresh Setar archive asks whether that session is the class planned in Compass.
+   - Shows: 'Is this the class you planned in Compass?' with Link / Create separately / Skip, and anything the archive could not read grouped by the one action it needs (register, roster, rename, file type).
+   - Changes: Link binds the session to the SAME lesson: its id, commitments, questions and notes stay; the archive’s files are composed onto it; it stays upcoming until its date. Repeating Refresh changes nothing.
+   - Only if: The NAS job has published the session
+
 ## Ends with
 
-The class is on record, its material is real practice items, and the work due before the next class is prioritised automatically.
+The class is on record once, with its archive material, its material is real practice items, and the work due before the next class is prioritised automatically.
 
 ## Variations
 
 - **No NAS base URL yet** — The link shows 'Set your NAS base URL in Settings to open this' and the Open button stays disabled — never a broken link. _(Works now)_
 - **Invalid base URL** — An unparseable base is reported as such and nothing is opened, rather than resolving to a wrong in-app address. _(Works now)_
-- **Import the Setar class history** — Settings → 'Import Setar classes' adds the logged sessions as lessons with their recording and score links, additively and idempotently, backfilling refs missing from classes already imported. _(Works now)_
+- **A class that appears twice** — A session already imported beside the owner’s planned class of the same date and number is offered as Combine into my class (the owner’s lesson survives with every note, link, agenda entry and attachment of both; nothing deleted or hidden) or Keep separate (remembered). Unsaved words on the archive copy refuse the combine, kept. _(Works now)_
+- **Archive-only history** — A session no planned class matches arrives as a historical lesson, never upcoming even when its date is ahead of the device clock. _(Works now)_
 - **Wide screen** — At 1000px and above the class list sits beside the open class, giving long Farsi notes real room. _(Works now)_
 
 ## Rules
@@ -226,9 +268,11 @@ The class is on record, its material is real practice items, and the work due be
 - Class videos and scores are references to the user's NAS, never bytes in the app, sync or backups.
 - A lesson link to an item is a link, never ownership.
 - The next class is the one sanctioned deadline — per instrument, never guilt-toned.
+- One real class is one lesson: the archive binds to the owner’s lesson, never a competing copy.
 
 ## Involves
 
 - The musician
 - The teacher (indirectly)
 - The NAS
+
