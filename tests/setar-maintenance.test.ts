@@ -1386,8 +1386,24 @@ describe('maintaining the Setar archive', () => {
           if (!asFolder) {
             rmSync(p3);
             await expect(k3.go(REG), tag).rejects.toThrow(new RegExp(`mv -n '${kept[0]!.replace(/\./g, '\\.')}' '\\${ARCHIVE_LOCK}'`));
+            await expect(k3.go(REG), tag).rejects.toThrow(/ls -li shows one inode, or for a link readlink shows one target — rm only this name instead/);
           }
         }
+      }
+
+      // A folder lock of TWO entries, one replaced after it was shown: the other, still exactly as
+      // shown, is removed; the replaced one is kept (and stands) — and the release says exactly that.
+      {
+        const k = box();
+        mkdirSync(k.lock);
+        writeFileSync(join(k.lock, 'a.json'), 'record A');
+        writeFileSync(join(k.lock, 'b.json'), 'record B');
+        const id = readArchiveLock(k.root).digest.slice(0, 16);
+        expect(() => releaseLock({ root: k.root, record: id, at: when(['release', ARCHIVE_LOCK, replaceWith(join(k.lock, 'b.json'), 'record B2')]) })).toThrow(
+          /is kept as .*b\.json\.releasing-.*, and again at .*b\.json\. 1 of its 2 entries, still exactly as shown, were removed; nothing else was\./,
+        );
+        const left = readdirSync(k.lock).sort();
+        expect([left.length, left[0], left[1]?.startsWith('b.json.releasing-'), readFileSync(join(k.lock, 'b.json'), 'utf8')]).toEqual([2, 'b.json', true, 'record B2']);
       }
 
       // --- A REFUSED entry keeps its very file, whatever happens around it --

@@ -596,6 +596,7 @@ function releaseBound(arc, record, at) {
   }
   const judged = (digest, stillBound) => (st, aside) => (st.isFile() || st.isSymbolicLink()) && lockEntryDigest(aside) === digest && stillBound();
   let removed = 0;
+  const kept = [];
   if (!held.folder) {
     // An earlier version's lock FILE: its one name, in the bound archive itself.
     const [[p, digest]] = held.entries;
@@ -605,7 +606,15 @@ function releaseBound(arc, record, at) {
       removed = inFolder(arc, ARCHIVE_LOCK, (stillBound) => {
         if (!same(statSync('.', { bigint: true }), held.folder)) return 0; // another folder at the name now: not the one shown
         let n = 0;
-        for (const [p, digest] of held.entries) if (removeLockEntry(basename(p), judged(digest, stillBound), at, p)) n += 1;
+        // Each entry judged on its own: one refused (kept, said below) never stops the rest.
+        for (const [p, digest] of held.entries) {
+          try {
+            if (removeLockEntry(basename(p), judged(digest, stillBound), at, p)) n += 1;
+          } catch (err) {
+            if (!(err instanceof Refusal)) throw err;
+            kept.push(err.message.replace(/ Nothing was removed\.$/, ''));
+          }
+        }
         return n;
       });
     } catch (err) {
@@ -614,6 +623,9 @@ function releaseBound(arc, record, at) {
     }
   }
   dropEmptyLock();
+  if (kept.length) {
+    throw new Refusal(`${kept.join(' ')} ${removed ? `${removed} of its ${held.entries.length} entries, still exactly as shown, were removed; nothing else was.` : 'Nothing was removed.'}`);
+  }
   if (removed < held.entries.length) {
     if (!removed) throw stale();
     throw new Refusal(`Part of the lock changed since you saw it: ${removed} of its ${held.entries.length} entries, still exactly as shown, were removed; the rest is left as it is. Run release-lock again to see it.`);
@@ -633,7 +645,7 @@ function refuseLeftovers() {
   const found = [];
   for (const d of readdirSync('.', { withFileTypes: true })) {
     // A lock a release-lock set aside and stopped before judging — a file, a link or a newer run's folder alike.
-    if (d.name.startsWith(`${ARCHIVE_LOCK}.releasing-`)) found.push(`  mv -n '${d.name}' '${ARCHIVE_LOCK}'   (a lock record a release set aside; if ${ARCHIVE_LOCK} is that very file again — ls -li shows one inode — rm only this name instead; then run release-lock to see it)`);
+    if (d.name.startsWith(`${ARCHIVE_LOCK}.releasing-`)) found.push(`  mv -n '${d.name}' '${ARCHIVE_LOCK}'   (a lock record a release set aside; if ${ARCHIVE_LOCK} is that very entry again — ls -li shows one inode, or for a link readlink shows one target — rm only this name instead; then run release-lock to see it)`);
     if (d.isFile() || d.isSymbolicLink()) {
       const m = /^\.(PIECES\.csv|RENAME-LOG\.csv)\.captured-/.exec(d.name);
       if (m) found.push(`  mv -n '${d.name}' '${m[1]}'   (if ${m[1]} is there, it is the copy a write replaced: mv -n '${d.name}' '${d.name.replace('.captured-', '.superseded-')}')`);
