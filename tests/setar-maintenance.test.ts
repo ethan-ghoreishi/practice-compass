@@ -1327,7 +1327,7 @@ describe('maintaining the Setar archive', () => {
         const x = swapper(k);
         let holder = '';
         await k.go(REG, { publish: async (text: string, hash: string, h: string) => ((holder = h), x.swap(), { status: 'published' }) });
-        expect(readArchiveLock(x.real).token).toBe(holder);
+        expect(readArchiveLock(x.real).holder).toBe(holder);
         x.unswap();
         const shown = /--record ([0-9a-f]{16})/.exec(releaseLock({ root: k.root }).lines.join('\n'))![1];
         expect(releaseLock({ root: k.root, record: shown })).toMatchObject({ released: true });
@@ -1389,6 +1389,143 @@ describe('maintaining the Setar archive', () => {
         }
       }
 
+      // --- EVERY LOCK OPERATION addresses the exact folder and object, never a path swapped under it -
+      // The lock's folder, a run's private folder or its record replaced — by a link to a folder
+      // outside the archive, by a real folder holding a copy, or the record leaf alone — at the
+      // instant between a check and its act: nothing outside is read as the lock, written or
+      // removed; no replacement anyone made is removed; no doubt reads as "no lock".
+      {
+        const dead = ['4f4f4f4f', '0000', '4000', '8000', '000000000000'].join('-');
+        const deadRecord = JSON.stringify({ token: dead, pid: 1, host: 'h', since: 's' });
+        const outside = (k: ReturnType<typeof box>, files: Record<string, string> = {}) => {
+          const ext = join(k.base, 'outside');
+          mkdirSync(ext);
+          for (const [n, t] of Object.entries(files)) writeFileSync(join(ext, n), t);
+          return ext;
+        };
+        const files = (dir: string) => Object.fromEntries(readdirSync(dir).sort().map((n) => [n, readFileSync(join(dir, n), 'utf8')]));
+        const isLink = (p: string) => lstatSync(p).isSymbolicLink();
+
+        // The OPERATOR's release: the folder shown is moved away and a link to an outside copy of
+        // record A, or a real copy of it, put at its name — at the release, or while A is judged.
+        for (const [how, point] of [['link', 'release'], ['copy', 'release'], ['link', 'judge-release'], ['copy', 'judge-release']] as const) {
+          const tag = `operator release, ${how} at ${point}`;
+          const k = box();
+          mkdirSync(k.lock);
+          writeFileSync(join(k.lock, 'partial.json'), 'record A');
+          const ext = outside(k, { 'partial.json': 'record A' });
+          const away = join(k.base, 'lock-moved-away');
+          const swap = () => {
+            renameSync(k.lock, away);
+            if (how === 'link') symlinkSync(ext, k.lock);
+            else {
+              mkdirSync(k.lock);
+              writeFileSync(join(k.lock, 'partial.json'), 'record A');
+            }
+          };
+          const id = readArchiveLock(k.root).digest.slice(0, 16);
+          const label = point === 'release' ? ARCHIVE_LOCK : join(ARCHIVE_LOCK, 'partial.json');
+          expect(() => releaseLock({ root: k.root, record: id, at: when([point, label, swap]) }), tag).toThrow(/not the record you saw/);
+          // The outside folder, the replacement and the folder shown: each exactly as it was.
+          expect([files(ext), isLink(k.lock), files(k.lock), files(away)], tag).toEqual([{ 'partial.json': 'record A' }, how === 'link', { 'partial.json': 'record A' }, { 'partial.json': 'record A' }]);
+        }
+
+        // A RUN's ownership: between two of its writes (the log's, then the move's), its lock folder
+        // is replaced by a link to an outside copy, by a real copy, or its record leaf alone by a copy.
+        // The next write refuses, the move never happens, and the run's end removes no replacement.
+        for (const how of ['link', 'copy', 'leaf'] as const) {
+          const tag = `run ownership, ${how}`;
+          const k = box();
+          const was = media(k.root);
+          let ext = '';
+          let shown: Record<string, string> = {};
+          const swap = () => {
+            const [rec] = readdirSync(k.lock);
+            const bytes = readFileSync(join(k.lock, rec!), 'utf8');
+            if (how === 'leaf') replaceWith(join(k.lock, rec!), bytes)();
+            else {
+              renameSync(k.lock, join(k.base, 'lock-moved-away'));
+              if (how === 'link') symlinkSync((ext = outside(k, { [rec!]: bytes })), k.lock);
+              else {
+                mkdirSync(k.lock);
+                writeFileSync(join(k.lock, rec!), bytes);
+              }
+            }
+            shown = files(k.lock);
+          };
+          await expect(k.go(MOVE, { at: when(['owned', 'RENAME-LOG.csv', swap]) }), tag).rejects.toThrow(/no longer holds the archive’s maintenance lock/);
+          expect([media(k.root), files(k.lock), Object.keys(shown).length], tag).toEqual([was, shown, 1]);
+          if (ext) expect(files(ext), tag).toEqual(shown);
+        }
+
+        // TAKING the lock: the run's private folder is replaced by a link to an outside folder before
+        // its record is written — nothing is written outside, and no lock is taken.
+        {
+          const k = box();
+          const ext = outside(k);
+          let priv = '';
+          const at = (point: string, name: string) => {
+            if (point !== 'lock-record') return;
+            priv = name;
+            renameSync(k.at(name), join(k.base, 'private-moved-away'));
+            symlinkSync(ext, k.at(name));
+          };
+          await expect(k.go(REG, { at }), 'private folder linked').rejects.toThrow(/not a real folder in the archive/);
+          expect([readdirSync(ext), readdirSync(join(k.base, 'private-moved-away')), existsSync(k.lock), isLink(k.at(priv))], 'private folder linked').toEqual([[], [], false, true]);
+        }
+        // … or by another writer's real folder after the record is written, with the archive free
+        // (it becomes the lock: refused as replaced, kept) or already held (the take fails): the
+        // failure's cleanup removes nothing of theirs — not even a file under this run's record name.
+        for (const held of [false, true]) {
+          const tag = held ? 'private folder replaced, archive held' : 'private folder replaced, archive free';
+          const k = box();
+          if (held) {
+            mkdirSync(k.lock);
+            writeFileSync(join(k.lock, `${dead}.json`), deadRecord);
+          }
+          let priv = '';
+          const theirs = (name: string) => ({ 'theirs.txt': 'another writer', [`${name.slice(ARCHIVE_LOCK.length + 1)}.json`]: 'theirs too' });
+          const at = (point: string, name: string) => {
+            if (point !== 'lock-take') return;
+            priv = name;
+            renameSync(k.at(name), join(k.base, 'private-moved-away'));
+            mkdirSync(k.at(name));
+            for (const [n, t] of Object.entries(theirs(name))) writeFileSync(join(k.at(name), n), t);
+          };
+          await expect(k.go(REG, { at }), tag).rejects.toThrow(held ? /maintenance lock is held by run 4f4f4f4f/ : /lock was replaced as this run took it/);
+          expect(files(held ? k.at(priv) : k.lock), tag).toEqual(theirs(priv));
+          if (held) expect(files(k.lock), tag).toEqual({ [`${dead}.json`]: deadRecord });
+        }
+
+        // PUBLISHERS read the lock as objects: its folder replaced just after its lstat — by a link to
+        // an outside copy, to an EMPTY outside folder, or by a real copy — refuses the maintenance
+        // publisher and the scheduled job alike; and a real copy standing at the name is not the holder.
+        for (const how of ['link', 'empty link', 'copy'] as const) {
+          const tag = `publisher read, ${how}`;
+          const k = box();
+          mkdirSync(k.lock);
+          writeFileSync(join(k.lock, `${dead}.json`), deadRecord);
+          const holder = readArchiveLock(k.root).holder;
+          const ext = outside(k, how === 'empty link' ? {} : { [`${dead}.json`]: deadRecord });
+          const swap = () => {
+            renameSync(k.lock, join(k.base, 'lock-moved-away'));
+            if (how === 'link' || how === 'empty link') return symlinkSync(ext, k.lock);
+            mkdirSync(k.lock);
+            writeFileSync(join(k.lock, `${dead}.json`), deadRecord);
+          };
+          for (const h of [holder, undefined]) {
+            const read = (point: string) => point === 'read-lock' && swap();
+            expect(() => archiveConfirmation(k.root, h, read)(), `${tag} ${h ? 'holder' : 'scheduled'}`).toThrow(/changed while it was read/);
+            rmSync(k.lock, { recursive: !isLink(k.lock) });
+            renameSync(join(k.base, 'lock-moved-away'), k.lock);
+          }
+          if (how === 'copy') {
+            swap();
+            expect(() => archiveConfirmation(k.root, holder)(), tag).toThrow(/no longer holds the archive/);
+          }
+        }
+      }
+
       // --- A FAILED PUBLICATION proves only its own attempt, in every current instruction too -
       // An earlier or scheduled write whose answer was lost may still land, so no operator page
       // may promise that a failure leaves the branch, or "the previous index", as it was.
@@ -1428,7 +1565,7 @@ describe('maintaining the Setar archive', () => {
           }),
         ).toThrow(/not the record you saw/);
         await expect(d).rejects.toThrow(/maintenance lock is held by run/);
-        expect(readArchiveLock(k.root).token).toBe(cHolder);
+        expect(readArchiveLock(k.root).holder).toBe(cHolder);
         resume();
         expect(await c).toMatchObject({ ok: true, status: 'published' });
         expect(existsSync(k.lock)).toBe(false);
@@ -1449,7 +1586,7 @@ describe('maintaining the Setar archive', () => {
         const d2 = applyMaintenance({ root: k2.root, state: otherState, action: later, previewId: planMaintenance(k2.root, later).id, publish: async (text: string, hash: string, h: string) => ((dHolder = h), await gateD, k2.g.publish(text, hash, h)) });
         resumeC();
         expect(await c2).toMatchObject({ ok: false, message: expect.stringMatching(/no longer holds the archive/) });
-        expect(readArchiveLock(k2.root).token).toBe(dHolder);
+        expect(readArchiveLock(k2.root).holder).toBe(dHolder);
         resumeD();
         expect(await d2).toMatchObject({ ok: true, status: 'published' });
         expect(existsSync(k2.lock)).toBe(false);

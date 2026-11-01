@@ -715,7 +715,14 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   private `.releasing-…` name and judged there against what was shown, removed
   only if it is that, else linked back (never over anything) or kept and
   named — a replacement at the same name, legacy lock file or folder entry
-  alike, is never removed. A lock is
+  alike, is never removed. Every lock operation addresses objects, never a
+  path that could be swapped under it: a run's ownership is the exact folder
+  and record file it made (by inode), its record is written and removed only
+  inside a folder entered and proved by inode, a release works only inside
+  the very folder shown (its id covers that folder), and the lock is read the
+  same way — a folder replaced by a link or a copy mid-read reads as held,
+  never as absent. A failed take removes only its own record, then its folder
+  only if empty. A lock is
   never adopted on a guess about a process: a run that finds one refuses and
   names it. If nothing is running (check `ps`), `release-lock` shows the
   record and `release-lock --record <id>` releases exactly that one, in any
@@ -723,7 +730,8 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   half-written means `rollback`; applied or restored but not confirmed
   published means `retry`.
 - **Publication is of the validated index, on evidence.** The job gets the
-  validated contentHash and the run's lock token as its two arguments and
+  validated contentHash and the run's lock holder (its token and the exact
+  lock it made) as its two arguments and
   refuses, before any request (exit 3), a scan that differs. After reading the
   branch and before writing anything, every publisher — the scheduled job
   too — checks the archive's lock (absent, or held by the run that asked) and

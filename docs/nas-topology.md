@@ -259,7 +259,7 @@ preconditions, archive binding and session-folder link refusal in the
 maintenance tool. All four files go together: the new runner passes `--root`,
 which the new publisher requires. Until the
 owner redeploys them, the NAS route has none of these. Redeploying needs, in
-the same step, the sudo rule to allow its arguments (the hash and the lock token) —
+the same step, the sudo rule to allow its arguments (the hash and the lock holder) —
 `ethan ALL=(setar-indexer) NOPASSWD: /bin/sh /volume1/practice-compass-index/run-setar-index.sh, /bin/sh /volume1/practice-compass-index/run-setar-index.sh *`
 — or every apply ends `publish-failed`, reported as unconfirmed (sudo's
 refusal is exit 1, no proof by itself; in fact nothing ran), and `retry`

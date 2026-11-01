@@ -2,7 +2,7 @@
 // Publish the scanned Setar index to ONE file on ONE branch of the private
 // data repository, and nothing else, ever.
 //
-//   node scripts/publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock token>]
+//   node scripts/publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock holder>]
 //     env: PC_INDEX_REPO=owner/name  PC_INDEX_TOKEN=<publisher token>
 //
 // On success the LAST stdout line is the evidence a caller checks:
@@ -50,7 +50,7 @@
 // Node stdlib only.
 
 import { createHash } from 'node:crypto';
-import { lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -247,53 +247,98 @@ function nothingPublished(err) {
  * The archive's maintenance lock: ONE folder in the archive root (the scanner
  * skips dotfiles) holding exactly one record, `<token>.json`. A run builds the
  * folder privately and renames it into place, which fails while a lock stands,
- * so a record is never partial; a record is removed only by its own unique
- * name, so no remover can ever take a NEWER run's lock.
+ * so a record is never partial. A lock is judged as OBJECTS, never through a
+ * path that could be replaced meanwhile: the folder is entered and proved by
+ * inode, its entries read by bare name without following a link, and the
+ * folder proved still at its name after; a holder is its token AND the exact
+ * folder and record it made.
  */
 export const ARCHIVE_LOCK = '.setar-maintenance.lock';
 
 const digestOf = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const sameObject = (a, b) => Boolean(a && b && a.ino === b.ino && a.dev === b.dev);
+const lockChanged = () => new Error('The archive’s maintenance lock changed while it was read; nothing was decided on it. Try again.');
+
+/** One entry as an object: its lstat, and a file's bytes read from the very file judged (never through a link). */
+function readEntry(p) {
+  const st = lstatSync(p, { bigint: true });
+  if (!st.isFile()) return { st, bytes: null };
+  let fd;
+  try {
+    fd = openSync(p, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch {
+    throw lockChanged(); // replaced by a link (or removed) since its lstat
+  }
+  try {
+    if (!sameObject(fstatSync(fd, { bigint: true }), st)) throw lockChanged();
+    return { st, bytes: readFileSync(fd) };
+  } finally {
+    closeSync(fd);
+  }
+}
 
 /**
  * The lock as it stands: null (absent, or an empty folder a release left), its
- * record `{ token, pid, host, since, digest, entries }`, or `{ unreadable }` with
- * a digest of what is there when it is not exactly one record in this tool's
- * form — never guessed into one. `entries` are what a release may remove, each
- * `[path from the root, lockEntryDigest]`: the folder's entries, or the lock's
- * own name when it is not a folder (an earlier version's file).
+ * record `{ token, pid, host, since, holder, folder, digest, entries }`, or
+ * `{ unreadable }` with a digest of what is there when it is not exactly one
+ * record in this tool's form — never guessed into one. `holder` names the
+ * token, the folder and the record file as objects; `digest` covers the folder
+ * too, so a record shown is the record of THAT folder. `entries` are what a
+ * release may remove, each `[path from the root, lockEntryDigest]`: the
+ * folder's entries, or the lock's own name when it is not a folder (an earlier
+ * version's file). A lock that changes while it is read is an error, never
+ * null: doubt reads as held. `at` is the test seam, after the folder's lstat.
  */
-export function readArchiveLock(root) {
+export function readArchiveLock(root, at = () => {}) {
   const p = join(root, ARCHIVE_LOCK);
   let st;
   try {
-    st = lstatSync(p);
+    st = lstatSync(p, { bigint: true });
   } catch (err) {
     if (err?.code === 'ENOENT') return null;
     throw err;
   }
   if (!st.isDirectory()) {
-    return { unreadable: true, entries: [[ARCHIVE_LOCK, lockEntryDigest(p)]], digest: digestOf(st.isFile() ? readFileSync(p) : st.isSymbolicLink() ? `link:${readlinkSync(p)}` : `${st.mode}`) };
+    const e = readEntry(p);
+    return { unreadable: true, entries: [[ARCHIVE_LOCK, lockEntryDigest(p)]], digest: digestOf(e.bytes ?? (e.st.isSymbolicLink() ? `link:${readlinkSync(p)}` : `${e.st.mode}`)) };
   }
-  const names = readdirSync(p).sort();
-  if (!names.length) return null;
-  const parts = names.map((n) => {
-    const e = lstatSync(join(p, n));
-    return [n, e.isFile() ? readFileSync(join(p, n)) : null];
-  });
-  const digest = digestOf(JSON.stringify(parts.map(([n, b]) => [n, b ? digestOf(b) : 'not a file'])));
-  const entries = parts.map(([n, b]) => [join(ARCHIVE_LOCK, n), b ? digestOf(b) : null]);
-  if (parts.length === 1 && parts[0][1]) {
+  at('read-lock', p);
+  const parent = statSync(root, { bigint: true });
+  const home = statSync('.', { bigint: true });
+  const back = process.cwd();
+  let parts;
+  try {
+    process.chdir(p);
+  } catch {
+    throw lockChanged();
+  }
+  try {
+    if (!sameObject(statSync('.', { bigint: true }), st)) throw lockChanged();
+    parts = readdirSync('.').sort().map((n) => [n, readEntry(n)]);
+    // Read IN the folder that was the lock — and it is still the lock, at its name, in the same archive.
+    if (!sameObject(lstatSync(join('..', ARCHIVE_LOCK), { bigint: true }), st) || !sameObject(statSync('..', { bigint: true }), parent)) throw lockChanged();
+  } finally {
+    process.chdir(back);
+    if (!sameObject(statSync('.', { bigint: true }), home)) throw new Error('The folder this ran in was moved while the archive’s lock was read; nothing was decided on it.');
+  }
+  if (!parts.length) return null;
+  const digest = digestOf(JSON.stringify([`folder ${st.ino}`, ...parts.map(([n, e]) => [n, e.bytes ? digestOf(e.bytes) : 'not a file'])]));
+  const entries = parts.map(([n, e]) => [join(ARCHIVE_LOCK, n), e.bytes ? digestOf(e.bytes) : null]);
+  if (parts.length === 1 && parts[0][1].bytes) {
     try {
-      const r = JSON.parse(parts[0][1].toString('utf8'));
-      if (typeof r?.token === 'string' && /^[0-9a-f-]{36}$/.test(r.token) && names[0] === `${r.token}.json` && Number.isInteger(r.pid) && r.pid > 0 && typeof r.host === 'string' && typeof r.since === 'string') {
-        return { ...r, digest, entries };
+      const r = JSON.parse(parts[0][1].bytes.toString('utf8'));
+      if (typeof r?.token === 'string' && /^[0-9a-f-]{36}$/.test(r.token) && parts[0][0] === `${r.token}.json` && Number.isInteger(r.pid) && r.pid > 0 && typeof r.host === 'string' && typeof r.since === 'string') {
+        return { ...r, holder: lockHolder(r.token, st, parts[0][1].st), folder: st, digest, entries };
       }
     } catch {
       // not a record: said as unreadable below
     }
   }
-  return { unreadable: true, digest, entries };
+  return { unreadable: true, folder: st, digest, entries };
 }
+
+/** A holder: the run's token AND the exact folder and record file it made (bigint stats), as one opaque string. */
+export const lockHolder = (token, folder, record) => `${token}:${folder.ino}:${record.ino}`;
 
 /**
  * What one lock entry IS, judged again after it is set aside: a file's bytes or
@@ -301,19 +346,20 @@ export function readArchiveLock(root) {
  * anything else, which is never judged and so never removed.
  */
 export function lockEntryDigest(p) {
-  const st = lstatSync(p);
-  return st.isFile() ? digestOf(readFileSync(p)) : st.isSymbolicLink() ? digestOf(`link:${readlinkSync(p)}`) : null;
+  const { st, bytes } = readEntry(p);
+  return bytes ? digestOf(bytes) : st.isSymbolicLink() ? digestOf(`link:${readlinkSync(p)}`) : null;
 }
 
 /**
  * What a publisher asks before its ref write: who holds the archive, then what
- * it scans to now. `holder` is the maintenance run's lock token; without one
- * (the scheduled job) any lock refuses.
+ * it scans to now. `holder` is the maintenance run's `lockHolder` — its token
+ * and the exact lock it made; without one (the scheduled job) any lock, or a
+ * lock that will not read still, refuses. `at` is the read's test seam.
  */
-export function archiveConfirmation(root, holder) {
+export function archiveConfirmation(root, holder, at) {
   return () => {
-    const held = readArchiveLock(root);
-    if (holder ? held?.token !== holder : held) {
+    const held = readArchiveLock(root, at);
+    if (holder ? held?.holder !== holder : held) {
       throw new Error(
         holder
           ? 'The maintenance run that asked for this publication no longer holds the archive; nothing was published.'
@@ -431,7 +477,7 @@ async function main() {
   const repo = process.env.PC_INDEX_REPO;
   const token = process.env.PC_INDEX_TOKEN;
   if (!values.index || !values.root || !repo || !token) {
-    console.error('Usage: publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock token>]');
+    console.error('Usage: publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock holder>]');
     console.error('  PC_INDEX_REPO=owner/name PC_INDEX_TOKEN=<publisher token> must be set.');
     process.exit(2);
   }
