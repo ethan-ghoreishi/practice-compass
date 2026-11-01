@@ -220,10 +220,13 @@ target is refused before a request is made.
 - The branch ref advances **non-force** from the commit that was read, with
   `expected_head_sha`, so a racing publisher loses the update rather than
   overwriting it; the retry re-reads before deciding anything.
-- An interruption before the ref advances leaves the previous index published —
-  a blob and a commit nothing points at are invisible. Such a failure exits 4.
-  A failure of the ref write itself (a lost response, a 5xx) may have landed:
-  exit 1, said as unknown, and a rerun makes no commit if it did.
+- An interruption before the ref advances means THIS attempt moved nothing — a
+  blob and a commit nothing points at are invisible. Such a failure exits 4. It
+  proves nothing about the branch: an earlier or scheduled write whose answer
+  was lost may still land, so what the branch holds stays unconfirmed until it
+  is observed (`retry`). A failure of the ref write itself (a lost response, a
+  5xx) may have landed: exit 1, said as unknown, and a rerun makes no commit if
+  it did.
 - Error messages are built from the HTTP status and the endpoint name only.
   **No token, no repository URL and no archive path ever reaches a log.**
 
@@ -311,8 +314,9 @@ with `main` unchanged, and the behaviour when the token is revoked.
 Disable the scheduled task. The app keeps the source graph it last accepted and
 goes on working offline from it. To go back to an earlier index,
 `git push --force-with-lease` an earlier `source-index` commit. Neither touches
-the app's own data on `main`. Revoking the token stops publication and leaves the
-last good index exactly where it is.
+the app's own data on `main`. Revoking the token stops every LATER request; a
+write already sent may still land, so the branch is whatever GitHub shows, read
+there before deciding anything.
 
 ---
 
@@ -642,7 +646,7 @@ $M rename --from session-40-…/old.mp4 --to session-40-…/new.mp4
 #   … each prints "Preview <id>"; the same command with --apply <id> then does it all:
 #   private copy of both declarations → edit → validate (the scanner's own grammar)
 #   → scratch scan → publish through run-setar-index.sh
-$M retry      # publication failed: the archive is valid, the old index still published — publish again
+$M retry      # publication unconfirmed: the archive is valid, the branch unknown (an earlier or scheduled write may land) — publish again
 $M rollback   # put the last change back from its private copy and publish that
 $M release-lock [--record <id>]   # a lock no run holds: shown, then released by its exact record
 ```
@@ -680,8 +684,16 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   holding the file open keeps writing into a named file. The hidden names
   are the same file, no extra bytes; the operator may delete them once
   nothing needs them. A
-  rename stays inside its session folder, and every media write runs inside
-  that folder bound by inode, so a folder swapped for a link meanwhile cannot
+  rename stays inside its session folder. The ARCHIVE itself is bound too:
+  each run records the directory `--root` names when it starts (its inode and
+  real path) and does every read-then-write with its working directory on that
+  directory, by bare names — the lock, the declarations, the session folder a
+  move selects, the media — so the archive moved away and another folder (even
+  an exact copy, lock and all) put at its path is never written; re-entering
+  is proved by inode, else the run refuses and its lock stays in the real
+  archive for `release-lock`. The journal records that directory's inode, so
+  a later `rollback` or `retry` refuses another folder at the path too. Every media write runs inside its session folder
+  bound by inode the same way, so a folder swapped for a link meanwhile cannot
   carry a write outside the archive. An edit, deletion or new file from
   anyone else at that instant is kept and the run refuses. A failure after
   the archive changed, and `rollback`, put back only what THIS change wrote —
@@ -699,7 +711,11 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
 - **One owner per archive.** The lock is one dot-folder in the archive's root
   holding one `<run>.json`, shared by every `--state` folder, and every
   publisher checks it; a release removes only that exact record, so it never
-  takes a newer run's lock. A lock is
+  takes a newer run's lock: each entry the operator saw is first moved to a
+  private `.releasing-…` name and judged there against what was shown, removed
+  only if it is that, else linked back (never over anything) or kept and
+  named — a replacement at the same name, legacy lock file or folder entry
+  alike, is never removed. A lock is
   never adopted on a guess about a process: a run that finds one refuses and
   names it. If nothing is running (check `ps`), `release-lock` shows the
   record and `release-lock --record <id>` releases exactly that one, in any

@@ -1,12 +1,12 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, closeSync, existsSync, utimesSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
+import { chmodSync, closeSync, cpSync, existsSync, utimesSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 // @ts-expect-error — untyped operator tools; these are the real ones.
-import { applyMaintenance, Interrupted, planMaintenance, publishWithRunner, releaseLock, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
+import { applyMaintenance, bindArchive, inArchive, Interrupted, planMaintenance, publishWithRunner, releaseLock, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
 // @ts-expect-error — see above.
 import { scanToIndex } from '../scripts/scan-setar-classes.mjs';
 // @ts-expect-error — see above.
@@ -1200,6 +1200,201 @@ describe('maintaining the Setar archive', () => {
         rmSync(k.at(S39));
         renameSync(moved, k.at(S39));
         expect(await k.back()).toMatchObject({ ok: true });
+      }
+
+      // --- THE ARCHIVE IS BOUND: its path replaced never carries a write ---
+      // The authorised archive is the DIRECTORY the run bound, never its path. Whatever moves the
+      // archive away and puts another folder there — here an exact external copy, its lock record
+      // and all — that copy is never touched, and no run reports success over it.
+      /** Every entry under `dir`, dotfiles and the lock included, by what it holds. */
+      const tree = (dir: string) =>
+        (readdirSync(dir, { recursive: true }) as string[])
+          .sort()
+          .map((n) => {
+            const st = lstatSync(join(dir, n));
+            return `${n}:${st.isFile() ? sha(readFileSync(join(dir, n))) : st.isDirectory() ? 'dir' : 'link'}`;
+          })
+          .join('\n');
+      const swapper = (k: ReturnType<typeof box>) => {
+        const real = join(k.base, 'the-real-archive');
+        let outside: string | null = null;
+        return {
+          swap: () => {
+            renameSync(k.root, real);
+            cpSync(real, k.root, { recursive: true, verbatimSymlinks: true });
+            outside = tree(k.root);
+          },
+          /** The external copy exactly as it was made, then the archive back at its path. */
+          unswap: () => {
+            expect(outside).not.toBeNull();
+            expect(tree(k.root)).toBe(outside);
+            rmSync(k.root, { recursive: true });
+            renameSync(real, k.root);
+            outside = null;
+          },
+          real,
+        };
+      };
+      // The PRIMITIVE first: a section is bound to the directory, not to the path it was entered by.
+      {
+        const k = box();
+        const x = swapper(k);
+        const arc = bindArchive(k.root);
+        const cwd = process.cwd();
+        inArchive(arc, () => {
+          x.swap();
+          writeFileSync('probe', 'written by bare name');
+        });
+        expect(process.cwd()).toBe(cwd);
+        expect([existsSync(join(x.real, 'probe')), existsSync(join(k.root, 'probe'))]).toEqual([true, false]);
+        // Entering again by the recorded path finds another folder: refused, nothing run.
+        let ran = false;
+        expect(() => inArchive(arc, () => (ran = true))).toThrow(/moved, or another folder put at its path/);
+        expect(ran).toBe(false);
+        rmSync(join(x.real, 'probe'));
+        x.unswap();
+        expect(inArchive(arc, () => readFileSync('PIECES.csv', 'utf8'))).toBe(SOURCE.registryBefore);
+      }
+      // Then EVERY archive write, its path replaced just after its owner check: Apply's registry,
+      // its log (present, and created when absent) and its move; Rollback's registry, its log taken
+      // out again (text null), its reverse move; a stopped move's recovery; and the automatic put-back.
+      // The write lands in the bound archive or not at all, the run refuses, and once the archive is
+      // back at its path, `rollback` leaves it exactly as it was before the change.
+      {
+        const before = (k: ReturnType<typeof box>) => ({ d: existsSync(k.at('RENAME-LOG.csv')) ? declarations(k.root) : readFileSync(k.at('PIECES.csv'), 'utf8'), m: media(k.root) });
+        const consumers: [string, boolean, (k: ReturnType<typeof box>, swap: () => void) => Promise<unknown>][] = [
+          ['apply registry', true, (k, swap) => k.go(REG, { at: when(['owned', 'PIECES.csv', swap]) })],
+          ['apply log', true, (k, swap) => k.go(MOVE, { at: when(['owned', 'RENAME-LOG.csv', swap]) })],
+          ['apply absent log', false, (k, swap) => k.go(MOVE, { at: when(['owned', 'RENAME-LOG.csv', swap]) })],
+          ['apply move', true, (k, swap) => k.go(MOVE, { at: when(['owned', A, swap]) })],
+          ['apply move, folder selected', true, (k, swap) => k.go(MOVE, { at: when(['link', B, swap]) })],
+          ['rollback registry', true, async (k, swap) => (await k.go(REG), k.back({ at: when(['owned', 'PIECES.csv', swap]) }))],
+          ['rollback log taken out', false, async (k, swap) => (await k.go(MOVE), k.back({ at: when(['owned', 'RENAME-LOG.csv', swap]) }))],
+          ['rollback reverse move', true, async (k, swap) => (await k.go(MOVE), k.back({ at: when(['owned', B, swap]) }))],
+          [
+            'stopped-move recovery',
+            true,
+            async (k, swap) => {
+              await expect(k.go(MOVE, { at: when(['unlink', A, () => { throw new Interrupted('power cut'); }]) })).rejects.toThrow(/power cut/);
+              return k.back({ at: when(['owned', B, swap]) });
+            },
+          ],
+          [
+            'automatic put-back',
+            true,
+            (k, swap) => k.go(MOVE, { at: when(['link', B, () => writeFileSync(k.at(A), Buffer.alloc(500, 7))], ['owned', 'RENAME-LOG.csv', swap, 2]) }),
+          ],
+        ];
+        for (const [name, withLog, run] of consumers) {
+          const k = box(withLog);
+          const was = before(k);
+          const x = swapper(k);
+          // The put-back was already past its owner check: it finishes IN the bound archive, and says so.
+          const said = name === 'automatic put-back' ? /everything it changed was put back from the private copy/ : /moved, or another folder put at its path|could not be put back automatically/;
+          await expect(run(k, x.swap), name).rejects.toThrow(said);
+          x.unswap();
+          // The run could not re-enter its archive to release its own record: it stands there, for the operator.
+          if (existsSync(k.lock)) {
+            const shown = /--record ([0-9a-f]{16})/.exec(releaseLock({ root: k.root }).lines.join('\n'))![1];
+            expect(releaseLock({ root: k.root, record: shown }), name).toMatchObject({ released: true });
+          }
+          // Put back from wherever it stopped: an unfinished apply or rollback finishes; one that put itself back is done.
+          if (['prepared', 'rolling-back', 'applied'].includes(k.j().status)) expect(await k.back(), name).toMatchObject({ ok: true });
+          // The automatic put-back's own media write (500 bytes of 7s) is the test's, not the run's: it stays.
+          const after = before(k);
+          expect(after.d, name).toEqual(was.d);
+          if (name !== 'automatic put-back') expect(after.m, name).toEqual(was.m);
+          expect([existsSync(k.lock), readdirSync(k.root).filter((n) => n.includes('.captured-') || n.includes('.maintenance-'))], name).toEqual([false, []]);
+        }
+      }
+      // Across runs too: a change applied, then its archive moved away and a copy put at its path —
+      // neither `rollback` nor `retry` acts on the copy; once the archive is back, `rollback` does.
+      {
+        const k = box();
+        const was = { d: declarations(k.root), m: media(k.root) };
+        expect(await k.go(MOVE)).toMatchObject({ ok: true });
+        const x = swapper(k);
+        x.swap();
+        for (const next of [() => k.back(), () => k.again()]) await expect(next()).rejects.toThrow(/not the one this change was made in/);
+        x.unswap();
+        expect(await k.back()).toMatchObject({ ok: true });
+        expect({ d: declarations(k.root), m: media(k.root) }).toEqual(was);
+      }
+      // A run's own release, its archive moved while it published: its record is never removed
+      // through the folder now at the path — the lock stays in the bound archive for the operator.
+      {
+        const k = box();
+        const x = swapper(k);
+        let holder = '';
+        await k.go(REG, { publish: async (text: string, hash: string, h: string) => ((holder = h), x.swap(), { status: 'published' }) });
+        expect(readArchiveLock(x.real).token).toBe(holder);
+        x.unswap();
+        const shown = /--record ([0-9a-f]{16})/.exec(releaseLock({ root: k.root }).lines.join('\n'))![1];
+        expect(releaseLock({ root: k.root, record: shown })).toMatchObject({ released: true });
+        // And the operator's release binds the same way: its archive moved at the release, the copy keeps its lock.
+        await k.go(REG, { publish: async () => ({ status: 'published' }) }).catch(() => undefined);
+        mkdirSync(k.lock);
+        const dead = ['3f3f3f3f', '0000', '4000', '8000', '000000000000'].join('-');
+        writeFileSync(join(k.lock, `${dead}.json`), JSON.stringify({ token: dead, pid: 1, host: 'h', since: 's' }));
+        const id = readArchiveLock(k.root).digest.slice(0, 16);
+        expect(releaseLock({ root: k.root, record: id, at: when(['release', ARCHIVE_LOCK, x.swap]) })).toMatchObject({ released: true });
+        expect([existsSync(join(x.real, ARCHIVE_LOCK)), readArchiveLock(k.root).token]).toEqual([false, dead]);
+        x.unswap();
+      }
+
+      // --- A RELEASE removes only the exact entry the operator saw -----------
+      // A legacy lock FILE, or a folder entry reused at the same name, replaced after the record was
+      // shown (at the release) or in the instant it is judged: the replacement is never removed.
+      {
+        const lockOf = (k: ReturnType<typeof box>, asFolder: boolean, text: string) => {
+          if (!asFolder) return writeFileSync(k.lock, text);
+          mkdirSync(k.lock, { recursive: true });
+          writeFileSync(join(k.lock, 'partial.json'), text);
+        };
+        const entry = (k: ReturnType<typeof box>, asFolder: boolean) => (asFolder ? join(k.lock, 'partial.json') : k.lock);
+        for (const asFolder of [false, true]) {
+          const tag = asFolder ? 'folder entry' : 'legacy file';
+          // Replaced after it was shown: refused, the replacement stands byte for byte.
+          const k = box();
+          lockOf(k, asFolder, 'record A');
+          const id = readArchiveLock(k.root).digest.slice(0, 16);
+          const replace = () => replaceWith(entry(k, asFolder), 'record B')();
+          expect(() => releaseLock({ root: k.root, record: id, at: when(['release', ARCHIVE_LOCK, replace]) }), tag).toThrow(/not the record you saw/);
+          expect(readFileSync(entry(k, asFolder), 'utf8'), tag).toBe('record B');
+          expect(readdirSync(k.root).filter((n) => n.includes('.releasing-')), tag).toEqual([]);
+          // A taken in its judgement's instant, B put at the freed name meanwhile: A alone is removed.
+          const k2 = box();
+          lockOf(k2, asFolder, 'record A');
+          const id2 = readArchiveLock(k2.root).digest.slice(0, 16);
+          const p2 = entry(k2, asFolder);
+          expect(releaseLock({ root: k2.root, record: id2, at: when(['judge-release', asFolder ? join(ARCHIVE_LOCK, 'partial.json') : ARCHIVE_LOCK, () => writeFileSync(p2, 'record B')]) }), tag).toMatchObject({ released: true });
+          expect(readFileSync(p2, 'utf8'), tag).toBe('record B');
+          // B replaced A after it was shown AND C took the name while B was judged: B is never removed,
+          // kept under its private name and said; a legacy one blocks the next run until put back.
+          const k3 = box();
+          lockOf(k3, asFolder, 'record A');
+          const id3 = readArchiveLock(k3.root).digest.slice(0, 16);
+          const p3 = entry(k3, asFolder);
+          const label = asFolder ? join(ARCHIVE_LOCK, 'partial.json') : ARCHIVE_LOCK;
+          expect(() =>
+            releaseLock({ root: k3.root, record: id3, at: when(['release', ARCHIVE_LOCK, () => replaceWith(p3, 'record B')()], ['judge-release', label, () => writeFileSync(p3, 'record C')]) }),
+          ).toThrow(/a newer one now stands; what had replaced the record you saw is kept as .*\.releasing-/);
+          const dir = asFolder ? k3.lock : k3.root;
+          const kept = readdirSync(dir).filter((n) => n.includes('.releasing-'));
+          expect([readFileSync(p3, 'utf8'), kept.map((n) => readFileSync(join(dir, n), 'utf8'))], tag).toEqual(['record C', ['record B']]);
+          if (!asFolder) {
+            rmSync(p3);
+            await expect(k3.go(REG), tag).rejects.toThrow(new RegExp(`mv -n '${kept[0]!.replace(/\./g, '\\.')}' '\\${ARCHIVE_LOCK}'`));
+          }
+        }
+      }
+
+      // --- A FAILED PUBLICATION proves only its own attempt, in every current instruction too -
+      // An earlier or scheduled write whose answer was lost may still land, so no operator page
+      // may promise that a failure leaves the branch, or "the previous index", as it was.
+      for (const doc of ['docs/setar-archive.md', 'docs/nas-topology.md']) {
+        const text = readFileSync(join(process.cwd(), doc), 'utf8').replace(/\s+/g, ' ');
+        expect(text, doc).not.toMatch(/(previous|old|last good) index (still |stays |remains )?(published|exactly where)|leaves the (previous|last good) index/i);
       }
 
       // --- RELEASES never take a NEWER run's lock --------------------------

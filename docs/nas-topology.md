@@ -306,8 +306,10 @@ rename below.
   `synoacltool -enforce-inherit` on each file.
 - **Sudo.** Delete `/etc/sudoers.d/practice-compass-maint`.
   - A DSM update may remove it too. The failure is safe: the job never runs,
-    the last good index stays published, and an apply ends `publish-failed`
-    (reported as unconfirmed). Reinstall the one line and run `… retry`.
+    so that attempt publishes nothing, and an apply ends `publish-failed`
+    (reported as unconfirmed — an earlier or scheduled write may still land,
+    so the branch is not known to be unchanged). Reinstall the one line and
+    run `… retry`.
 
 **Still broader than needed (recorded, not changed):** through the runtime
 share's inherited ACE, `setar-indexer` can write its own scripts and

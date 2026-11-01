@@ -51,7 +51,7 @@ import {
   readTable,
   writeIndexAtomically,
 } from './scan-setar-classes.mjs';
-import { ARCHIVE_LOCK, readArchiveLock } from './publish-setar-index.mjs';
+import { ARCHIVE_LOCK, lockEntryDigest, readArchiveLock } from './publish-setar-index.mjs';
 
 const REGISTRY = 'PIECES.csv';
 const LOG = 'RENAME-LOG.csv';
@@ -241,12 +241,12 @@ function finish(plan, registryText, logText) {
 
 // --- the private state folder -----------------------------------------------
 
-function stateDir(rootArg, stateArg) {
+function stateDir(arc, stateArg) {
   if (!stateArg) throw new Refusal('Give a private --state folder outside the archive; it holds the rollback copies.');
   const st = lstatOrNull(stateArg);
   if (!st?.isDirectory()) throw new Refusal('The --state folder must already exist as a real folder (a link is never written through).');
   const state = realpathSync.native(stateArg).normalize('NFC');
-  const root = realpathSync.native(resolve(rootArg)).normalize('NFC');
+  const root = arc.path.normalize('NFC');
   if (state === root || state.startsWith(root + sep)) throw new Refusal('The --state folder must be OUTSIDE the archive: rollback copies are private.');
   return state;
 }
@@ -258,8 +258,8 @@ const writeJournal = (state, j) => {
   renameSync(`${journalPath(state)}.tmp`, journalPath(state));
 };
 
-/** Which archive a --state folder serves: a digest, never the path itself. */
-const rootIdOf = (root) => sha(realpathSync.native(root).normalize('NFC'));
+/** Which archive a --state folder serves: a digest of the BOUND archive's real path (`bindArchive`), never the path itself. */
+const rootIdOf = (arc) => sha(arc.path.normalize('NFC'));
 
 /**
  * The journal, refused when it was written for another archive. One from an
@@ -274,7 +274,7 @@ const rootIdOf = (root) => sha(realpathSync.native(root).normalize('NFC'));
  * validated hashes of every attempt whose remote outcome is NOT known — kept
  * until a positive observation of the branch, never reset by a later failure.
  */
-function journalFor(state, root, recovering) {
+function journalFor(state, arc, recovering) {
   let j = readJournal(state);
   if (!j) return null;
   if (!j.rootId) {
@@ -283,7 +283,11 @@ function journalFor(state, root, recovering) {
     }
     return null;
   }
-  if (j.rootId !== rootIdOf(root)) throw new Refusal('This --state folder belongs to another archive; nothing was changed. Use that archive’s own --state folder.');
+  if (j.rootId !== rootIdOf(arc)) throw new Refusal('This --state folder belongs to another archive; nothing was changed. Use that archive’s own --state folder.');
+  // Across runs too, the archive is the DIRECTORY the change was made in, never whatever now stands at its path.
+  if (j.rootIno !== undefined && j.rootIno !== arc.ino) {
+    throw new Refusal('The folder at this archive’s path is not the one this change was made in (it was moved, or another folder put there); nothing was changed. Put the archive back where it was, then run this again.');
+  }
   // Earlier versions of this lane folded status and publication together; read them conservatively.
   if (j.status === 'published') j = { ...j, status: 'applied', publication: 'published' };
   else if (j.status === 'publish-failed') j = { ...j, status: 'applied', publication: 'unknown' };
@@ -296,6 +300,74 @@ function journalFor(state, root, recovering) {
   const open = ['pending', 'unknown'].includes(j.publication) ? [j.contentHash ?? 'unrecorded'] : [];
   return { ...j, unresolved: j.unresolved ?? open };
 }
+
+// --- the archive, bound -------------------------------------------------------
+//
+// Node has no openat/linkat, and a pathname can be replaced at any instant: an
+// archive renamed away, another folder (an external copy) put at its path. So
+// the tool never writes THROUGH the archive's path. `bindArchive` records the
+// directory `--root` names when the run starts — its device and inode, and the
+// real path it had — and every read-then-write runs inside `inArchive`, with the
+// process's working directory ON that directory and every name a bare relative
+// one, resolved by the kernel against the directory itself. Entering is proved
+// by inode, never assumed: a path that names another folder now is refused, and
+// nothing more is done. A section never spans an `await` (another run in the
+// same process may move the working directory meanwhile).
+
+const statOrNull = (p) => {
+  try {
+    return statSync(p);
+  } catch {
+    return null;
+  }
+};
+
+/** THE authorised archive: what `root` names at this instant, by inode, with its real path. */
+export function bindArchive(root) {
+  const back = process.cwd();
+  process.chdir(root);
+  try {
+    // `ino` (exact, as text) is what a journal records across runs; never the device, which a remount may renumber.
+    return { path: realpathSync.native('.'), home: statSync('.'), ino: statSync('.', { bigint: true }).ino.toString() };
+  } finally {
+    process.chdir(back);
+  }
+}
+
+const movedRefusal = () => new Refusal('The archive folder was moved, or another folder put at its path, while this ran; nothing more was done in it. Put it back where it was, then run `rollback`.');
+
+/** The working directory IS the bound archive, and its recorded path still names it (the scanner reads through a path). */
+function ensureHome(arc) {
+  if (!same(statSync('.'), arc.home) || !same(statOrNull(arc.path), arc.home)) throw movedRefusal();
+}
+
+/** Into the bound archive by its recorded path, proved by inode, or refused. */
+function enter(arc) {
+  try {
+    process.chdir(arc.path);
+  } catch {
+    throw movedRefusal();
+  }
+  ensureHome(arc);
+}
+
+/** Run `fn` with the working directory on the bound archive; the caller's is restored after. */
+export function inArchive(arc, fn) {
+  const back = process.cwd();
+  try {
+    enter(arc);
+    return fn();
+  } finally {
+    process.chdir(back);
+  }
+}
+
+/** A test seam may start a nested run, which restores the working directory by path: it is proved unchanged after, or this run stops. */
+const guarded = (at) => (point, name) => {
+  const here = statSync('.');
+  at(point, name);
+  if (!same(statSync('.'), here)) throw new Refusal('The folder this run works in changed under it; nothing more was done.');
+};
 
 // --- who owns the archive ----------------------------------------------------
 //
@@ -313,8 +385,8 @@ function journalFor(state, root, recovering) {
 const same = (a, b) => Boolean(a && b && a.ino === b.ino && a.dev === b.dev);
 const holderLine = (h) => (h.unreadable ? 'a record not in this tool’s form' : `run ${h.token.slice(0, 8)} (pid ${h.pid} on ${h.host}, since ${h.since})`);
 
-function lockRefusal(root) {
-  const held = readArchiveLock(root);
+function lockRefusal() {
+  const held = readArchiveLock('.');
   if (!held) return new Refusal('Another maintenance run was just releasing the archive’s lock; nothing was changed. Try again.');
   return new Refusal(
     `The archive’s maintenance lock is held by ${holderLine(held)}; nothing was changed. If that run is still going, wait for it. ` +
@@ -330,50 +402,107 @@ function lockRefusal(root) {
  * tool's private names: it is never recovered from automatically (a name proves
  * nothing about whose file it is); the run refuses and names it.
  */
-function lock(root) {
+function lock() {
   const token = randomUUID();
-  const tmp = join(root, `${ARCHIVE_LOCK}.${token}`);
+  const tmp = `${ARCHIVE_LOCK}.${token}`;
   mkdirSync(tmp);
   try {
     writeFileSync(join(tmp, `${token}.json`), `${JSON.stringify({ token, pid: process.pid, host: hostname(), since: new Date().toISOString() })}\n`, { flag: 'wx' });
-    renameSync(tmp, join(root, ARCHIVE_LOCK));
+    renameSync(tmp, ARCHIVE_LOCK);
   } catch (err) {
     rmSync(tmp, { recursive: true, force: true }); // this run's own private folder
-    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR'].includes(err?.code)) throw lockRefusal(root);
+    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR'].includes(err?.code)) throw lockRefusal();
     throw err;
   }
   try {
-    refuseLeftovers(root);
+    refuseLeftovers();
   } catch (err) {
-    unlock(root, token);
+    unlock(token);
     throw err;
   }
   return token;
 }
 
-/** Every archive write first proves this run still holds the lock (an operator may have released it). */
-function assertOwner(root, owner) {
-  if (!lstatOrNull(join(root, ARCHIVE_LOCK, `${owner}.json`))?.isFile()) throw new Refusal('This run no longer holds the archive’s maintenance lock (it was released by hand); it stopped before its next write.');
+/**
+ * Every archive write first proves it is IN the bound archive and this run
+ * still holds its lock (an operator may have released it). What follows works
+ * by bare names in that archive, so nothing done to its path after this check
+ * reaches the write. `owned` is the test seam, just after the check.
+ */
+function assertOwner({ arc, owner, at }, label) {
+  ensureHome(arc);
+  if (!lstatOrNull(join(ARCHIVE_LOCK, `${owner}.json`))?.isFile()) throw new Refusal('This run no longer holds the archive’s maintenance lock (it was released by hand); it stopped before its next write.');
+  at('owned', label);
 }
 
 /** Remove the lock's folder once empty — never one holding anyone's record. */
-function dropEmptyLock(root) {
+function dropEmptyLock() {
   try {
-    rmdirSync(join(root, ARCHIVE_LOCK));
+    rmdirSync(ARCHIVE_LOCK);
   } catch {
     // not empty (a newer run holds it), already gone, or not a folder: left as it is
   }
 }
 
 /** Release THIS run's lock: only its own record, by its unique name; a newer run's is never touched. */
-function unlock(root, token) {
+function unlock(token) {
   try {
-    unlinkSync(join(root, ARCHIVE_LOCK, `${token}.json`));
+    unlinkSync(join(ARCHIVE_LOCK, `${token}.json`));
   } catch (err) {
     if (err?.code === 'ENOENT') return; // released by hand already
     throw err;
   }
-  dropEmptyLock(root);
+  dropEmptyLock();
+}
+
+/**
+ * A run's end: its own record released INSIDE the bound archive. When the
+ * archive can no longer be entered, the lock is left where it is — never
+ * removed through another folder — and the next run names it (release-lock).
+ */
+function release(arc, token) {
+  try {
+    inArchive(arc, () => unlock(token));
+  } catch (err) {
+    if (!(err instanceof Refusal)) throw err;
+  }
+}
+
+/**
+ * THE ONE PLACE a lock entry is removed: only while what stands at `p` is
+ * exactly what the operator saw (`digest`), judged on a private name it was
+ * first moved to — atomic: whatever held the name at that instant — so an
+ * entry put at that name since, or replacing it in the judgement's instant,
+ * is never removed: it is linked back, never over anything, or kept under the
+ * private name and said. Returns whether it removed the entry. `at` is the
+ * test seam, between the move and the judgement.
+ */
+function removeLockEntry(p, digest, at) {
+  const aside = `${p}.releasing-${randomUUID()}`;
+  try {
+    renameSync(p, aside);
+  } catch (err) {
+    if (err?.code === 'ENOENT') return false;
+    throw err;
+  }
+  at('judge-release', p);
+  const st = lstatSync(aside);
+  if ((st.isFile() || st.isSymbolicLink()) && lockEntryDigest(aside) === digest) {
+    unlinkSync(aside);
+    return true;
+  }
+  try {
+    if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), p);
+    else if (st.isFile()) linkSync(aside, p);
+    else renameSync(aside, p); // a folder: replaces only an empty one, never anyone's record
+  } catch (err) {
+    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR'].includes(err?.code)) {
+      throw new Refusal(`The lock changed while it was being released, and a newer one now stands; what had replaced the record you saw is kept as ${aside}. Nothing else was removed.`);
+    }
+    throw err;
+  }
+  if (!st.isDirectory()) unlinkSync(aside); // `p` holds that very file again
+  return false;
 }
 
 /**
@@ -384,8 +513,11 @@ function unlock(root, token) {
  * touched. `at` is the test seam.
  */
 export function releaseLock({ root: rootArg, record, at = noSeam }) {
-  const root = resolve(rootArg);
-  const held = readArchiveLock(root);
+  return inArchive(bindArchive(resolve(rootArg)), () => releaseBound(record, guarded(at)));
+}
+
+function releaseBound(record, at) {
+  const held = readArchiveLock('.');
   if (!held) return { released: false, lines: ['The archive holds no maintenance lock. Nothing to do.'] };
   const id = held.digest.slice(0, 16);
   if (!record) {
@@ -401,18 +533,17 @@ export function releaseLock({ root: rootArg, record, at = noSeam }) {
   const stale = () => new Refusal('The lock is not the record you saw (it changed or was released since); nothing was changed. Run release-lock again to see it.');
   if (record !== id) throw stale();
   at('release', ARCHIVE_LOCK);
-  let removed = 0;
-  // Something at the lock's name that is not a folder is never this version's lock: unlink removes only it.
-  for (const p of held.names ? held.names.map((n) => join(root, ARCHIVE_LOCK, n)) : [join(root, ARCHIVE_LOCK)]) {
-    try {
-      unlinkSync(p);
-      removed += 1;
-    } catch (err) {
-      if (err?.code !== 'ENOENT') throw err;
-    }
+  // Only a file or a link can be judged again; anything else is the operator's to remove by hand.
+  if (held.entries.some(([, d]) => d === null)) {
+    throw new Refusal(`The lock holds something that is not a file (${held.entries.filter(([, d]) => d === null).map(([p]) => p).join(', ')}); nothing was changed. Once no run holds it, remove it by hand.`);
   }
-  dropEmptyLock(root);
-  if (!removed) throw stale();
+  let removed = 0;
+  for (const [p, digest] of held.entries) if (removeLockEntry(p, digest, at)) removed += 1;
+  dropEmptyLock();
+  if (removed < held.entries.length) {
+    if (!removed) throw stale();
+    throw new Refusal(`Part of the lock changed since you saw it: ${removed} of its ${held.entries.length} entries, still exactly as shown, were removed; the rest is left as it is. Run release-lock again to see it.`);
+  }
   return { released: true, lines: [`Released the lock of ${holderLine(held)}. The next run says what, if anything, it left to finish.`] };
 }
 
@@ -424,14 +555,16 @@ export function releaseLock({ root: rootArg, record, at = noSeam }) {
  * renames it back — never over anything — before running again; the journal's
  * own exact judgement (`rollback`) then finishes.
  */
-function refuseLeftovers(root) {
+function refuseLeftovers() {
   const found = [];
-  for (const d of readdirSync(root, { withFileTypes: true })) {
+  for (const d of readdirSync('.', { withFileTypes: true })) {
+    // A lock a release-lock set aside and stopped before judging — a file, a link or a newer run's folder alike.
+    if (d.name.startsWith(`${ARCHIVE_LOCK}.releasing-`)) found.push(`  mv -n '${d.name}' '${ARCHIVE_LOCK}'   (a lock record a release set aside; then run release-lock to see it)`);
     if (d.isFile() || d.isSymbolicLink()) {
       const m = /^\.(PIECES\.csv|RENAME-LOG\.csv)\.captured-/.exec(d.name);
       if (m) found.push(`  mv -n '${d.name}' '${m[1]}'   (if ${m[1]} is there, it is the copy a write replaced: mv -n '${d.name}' '${d.name.replace('.captured-', '.superseded-')}')`);
     } else if (d.isDirectory() && parseSessionFolderName(d.name)) {
-      for (const f of readdirSync(join(root, d.name))) {
+      for (const f of readdirSync(d.name)) {
         const m = /^\.(.+)\.dropping-/.exec(f);
         if (m) found.push(`  mv -n '${d.name}/${f}' '${d.name}/${m[1]}'   (if that name is taken, keep both and compare them)`);
       }
@@ -517,10 +650,12 @@ const keep = (aside) => {
  * it is recorded in `written`, so a later failure is judged, never skipped.
  * `at` is the test seam.
  */
-function replaceDeclaration({ root, owner, at, written }, name, text, expected, keepDir) {
-  assertOwner(root, owner);
-  const p = join(root, name);
-  const tmp = text === null ? null : join(root, `.${name}.maintenance-${randomUUID()}`);
+function replaceDeclaration(ctx, name, text, expected, keepDir) {
+  const { at, written } = ctx;
+  assertOwner(ctx, name);
+  // Bare names, inside the bound archive (`inArchive`): never its path again.
+  const p = name;
+  const tmp = text === null ? null : `.${name}.maintenance-${randomUUID()}`;
   if (tmp) writeFileSync(tmp, text, { flag: 'wx' });
   try {
     at('capture', name);
@@ -535,11 +670,11 @@ function replaceDeclaration({ root, owner, at, written }, name, text, expected, 
       written?.add(name);
       return;
     }
-    const aside = capture(root, name);
+    const aside = capture('.', name);
     if (!aside) throw new Refusal(`${name} was removed while this ran; nothing was put in its place.`);
     const st = lstatSync(aside);
     if (!st.isFile() || sha(readFileSync(aside)) !== expected) {
-      putBack(root, name, aside, at);
+      putBack('.', name, aside, at);
       throw new Refusal(`${name} changed while this ran; it was left as the other edit made it.`);
     }
     at('install', name);
@@ -550,7 +685,7 @@ function replaceDeclaration({ root, owner, at, written }, name, text, expected, 
       if (tmp && err?.code === 'EEXIST') {
         throw new Refusal(`${name} was written by someone else while this ran; theirs stands, and the one it replaced is kept beside it as ${basename(keep(aside))}.`);
       }
-      putBack(root, name, aside, at);
+      putBack('.', name, aside, at);
       throw err;
     }
     written?.add(name);
@@ -565,25 +700,34 @@ function replaceDeclaration({ root, owner, at, written }, name, text, expected, 
 }
 
 /**
- * Run `fn(stillBound)` INSIDE one session folder, bound by its inode: it must
- * be a real folder directly in the archive at the instant this starts (never a
- * link), and every name `fn` touches is a bare leaf resolved against that
- * bound folder — never the folder's path again, so swapping the folder for a
- * link cannot carry a write outside. `stillBound()` says whether the folder
- * still stands at its name; `fn` asks before each step that commits anything.
+ * Run `fn(stillBound)` INSIDE one session folder of the BOUND archive
+ * (`inArchive`), bound by its inode: it must be a real folder directly in that
+ * archive at the instant this starts (never a link), selected by its bare name
+ * against the archive itself, and every name `fn` touches is a bare leaf
+ * resolved against that bound folder — never a path again, so swapping the
+ * folder for a link, or the archive's path for another folder, cannot carry a
+ * write outside. `stillBound()` says whether the folder still stands at its
+ * name in the bound archive, judged through its own `..`; `fn` asks before
+ * each step that commits anything. Back in the archive by `..`, proved, or by
+ * its recorded path, proved, or refused.
  */
 // ponytail: process-wide cwd, the only stdlib way to resolve names against a
 // bound directory (Node has no linkat/openat); the tool is single-threaded.
-function inFolder(root, folder, fn) {
-  const st = lstatOrNull(join(root, folder));
+function inFolder(arc, folder, fn) {
+  const st = lstatOrNull(folder);
   if (!st?.isDirectory()) throw new Refusal(`The folder "${folder}" is not a real folder in the archive (a link is never followed); nothing was moved.`);
-  const back = process.cwd();
-  process.chdir(join(root, folder));
+  process.chdir(folder);
   try {
     if (!same(statSync('.'), st)) throw new Refusal(`The folder "${folder}" changed while this ran; nothing was moved.`);
-    return fn(() => same(lstatOrNull(join(root, folder)), st));
+    // The entry first, then its parent: a folder moved out between the two is caught by the second.
+    return fn(() => same(lstatOrNull(join('..', folder)), st) && same(statSync('..'), arc.home));
   } finally {
-    process.chdir(back);
+    try {
+      process.chdir('..');
+    } catch {
+      // the folder is gone: back by the archive's path below
+    }
+    if (!same(statSync('.'), arc.home)) enter(arc);
   }
 }
 
@@ -598,10 +742,12 @@ function inFolder(root, folder, fn) {
  * name another writer replaces meanwhile, the file keeps the other, and the
  * refusal says which.
  */
-function moveExact({ root, owner, at, written }, fromRel, toRel, expect) {
-  assertOwner(root, owner);
+function moveExact(ctx, fromRel, toRel, expect) {
+  // `root` is the archive's given path, ONLY for what the test seam is told.
+  const { root, arc, at, written } = ctx;
+  assertOwner(ctx, fromRel);
   const [from, to] = [fromRel, toRel].map((rel) => rel.split('/')[1]);
-  inFolder(root, fromRel.split('/')[0], (stillBound) => {
+  inFolder(arc, fromRel.split('/')[0], (stillBound) => {
     if (!lstatOrNull(from)?.isFile()) throw new Refusal(`"${fromRel}" is not a regular file in the archive any more; nothing was moved.`);
     at('link', toRel);
     try {
@@ -671,14 +817,17 @@ export class Interrupted extends Error {}
 // --- validation, scan and publication ---------------------------------------
 
 /** Scan the archive now (the scanner's two-read rule), check the action took, write the scratch index. */
-function validateAndScan(root, state, action) {
-  const index = buildIndex(readStableSource(root));
+function validateAndScan(arc, state, action) {
+  // The scanner reads through a path (the working directory's): proved to be the bound archive before and after.
+  ensureHome(arc);
+  const index = buildIndex(readStableSource('.'));
+  ensureHome(arc);
   if (action?.kind === 'register' && !index.pieces.some((p) => p.key === action.piece)) throw new Error('The registry does not show the new piece after the edit.');
   if (action?.kind === 'roster' && !action.pieces.every((k) => index.pieces.find((p) => p.key === k)?.sessions.includes(action.session))) {
     throw new Error('The registry does not show the roster after the edit.');
   }
   const text = `${JSON.stringify(index, null, 2)}\n`;
-  writeIndexAtomically(join(state, 'scratch-index.json'), text, root);
+  writeIndexAtomically(join(state, 'scratch-index.json'), text, '.');
   return { index, text };
 }
 
@@ -756,76 +905,82 @@ async function publishStep(state, base, scanned, publish, token) {
  */
 export async function applyMaintenance({ root: rootArg, state: stateArg, action, previewId, publish, interruptAfter, at = noSeam }) {
   const root = resolve(rootArg);
-  const state = stateDir(root, stateArg);
-  const token = lock(root);
+  const arc = bindArchive(root);
+  const state = stateDir(arc, stateArg);
+  const token = inArchive(arc, lock);
   // What THIS run has changed in the archive, recorded at the instant of each change: its automatic put-back judges only those.
-  const ctx = { root, owner: token, at, written: new Set() };
+  const ctx = { root, arc, owner: token, at: guarded(at), written: new Set() };
   let interrupted = false;
   try {
-    const prior = journalFor(state, root);
-    if (prior?.status === 'prepared' || prior?.status === 'rolling-back') {
-      throw new Refusal(`An earlier ${prior.status === 'prepared' ? 'apply' : 'rollback'} did not finish. Run \`rollback\` first; nothing else was changed.`);
-    }
-    if (prior && !['published', 'not-needed'].includes(prior.publication)) {
-      throw new Refusal('An earlier change is not yet published (or its publication is unconfirmed). Run `retry` first; nothing else was changed.');
-    }
-    const plan = planMaintenance(root, action);
-    if (plan.id !== previewId) throw new Refusal('The archive changed since that preview (or the preview is for something else). Preview again; nothing was changed.');
-    if (plan.noop) return { ok: true, status: 'unchanged', lines: plan.lines };
-
-    // 1. The private rollback copy, BEFORE any edit.
-    const copy = join(state, `${new Date().toISOString().replace(/[:.]/g, '-')}-${plan.id}`);
-    mkdirSync(copy);
-    // BOTH declarations, whatever this action edits: a rollback restores the pair as it was.
-    const registryBefore = readDeclaration(root, REGISTRY, true);
-    const logBefore = readDeclaration(root, LOG, false);
-    const logWasPresent = logBefore !== null;
-    writeFileSync(join(copy, REGISTRY), registryBefore, { flag: 'wx' });
-    if (logWasPresent) writeFileSync(join(copy, LOG), logBefore, { flag: 'wx' });
-    // What this change WROTE, by digest: the only state a restore may undo.
-    const digest = (t) => (t === null ? null : sha(t));
-    const wrote = {
-      registry: { before: digest(registryBefore), after: digest(plan.registry ? plan.registry.after : registryBefore) },
-      log: { before: digest(logBefore), after: digest(plan.log ? plan.log.after : logBefore) },
-    };
-    const journal = { id: plan.id, action, copy, rootId: rootIdOf(root), logWasPresent, wrote, rename: plan.rename, lockToken: token, status: 'prepared' };
-    writeFileSync(join(copy, 'manifest.json'), `${JSON.stringify(journal, null, 2)}\n`);
-    writeJournal(state, journal);
-    const step = (name) => {
-      if (interruptAfter === name) {
-        interrupted = true;
-        throw new Interrupted(`interrupted after ${name}`);
+    // Everything up to publication, in ONE bound section (no await inside).
+    const ready = inArchive(arc, () => {
+      const prior = journalFor(state, arc);
+      if (prior?.status === 'prepared' || prior?.status === 'rolling-back') {
+        throw new Refusal(`An earlier ${prior.status === 'prepared' ? 'apply' : 'rollback'} did not finish. Run \`rollback\` first; nothing else was changed.`);
       }
-    };
-    step('copy');
+      if (prior && !['published', 'not-needed'].includes(prior.publication)) {
+        throw new Refusal('An earlier change is not yet published (or its publication is unconfirmed). Run `retry` first; nothing else was changed.');
+      }
+      const plan = planMaintenance('.', action);
+      if (plan.id !== previewId) throw new Refusal('The archive changed since that preview (or the preview is for something else). Preview again; nothing was changed.');
+      if (plan.noop) return { done: { ok: true, status: 'unchanged', lines: plan.lines } };
 
-    // 2. The edit, each write proved against what the plan saw. Any failure is put back, automatically.
-    let scanned;
-    try {
-      if (plan.registry) replaceDeclaration(ctx, REGISTRY, plan.registry.after, digest(plan.registry.before));
-      step('registry');
-      if (plan.log) replaceDeclaration(ctx, LOG, plan.log.after, digest(plan.log.before));
-      step('log');
-      if (plan.rename) moveExact(ctx, plan.rename.from, plan.rename.to, plan.rename);
-      step('rename');
-      at('scan', 'archive');
-      scanned = validateAndScan(root, state, action);
-    } catch (err) {
-      if (err instanceof Interrupted) throw err;
+      // 1. The private rollback copy, BEFORE any edit.
+      const copy = join(state, `${new Date().toISOString().replace(/[:.]/g, '-')}-${plan.id}`);
+      mkdirSync(copy);
+      // BOTH declarations, whatever this action edits: a rollback restores the pair as it was.
+      const registryBefore = readDeclaration('.', REGISTRY, true);
+      const logBefore = readDeclaration('.', LOG, false);
+      const logWasPresent = logBefore !== null;
+      writeFileSync(join(copy, REGISTRY), registryBefore, { flag: 'wx' });
+      if (logWasPresent) writeFileSync(join(copy, LOG), logBefore, { flag: 'wx' });
+      // What this change WROTE, by digest: the only state a restore may undo.
+      const digest = (t) => (t === null ? null : sha(t));
+      const wrote = {
+        registry: { before: digest(registryBefore), after: digest(plan.registry ? plan.registry.after : registryBefore) },
+        log: { before: digest(logBefore), after: digest(plan.log ? plan.log.after : logBefore) },
+      };
+      const journal = { id: plan.id, action, copy, rootId: rootIdOf(arc), rootIno: arc.ino, logWasPresent, wrote, rename: plan.rename, lockToken: token, status: 'prepared' };
+      writeFileSync(join(copy, 'manifest.json'), `${JSON.stringify(journal, null, 2)}\n`);
+      writeJournal(state, journal);
+      const step = (name) => {
+        if (interruptAfter === name) {
+          interrupted = true;
+          throw new Interrupted(`interrupted after ${name}`);
+        }
+      };
+      step('copy');
+
+      // 2. The edit, each write proved against what the plan saw. Any failure is put back, automatically.
       try {
-        restore({ ...ctx, written: null }, journal, undefined, ctx.written);
-      } catch (why) {
-        // The journal stays `prepared`: `rollback` is still offered, never a false "put back".
-        throw new Refusal(`The change did not validate (${err.message}), and it could not be put back automatically (${why.message}). The private copy is kept; check, then run \`rollback\`.`);
+        if (plan.registry) replaceDeclaration(ctx, REGISTRY, plan.registry.after, digest(plan.registry.before));
+        step('registry');
+        if (plan.log) replaceDeclaration(ctx, LOG, plan.log.after, digest(plan.log.before));
+        step('log');
+        if (plan.rename) moveExact(ctx, plan.rename.from, plan.rename.to, plan.rename);
+        step('rename');
+        ctx.at('scan', 'archive');
+        return { journal, scanned: validateAndScan(arc, state, action), lines: plan.lines };
+      } catch (err) {
+        if (err instanceof Interrupted) throw err;
+        try {
+          // Back in the bound archive first: a failure inside a session folder may have left the working directory anywhere.
+          enter(arc);
+          restore({ ...ctx, written: null }, journal, undefined, ctx.written);
+        } catch (why) {
+          // The journal stays `prepared`: `rollback` is still offered, never a false "put back".
+          throw new Refusal(`The change did not validate (${err.message}), and it could not be put back automatically (${why.message}). The private copy is kept; check, then run \`rollback\`.`);
+        }
+        // This run published nothing, and the archive is as it was before it.
+        writeJournal(state, { ...journal, status: 'rolled-back', publication: 'not-needed', unresolved: [] });
+        throw new Refusal(`The change did not validate (${err.message}); ${ctx.written.size ? 'everything it changed was put back from the private copy' : 'it had changed nothing in the archive'}.`);
       }
-      // This run published nothing, and the archive is as it was before it.
-      writeJournal(state, { ...journal, status: 'rolled-back', publication: 'not-needed', unresolved: [] });
-      throw new Refusal(`The change did not validate (${err.message}); ${ctx.written.size ? 'everything it changed was put back from the private copy' : 'it had changed nothing in the archive'}.`);
-    }
+    });
+    if (ready.done) return ready.done;
     // 3. Publication, through the existing job.
-    return { ...(await publishStep(state, { ...journal, status: 'applied', unresolved: [] }, scanned, publish, token)), lines: plan.lines };
+    return { ...(await publishStep(state, { ...ready.journal, status: 'applied', unresolved: [] }, ready.scanned, publish, token)), lines: ready.lines };
   } finally {
-    if (!interrupted) unlock(root, token);
+    if (!interrupted) release(arc, token);
   }
 }
 
@@ -839,9 +994,10 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
  * limits the judgement to what that run is known to have written.
  */
 function restore(ctx, journal, beforeWriting = () => {}, only = null) {
+  // Inside the bound archive (`inArchive`): every read and write by bare name; `root` only labels the test seam.
   const { root } = ctx;
   const current = (name) => {
-    const t = readDeclaration(root, name, false);
+    const t = readDeclaration('.', name, false);
     return t === null ? null : sha(t);
   };
   const steps = [];
@@ -863,10 +1019,10 @@ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
   }
   const r = only && !only.has('rename') ? null : journal.rename;
   if (r) {
-    const fromSt = lstatOrNull(mediaPath(root, r.from));
-    const toSt = lstatOrNull(mediaPath(root, r.to));
+    const fromSt = lstatOrNull(mediaPath('.', r.from));
+    const toSt = lstatOrNull(mediaPath('.', r.to));
     const holds = (rel) => {
-      const bytes = readFileSync(mediaPath(root, rel));
+      const bytes = readFileSync(mediaPath('.', rel));
       return bytes.length === r.size && sha(bytes) === r.sha256;
     };
     if (!fromSt && toSt?.isFile()) {
@@ -875,9 +1031,9 @@ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
     } else if (same(fromSt, toSt) && toSt.isFile()) {
       // A move stopped between its two names: the new name is the one to drop — the bytes stay at the old one, whatever they are.
       steps.unshift(() => {
-        assertOwner(root, ctx.owner);
+        assertOwner(ctx, r.to);
         const [from, to] = [r.from, r.to].map((rel) => rel.split('/')[1]);
-        inFolder(root, r.from.split('/')[0], (stillBound) => {
+        inFolder(ctx.arc, r.from.split('/')[0], (stillBound) => {
           const kept = lstatOrNull(from);
           const drop = stillBound() && same(kept, lstatOrNull(to)) ? dropName(to, kept, from, ctx.at, join(root, r.to), join(root, r.from)) : 'changed';
           if (drop === 'kept-changed') throw new Refusal(`"${r.from}" was replaced or removed while this ran; the bytes stay as "${r.to}", and nothing was put back.`);
@@ -894,18 +1050,21 @@ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
 
 /** Validate, scan and publish again from the retained state — after a failed, unconfirmed or interrupted publication. */
 export async function retryMaintenance({ root: rootArg, state: stateArg, publish }) {
-  const root = resolve(rootArg);
-  const state = stateDir(root, stateArg);
-  const token = lock(root);
+  const arc = bindArchive(resolve(rootArg));
+  const state = stateDir(arc, stateArg);
+  const token = inArchive(arc, lock);
   try {
-    const journal = journalFor(state, root, true);
-    if (!journal) throw new Refusal('Nothing has been applied here yet.');
-    if (journal.status === 'prepared' || journal.status === 'rolling-back') {
-      throw new Refusal(`The last ${journal.status === 'prepared' ? 'apply' : 'rollback'} did not finish; run \`rollback\`.`);
-    }
-    return await publishStep(state, { ...journal, lockToken: token }, validateAndScan(root, state, null), publish, token);
+    const [journal, scanned] = inArchive(arc, () => {
+      const j = journalFor(state, arc, true);
+      if (!j) throw new Refusal('Nothing has been applied here yet.');
+      if (j.status === 'prepared' || j.status === 'rolling-back') {
+        throw new Refusal(`The last ${j.status === 'prepared' ? 'apply' : 'rollback'} did not finish; run \`rollback\`.`);
+      }
+      return [j, validateAndScan(arc, state, null)];
+    });
+    return await publishStep(state, { ...journal, lockToken: token }, scanned, publish, token);
   } finally {
-    unlock(root, token);
+    release(arc, token);
   }
 }
 
@@ -919,29 +1078,32 @@ export async function retryMaintenance({ root: rootArg, state: stateArg, publish
  */
 export async function rollbackMaintenance({ root: rootArg, state: stateArg, publish, interruptAfter, at = noSeam }) {
   const root = resolve(rootArg);
-  const state = stateDir(root, stateArg);
-  const token = lock(root);
+  const arc = bindArchive(root);
+  const state = stateDir(arc, stateArg);
+  const token = inArchive(arc, lock);
   let interrupted = false;
   try {
-    const journal = journalFor(state, root, true);
-    if (!journal || journal.status === 'rolled-back') {
-      throw new Refusal(
-        journal && !['published', 'not-needed'].includes(journal.publication)
-          ? 'The last change is already rolled back but not yet published; run `retry`.'
-          : 'There is no change here to roll back.',
-      );
-    }
-    restore({ root, owner: token, at }, journal, () => {
-      writeJournal(state, { ...journal, status: 'rolling-back', lockToken: token });
-      if (interruptAfter === 'mark') {
-        interrupted = true;
-        throw new Interrupted('interrupted after mark');
+    const [journal, scanned] = inArchive(arc, () => {
+      const j = journalFor(state, arc, true);
+      if (!j || j.status === 'rolled-back') {
+        throw new Refusal(
+          j && !['published', 'not-needed'].includes(j.publication)
+            ? 'The last change is already rolled back but not yet published; run `retry`.'
+            : 'There is no change here to roll back.',
+        );
       }
+      restore({ root, arc, owner: token, at: guarded(at) }, j, () => {
+        writeJournal(state, { ...j, status: 'rolling-back', lockToken: token });
+        if (interruptAfter === 'mark') {
+          interrupted = true;
+          throw new Interrupted('interrupted after mark');
+        }
+      });
+      return [j, validateAndScan(arc, state, null)];
     });
-    const scanned = validateAndScan(root, state, null);
     return await publishStep(state, { ...journal, status: 'rolled-back', lockToken: token }, scanned, publish, token);
   } finally {
-    if (!interrupted) unlock(root, token);
+    if (!interrupted) release(arc, token);
   }
 }
 

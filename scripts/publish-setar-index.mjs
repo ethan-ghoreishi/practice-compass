@@ -256,10 +256,11 @@ const digestOf = (bytes) => createHash('sha256').update(bytes).digest('hex');
 
 /**
  * The lock as it stands: null (absent, or an empty folder a release left), its
- * record `{ token, pid, host, since, digest, names }`, or `{ unreadable }` with
+ * record `{ token, pid, host, since, digest, entries }`, or `{ unreadable }` with
  * a digest of what is there when it is not exactly one record in this tool's
- * form — never guessed into one. `names` are the entries a release removes;
- * null for something at the lock's name that is not a folder.
+ * form — never guessed into one. `entries` are what a release may remove, each
+ * `[path from the root, lockEntryDigest]`: the folder's entries, or the lock's
+ * own name when it is not a folder (an earlier version's file).
  */
 export function readArchiveLock(root) {
   const p = join(root, ARCHIVE_LOCK);
@@ -271,7 +272,7 @@ export function readArchiveLock(root) {
     throw err;
   }
   if (!st.isDirectory()) {
-    return { unreadable: true, names: null, digest: digestOf(st.isFile() ? readFileSync(p) : st.isSymbolicLink() ? `link:${readlinkSync(p)}` : `${st.mode}`) };
+    return { unreadable: true, entries: [[ARCHIVE_LOCK, lockEntryDigest(p)]], digest: digestOf(st.isFile() ? readFileSync(p) : st.isSymbolicLink() ? `link:${readlinkSync(p)}` : `${st.mode}`) };
   }
   const names = readdirSync(p).sort();
   if (!names.length) return null;
@@ -280,17 +281,28 @@ export function readArchiveLock(root) {
     return [n, e.isFile() ? readFileSync(join(p, n)) : null];
   });
   const digest = digestOf(JSON.stringify(parts.map(([n, b]) => [n, b ? digestOf(b) : 'not a file'])));
+  const entries = parts.map(([n, b]) => [join(ARCHIVE_LOCK, n), b ? digestOf(b) : null]);
   if (parts.length === 1 && parts[0][1]) {
     try {
       const r = JSON.parse(parts[0][1].toString('utf8'));
       if (typeof r?.token === 'string' && /^[0-9a-f-]{36}$/.test(r.token) && names[0] === `${r.token}.json` && Number.isInteger(r.pid) && r.pid > 0 && typeof r.host === 'string' && typeof r.since === 'string') {
-        return { ...r, digest, names };
+        return { ...r, digest, entries };
       }
     } catch {
       // not a record: said as unreadable below
     }
   }
-  return { unreadable: true, digest, names };
+  return { unreadable: true, digest, entries };
+}
+
+/**
+ * What one lock entry IS, judged again after it is set aside: a file's bytes or
+ * a link's target, by digest (as the record's digest reads it); null for
+ * anything else, which is never judged and so never removed.
+ */
+export function lockEntryDigest(p) {
+  const st = lstatSync(p);
+  return st.isFile() ? digestOf(readFileSync(p)) : st.isSymbolicLink() ? digestOf(`link:${readlinkSync(p)}`) : null;
 }
 
 /**
