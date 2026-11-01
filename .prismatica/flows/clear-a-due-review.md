@@ -21,8 +21,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:13.670Z
-        commit: 81743889a0935b6a8d51aa82a68604bd917ca9f7
+        at: 2026-11-01T19:45:17.106Z
+        commit: 83756920b40447a39249f67794004d82cf453a05
     - actor: The musician
       action: Taps ▶ to practise it.
       shows: The active block, seeded from the item's status and focus.
@@ -33,8 +33,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:13.670Z
-        commit: 81743889a0935b6a8d51aa82a68604bd917ca9f7
+        at: 2026-11-01T19:45:17.106Z
+        commit: 83756920b40447a39249f67794004d82cf453a05
     - actor: The musician
       action: Or taps 'Not now'.
       shows: The row disappears for the rest of the day and returns tomorrow.
@@ -43,8 +43,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:13.670Z
-        commit: 81743889a0935b6a8d51aa82a68604bd917ca9f7
+        at: 2026-11-01T19:45:17.106Z
+        commit: 83756920b40447a39249f67794004d82cf453a05
     - actor: The musician
       action: Or taps '+2d' to genuinely move it.
       changes: The review's due date and the item's next review date both move to two
@@ -52,8 +52,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:13.670Z
-        commit: 81743889a0935b6a8d51aa82a68604bd917ca9f7
+        at: 2026-11-01T19:45:17.106Z
+        commit: 83756920b40447a39249f67794004d82cf453a05
   endsWith: Either the item was actually practised (and its next return decided),
     or the schedule was moved honestly — never both, never neither.
   variations:
