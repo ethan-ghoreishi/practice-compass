@@ -713,8 +713,11 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   publisher checks it; a release removes only that exact record, so it never
   takes a newer run's lock: each entry the operator saw is first moved to a
   private `.releasing-…` name and judged there against what was shown, removed
-  only if it is that, else linked back (never over anything) or kept and
-  named — a replacement at the same name, legacy lock file or folder entry
+  only if it is that. Anything else keeps that private name — the tool never
+  unlinks it, so its very file survives a cut, a failure or a writer at the
+  lock's name — and is linked back as well (never over anything) and named;
+  the operator removes the spare name once the lock's name holds that same
+  file (`ls -li`) — a replacement at the same name, legacy lock file or folder entry
   alike, is never removed. Every lock operation addresses objects, never a
   path that could be swapped under it: a run's ownership is the exact folder
   and record file it made (by inode), its record is written and removed only

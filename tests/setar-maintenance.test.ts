@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { chmodSync, closeSync, cpSync, existsSync, utimesSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 // @ts-expect-error — untyped operator tools; these are the real ones.
@@ -1354,14 +1354,15 @@ describe('maintaining the Setar archive', () => {
         const entry = (k: ReturnType<typeof box>, asFolder: boolean) => (asFolder ? join(k.lock, 'partial.json') : k.lock);
         for (const asFolder of [false, true]) {
           const tag = asFolder ? 'folder entry' : 'legacy file';
-          // Replaced after it was shown: refused, the replacement stands byte for byte.
+          // Replaced after it was shown: refused, the replacement stands byte for byte — that very file, also kept under its private name.
           const k = box();
           lockOf(k, asFolder, 'record A');
           const id = readArchiveLock(k.root).digest.slice(0, 16);
           const replace = () => replaceWith(entry(k, asFolder), 'record B')();
-          expect(() => releaseLock({ root: k.root, record: id, at: when(['release', ARCHIVE_LOCK, replace]) }), tag).toThrow(/not the record you saw/);
-          expect(readFileSync(entry(k, asFolder), 'utf8'), tag).toBe('record B');
-          expect(readdirSync(k.root).filter((n) => n.includes('.releasing-')), tag).toEqual([]);
+          expect(() => releaseLock({ root: k.root, record: id, at: when(['release', ARCHIVE_LOCK, replace]) }), tag).toThrow(/is kept as .*\.releasing-.*, and again at/);
+          const keptDir = asFolder ? k.lock : k.root;
+          const spare = readdirSync(keptDir).filter((n) => n.includes('.releasing-'));
+          expect([readFileSync(entry(k, asFolder), 'utf8'), spare.length, spare.length && lstatSync(join(keptDir, spare[0]!)).ino === lstatSync(entry(k, asFolder)).ino], tag).toEqual(['record B', 1, true]);
           // A taken in its judgement's instant, B put at the freed name meanwhile: A alone is removed.
           const k2 = box();
           lockOf(k2, asFolder, 'record A');
@@ -1389,81 +1390,120 @@ describe('maintaining the Setar archive', () => {
         }
       }
 
-      // --- A REJECTED entry linked back survives a writer at its name ------
-      // After the entry a removal refused is linked back at its name, another writer replaces that
-      // name or removes it before the private name goes: through every removal caller — the
-      // operator's release of a legacy file, a folder file or a legacy link, a run's own release,
-      // and a failed take's cleanup — and for a file and a link alike, the entry is never lost: it
-      // stays under its private name, said (the operator's release says it; a run's end keeps it).
+      // --- A REFUSED entry keeps its very file, whatever happens around it --
+      // An entry a removal refused is never unlinked from the private name it was moved to: through
+      // every removal caller — the operator's release of a legacy file, a folder file or a legacy
+      // link, a run's own release, a failed take's cleanup — for a file and a link alike, with the
+      // run cut (or the disk full) after the move or before the link back, and the lock's name then
+      // replaced or removed by another writer: B's original inode keeps a private name, and a save
+      // through a handle already open on B lands in that kept file.
       {
-        type Kept = { kind: 'file' | 'link'; v: string };
+        type Entry = { kind: 'file' | 'link'; v: string };
         /** Another writer's atomic save of a file, or of a link, at `p`. */
-        const put = (p: string, { kind, v }: Kept) => {
+        const put = (p: string, { kind, v }: Entry) => {
           if (kind === 'file') return replaceWith(p, v)();
           symlinkSync(v, `${p}.editor`);
           renameSync(`${p}.editor`, p);
         };
-        const show = (p: string) => {
-          try {
-            return lstatSync(p).isSymbolicLink() ? `link:${readlinkSync(p)}` : `file:${readFileSync(p, 'utf8')}`;
-          } catch {
-            return null;
-          }
-        };
-        const C: Kept = { kind: 'file', v: 'record C' };
-        const after = (p: string, edit: 'replace' | 'remove') => () => (edit === 'remove' ? rmSync(p) : put(p, C));
-        /** What stands at the public name, and every entry kept under a private name beside it. */
-        const outcome = (p: string) => [show(p), readdirSync(dirname(p)).filter((n) => n.includes('.releasing-')).map((n) => show(join(dirname(p), n)))];
-        for (const edit of ['replace', 'remove'] as const) {
-          const stands = edit === 'replace' ? 'file:record C' : null;
-          const said = new RegExp(`lock changed while it was being released${edit === 'replace' ? ', and a newer one now stands' : ''}; what had replaced the record you saw is kept as .*\\.releasing-`);
-          // The OPERATOR's release: A shown, B put at its name before the release, the writer at the link back.
-          for (const [form, A, B] of [
-            ['legacy file', { kind: 'file', v: 'record A' }, { kind: 'file', v: 'record B' }],
-            ['folder file', { kind: 'file', v: 'record A' }, { kind: 'file', v: 'record B' }],
-            ['legacy link', { kind: 'link', v: 'to-a' }, { kind: 'link', v: 'to-b' }],
-          ] as const) {
-            const tag = `operator release, ${form}, ${edit}`;
-            const k = box();
-            const inFolder = form === 'folder file';
-            if (inFolder) mkdirSync(k.lock);
-            const p = inFolder ? join(k.lock, 'partial.json') : k.lock;
-            put(p, A);
+        const dead = ['5f5f5f5f', '0000', '4000', '8000', '000000000000'].join('-');
+        type Caller = { name: string; kinds: Entry['kind'][]; said: RegExp; run: (k: ReturnType<typeof box>, B: Entry, placed: (p: string) => void, at: (point: string, name: string) => void) => Promise<unknown> };
+        const operator = (folder: boolean): Caller => ({
+          name: `operator release, ${folder ? 'folder' : 'legacy'}`,
+          kinds: folder ? ['file'] : ['file', 'link'],
+          said: /lock changed while it was being released; what had replaced the record you saw is kept as .*\.releasing-.*, and again at/,
+          run: async (k, B, placed, at) => {
+            if (folder) mkdirSync(k.lock);
+            const p = folder ? join(k.lock, 'partial.json') : k.lock;
+            put(p, B.kind === 'file' ? { kind: 'file', v: 'record A' } : { kind: 'link', v: 'to-a' });
             const id = readArchiveLock(k.root).digest.slice(0, 16);
-            const label = inFolder ? join(ARCHIVE_LOCK, 'partial.json') : ARCHIVE_LOCK;
-            expect(() => releaseLock({ root: k.root, record: id, at: when(['release', ARCHIVE_LOCK, () => put(p, B)], ['restored', label, after(p, edit)]) }), tag).toThrow(said);
-            expect(outcome(p), tag).toEqual([stands, [`${B.kind}:${B.v}`]]);
-          }
-          for (const B of [{ kind: 'file', v: 'record B' }, { kind: 'link', v: 'to-b' }] as const) {
-            // A RUN's own release: its record leaf replaced by B just after an owner check.
-            {
-              const tag = `run release, ${B.kind}, ${edit}`;
-              const k = box();
-              let p = '';
-              const at = (point: string, name: string) => {
-                if (point === 'owned' && name === 'PIECES.csv') put((p = join(k.lock, readdirSync(k.lock)[0]!)), B);
-                if (point === 'restored' && p && name === join(ARCHIVE_LOCK, basename(p))) after(p, edit)();
-              };
-              const end = await k.go(REG, { at }).then(
-                (r) => r as { ok: boolean },
-                () => ({ ok: false }),
-              );
-              expect([end.ok, outcome(p)], tag).toEqual([false, [stands, [`${B.kind}:${B.v}`]]]);
-            }
-            // A failed TAKE's cleanup: the archive held, the private record replaced by B before the take.
-            {
-              const tag = `take cleanup, ${B.kind}, ${edit}`;
-              const k = box();
-              const dead = ['5f5f5f5f', '0000', '4000', '8000', '000000000000'].join('-');
+            return releaseLock({ root: k.root, record: id, at: (point, name) => (point === 'release' ? (put(p, B), placed(p)) : at(point, name)) });
+          },
+        });
+        const callers: Caller[] = [
+          operator(false),
+          operator(true),
+          {
+            name: 'run release',
+            kinds: ['file', 'link'],
+            said: /publication could not be confirmed|no longer holds/,
+            run: (k, B, placed, at) =>
+              k.go(REG, {
+                at: (point: string, name: string) => {
+                  if (point === 'owned' && name === 'PIECES.csv') {
+                    const p = join(k.lock, readdirSync(k.lock)[0]!);
+                    put(p, B);
+                    placed(p);
+                  }
+                  at(point, name);
+                },
+              }).then((r) => {
+                if ((r as { ok: boolean }).ok) throw new Error('the run succeeded');
+                throw new Error((r as { message: string }).message);
+              }),
+          },
+          {
+            name: 'take cleanup',
+            kinds: ['file', 'link'],
+            said: /maintenance lock is held by run 5f5f5f5f/,
+            run: (k, B, placed, at) => {
               mkdirSync(k.lock);
               writeFileSync(join(k.lock, `${dead}.json`), JSON.stringify({ token: dead, pid: 1, host: 'h', since: 's' }));
-              let p = '';
-              const at = (point: string, name: string) => {
-                if (point === 'lock-take') put((p = join(k.at(name), `${name.slice(ARCHIVE_LOCK.length + 1)}.json`)), B);
-                if (point === 'restored' && p && name === join(basename(dirname(p)), basename(p))) after(p, edit)();
-              };
-              await expect(k.go(REG, { at }), tag).rejects.toThrow(/maintenance lock is held by run 5f5f5f5f/);
-              expect(outcome(p), tag).toEqual([stands, [`${B.kind}:${B.v}`]]);
+              return k.go(REG, {
+                at: (point: string, name: string) => {
+                  if (point === 'lock-take') {
+                    const p = join(k.at(name), `${name.slice(ARCHIVE_LOCK.length + 1)}.json`);
+                    put(p, B);
+                    placed(p);
+                  }
+                  at(point, name);
+                },
+              });
+            },
+          },
+        ];
+        const faults = {
+          none: null,
+          'cut after the move': ['judge-release', () => new Interrupted('power cut')],
+          'cut before the link back': ['restore', () => new Interrupted('power cut')],
+          'disk full at the link back': ['restore', () => Object.assign(new Error('no space left on device'), { code: 'ENOSPC' })],
+        } as const;
+        for (const caller of callers) {
+          for (const kind of caller.kinds) {
+            const B: Entry = kind === 'file' ? { kind, v: 'record B' } : { kind, v: 'to-b' };
+            for (const [fault, how] of Object.entries(faults)) {
+              for (const edit of ['replace', 'remove'] as const) {
+                const tag = `${caller.name}, ${kind}, ${fault}, writer ${edit}s`;
+                const k = box();
+                let p = '';
+                let ino = 0;
+                let fd: number | undefined;
+                const placed = (at: string) => {
+                  p = at;
+                  ino = lstatSync(p).ino;
+                  if (kind === 'file') fd = openSync(p, 'a'); // someone's handle, already open on B
+                };
+                const at = (point: string, name: string) => {
+                  if (how && point === how[0] && p && name === p.slice(k.root.length + 1)) throw how[1]();
+                };
+                const end = await caller.run(k, B, placed, at).then(
+                  () => 'returned',
+                  (e: Error) => e.message,
+                );
+                // A failed take's cleanup swallows its own failure and says the lock is held; the others stop with the fault.
+                expect(end, tag).toMatch(!how || caller.name === 'take cleanup' ? caller.said : /power cut|no space left/);
+                // Another writer at the lock's name, then a save through the handle already open on B.
+                if (edit === 'remove') rmSync(p, { force: true });
+                else put(p, { kind: 'file', v: 'record C' });
+                if (fd !== undefined) {
+                  writeSync(fd, ' saved later');
+                  closeSync(fd);
+                }
+                const dir = dirname(p);
+                const keeping = readdirSync(dir).filter((n) => lstatSync(join(dir, n)).ino === ino);
+                expect(keeping, tag).toEqual([expect.stringMatching(/\.releasing-/)]);
+                const kept = join(dir, keeping[0]!);
+                expect(kind === 'file' ? readFileSync(kept, 'utf8') : readlinkSync(kept), tag).toBe(kind === 'file' ? 'record B saved later' : 'to-b');
+              }
             }
           }
         }
@@ -1505,9 +1545,17 @@ describe('maintaining the Setar archive', () => {
           };
           const id = readArchiveLock(k.root).digest.slice(0, 16);
           const label = point === 'release' ? ARCHIVE_LOCK : join(ARCHIVE_LOCK, 'partial.json');
-          expect(() => releaseLock({ root: k.root, record: id, at: when([point, label, swap]) }), tag).toThrow(/not the record you saw/);
-          // The outside folder, the replacement and the folder shown: each exactly as it was.
-          expect([files(ext), isLink(k.lock), files(k.lock), files(away)], tag).toEqual([{ 'partial.json': 'record A' }, how === 'link', { 'partial.json': 'record A' }, { 'partial.json': 'record A' }]);
+          expect(() => releaseLock({ root: k.root, record: id, at: when([point, label, swap]) }), tag).toThrow(point === 'release' ? /not the record you saw/ : /is kept as .*\.releasing-.*, and again at/);
+          // The outside folder and the replacement exactly as they were; the folder shown keeps record A
+          // (refused while judged, it also keeps its private name: that very file, never unlinked).
+          const spare = Object.keys(files(away)).filter((n) => n.includes('.releasing-'));
+          expect([files(ext), isLink(k.lock), files(k.lock), files(away)], tag).toEqual([
+            { 'partial.json': 'record A' },
+            how === 'link',
+            { 'partial.json': 'record A' },
+            { 'partial.json': 'record A', ...Object.fromEntries(spare.map((n) => [n, 'record A'])) },
+          ]);
+          expect(spare.length, tag).toBe(point === 'release' ? 0 : 1);
         }
 
         // A RUN's ownership, across every consumer: just after an owner check — Apply's registry, log
@@ -1572,7 +1620,9 @@ describe('maintaining the Setar archive', () => {
                   ? /no longer holds the archive’s maintenance lock .*stopped before its next write/
                   : /publication could not be confirmed \(The maintenance run that asked for this publication no longer holds the archive/;
             expect([end.ok, end.message], tag).toEqual([false, expect.stringMatching(said)]);
-            expect([files(k.lock), Object.keys(shown).length], tag).toEqual([shown, 1]);
+            // A replaced record leaf is refused at the run's release: that very file stands, and keeps its private name too.
+            const spare = Object.keys(files(k.lock)).filter((n) => n.includes('.releasing-'));
+            expect([files(k.lock), Object.keys(shown).length, spare.length], tag).toEqual([{ ...shown, ...Object.fromEntries(spare.map((n) => [n, Object.values(shown)[0]])) }, 1, how === 'leaf' ? 1 : 0]);
             if (ext) expect(files(ext), tag).toEqual(shown);
           }
         }

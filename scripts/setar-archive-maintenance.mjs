@@ -30,7 +30,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { closeSync, constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -517,13 +517,15 @@ function release(arc, owner) {
  * go (`isIt(lstat, path)`: the operator's digest, or a run's own record by
  * inode), judged on a private name it was first moved to — atomic: whatever
  * held the name at that instant — so an entry put at that name since, or
- * replacing it in the judgement's instant, is never removed: it is linked
- * back, never over anything, or kept under the private name and said. Returns
- * whether it removed the entry. An entry linked back is unlinked from its
- * private name only once `name` is proved to hold it after; a writer who
- * replaced or removed `name` meanwhile leaves it recreated under the private
- * name and said. `at` is the test seam: between the move and the judgement,
- * and after the link back (`restored`).
+ * replacing it in the judgement's instant, is never removed. Returns whether
+ * it removed the entry. A refused file or link is NEVER unlinked from its
+ * private name — no call removes a name only while another still stands, so
+ * that name is what keeps its very inode (and an open handle's later writes)
+ * through any cut or failure. It is linked back at `name` as well (never over
+ * anything: the lock stays held for the publisher, which reads only that
+ * name), and said. A refused folder is one atomic move back, or kept. `at` is
+ * the test seam: after the move (`judge-release`) and before the link back
+ * (`restore`).
  */
 function removeLockEntry(name, isIt, at = noSeam, label = name) {
   const aside = `${name}.releasing-${randomUUID()}`;
@@ -539,37 +541,22 @@ function removeLockEntry(name, isIt, at = noSeam, label = name) {
     unlinkSync(aside);
     return true;
   }
-  const kept = (stands = true) => new Refusal(`The lock changed while it was being released${stands ? ', and a newer one now stands' : ''}; what had replaced the record you saw is kept as ${label.replace(/[^/]*$/, aside)}. Nothing else was removed.`);
+  at('restore', label);
+  let back = true;
   try {
     if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), name);
     else if (st.isFile()) linkSync(aside, name);
-    else renameSync(aside, name); // a folder: replaces only an empty one, never anyone's record
-  } catch (err) {
-    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR'].includes(err?.code)) throw kept();
-    throw err;
-  }
-  if (st.isDirectory()) return false;
-  // `name` holds that entry again, but a writer may replace it before the private name goes. The
-  // entry is held open (its inode can't be reused) and its target read; once the private name is
-  // gone, if `name` no longer holds it, it is recreated under that private name — never over anything — and said.
-  const target = st.isSymbolicLink() ? readlinkSync(aside) : null;
-  const fd = target === null ? openSync(aside, 'r') : null;
-  try {
-    at('restored', label);
-    unlinkSync(aside);
-    let now = null;
-    try {
-      now = lstatSync(name, { bigint: true });
-      if (target === null ? same(now, st) : now.isSymbolicLink() && readlinkSync(name) === target) return false;
-    } catch {
-      // gone, or replaced as it was read: not back
+    else {
+      renameSync(aside, name); // a folder: replaces only an empty one, never anyone's record
+      return false;
     }
-    if (target === null) writeFileSync(aside, readFileSync(fd), { flag: 'wx' });
-    else symlinkSync(target, aside);
-    throw kept(Boolean(now));
-  } finally {
-    if (fd !== null) closeSync(fd);
+  } catch (err) {
+    if (!['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR'].includes(err?.code)) throw err;
+    back = false;
   }
+  throw new Refusal(
+    `The lock changed while it was being released${back ? '' : ', and a newer one now stands'}; what had replaced the record you saw is kept as ${label.replace(/[^/]*$/, aside)}${back ? `, and again at ${label}` : ''}. Nothing was removed.`,
+  );
 }
 
 /**
@@ -646,7 +633,7 @@ function refuseLeftovers() {
   const found = [];
   for (const d of readdirSync('.', { withFileTypes: true })) {
     // A lock a release-lock set aside and stopped before judging — a file, a link or a newer run's folder alike.
-    if (d.name.startsWith(`${ARCHIVE_LOCK}.releasing-`)) found.push(`  mv -n '${d.name}' '${ARCHIVE_LOCK}'   (a lock record a release set aside; then run release-lock to see it)`);
+    if (d.name.startsWith(`${ARCHIVE_LOCK}.releasing-`)) found.push(`  mv -n '${d.name}' '${ARCHIVE_LOCK}'   (a lock record a release set aside; if ${ARCHIVE_LOCK} is that very file again — ls -li shows one inode — rm only this name instead; then run release-lock to see it)`);
     if (d.isFile() || d.isSymbolicLink()) {
       const m = /^\.(PIECES\.csv|RENAME-LOG\.csv)\.captured-/.exec(d.name);
       if (m) found.push(`  mv -n '${d.name}' '${m[1]}'   (if ${m[1]} is there, it is the copy a write replaced: mv -n '${d.name}' '${d.name.replace('.captured-', '.superseded-')}')`);
