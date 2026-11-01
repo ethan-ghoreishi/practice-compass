@@ -1,41 +1,44 @@
 ---
 id: 20261030-keep-setar-lessons-and-preparation-coher-d2ee
 contractId: 20261030-keep-setar-lessons-and-preparation-coher-d2ee
-patchId: d36cc5fee780763b0001fda00ad541a5b785aa16
+patchId: 5bfcc426a6e77c829dd4c3147829c5a5f469be19
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: maintenance-recovery-preserves-concurrent-state
-    summary: "P1: a refused lock removal can still delete another writer's record
-      during restoration."
-    counterexample: "HEAD 725f7f554e007a5acc124ab9faf11fca0e9e8fc8; patch
-      d36cc5fee780763b0001fda00ad541a5b785aa16. Invariant: recovery must
-      preserve every record it is not authorised to remove, even when its public
-      name changes concurrently. In removeLockEntry
-      (scripts/setar-archive-maintenance.mjs:540-549), rejected record B is
-      linked or recreated at its public name, then its private aside is unlinked
-      unconditionally. A writer atomically saves C at the public name after that
-      link and before the unlink: B loses its last name. Five file-free
-      production-body probes reproduce this through operator release of a legacy
-      file, folder file and legacy symlink, owned unlock, and failed
-      lock-acquisition cleanup; operator release nevertheless reports nothing
-      was changed. Direct consumers swept: lock cleanup line 432, unlock line
-      494, legacy release line 593, folder release line 599; unlock covers
-      Apply, automatic recovery, Retry and Rollback including stopped moves.
-      Checked clean for the corresponding probed cases: stable release,
-      lock-folder link/copy replacement, owner token-leaf replacement,
-      private-folder replacement before record creation, publisher lock-parent
-      replacement, and sibling putBack/retireKeeping preservation. Nineteen
-      control assertions pass; five restore races lose B. Extend the SAME exact
-      ac-2 title, setar guided maintenance is reversible stale safe and
-      idempotent without altering media, across replacement/removal after the
-      restoration link, both regular-file and symlink branches, and every
-      removal caller. Preserve unapproved records under private names using the
-      existing preservation rule. No files or records changed; no wholesale
-      Check rerun or live NAS/GitHub/OS-crash proof."
-createdAt: 2026-11-01T03:25:25.998Z
-sealedAt: 2026-11-01T03:54:47.476Z
+    summary: "P1: refused lock restoration still destroys an unapproved record
+      during interruption or failed recreation, and loses later writes to its
+      original file."
+    counterexample: "HEAD 155d7066f8d1d9085129f9398f9fbe634191b5fe; patch
+      5bfcc426a6e77c829dd4c3147829c5a5f469be19. Invariant: recovery preserves
+      every record it is not authorised to remove, including its original file
+      and later open-handle writes, throughout interruption and I/O failure. In
+      scripts/setar-archive-maintenance.mjs:559-571, rejected B is restored at
+      its public name; a writer replaces or removes that name; unlinkSync(aside)
+      removes B's last name before recreation. A process cut or ENOSPC during
+      recreation leaves no B. Successful regular-file recreation makes a new
+      inode, so later writes through a handle already open on B are lost when
+      that handle closes. File-free execution of the current production helper
+      with a modelled filesystem reproduced ten byte-loss cases across regular
+      files/symlinks and replacement/removal; fourteen clean controls passed.
+      All direct consumers swept: failed lock-acquisition cleanup :432, owned
+      unlock :494, operator legacy release :615 and folder release :621. Owned
+      unlock covers Apply, automatic recovery, Retry and Rollback, including
+      stopped moves. Checked clean for corresponding controls: stable refused
+      restoration, authorised removal with a newer public record, occupied-name
+      refusal, and sibling putBack/retireKeeping under replacement/removal and
+      interruption; publisher lock readers perform no removal. The new test
+      block at tests/setar-maintenance.test.ts:1392 checks only resulting
+      bytes/targets, omitting original-file identity, later open-handle saves
+      and the destructive gap. Extend the SAME exact ac-2 title, setar guided
+      maintenance is reversible stale safe and idempotent without altering
+      media, across these cases and every removal caller. Keep an independently
+      named original before retiring any name, using the existing preservation
+      rule. No files or records changed; no wholesale Check rerun or live
+      NAS/GitHub/OS-crash proof."
+createdAt: 2026-11-01T04:06:42.781Z
+sealedAt: 2026-11-01T12:25:13.564Z
 ---
 
 # Review: Keep Setar lessons and preparation coherent from archive to next class
@@ -49,7 +52,7 @@ sealedAt: 2026-11-01T03:54:47.476Z
 - **Contract:** 20261030-keep-setar-lessons-and-preparation-coher-d2ee
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/60
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `d36cc5fee780763b0001fda00ad541a5b785aa16`
+- **Diff patch-id:** `5bfcc426a6e77c829dd4c3147829c5a5f469be19`
 - **Computed by:** prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified
 
 ## The Delta this change was framed from
@@ -99,914 +102,242 @@ still breaks it is not closed.
 
 **Findings from the previous review:**
 
-- **maintenance-recovery-preserves-concurrent-state** — P1: lock creation, ownership checks and cleanup still trust replaceable child paths beneath the bound archive.
-  _counterexample:_ HEAD 3e59e7a64f0e42eb1c81ef83aab3b496cc277e10; patch 40654aa66522d370681b21d8814b44881da5d6b9. Invariant: every lock operation must address the authorised directory and exact owned or approved object. Production-body probes on an in-memory filesystem reproduce seven failing scenarios: operator release sees partial.json=A, then its release seam moves the lock folder and substitutes a symlink to an external folder containing A; removeLockEntry deletes the external entry, returns released:true and leaves the original lock. assertOwner accepts token files through symlinked or replacement real lock folders; unlock deletes their replacement files. Replacing only the token leaf on a stable parent also makes unlock delete another writer's file. lock writes outside the archive when its private directory becomes a symlink before the token write; its error cleanup recursively removes a replacement private directory containing another writer's file. readArchiveLock follows a lock directory replaced after its directory lstat, and archiveConfirmation accepts the external copied token. Instances: setar-archive-maintenance.mjs lock 405-414, assertOwner 432-435, unlock/release 448-465, removeLockEntry/releaseBound 480-547; publish-setar-index.mjs readArchiveLock 265-295 and archiveConfirmation 313-324. Consumers swept: Apply, automatic recovery, Rollback including stopped moves, Retry, operator release, maintenance and scheduled publishers. Checked clean: bound archive-root replacement, declaration/session-media directory binding, cross-run rootIno refusal, stable release, changed operator-release leaves on stable parents, and publisher refusal when the symlink already exists before inspection. Four dynamic control scenarios pass. Extend the SAME exact ac-2 title, setar guided maintenance is reversible stale safe and idempotent without altering media, across lock-parent/private-directory replacement, token-leaf replacement, creation-error cleanup and publisher read races. The attempt-only publication wording family is closed; eight focused publishStep probes preserve unknown state and prior unresolved hashes. No files or records changed; no wholesale Check rerun, live NAS, GitHub mutation or OS crash proof.
+- **maintenance-recovery-preserves-concurrent-state** — P1: a refused lock removal can still delete another writer's record during restoration.
+  _counterexample:_ HEAD 725f7f554e007a5acc124ab9faf11fca0e9e8fc8; patch d36cc5fee780763b0001fda00ad541a5b785aa16. Invariant: recovery must preserve every record it is not authorised to remove, even when its public name changes concurrently. In removeLockEntry (scripts/setar-archive-maintenance.mjs:540-549), rejected record B is linked or recreated at its public name, then its private aside is unlinked unconditionally. A writer atomically saves C at the public name after that link and before the unlink: B loses its last name. Five file-free production-body probes reproduce this through operator release of a legacy file, folder file and legacy symlink, owned unlock, and failed lock-acquisition cleanup; operator release nevertheless reports nothing was changed. Direct consumers swept: lock cleanup line 432, unlock line 494, legacy release line 593, folder release line 599; unlock covers Apply, automatic recovery, Retry and Rollback including stopped moves. Checked clean for the corresponding probed cases: stable release, lock-folder link/copy replacement, owner token-leaf replacement, private-folder replacement before record creation, publisher lock-parent replacement, and sibling putBack/retireKeeping preservation. Nineteen control assertions pass; five restore races lose B. Extend the SAME exact ac-2 title, setar guided maintenance is reversible stale safe and idempotent without altering media, across replacement/removal after the restoration link, both regular-file and symlink branches, and every removal caller. Preserve unapproved records under private names using the existing preservation rule. No files or records changed; no wholesale Check rerun or live NAS/GitHub/OS-crash proof.
 
 **What changed since the previously reviewed head:**
 
 ```diff
-diff --git a/docs/nas-topology.md b/docs/nas-topology.md
-index 50d0bafffb01d50dce03beb398c51668ad71af35..2cd67b57aa15ec8bcb04c012f1c00febd87de1bc 100644
---- a/docs/nas-topology.md
-+++ b/docs/nas-topology.md
-@@ -259,7 +259,7 @@ preconditions, archive binding and session-folder link refusal in the
- maintenance tool. All four files go together: the new runner passes `--root`,
- which the new publisher requires. Until the
- owner redeploys them, the NAS route has none of these. Redeploying needs, in
--the same step, the sudo rule to allow its arguments (the hash and the lock token) —
-+the same step, the sudo rule to allow its arguments (the hash and the lock holder) —
- `ethan ALL=(setar-indexer) NOPASSWD: /bin/sh /volume1/practice-compass-index/run-setar-index.sh, /bin/sh /volume1/practice-compass-index/run-setar-index.sh *`
- — or every apply ends `publish-failed`, reported as unconfirmed (sudo's
- refusal is exit 1, no proof by itself; in fact nothing ran), and `retry`
-diff --git a/docs/setar-archive.md b/docs/setar-archive.md
-index 61ceca2193530e965d196d5afbad81a845614827..b14de77253c88d4dcc8bf127a2a3146901ed4153 100644
---- a/docs/setar-archive.md
-+++ b/docs/setar-archive.md
-@@ -715,7 +715,14 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
-   private `.releasing-…` name and judged there against what was shown, removed
-   only if it is that, else linked back (never over anything) or kept and
-   named — a replacement at the same name, legacy lock file or folder entry
--  alike, is never removed. A lock is
-+  alike, is never removed. Every lock operation addresses objects, never a
-+  path that could be swapped under it: a run's ownership is the exact folder
-+  and record file it made (by inode), its record is written and removed only
-+  inside a folder entered and proved by inode, a release works only inside
-+  the very folder shown (its id covers that folder), and the lock is read the
-+  same way — a folder replaced by a link or a copy mid-read reads as held,
-+  never as absent. A failed take removes only its own record, then its folder
-+  only if empty. A lock is
-   never adopted on a guess about a process: a run that finds one refuses and
-   names it. If nothing is running (check `ps`), `release-lock` shows the
-   record and `release-lock --record <id>` releases exactly that one, in any
-@@ -723,7 +730,8 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
-   half-written means `rollback`; applied or restored but not confirmed
-   published means `retry`.
- - **Publication is of the validated index, on evidence.** The job gets the
--  validated contentHash and the run's lock token as its two arguments and
-+  validated contentHash and the run's lock holder (its token and the exact
-+  lock it made) as its two arguments and
-   refuses, before any request (exit 3), a scan that differs. After reading the
-   branch and before writing anything, every publisher — the scheduled job
-   too — checks the archive's lock (absent, or held by the run that asked) and
-diff --git a/scripts/publish-setar-index.mjs b/scripts/publish-setar-index.mjs
-index 246b8de5fe65f396dd27865a155c9ebbf3badbed..9a098449f7d880cfb46eecf70feb646707313ea7 100644
---- a/scripts/publish-setar-index.mjs
-+++ b/scripts/publish-setar-index.mjs
-@@ -2,7 +2,7 @@
- // Publish the scanned Setar index to ONE file on ONE branch of the private
- // data repository, and nothing else, ever.
- //
--//   node scripts/publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock token>]
-+//   node scripts/publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock holder>]
- //     env: PC_INDEX_REPO=owner/name  PC_INDEX_TOKEN=<publisher token>
- //
- // On success the LAST stdout line is the evidence a caller checks:
-@@ -50,7 +50,7 @@
- // Node stdlib only.
- 
- import { createHash } from 'node:crypto';
--import { lstatSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-+import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
- import { createServer } from 'node:net';
- import { dirname, join, resolve } from 'node:path';
- import { fileURLToPath } from 'node:url';
-@@ -247,73 +247,119 @@ function nothingPublished(err) {
-  * The archive's maintenance lock: ONE folder in the archive root (the scanner
-  * skips dotfiles) holding exactly one record, `<token>.json`. A run builds the
-  * folder privately and renames it into place, which fails while a lock stands,
-- * so a record is never partial; a record is removed only by its own unique
-- * name, so no remover can ever take a NEWER run's lock.
-+ * so a record is never partial. A lock is judged as OBJECTS, never through a
-+ * path that could be replaced meanwhile: the folder is entered and proved by
-+ * inode, its entries read by bare name without following a link, and the
-+ * folder proved still at its name after; a holder is its token AND the exact
-+ * folder and record it made.
-  */
- export const ARCHIVE_LOCK = '.setar-maintenance.lock';
- 
- const digestOf = (bytes) => createHash('sha256').update(bytes).digest('hex');
-+const sameObject = (a, b) => Boolean(a && b && a.ino === b.ino && a.dev === b.dev);
-+const lockChanged = () => new Error('The archive’s maintenance lock changed while it was read; nothing was decided on it. Try again.');
-+
-+/** One entry as an object: its lstat, and a file's bytes read from the very file judged (never through a link). */
-+function readEntry(p) {
-+  const st = lstatSync(p, { bigint: true });
-+  if (!st.isFile()) return { st, bytes: null };
-+  let fd;
-+  try {
-+    fd = openSync(p, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
-+  } catch {
-+    throw lockChanged(); // replaced by a link (or removed) since its lstat
-+  }
-+  try {
-+    if (!sameObject(fstatSync(fd, { bigint: true }), st)) throw lockChanged();
-+    return { st, bytes: readFileSync(fd) };
-+  } finally {
-+    closeSync(fd);
-+  }
-+}
- 
- /**
-  * The lock as it stands: null (absent, or an empty folder a release left), its
-- * record `{ token, pid, host, since, digest, entries }`, or `{ unreadable }` with
-- * a digest of what is there when it is not exactly one record in this tool's
-- * form — never guessed into one. `entries` are what a release may remove, each
-- * `[path from the root, lockEntryDigest]`: the folder's entries, or the lock's
-- * own name when it is not a folder (an earlier version's file).
-+ * record `{ token, pid, host, since, holder, folder, digest, entries }`, or
-+ * `{ unreadable }` with a digest of what is there when it is not exactly one
-+ * record in this tool's form — never guessed into one. `holder` names the
-+ * token, the folder and the record file as objects; `digest` covers the folder
-+ * too, so a record shown is the record of THAT folder. `entries` are what a
-+ * release may remove, each `[path from the root, lockEntryDigest]`: the
-+ * folder's entries, or the lock's own name when it is not a folder (an earlier
-+ * version's file). A lock that changes while it is read is an error, never
-+ * null: doubt reads as held. `at` is the test seam, after the folder's lstat.
-  */
--export function readArchiveLock(root) {
-+export function readArchiveLock(root, at = () => {}) {
-   const p = join(root, ARCHIVE_LOCK);
-   let st;
-   try {
--    st = lstatSync(p);
-+    st = lstatSync(p, { bigint: true });
-   } catch (err) {
-     if (err?.code === 'ENOENT') return null;
-     throw err;
-   }
-   if (!st.isDirectory()) {
--    return { unreadable: true, entries: [[ARCHIVE_LOCK, lockEntryDigest(p)]], digest: digestOf(st.isFile() ? readFileSync(p) : st.isSymbolicLink() ? `link:${readlinkSync(p)}` : `${st.mode}`) };
-+    const e = readEntry(p);
-+    return { unreadable: true, entries: [[ARCHIVE_LOCK, lockEntryDigest(p)]], digest: digestOf(e.bytes ?? (e.st.isSymbolicLink() ? `link:${readlinkSync(p)}` : `${e.st.mode}`)) };
-   }
--  const names = readdirSync(p).sort();
--  if (!names.length) return null;
--  const parts = names.map((n) => {
--    const e = lstatSync(join(p, n));
--    return [n, e.isFile() ? readFileSync(join(p, n)) : null];
--  });
--  const digest = digestOf(JSON.stringify(parts.map(([n, b]) => [n, b ? digestOf(b) : 'not a file'])));
--  const entries = parts.map(([n, b]) => [join(ARCHIVE_LOCK, n), b ? digestOf(b) : null]);
--  if (parts.length === 1 && parts[0][1]) {
-+  at('read-lock', p);
-+  const parent = statSync(root, { bigint: true });
-+  const home = statSync('.', { bigint: true });
-+  const back = process.cwd();
-+  let parts;
-+  try {
-+    process.chdir(p);
-+  } catch {
-+    throw lockChanged();
-+  }
-+  try {
-+    if (!sameObject(statSync('.', { bigint: true }), st)) throw lockChanged();
-+    parts = readdirSync('.').sort().map((n) => [n, readEntry(n)]);
-+    // Read IN the folder that was the lock — and it is still the lock, at its name, in the same archive.
-+    if (!sameObject(lstatSync(join('..', ARCHIVE_LOCK), { bigint: true }), st) || !sameObject(statSync('..', { bigint: true }), parent)) throw lockChanged();
-+  } finally {
-+    process.chdir(back);
-+    if (!sameObject(statSync('.', { bigint: true }), home)) throw new Error('The folder this ran in was moved while the archive’s lock was read; nothing was decided on it.');
-+  }
-+  if (!parts.length) return null;
-+  const digest = digestOf(JSON.stringify([`folder ${st.ino}`, ...parts.map(([n, e]) => [n, e.bytes ? digestOf(e.bytes) : 'not a file'])]));
-+  const entries = parts.map(([n, e]) => [join(ARCHIVE_LOCK, n), e.bytes ? digestOf(e.bytes) : null]);
-+  if (parts.length === 1 && parts[0][1].bytes) {
-     try {
--      const r = JSON.parse(parts[0][1].toString('utf8'));
--      if (typeof r?.token === 'string' && /^[0-9a-f-]{36}$/.test(r.token) && names[0] === `${r.token}.json` && Number.isInteger(r.pid) && r.pid > 0 && typeof r.host === 'string' && typeof r.since === 'string') {
--        return { ...r, digest, entries };
-+      const r = JSON.parse(parts[0][1].bytes.toString('utf8'));
-+      if (typeof r?.token === 'string' && /^[0-9a-f-]{36}$/.test(r.token) && parts[0][0] === `${r.token}.json` && Number.isInteger(r.pid) && r.pid > 0 && typeof r.host === 'string' && typeof r.since === 'string') {
-+        return { ...r, holder: lockHolder(r.token, st, parts[0][1].st), folder: st, digest, entries };
-       }
-     } catch {
-       // not a record: said as unreadable below
-     }
-   }
--  return { unreadable: true, digest, entries };
-+  return { unreadable: true, folder: st, digest, entries };
- }
- 
-+/** A holder: the run's token AND the exact folder and record file it made (bigint stats), as one opaque string. */
-+export const lockHolder = (token, folder, record) => `${token}:${folder.ino}:${record.ino}`;
-+
- /**
-  * What one lock entry IS, judged again after it is set aside: a file's bytes or
-  * a link's target, by digest (as the record's digest reads it); null for
-  * anything else, which is never judged and so never removed.
-  */
- export function lockEntryDigest(p) {
--  const st = lstatSync(p);
--  return st.isFile() ? digestOf(readFileSync(p)) : st.isSymbolicLink() ? digestOf(`link:${readlinkSync(p)}`) : null;
-+  const { st, bytes } = readEntry(p);
-+  return bytes ? digestOf(bytes) : st.isSymbolicLink() ? digestOf(`link:${readlinkSync(p)}`) : null;
- }
- 
- /**
-  * What a publisher asks before its ref write: who holds the archive, then what
-- * it scans to now. `holder` is the maintenance run's lock token; without one
-- * (the scheduled job) any lock refuses.
-+ * it scans to now. `holder` is the maintenance run's `lockHolder` — its token
-+ * and the exact lock it made; without one (the scheduled job) any lock, or a
-+ * lock that will not read still, refuses. `at` is the read's test seam.
-  */
--export function archiveConfirmation(root, holder) {
-+export function archiveConfirmation(root, holder, at) {
-   return () => {
--    const held = readArchiveLock(root);
--    if (holder ? held?.token !== holder : held) {
-+    const held = readArchiveLock(root, at);
-+    if (holder ? held?.holder !== holder : held) {
-       throw new Error(
-         holder
-           ? 'The maintenance run that asked for this publication no longer holds the archive; nothing was published.'
-@@ -431,7 +477,7 @@ async function main() {
-   const repo = process.env.PC_INDEX_REPO;
-   const token = process.env.PC_INDEX_TOKEN;
-   if (!values.index || !values.root || !repo || !token) {
--    console.error('Usage: publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock token>]');
-+    console.error('Usage: publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock holder>]');
-     console.error('  PC_INDEX_REPO=owner/name PC_INDEX_TOKEN=<publisher token> must be set.');
-     process.exit(2);
-   }
 diff --git a/scripts/setar-archive-maintenance.mjs b/scripts/setar-archive-maintenance.mjs
-index 9c2732cd224821b1d4c17953b83841d42a0fc242..0beb1ea70bde9921b925bb2dff17daaee5d466ad 100644
+index 0beb1ea70bde9921b925bb2dff17daaee5d466ad..ed75138446b971b0c650eb3498013ef605223764 100644
 --- a/scripts/setar-archive-maintenance.mjs
 +++ b/scripts/setar-archive-maintenance.mjs
-@@ -51,7 +51,7 @@ import {
-   readTable,
-   writeIndexAtomically,
- } from './scan-setar-classes.mjs';
--import { ARCHIVE_LOCK, lockEntryDigest, readArchiveLock } from './publish-setar-index.mjs';
-+import { ARCHIVE_LOCK, lockEntryDigest, lockHolder, readArchiveLock } from './publish-setar-index.mjs';
+@@ -30,7 +30,7 @@
  
- const REGISTRY = 'PIECES.csv';
- const LOG = 'RENAME-LOG.csv';
-@@ -375,12 +375,16 @@ const guarded = (at) => (point, name) => {
- // never per --state folder: every route that writes the archive takes it, and
- // every publisher checks it before its ref write (`archiveConfirmation`), the
- // scheduled job included. A record is written whole in a private folder that
--// is RENAMED into place, so it is never partial, and removed only by its own
--// unique name, so no release ever takes a newer run's lock. A lock is never adopted on a guess about a process
--// (a pid can be reused, a publishing child outlives its parent): a run that
--// finds one refuses, and the operator — having seen no maintenance or
--// publication process is running, the indexer's sudo'd job included —
--// releases that exact record (`release-lock`).
-+// is RENAMED into place, so it is never partial. A run's ownership is the exact
-+// folder and record file it made (`owner`, by inode), never a name inside a
-+// path that could be swapped: every check reads the lock as objects
-+// (`readArchiveLock`), and every removal happens INSIDE a folder entered and
-+// proved by inode, of an entry judged after it is set aside — so no release
-+// ever takes a newer run's lock, or anything outside the archive. A lock is
-+// never adopted on a guess about a process (a pid can be reused, a publishing
-+// child outlives its parent): a run that finds one refuses, and the operator —
-+// having seen no maintenance or publication process is running, the indexer's
-+// sudo'd job included — releases that exact record (`release-lock`).
- 
- const same = (a, b) => Boolean(a && b && a.ino === b.ino && a.dev === b.dev);
- const holderLine = (h) => (h.unreadable ? 'a record not in this tool’s form' : `run ${h.token.slice(0, 8)} (pid ${h.pid} on ${h.host}, since ${h.since})`);
-@@ -395,43 +399,78 @@ function lockRefusal() {
- }
- 
- /**
-- * Take the archive's lock, or refuse. The record is written whole in a private
-- * folder that is then RENAMED into place — which fails while any lock stands,
-- * and replaces only the empty folder a release leaves. Returns the token that
-- * proves ownership. A run that stopped mid-write left a file under one of this
-- * tool's private names: it is never recovered from automatically (a name proves
-- * nothing about whose file it is); the run refuses and names it.
-+ * Take the archive's lock, or refuse. The record is written whole, by bare
-+ * name, INSIDE the private folder this run made (entered and proved by inode,
-+ * so a link put at its name is never written through), and the folder is then
-+ * RENAMED into place — which fails while any lock stands, and replaces only
-+ * the empty folder a release leaves. Returns the `owner`: the token and the
-+ * exact folder and record, as objects. A failure removes only this run's own
-+ * record, judged by inode, and then its folder only if empty — never anything
-+ * another writer put there. A run that stopped mid-write left a file under one
-+ * of this tool's private names: it is never recovered from automatically (a
-+ * name proves nothing about whose file it is); the run refuses and names it.
-+ * `at` is the test seam: before the record's write and before the rename.
-  */
--function lock() {
-+function lock(arc, at = noSeam) {
-   const token = randomUUID();
-   const tmp = `${ARCHIVE_LOCK}.${token}`;
-+  const name = `${token}.json`;
-   mkdirSync(tmp);
-+  const folder = lstatSync(tmp, { bigint: true });
-+  let record = null;
-   try {
--    writeFileSync(join(tmp, `${token}.json`), `${JSON.stringify({ token, pid: process.pid, host: hostname(), since: new Date().toISOString() })}\n`, { flag: 'wx' });
-+    at('lock-record', tmp);
-+    record = inFolder(arc, tmp, () => {
-+      if (!same(statSync('.', { bigint: true }), folder)) throw new Refusal('The lock folder this run made was replaced before its record was written; nothing was changed.');
-+      writeFileSync(name, `${JSON.stringify({ token, pid: process.pid, host: hostname(), since: new Date().toISOString() })}\n`, { flag: 'wx' });
-+      return lstatSync(name, { bigint: true });
-+    });
-+    at('lock-take', tmp);
+ import { createHash, randomUUID } from 'node:crypto';
+ import { spawnSync } from 'node:child_process';
+-import { constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
++import { closeSync, constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+ import { hostname } from 'node:os';
+ import { basename, dirname, join, resolve, sep } from 'node:path';
+ import { fileURLToPath } from 'node:url';
+@@ -429,7 +429,7 @@ function lock(arc, at = noSeam) {
      renameSync(tmp, ARCHIVE_LOCK);
    } catch (err) {
--    rmSync(tmp, { recursive: true, force: true }); // this run's own private folder
-+    try {
-+      if (record) inFolder(arc, tmp, (stillBound) => same(statSync('.', { bigint: true }), folder) && removeLockEntry(name, (st) => same(st, record) && stillBound()));
-+    } catch {
-+      // not this run's folder any more: whatever stands there is left
-+    }
-+    try {
-+      rmdirSync(tmp); // only ever an empty folder
-+    } catch {
-+      // holds something, or gone: left as it is
-+    }
+     try {
+-      if (record) inFolder(arc, tmp, (stillBound) => same(statSync('.', { bigint: true }), folder) && removeLockEntry(name, (st) => same(st, record) && stillBound()));
++      if (record) inFolder(arc, tmp, (stillBound) => same(statSync('.', { bigint: true }), folder) && removeLockEntry(name, (st) => same(st, record) && stillBound(), at, join(tmp, name)));
+     } catch {
+       // not this run's folder any more: whatever stands there is left
+     }
+@@ -441,7 +441,7 @@ function lock(arc, at = noSeam) {
      if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR'].includes(err?.code)) throw lockRefusal();
      throw err;
    }
-+  const owner = { token, folder, record, holder: lockHolder(token, folder, record) };
+-  const owner = { token, folder, record, holder: lockHolder(token, folder, record) };
++  const owner = { token, folder, record, holder: lockHolder(token, folder, record), at };
    try {
-+    if (!holds(owner)) throw new Refusal('The archive’s lock was replaced as this run took it; nothing was changed. Run release-lock to see it.');
+     if (!holds(owner)) throw new Refusal('The archive’s lock was replaced as this run took it; nothing was changed. Run release-lock to see it.');
      refuseLeftovers();
-   } catch (err) {
--    unlock(token);
-+    unlock(arc, owner);
-     throw err;
-   }
--  return token;
-+  return owner;
-+}
-+
-+/** The lock in the archive is exactly the one `owner` made: its token, folder and record, read as objects. Any doubt is "no". */
-+function holds(owner) {
-+  try {
-+    return readArchiveLock('.')?.holder === owner.holder;
-+  } catch {
-+    return false;
-+  }
- }
- 
- /**
-  * Every archive write first proves it is IN the bound archive and this run
-- * still holds its lock (an operator may have released it). What follows works
-- * by bare names in that archive, so nothing done to its path after this check
-- * reaches the write. `owned` is the test seam, just after the check.
-+ * still holds its lock (an operator may have released it, or anyone replaced
-+ * the folder or its record). What follows works by bare names in that
-+ * archive, so nothing done to its path after this check reaches the write.
-+ * `owned` is the test seam, just after the check.
-  */
- function assertOwner({ arc, owner, at }, label) {
-   ensureHome(arc);
--  if (!lstatOrNull(join(ARCHIVE_LOCK, `${owner}.json`))?.isFile()) throw new Refusal('This run no longer holds the archive’s maintenance lock (it was released by hand); it stopped before its next write.');
-+  if (!holds(owner)) throw new Refusal('This run no longer holds the archive’s maintenance lock (it was released by hand, or replaced); it stopped before its next write.');
-   at('owned', label);
- }
- 
-@@ -444,15 +483,19 @@ function dropEmptyLock() {
-   }
- }
- 
--/** Release THIS run's lock: only its own record, by its unique name; a newer run's is never touched. */
--function unlock(token) {
-+/**
-+ * Release THIS run's lock: only its own record — the very file, judged by
-+ * inode — inside its own folder, entered and proved by inode. A replaced
-+ * folder or record, a newer run's or anyone's, is never touched.
-+ */
-+function unlock(arc, owner) {
+@@ -491,7 +491,7 @@ function dropEmptyLock() {
+ function unlock(arc, owner) {
    try {
--    unlinkSync(join(ARCHIVE_LOCK, `${token}.json`));
-+    ensureHome(arc);
-+    inFolder(arc, ARCHIVE_LOCK, (stillBound) => same(statSync('.', { bigint: true }), owner.folder) && removeLockEntry(`${owner.token}.json`, (st) => same(st, owner.record) && stillBound()));
-+    dropEmptyLock(); // only from the proved archive
+     ensureHome(arc);
+-    inFolder(arc, ARCHIVE_LOCK, (stillBound) => same(statSync('.', { bigint: true }), owner.folder) && removeLockEntry(`${owner.token}.json`, (st) => same(st, owner.record) && stillBound()));
++    inFolder(arc, ARCHIVE_LOCK, (stillBound) => same(statSync('.', { bigint: true }), owner.folder) && removeLockEntry(`${owner.token}.json`, (st) => same(st, owner.record) && stillBound(), owner.at, join(ARCHIVE_LOCK, `${owner.token}.json`)));
+     dropEmptyLock(); // only from the proved archive
    } catch (err) {
--    if (err?.code === 'ENOENT') return; // released by hand already
--    throw err;
-+    if (!(err instanceof Refusal)) throw err; // not in the archive, or no real folder at the name: nothing of this run's to remove there
-   }
--  dropEmptyLock();
- }
- 
- /**
-@@ -460,63 +503,68 @@ function unlock(token) {
-  * archive can no longer be entered, the lock is left where it is — never
-  * removed through another folder — and the next run names it (release-lock).
+     if (!(err instanceof Refusal)) throw err; // not in the archive, or no real folder at the name: nothing of this run's to remove there
+@@ -519,8 +519,11 @@ function release(arc, owner) {
+  * held the name at that instant — so an entry put at that name since, or
+  * replacing it in the judgement's instant, is never removed: it is linked
+  * back, never over anything, or kept under the private name and said. Returns
+- * whether it removed the entry. `at` is the test seam, between the move and
+- * the judgement.
++ * whether it removed the entry. An entry linked back is unlinked from its
++ * private name only once `name` is proved to hold it after; a writer who
++ * replaced or removed `name` meanwhile leaves it recreated under the private
++ * name and said. `at` is the test seam: between the move and the judgement,
++ * and after the link back (`restored`).
   */
--function release(arc, token) {
-+function release(arc, owner) {
-   try {
--    inArchive(arc, () => unlock(token));
-+    inArchive(arc, () => unlock(arc, owner));
-   } catch (err) {
-     if (!(err instanceof Refusal)) throw err;
-   }
- }
- 
- /**
-- * THE ONE PLACE a lock entry is removed: only while what stands at `p` is
-- * exactly what the operator saw (`digest`), judged on a private name it was
-- * first moved to — atomic: whatever held the name at that instant — so an
-- * entry put at that name since, or replacing it in the judgement's instant,
-- * is never removed: it is linked back, never over anything, or kept under the
-- * private name and said. Returns whether it removed the entry. `at` is the
-- * test seam, between the move and the judgement.
-+ * THE ONE PLACE a lock entry is removed: `name`, a bare name in the folder the
-+ * caller entered and proved, only while what stands there is exactly what may
-+ * go (`isIt(lstat, path)`: the operator's digest, or a run's own record by
-+ * inode), judged on a private name it was first moved to — atomic: whatever
-+ * held the name at that instant — so an entry put at that name since, or
-+ * replacing it in the judgement's instant, is never removed: it is linked
-+ * back, never over anything, or kept under the private name and said. Returns
-+ * whether it removed the entry. `at` is the test seam, between the move and
-+ * the judgement.
-  */
--function removeLockEntry(p, digest, at) {
--  const aside = `${p}.releasing-${randomUUID()}`;
-+function removeLockEntry(name, isIt, at = noSeam, label = name) {
-+  const aside = `${name}.releasing-${randomUUID()}`;
-   try {
--    renameSync(p, aside);
-+    renameSync(name, aside);
-   } catch (err) {
-     if (err?.code === 'ENOENT') return false;
-     throw err;
-   }
--  at('judge-release', p);
--  const st = lstatSync(aside);
--  if ((st.isFile() || st.isSymbolicLink()) && lockEntryDigest(aside) === digest) {
-+  at('judge-release', label);
-+  const st = lstatSync(aside, { bigint: true });
-+  if (isIt(st, aside)) {
+ function removeLockEntry(name, isIt, at = noSeam, label = name) {
+   const aside = `${name}.releasing-${randomUUID()}`;
+@@ -536,18 +539,37 @@ function removeLockEntry(name, isIt, at = noSeam, label = name) {
      unlinkSync(aside);
      return true;
    }
++  const kept = (stands = true) => new Refusal(`The lock changed while it was being released${stands ? ', and a newer one now stands' : ''}; what had replaced the record you saw is kept as ${label.replace(/[^/]*$/, aside)}. Nothing else was removed.`);
    try {
--    if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), p);
--    else if (st.isFile()) linkSync(aside, p);
--    else renameSync(aside, p); // a folder: replaces only an empty one, never anyone's record
-+    if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), name);
-+    else if (st.isFile()) linkSync(aside, name);
-+    else renameSync(aside, name); // a folder: replaces only an empty one, never anyone's record
+     if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), name);
+     else if (st.isFile()) linkSync(aside, name);
+     else renameSync(aside, name); // a folder: replaces only an empty one, never anyone's record
    } catch (err) {
-     if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR'].includes(err?.code)) {
--      throw new Refusal(`The lock changed while it was being released, and a newer one now stands; what had replaced the record you saw is kept as ${aside}. Nothing else was removed.`);
-+      throw new Refusal(`The lock changed while it was being released, and a newer one now stands; what had replaced the record you saw is kept as ${label.replace(/[^/]*$/, aside)}. Nothing else was removed.`);
-     }
+-    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR'].includes(err?.code)) {
+-      throw new Refusal(`The lock changed while it was being released, and a newer one now stands; what had replaced the record you saw is kept as ${label.replace(/[^/]*$/, aside)}. Nothing else was removed.`);
+-    }
++    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR'].includes(err?.code)) throw kept();
      throw err;
    }
--  if (!st.isDirectory()) unlinkSync(aside); // `p` holds that very file again
-+  if (!st.isDirectory()) unlinkSync(aside); // `name` holds that very file again
-   return false;
- }
- 
- /**
-  * The operator's explicit route for a lock no run will take: shown first, then
-- * released only by its exact record (a digest prefix of what is there), whatever
-- * form it is in — a dead run's, a partial or foreign one. Only the entries that
-- * record named are removed, each by its own name, so a lock taken since is never
-- * touched. `at` is the test seam.
-+ * released only by its exact record (a digest prefix of what is there, its
-+ * folder included), whatever form it is in — a dead run's, a partial or
-+ * foreign one. Only the entries that record named are removed, each by its own
-+ * name INSIDE the very folder shown (entered and proved by inode, never through
-+ * a link put at the lock's name), so a lock taken since, or anything outside
-+ * the archive, is never touched. `at` is the test seam.
-  */
- export function releaseLock({ root: rootArg, record, at = noSeam }) {
--  return inArchive(bindArchive(resolve(rootArg)), () => releaseBound(record, guarded(at)));
-+  const arc = bindArchive(resolve(rootArg));
-+  return inArchive(arc, () => releaseBound(arc, record, guarded(at)));
- }
- 
--function releaseBound(record, at) {
-+function releaseBound(arc, record, at) {
-   const held = readArchiveLock('.');
-   if (!held) return { released: false, lines: ['The archive holds no maintenance lock. Nothing to do.'] };
-   const id = held.digest.slice(0, 16);
-@@ -537,8 +585,25 @@ function releaseBound(record, at) {
-   if (held.entries.some(([, d]) => d === null)) {
-     throw new Refusal(`The lock holds something that is not a file (${held.entries.filter(([, d]) => d === null).map(([p]) => p).join(', ')}); nothing was changed. Once no run holds it, remove it by hand.`);
-   }
-+  const judged = (digest, stillBound) => (st, aside) => (st.isFile() || st.isSymbolicLink()) && lockEntryDigest(aside) === digest && stillBound();
-   let removed = 0;
--  for (const [p, digest] of held.entries) if (removeLockEntry(p, digest, at)) removed += 1;
-+  if (!held.folder) {
-+    // An earlier version's lock FILE: its one name, in the bound archive itself.
-+    const [[p, digest]] = held.entries;
-+    if (removeLockEntry(p, judged(digest, () => true), at)) removed += 1;
-+  } else {
+-  if (!st.isDirectory()) unlinkSync(aside); // `name` holds that very file again
+-  return false;
++  if (st.isDirectory()) return false;
++  // `name` holds that entry again, but a writer may replace it before the private name goes. The
++  // entry is held open (its inode can't be reused) and its target read; once the private name is
++  // gone, if `name` no longer holds it, it is recreated under that private name — never over anything — and said.
++  const target = st.isSymbolicLink() ? readlinkSync(aside) : null;
++  const fd = target === null ? openSync(aside, 'r') : null;
++  try {
++    at('restored', label);
++    unlinkSync(aside);
++    let now = null;
 +    try {
-+      removed = inFolder(arc, ARCHIVE_LOCK, (stillBound) => {
-+        if (!same(statSync('.', { bigint: true }), held.folder)) return 0; // another folder at the name now: not the one shown
-+        let n = 0;
-+        for (const [p, digest] of held.entries) if (removeLockEntry(basename(p), judged(digest, stillBound), at, p)) n += 1;
-+        return n;
-+      });
-+    } catch (err) {
-+      if (!(err instanceof Refusal) || /lock changed while it was being released/.test(err.message)) throw err;
-+      throw stale(); // no real folder at the lock's name any more
++      now = lstatSync(name, { bigint: true });
++      if (target === null ? same(now, st) : now.isSymbolicLink() && readlinkSync(name) === target) return false;
++    } catch {
++      // gone, or replaced as it was read: not back
 +    }
++    if (target === null) writeFileSync(aside, readFileSync(fd), { flag: 'wx' });
++    else symlinkSync(target, aside);
++    throw kept(Boolean(now));
++  } finally {
++    if (fd !== null) closeSync(fd);
 +  }
-   dropEmptyLock();
-   if (removed < held.entries.length) {
-     if (!removed) throw stale();
-@@ -853,14 +918,14 @@ const PUBLISHED = new Set(['unchanged', 'published', 'created']);
-  * closes every open attempt; a failure this attempt proved leaves the earlier
-  * open ones open, and a failure it did not prove adds itself to them.
-  */
--async function publishStep(state, base, scanned, publish, token) {
-+async function publishStep(state, base, scanned, publish, holder) {
-   const contentHash = scanned.index.contentHash;
-   const before = base.unresolved ?? [];
-   const attempt = { ...base, publication: 'pending', contentHash, unresolved: [...new Set([...before, contentHash])] };
-   writeJournal(state, attempt);
-   let result;
-   try {
--    result = await publish(scanned.text, contentHash, token);
-+    result = await publish(scanned.text, contentHash, holder);
-     // POSITIVE EVIDENCE or it did not happen: a publisher that returns no status has proved nothing.
-     if (!PUBLISHED.has(result?.status)) throw new PublishFailed('the publisher reported no publication', false);
-   } catch (err) {
-@@ -898,7 +963,7 @@ async function publishStep(state, base, scanned, publish, token) {
+ }
  
  /**
-  * Apply a previewed action. `previewId` must be the id the preview printed
-- * against the archive as it is now. `publish(text, contentHash, lockToken)` is
-+ * against the archive as it is now. `publish(text, contentHash, holder)` is
-  * the existing job (CLI) or a fake Git boundary (tests). `interruptAfter` is a
-  * test seam: 'copy' | 'registry' | 'log' | 'rename'; `at(point, name)` another,
-  * called just before each archive write.
-@@ -907,9 +972,9 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
-   const root = resolve(rootArg);
-   const arc = bindArchive(root);
-   const state = stateDir(arc, stateArg);
--  const token = inArchive(arc, lock);
-+  const owner = inArchive(arc, () => lock(arc, guarded(at)));
-   // What THIS run has changed in the archive, recorded at the instant of each change: its automatic put-back judges only those.
--  const ctx = { root, arc, owner: token, at: guarded(at), written: new Set() };
-+  const ctx = { root, arc, owner, at: guarded(at), written: new Set() };
-   let interrupted = false;
-   try {
-     // Everything up to publication, in ONE bound section (no await inside).
-@@ -940,7 +1005,7 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
-         registry: { before: digest(registryBefore), after: digest(plan.registry ? plan.registry.after : registryBefore) },
-         log: { before: digest(logBefore), after: digest(plan.log ? plan.log.after : logBefore) },
-       };
--      const journal = { id: plan.id, action, copy, rootId: rootIdOf(arc), rootIno: arc.ino, logWasPresent, wrote, rename: plan.rename, lockToken: token, status: 'prepared' };
-+      const journal = { id: plan.id, action, copy, rootId: rootIdOf(arc), rootIno: arc.ino, logWasPresent, wrote, rename: plan.rename, lockToken: owner.token, status: 'prepared' };
-       writeFileSync(join(copy, 'manifest.json'), `${JSON.stringify(journal, null, 2)}\n`);
-       writeJournal(state, journal);
-       const step = (name) => {
-@@ -978,9 +1043,9 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
-     });
-     if (ready.done) return ready.done;
-     // 3. Publication, through the existing job.
--    return { ...(await publishStep(state, { ...ready.journal, status: 'applied', unresolved: [] }, ready.scanned, publish, token)), lines: ready.lines };
-+    return { ...(await publishStep(state, { ...ready.journal, status: 'applied', unresolved: [] }, ready.scanned, publish, owner.holder)), lines: ready.lines };
-   } finally {
--    if (!interrupted) release(arc, token);
-+    if (!interrupted) release(arc, owner);
-   }
- }
- 
-@@ -1052,7 +1117,7 @@ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
- export async function retryMaintenance({ root: rootArg, state: stateArg, publish }) {
-   const arc = bindArchive(resolve(rootArg));
-   const state = stateDir(arc, stateArg);
--  const token = inArchive(arc, lock);
-+  const owner = inArchive(arc, () => lock(arc));
-   try {
-     const [journal, scanned] = inArchive(arc, () => {
-       const j = journalFor(state, arc, true);
-@@ -1062,9 +1127,9 @@ export async function retryMaintenance({ root: rootArg, state: stateArg, publish
-       }
-       return [j, validateAndScan(arc, state, null)];
-     });
--    return await publishStep(state, { ...journal, lockToken: token }, scanned, publish, token);
-+    return await publishStep(state, { ...journal, lockToken: owner.token }, scanned, publish, owner.holder);
-   } finally {
--    release(arc, token);
-+    release(arc, owner);
-   }
- }
- 
-@@ -1080,7 +1145,7 @@ export async function rollbackMaintenance({ root: rootArg, state: stateArg, publ
-   const root = resolve(rootArg);
-   const arc = bindArchive(root);
-   const state = stateDir(arc, stateArg);
--  const token = inArchive(arc, lock);
-+  const owner = inArchive(arc, () => lock(arc, guarded(at)));
-   let interrupted = false;
-   try {
-     const [journal, scanned] = inArchive(arc, () => {
-@@ -1092,8 +1157,8 @@ export async function rollbackMaintenance({ root: rootArg, state: stateArg, publ
-             : 'There is no change here to roll back.',
-         );
-       }
--      restore({ root, arc, owner: token, at: guarded(at) }, j, () => {
--        writeJournal(state, { ...j, status: 'rolling-back', lockToken: token });
-+      restore({ root, arc, owner, at: guarded(at) }, j, () => {
-+        writeJournal(state, { ...j, status: 'rolling-back', lockToken: owner.token });
-         if (interruptAfter === 'mark') {
-           interrupted = true;
-           throw new Interrupted('interrupted after mark');
-@@ -1101,9 +1166,9 @@ export async function rollbackMaintenance({ root: rootArg, state: stateArg, publ
-       });
-       return [j, validateAndScan(arc, state, null)];
-     });
--    return await publishStep(state, { ...journal, status: 'rolled-back', lockToken: token }, scanned, publish, token);
-+    return await publishStep(state, { ...journal, status: 'rolled-back', lockToken: owner.token }, scanned, publish, owner.holder);
-   } finally {
--    if (!interrupted) release(arc, token);
-+    if (!interrupted) release(arc, owner);
-   }
- }
- 
-@@ -1117,7 +1182,7 @@ export async function rollbackMaintenance({ root: rootArg, state: stateArg, publ
-  * `sudo -n -u setar-indexer sh /volume1/practice-compass-index/run-setar-index.sh`);
-  * without it, the runner beside this script runs as the caller.
-  *
-- * The validated contentHash and this run's lock token go to the job as its two
-+ * The validated contentHash and this run's lock holder go to the job as its two
-  * arguments (sudo keeps arguments, not environment): the job's own scan is
-  * refused before any request unless it is that index, and its ref write
-  * unless this run still holds the archive. Success needs the publisher's
 diff --git a/tests/setar-maintenance.test.ts b/tests/setar-maintenance.test.ts
-index da5783ee92f3e67cda6afa358ec7138469fa6b88..26e76815ede1c9eb025bcbfa167a357384044c24 100644
+index 26e76815ede1c9eb025bcbfa167a357384044c24..c0508e49e04c7ad0e029907da11f32e8486b7f44 100644
 --- a/tests/setar-maintenance.test.ts
 +++ b/tests/setar-maintenance.test.ts
-@@ -1327,7 +1327,7 @@ describe('maintaining the Setar archive', () => {
-         const x = swapper(k);
-         let holder = '';
-         await k.go(REG, { publish: async (text: string, hash: string, h: string) => ((holder = h), x.swap(), { status: 'published' }) });
--        expect(readArchiveLock(x.real).token).toBe(holder);
-+        expect(readArchiveLock(x.real).holder).toBe(holder);
-         x.unswap();
-         const shown = /--record ([0-9a-f]{16})/.exec(releaseLock({ root: k.root }).lines.join('\n'))![1];
-         expect(releaseLock({ root: k.root, record: shown })).toMatchObject({ released: true });
-@@ -1389,6 +1389,182 @@ describe('maintaining the Setar archive', () => {
+@@ -1,8 +1,8 @@
+ import { execFile } from 'node:child_process';
+ import { createHash } from 'node:crypto';
+-import { chmodSync, closeSync, cpSync, existsSync, utimesSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
++import { chmodSync, closeSync, cpSync, existsSync, utimesSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
+ import { tmpdir } from 'node:os';
+-import { dirname, join } from 'node:path';
++import { basename, dirname, join } from 'node:path';
+ import { promisify } from 'node:util';
+ import { describe, expect, it, vi } from 'vitest';
+ // @ts-expect-error — untyped operator tools; these are the real ones.
+@@ -1389,6 +1389,86 @@ describe('maintaining the Setar archive', () => {
          }
        }
  
-+      // --- EVERY LOCK OPERATION addresses the exact folder and object, never a path swapped under it -
-+      // The lock's folder, a run's private folder or its record replaced — by a link to a folder
-+      // outside the archive, by a real folder holding a copy, or the record leaf alone — at the
-+      // instant between a check and its act: nothing outside is read as the lock, written or
-+      // removed; no replacement anyone made is removed; no doubt reads as "no lock".
++      // --- A REJECTED entry linked back survives a writer at its name ------
++      // After the entry a removal refused is linked back at its name, another writer replaces that
++      // name or removes it before the private name goes: through every removal caller — the
++      // operator's release of a legacy file, a folder file or a legacy link, a run's own release,
++      // and a failed take's cleanup — and for a file and a link alike, the entry is never lost: it
++      // stays under its private name, said (the operator's release says it; a run's end keeps it).
 +      {
-+        const dead = ['4f4f4f4f', '0000', '4000', '8000', '000000000000'].join('-');
-+        const deadRecord = JSON.stringify({ token: dead, pid: 1, host: 'h', since: 's' });
-+        const outside = (k: ReturnType<typeof box>, files: Record<string, string> = {}) => {
-+          const ext = join(k.base, 'outside');
-+          mkdirSync(ext);
-+          for (const [n, t] of Object.entries(files)) writeFileSync(join(ext, n), t);
-+          return ext;
++        type Kept = { kind: 'file' | 'link'; v: string };
++        /** Another writer's atomic save of a file, or of a link, at `p`. */
++        const put = (p: string, { kind, v }: Kept) => {
++          if (kind === 'file') return replaceWith(p, v)();
++          symlinkSync(v, `${p}.editor`);
++          renameSync(`${p}.editor`, p);
 +        };
-+        const files = (dir: string) => Object.fromEntries(readdirSync(dir).sort().map((n) => [n, readFileSync(join(dir, n), 'utf8')]));
-+        const isLink = (p: string) => lstatSync(p).isSymbolicLink();
-+
-+        // The OPERATOR's release: the folder shown is moved away and a link to an outside copy of
-+        // record A, or a real copy of it, put at its name — at the release, or while A is judged.
-+        for (const [how, point] of [['link', 'release'], ['copy', 'release'], ['link', 'judge-release'], ['copy', 'judge-release']] as const) {
-+          const tag = `operator release, ${how} at ${point}`;
-+          const k = box();
-+          mkdirSync(k.lock);
-+          writeFileSync(join(k.lock, 'partial.json'), 'record A');
-+          const ext = outside(k, { 'partial.json': 'record A' });
-+          const away = join(k.base, 'lock-moved-away');
-+          const swap = () => {
-+            renameSync(k.lock, away);
-+            if (how === 'link') symlinkSync(ext, k.lock);
-+            else {
-+              mkdirSync(k.lock);
-+              writeFileSync(join(k.lock, 'partial.json'), 'record A');
-+            }
-+          };
-+          const id = readArchiveLock(k.root).digest.slice(0, 16);
-+          const label = point === 'release' ? ARCHIVE_LOCK : join(ARCHIVE_LOCK, 'partial.json');
-+          expect(() => releaseLock({ root: k.root, record: id, at: when([point, label, swap]) }), tag).toThrow(/not the record you saw/);
-+          // The outside folder, the replacement and the folder shown: each exactly as it was.
-+          expect([files(ext), isLink(k.lock), files(k.lock), files(away)], tag).toEqual([{ 'partial.json': 'record A' }, how === 'link', { 'partial.json': 'record A' }, { 'partial.json': 'record A' }]);
-+        }
-+
-+        // A RUN's ownership, across every consumer: just after an owner check — Apply's registry, log
-+        // and move, Rollback's registry, log and reverse move, a stopped move's recovery, the automatic
-+        // put-back, and Retry at its publication — the lock folder is replaced by a link to an outside
-+        // copy, by a real copy, or its record leaf alone by a copy. The run never succeeds (its next
-+        // write, or its publisher, refuses), and its end removes no replacement and nothing outside.
-+        const lockConsumers: [string, (k: ReturnType<typeof box>, swap: () => void) => Promise<unknown>][] = [
-+          ['apply registry', (k, swap) => k.go(REG, { at: when(['owned', 'PIECES.csv', swap]) })],
-+          ['apply log', (k, swap) => k.go(MOVE, { at: when(['owned', 'RENAME-LOG.csv', swap]) })],
-+          ['apply move', (k, swap) => k.go(MOVE, { at: when(['owned', A, swap]) })],
-+          ['rollback registry', async (k, swap) => (await k.go(REG), k.back({ at: when(['owned', 'PIECES.csv', swap]) }))],
-+          ['rollback log', async (k, swap) => (await k.go(MOVE), k.back({ at: when(['owned', 'RENAME-LOG.csv', swap]) }))],
-+          ['rollback reverse move', async (k, swap) => (await k.go(MOVE), k.back({ at: when(['owned', B, swap]) }))],
-+          [
-+            'stopped-move recovery',
-+            async (k, swap) => {
-+              await expect(k.go(MOVE, { at: when(['unlink', A, () => { throw new Interrupted('power cut'); }]) })).rejects.toThrow(/power cut/);
-+              return k.back({ at: when(['owned', B, swap]) });
-+            },
-+          ],
-+          ['automatic put-back', (k, swap) => k.go(MOVE, { at: when(['link', B, () => writeFileSync(k.at(A), Buffer.alloc(500, 7))], ['owned', 'RENAME-LOG.csv', swap, 2]) })],
-+          [
-+            'retry',
-+            async (k, swap) => {
-+              const failing = async (text: string, hash: string, h: string) =>
-+                publishIndex({ transport: { ...k.g.transport, getRef: async () => Promise.reject(new Error('GitHub refused getRef (HTTP 500)')) }, indexText: text, expectedContentHash: hash, confirm: archiveConfirmation(k.root, h) });
-+              expect(await k.go(REG, { publish: failing })).toMatchObject({ ok: false });
-+              return k.again({ publish: async (text: string, hash: string, h: string) => (swap(), k.g.publish(text, hash, h)) });
-+            },
-+          ],
-+        ];
-+        for (const [consumer, run] of lockConsumers) {
-+          for (const how of ['link', 'copy', 'leaf'] as const) {
-+            const tag = `run ownership, ${consumer}, ${how}`;
++        const show = (p: string) => {
++          try {
++            return lstatSync(p).isSymbolicLink() ? `link:${readlinkSync(p)}` : `file:${readFileSync(p, 'utf8')}`;
++          } catch {
++            return null;
++          }
++        };
++        const C: Kept = { kind: 'file', v: 'record C' };
++        const after = (p: string, edit: 'replace' | 'remove') => () => (edit === 'remove' ? rmSync(p) : put(p, C));
++        /** What stands at the public name, and every entry kept under a private name beside it. */
++        const outcome = (p: string) => [show(p), readdirSync(dirname(p)).filter((n) => n.includes('.releasing-')).map((n) => show(join(dirname(p), n)))];
++        for (const edit of ['replace', 'remove'] as const) {
++          const stands = edit === 'replace' ? 'file:record C' : null;
++          const said = new RegExp(`lock changed while it was being released${edit === 'replace' ? ', and a newer one now stands' : ''}; what had replaced the record you saw is kept as .*\\.releasing-`);
++          // The OPERATOR's release: A shown, B put at its name before the release, the writer at the link back.
++          for (const [form, A, B] of [
++            ['legacy file', { kind: 'file', v: 'record A' }, { kind: 'file', v: 'record B' }],
++            ['folder file', { kind: 'file', v: 'record A' }, { kind: 'file', v: 'record B' }],
++            ['legacy link', { kind: 'link', v: 'to-a' }, { kind: 'link', v: 'to-b' }],
++          ] as const) {
++            const tag = `operator release, ${form}, ${edit}`;
 +            const k = box();
-+            let ext = '';
-+            let shown: Record<string, string> = {};
-+            const swap = () => {
-+              const [rec] = readdirSync(k.lock);
-+              const bytes = readFileSync(join(k.lock, rec!), 'utf8');
-+              if (how === 'leaf') replaceWith(join(k.lock, rec!), bytes)();
-+              else {
-+                renameSync(k.lock, join(k.base, 'lock-moved-away'));
-+                if (how === 'link') symlinkSync((ext = outside(k, { [rec!]: bytes })), k.lock);
-+                else {
-+                  mkdirSync(k.lock);
-+                  writeFileSync(join(k.lock, rec!), bytes);
-+                }
-+              }
-+              shown = files(k.lock);
-+            };
-+            const end = await run(k, swap).then(
-+              (r) => r as { ok: boolean; message?: string },
-+              (e: Error) => ({ ok: false, message: e.message }),
-+            );
-+            // A later write is refused at its own owner check; a run with none left is refused by its publisher.
-+            const said =
-+              consumer === 'automatic put-back'
-+                ? /everything it changed was put back/
-+                : ['apply log', 'rollback reverse move', 'stopped-move recovery'].includes(consumer)
-+                  ? /no longer holds the archive’s maintenance lock .*stopped before its next write/
-+                  : /publication could not be confirmed \(The maintenance run that asked for this publication no longer holds the archive/;
-+            expect([end.ok, end.message], tag).toEqual([false, expect.stringMatching(said)]);
-+            expect([files(k.lock), Object.keys(shown).length], tag).toEqual([shown, 1]);
-+            if (ext) expect(files(ext), tag).toEqual(shown);
++            const inFolder = form === 'folder file';
++            if (inFolder) mkdirSync(k.lock);
++            const p = inFolder ? join(k.lock, 'partial.json') : k.lock;
++            put(p, A);
++            const id = readArchiveLock(k.root).digest.slice(0, 16);
++            const label = inFolder ? join(ARCHIVE_LOCK, 'partial.json') : ARCHIVE_LOCK;
++            expect(() => releaseLock({ root: k.root, record: id, at: when(['release', ARCHIVE_LOCK, () => put(p, B)], ['restored', label, after(p, edit)]) }), tag).toThrow(said);
++            expect(outcome(p), tag).toEqual([stands, [`${B.kind}:${B.v}`]]);
 +          }
-+        }
-+
-+        // TAKING the lock: the run's private folder is replaced by a link to an outside folder before
-+        // its record is written — nothing is written outside, and no lock is taken.
-+        {
-+          const k = box();
-+          const ext = outside(k);
-+          let priv = '';
-+          const at = (point: string, name: string) => {
-+            if (point !== 'lock-record') return;
-+            priv = name;
-+            renameSync(k.at(name), join(k.base, 'private-moved-away'));
-+            symlinkSync(ext, k.at(name));
-+          };
-+          await expect(k.go(REG, { at }), 'private folder linked').rejects.toThrow(/not a real folder in the archive/);
-+          expect([readdirSync(ext), readdirSync(join(k.base, 'private-moved-away')), existsSync(k.lock), isLink(k.at(priv))], 'private folder linked').toEqual([[], [], false, true]);
-+        }
-+        // … or by another writer's real folder after the record is written, with the archive free
-+        // (it becomes the lock: refused as replaced, kept) or already held (the take fails): the
-+        // failure's cleanup removes nothing of theirs — not even a file under this run's record name.
-+        for (const held of [false, true]) {
-+          const tag = held ? 'private folder replaced, archive held' : 'private folder replaced, archive free';
-+          const k = box();
-+          if (held) {
-+            mkdirSync(k.lock);
-+            writeFileSync(join(k.lock, `${dead}.json`), deadRecord);
-+          }
-+          let priv = '';
-+          const theirs = (name: string) => ({ 'theirs.txt': 'another writer', [`${name.slice(ARCHIVE_LOCK.length + 1)}.json`]: 'theirs too' });
-+          const at = (point: string, name: string) => {
-+            if (point !== 'lock-take') return;
-+            priv = name;
-+            renameSync(k.at(name), join(k.base, 'private-moved-away'));
-+            mkdirSync(k.at(name));
-+            for (const [n, t] of Object.entries(theirs(name))) writeFileSync(join(k.at(name), n), t);
-+          };
-+          await expect(k.go(REG, { at }), tag).rejects.toThrow(held ? /maintenance lock is held by run 4f4f4f4f/ : /lock was replaced as this run took it/);
-+          expect(files(held ? k.at(priv) : k.lock), tag).toEqual(theirs(priv));
-+          if (held) expect(files(k.lock), tag).toEqual({ [`${dead}.json`]: deadRecord });
-+        }
-+
-+        // PUBLISHERS read the lock as objects: its folder replaced just after its lstat — by a link to
-+        // an outside copy, to an EMPTY outside folder, or by a real copy — refuses the maintenance
-+        // publisher and the scheduled job alike; and a real copy standing at the name is not the holder.
-+        for (const how of ['link', 'empty link', 'copy'] as const) {
-+          const tag = `publisher read, ${how}`;
-+          const k = box();
-+          mkdirSync(k.lock);
-+          writeFileSync(join(k.lock, `${dead}.json`), deadRecord);
-+          const holder = readArchiveLock(k.root).holder;
-+          const ext = outside(k, how === 'empty link' ? {} : { [`${dead}.json`]: deadRecord });
-+          const swap = () => {
-+            renameSync(k.lock, join(k.base, 'lock-moved-away'));
-+            if (how === 'link' || how === 'empty link') return symlinkSync(ext, k.lock);
-+            mkdirSync(k.lock);
-+            writeFileSync(join(k.lock, `${dead}.json`), deadRecord);
-+          };
-+          for (const h of [holder, undefined]) {
-+            const read = (point: string) => point === 'read-lock' && swap();
-+            expect(() => archiveConfirmation(k.root, h, read)(), `${tag} ${h ? 'holder' : 'scheduled'}`).toThrow(/changed while it was read/);
-+            rmSync(k.lock, { recursive: !isLink(k.lock) });
-+            renameSync(join(k.base, 'lock-moved-away'), k.lock);
-+          }
-+          if (how === 'copy') {
-+            swap();
-+            expect(() => archiveConfirmation(k.root, holder)(), tag).toThrow(/no longer holds the archive/);
++          for (const B of [{ kind: 'file', v: 'record B' }, { kind: 'link', v: 'to-b' }] as const) {
++            // A RUN's own release: its record leaf replaced by B just after an owner check.
++            {
++              const tag = `run release, ${B.kind}, ${edit}`;
++              const k = box();
++              let p = '';
++              const at = (point: string, name: string) => {
++                if (point === 'owned' && name === 'PIECES.csv') put((p = join(k.lock, readdirSync(k.lock)[0]!)), B);
++                if (point === 'restored' && p && name === join(ARCHIVE_LOCK, basename(p))) after(p, edit)();
++              };
++              const end = await k.go(REG, { at }).then(
++                (r) => r as { ok: boolean },
++                () => ({ ok: false }),
++              );
++              expect([end.ok, outcome(p)], tag).toEqual([false, [stands, [`${B.kind}:${B.v}`]]]);
++            }
++            // A failed TAKE's cleanup: the archive held, the private record replaced by B before the take.
++            {
++              const tag = `take cleanup, ${B.kind}, ${edit}`;
++              const k = box();
++              const dead = ['5f5f5f5f', '0000', '4000', '8000', '000000000000'].join('-');
++              mkdirSync(k.lock);
++              writeFileSync(join(k.lock, `${dead}.json`), JSON.stringify({ token: dead, pid: 1, host: 'h', since: 's' }));
++              let p = '';
++              const at = (point: string, name: string) => {
++                if (point === 'lock-take') put((p = join(k.at(name), `${name.slice(ARCHIVE_LOCK.length + 1)}.json`)), B);
++                if (point === 'restored' && p && name === join(basename(dirname(p)), basename(p))) after(p, edit)();
++              };
++              await expect(k.go(REG, { at }), tag).rejects.toThrow(/maintenance lock is held by run 5f5f5f5f/);
++              expect(outcome(p), tag).toEqual([stands, [`${B.kind}:${B.v}`]]);
++            }
 +          }
 +        }
 +      }
 +
-       // --- A FAILED PUBLICATION proves only its own attempt, in every current instruction too -
-       // An earlier or scheduled write whose answer was lost may still land, so no operator page
-       // may promise that a failure leaves the branch, or "the previous index", as it was.
-@@ -1428,7 +1604,7 @@ describe('maintaining the Setar archive', () => {
-           }),
-         ).toThrow(/not the record you saw/);
-         await expect(d).rejects.toThrow(/maintenance lock is held by run/);
--        expect(readArchiveLock(k.root).token).toBe(cHolder);
-+        expect(readArchiveLock(k.root).holder).toBe(cHolder);
-         resume();
-         expect(await c).toMatchObject({ ok: true, status: 'published' });
-         expect(existsSync(k.lock)).toBe(false);
-@@ -1449,7 +1625,7 @@ describe('maintaining the Setar archive', () => {
-         const d2 = applyMaintenance({ root: k2.root, state: otherState, action: later, previewId: planMaintenance(k2.root, later).id, publish: async (text: string, hash: string, h: string) => ((dHolder = h), await gateD, k2.g.publish(text, hash, h)) });
-         resumeC();
-         expect(await c2).toMatchObject({ ok: false, message: expect.stringMatching(/no longer holds the archive/) });
--        expect(readArchiveLock(k2.root).token).toBe(dHolder);
-+        expect(readArchiveLock(k2.root).holder).toBe(dHolder);
-         resumeD();
-         expect(await d2).toMatchObject({ ok: true, status: 'published' });
-         expect(existsSync(k2.lock)).toBe(false);
+       // --- EVERY LOCK OPERATION addresses the exact folder and object, never a path swapped under it -
+       // The lock's folder, a run's private folder or its record replaced — by a link to a folder
+       // outside the archive, by a real folder holding a copy, or the record leaf alone — at the
 ```
 
 **Paths the rework touched:**
 
-- `docs/nas-topology.md`
-- `docs/setar-archive.md`
-- `scripts/publish-setar-index.mjs`
 - `scripts/setar-archive-maintenance.mjs`
 - `tests/setar-maintenance.test.ts`
 
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
 
 ```
-6ec841d Setar maintenance proves every lock operation on the exact folder and record, never a swappable child path
+155d706 Setar maintenance keeps a refused lock entry when its name is replaced or removed after the link back
 
-Invariant: every operation on the archive's maintenance lock addresses the
-lock folder and the exact record it owns or the operator approved, as
-objects (by inode), never through a path beneath the bound archive that can
-be replaced between a check and its act. Doubt reads as held, never absent.
+Invariant: a lock-entry removal preserves every entry it is not authorised to
+remove, even when that entry's public name changes after it is linked back.
+removeLockEntry now holds a refused file open (no inode reuse) or its link
+target, drops the private name, and only then proves the public name still
+holds it; otherwise it recreates the entry under the private name (never over
+anything) and refuses, saying where it is kept.
 
-Choke points:
-- readArchiveLock (publish-setar-index.mjs) is the one reader: it enters the
-  lock folder proved by inode, reads entries by bare name with O_NOFOLLOW and
-  fstat identity, proves the folder still at its name in the same archive
-  afterwards, and throws (never null) if anything moved. Its digest covers the
-  folder's inode; a valid record carries `holder` = token + folder + record
-  inodes (`lockHolder`).
-- removeLockEntry is the one remover: a bare name inside a proved folder, set
-  aside, judged by a predicate (operator digest, or a run's record inode, plus
-  the folder still bound), else put back.
+Consumers (all route through removeLockEntry, the one choke point):
+- operator release-lock, legacy file / folder file / legacy link: fixed, tested
+- a run's own unlock (Apply, Rollback, Retry, automatic recovery, stopped
+  moves all end there): fixed, tested via the seam now carried on the owner
+- failed lock-acquisition cleanup: fixed, tested
+- folder entry restored by rename (atomic, no second name): checked clean
 
-Consumers, each fixed or checked:
-- lock(): record written inside its own private folder entered by inode;
-  cleanup removes only its own record by inode, then rmdir (never recursive);
-  ownership proved right after the rename. New seams lock-record/lock-take.
-- assertOwner (every Apply/Rollback/stopped-move/put-back write): holder
-  equality through readArchiveLock — catches a linked folder, a real
-  replacement folder and a replaced record leaf.
-- unlock/release (end of Apply, Retry, Rollback; lock's own failure path):
-  inside the proved lock folder, the owner's record by inode only.
-- releaseBound/releaseLock (operator): inside the very folder shown, entries
-  judged with stillBound; a link or other folder at the name is stale.
-- archiveConfirmation (maintenance and scheduled publishers): holder string
-  compares token AND exact objects; the run passes owner.holder through
-  publishWithRunner/run-setar-index.sh unchanged (opaque argument). Journ
-… (truncated)
-
-725f7f5 Setar maintenance ownership proof covers every lock consumer; a release drops the lock folder only from the proved archive
-
-Extends the exact-lock-object invariant's proof from Apply alone to every
-consumer of a run's ownership: Apply (registry, log, move), Rollback
-(registry, log, reverse move), a stopped move's recovery, the automatic
-put-back and Retry (swap at its publication), each against a lock folder
-linked outside, replaced by a real copy, or its record leaf replaced. A
-consumer with a later write is pinned to that write's own owner refusal
-(a token-only ownership check is now caught); one with none left to its
-publisher's holder refusal; in every case the replacement and the outside
-folder are left exactly as they were.
-
-unlock now proves it is in the bound archive before it acts, and drops the
-empty lock folder only after that proof — never from a working directory a
-failed re-entry or lock read left unproved.
+Proof: the ac-2 test gains a block racing a writer (replace / remove) at the
+new `restored` seam, file and link, through every caller; it fails on the
+previous code (B lost) and passes now.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Claude-Session: https://claude.ai/code/session_01QFUx961GtREwqe4hYQacET
 ```
 
 ## Check against the contract
