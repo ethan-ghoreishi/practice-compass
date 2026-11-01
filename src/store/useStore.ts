@@ -167,8 +167,8 @@ export type ThemePref = 'system' | 'light' | 'dark';
 
 export interface ArchiveCommitResult {
   ok: boolean;
-  /** 'applied' · 'unchanged' · 'stale' (re-preview) · 'refused' · 'unsaved'. */
-  status: 'applied' | 'unchanged' | 'stale' | 'refused' | 'unsaved';
+  /** 'applied' · 'unchanged' · 'stale' (re-preview) · 'refused' · 'unsaved' · 'held' (words in progress on a class it would fold). */
+  status: 'applied' | 'unchanged' | 'stale' | 'refused' | 'unsaved' | 'held';
   message: string;
   summary?: ImportSummary;
   /** On 'stale': the decisions whose premise moved, so the screen can drop them. */
@@ -1358,6 +1358,24 @@ export const useStore = create<StoreState>()(
         const before = get();
         const rebased = before.rev !== decidedFromRev;
         const plan = planArchiveImport({ db: before.db, index, instrumentId, decisions, verifiedBase, now: at });
+        // AND A DECISION WHOSE PREMISE MOVED IS NOT A DECISION ANY MORE. A new
+        // QUESTION is not the only way a rebase invalidates an answer: the
+        // owner choosing the archive's composer over an empty field, then
+        // typing one of their own before pressing Apply, raised no question at
+        // all and overwrote the words they had just written. The plan reports
+        // both kinds of premise now — a moved value and a link target that has
+        // been deleted, bound elsewhere, moved instrument, date or number — and
+        // this refuses on either, whether or not `rev` moved. FIRST, because a
+        // stale link re-asks its question: refused as a rebase question
+        // instead, the dead answer would go unnamed and be resubmitted for ever.
+        if (plan.staleDecisions.length > 0) {
+          return {
+            ok: false,
+            status: 'stale',
+            message: 'Something you had already decided about has changed since. Look again before applying.',
+            staleDecisions: plan.staleDecisions,
+          };
+        }
         if (rebased && plan.questions.length > 0) {
           return {
             ok: false,
@@ -1365,20 +1383,21 @@ export const useStore = create<StoreState>()(
             message: 'Your practice data changed while the index was being read, and this refresh now needs a decision. Look again.',
           };
         }
-        // AND A DECISION WHOSE PREMISE MOVED IS NOT A DECISION ANY MORE. A new
-        // QUESTION is not the only way a rebase invalidates an answer: the
-        // owner choosing the archive's composer over an empty field, then
-        // typing one of their own before pressing Apply, raised no question at
-        // all and overwrote the words they had just written. The plan reports
-        // both kinds of premise now — a moved value and a link target that has
-        // been deleted, bound elsewhere or moved instrument — and this refuses
-        // on either, whether or not `rev` moved.
-        if (plan.staleDecisions.length > 0) {
+
+        // WORDS IN PROGRESS ARE NEVER FOLDED AWAY (D8). Combining removes the
+        // archive twin's id; a notes recovery copy or a live question capture
+        // still naming it would then have no record to land on. Refused before
+        // anything is written, the words left exactly where they are.
+        const held = plan.merges.find(
+          (m) =>
+            heldNoteDrafts().some(({ owner }) => owner.kind === 'lesson' && owner.id === m.boundId) ||
+            useLiveQuestion.getState().capture?.owner.lessonId === m.boundId,
+        );
+        if (held) {
           return {
             ok: false,
-            status: 'stale',
-            message: 'Something you had already decided about has changed since. Look again before applying.',
-            staleDecisions: plan.staleDecisions,
+            status: 'held',
+            message: `Unsaved words are still open on the archive's Class ${held.sessionN}. They are kept; finish or save them, then Apply again.`,
           };
         }
 

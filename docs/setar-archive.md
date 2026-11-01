@@ -4,7 +4,9 @@ How the normalised Setar class archive becomes historical lessons, canonical
 repertoire items and useful practice material — and exactly how the unattended
 part of it is installed, run and rolled back.
 
-Nothing here writes to the archive. Ever.
+The scanner, the publisher and the app never write to the archive. The one
+writer is the guided maintenance route (§7), and only on an owner-confirmed
+preview.
 
 ---
 
@@ -108,6 +110,18 @@ stage or an identity. Index format stays `version: 1`: the field is additive, an
 pre-v16 app ignores it (its digest covers the raw file, so the index still
 verifies).
 
+**Every diagnostic carries a `code`** (`DIAGNOSTIC_CODES` in the scanner):
+`no-role`, `unsupported-type`, `class-names-piece`, `not-session-folder`,
+`outside-session` (naming), `unregistered` (identity), `roster`,
+`demo-unattributed` (roster), `rename-log`, `symlink`, `not-file`,
+`not-directory`. Additive: the index stays `version: 1`, an older app ignores
+the field and its digest still verifies. Refresh groups attention by the action
+a code calls for (`diagnosticAction`), names the class by the published folder,
+and keeps the archive's own sentence and path in the details. Supported files
+are exactly `.mp4`, `.pdf`, `.jpg` (any case): the real inventory on
+2026-10-30 held 235 `.mp4`, 28 `.pdf` and 4 `.jpg` in session folders and
+nothing else; anything else is surfaced, never dropped silently.
+
 ### `--attention`: what needs the owner, and the smallest safe step
 
 ```sh
@@ -206,8 +220,13 @@ target is refused before a request is made.
 - The branch ref advances **non-force** from the commit that was read, with
   `expected_head_sha`, so a racing publisher loses the update rather than
   overwriting it; the retry re-reads before deciding anything.
-- An interruption before the ref advances leaves the previous index published —
-  a blob and a commit nothing points at are invisible.
+- An interruption before the ref advances means THIS attempt moved nothing — a
+  blob and a commit nothing points at are invisible. Such a failure exits 4. It
+  proves nothing about the branch: an earlier or scheduled write whose answer
+  was lost may still land, so what the branch holds stays unconfirmed until it
+  is observed (`retry`). A failure of the ref write itself (a lost response, a
+  5xx) may have landed: exit 1, said as unknown, and a rerun makes no commit if
+  it did.
 - Error messages are built from the HTTP status and the endpoint name only.
   **No token, no repository URL and no archive path ever reaches a log.**
 
@@ -234,12 +253,14 @@ two scripts by hand; that is the development fallback, not the deployment.
 
 1. **Runtime.** Install a supported Node runtime (Package Center → Node.js).
    Record the actual binary path — `which node` under the task's own shell — and
-   set `PC_NODE` if it is not on `PATH`.
+   set `PC_NODE` in `config.env` (on the production NAS `/usr/local/bin/node`): DSM's
+   task has it on `PATH`, but `sudo`'s secure path does not, and `PC_MAINT_PUBLISH` runs the job through `sudo`.
 2. **Directories.** Create a runtime/output directory *outside* the archive,
    e.g. `/volume1/practice-compass-index/`, owned by a non-admin service user.
    Copy `scripts/scan-setar-classes.mjs`, `scripts/publish-setar-index.mjs` and
-   `scripts/run-setar-index.sh` into it. **When any of the three changes, copy all three
-   again** — still exactly three files, nothing else. The NAS keeps running its old copies
+   `scripts/run-setar-index.sh` into it, and since 2026‑10‑30
+   `scripts/setar-archive-maintenance.mjs` beside them (§7). **When any of them changes, copy
+   all four again** — exactly these four files, nothing else. The NAS keeps running its old copies
    until then. Since 2026‑10‑01 the runner creates no directory (a missing
    `PC_INDEX_WORKDIR` fails before anything runs), the scanner refuses an output it did not
    write or one that real paths place inside the archive, and both Node scripts detect a
@@ -257,7 +278,10 @@ two scripts by hand; that is the development fallback, not the deployment.
    The real internal mount path is discovered during installation. **Do not
    assume the Mac's `/Volumes/...` path exists on DSM.**
 5. **Schedule.** DSM → Control Panel → Task Scheduler → Create → Scheduled Task
-   → User-defined script. Run as the service user, every **15 minutes**, command:
+   → User-defined script. Run as the service user, every **15 minutes ALL DAY**
+   (first run 00:00, last run 23:45 — check the generated schedule's next trigger;
+   a repetition that ends at 00:45 runs only four times around midnight, which is
+   what the task did until 2026‑10‑30), command:
 
    ```sh
    sh /volume1/practice-compass-index/run-setar-index.sh
@@ -290,8 +314,9 @@ with `main` unchanged, and the behaviour when the token is revoked.
 Disable the scheduled task. The app keeps the source graph it last accepted and
 goes on working offline from it. To go back to an earlier index,
 `git push --force-with-lease` an earlier `source-index` commit. Neither touches
-the app's own data on `main`. Revoking the token stops publication and leaves the
-last good index exactly where it is.
+the app's own data on `main`. Revoking the token stops every LATER request; a
+write already sent may still land, so the branch is whatever GitHub shows, read
+there before deciding anything.
 
 ---
 
@@ -306,8 +331,21 @@ applies the lot in one store mutation.
   "last scanned", because nothing here can know that.
 - **Exact source binding wins.** A record already bound to a source identity *is*
   that entity, whatever its title or date has since been edited to.
-- A legacy class is auto-adopted only on **instrument + date + number + exact
-  source-path evidence**. Date alone, number alone or title alone cannot merge.
+- **One class, one record** (`docs/setar-lesson-lifecycle.md`). A class you
+  planned is auto-adopted only on **instrument + date + number + exact
+  source-path evidence**, and only when it is the only candidate. The same class
+  WITHOUT path evidence (the normal case: you planned it before any media
+  existed) is asked: **Link** to your class (its id, commitments, questions and
+  notes stay; the archive's files join it), **Create separately**, or **Skip**.
+  Date alone, number alone, title alone, another instrument or another date
+  never match.
+- **A bound session is still checked for a twin**: an unbound class with the
+  session's instrument, date and number is offered as **Combine into my class**
+  (your lesson survives with its id; the archive copy's notes, links, own
+  references, agenda entries and attachments move onto it; nothing is deleted
+  or suppressed) or **Keep separate** (remembered as a suppression scoped to
+  your lesson; it hides nothing). Unsaved notes or a live question on the
+  archive copy refuse the combine, with the words kept.
 - An exact title or literal alias match produces **Link / Create separately /
   Skip** — never an automatic merge, and never "pick the first candidate".
   An answered question **stays listed with its answer selected** until Apply,
@@ -335,8 +373,9 @@ applies the lot in one store mutation.
 - New pieces arrive **resting**, by explicit import policy, so ninety-four items
   do not flood Today. They stay searchable and directly startable.
 - **Nothing about practice is ever seeded**: no minutes, no result, no review
-  date, no SM‑2 state. An imported class is history even when its date is in the
-  future relative to this device's clock.
+  date, no SM‑2 state. A class the import CREATES is history even when its date
+  is in the future relative to this device's clock; a class YOU planned keeps
+  its upcoming status when the archive binds to it, until its date passes.
 - Deleting, unlinking or hiding records a narrowly scoped **suppression** in the
   same mutation, so a refresh, a reload and a sync all respect it. A hide follows
   its file through the rename log, so a renamed resource does not reappear —
@@ -470,8 +509,9 @@ PROPOSE kind, placement, study source and class corrections from the archive's
 evidence; it writes only the rows you select.
 
 **A bound class is left alone entirely.** Its date, number, notes and links are
-yours from the moment it is adopted; the only thing a refresh ever rewrites on it
-is the *path text* of a reference, and only into the namespace above.
+yours from the moment it is adopted; the only things a refresh ever rewrites on
+it are the *path text* of a reference, only into the namespace above, and — on
+your explicit Combine — the archive twin's own records folded onto it.
 
 **Identity is the `canonical_fa` key, byte for byte.** So:
 
@@ -481,14 +521,14 @@ is the *path text* of a reference, and only into the namespace above.
 | Fix a wrong `dastgah` / `form` / `composer` for the long run | **in PIECES.csv**, then Refresh and apply the offer | The registry is the source of that fact; every future device gets it too. |
 | Fix one of those on this device only | **in the app** | Your value stands; the archive offers its own again only if the registry changes that field. |
 | Correct a spelling of the piece's own name | **in the app** (title) | A title edit is yours and binding survives it. |
-| Rename `canonical_fa` in PIECES.csv | **avoid** | It is a NEW identity: the refresh creates a second item and flags the old piece `unavailable`, with no question linking them. Merge is then yours to do by hand. |
-| Rename a file in the archive | **normally**, and log it in RENAME-LOG.csv | Path identity follows the log exactly; your saved references are repaired on the next refresh, titles and notes intact. |
+| Rename `canonical_fa` in PIECES.csv | **avoid** (the maintenance route never does it) | It is a NEW identity: the refresh creates a second item and flags the old piece `unavailable`, with no question linking them. Merge is then yours to do by hand. |
+| Rename a file in the archive | **with the maintenance route** (`rename`), which renames and logs it together | Path identity follows the log exactly; your saved references are repaired on the next refresh, titles and notes intact. |
 
-The safe workflow for exact archive renames: rename, append the `from,to` row to
-`RENAME-LOG.csv` (never a fork or a loop — both are diagnosed and neither is
-applied), let the scanner publish, then Refresh. Do not renumber a session folder
-and do not edit `canonical_fa` in the same pass as a rename: one of those changes
-where a file is, the other changes what a piece *is*.
+The safe workflow for exact archive renames is the `rename` action (§7): it
+refuses a fork, a loop or an overwrite, renames the one file with its bytes
+checked unchanged, appends the exact row, validates and publishes. Do not
+renumber a session folder and do not edit `canonical_fa` in the same pass as a
+rename: one of those changes where a file is, the other changes what a piece *is*.
 
 ### Open the app over HTTPS, or Refresh cannot verify anything
 
@@ -517,8 +557,9 @@ fix is the route, not a setting:
 - **For a phone — the HTTPS mirror.** Publish the build into a NEW, app-only folder with
   `node scripts/nas-mirror.mjs --dest <folder>` (a dry run), then again with `--apply`, and
   open it over `https://192.168.0.20/<folder>/`. What is measured: an HTTPS origin is a
-  secure context even with a self-signed Synology certificate (`:5010`, 2026‑09‑18). What is
-  not: that Web Station serves the `web` share at that URL (owner to confirm), and whether
+  secure context even with a self-signed Synology certificate (`:5010`, 2026‑09‑18), and
+  Web Station's `:443` root is `/volume1/web` (2026‑10‑31). What is
+  not: whether
   iOS runs a service worker from a self-signed origin. `https://192.168.0.20/practice-compass/`
   still answered **403** on 2026‑10‑01, and `/Volumes/web/practice-compass` shows the media
   tree, so the mirror refuses it. `docs/nas-topology.md` has the map and what each testing
@@ -567,53 +608,185 @@ backup.
 
 ## 7. When Refresh says something needs attention
 
-Refresh reads what the NAS job last PUBLISHED. Running the job again changes
-nothing until the archive's own declarations change, so first tell which of these
-it is:
+Refresh reads what the NAS job last PUBLISHED, and groups what needs you by the
+one thing to do (each diagnostic's `code`). Running the job again changes
+nothing until the archive's own declarations change, so first tell which it is:
 
-| You see | It is | Do |
+| Refresh says | It is | Do |
 | --- | --- | --- |
-| Refresh fails, or the hash under "Accepted index" never moves | the scan failed, the NAS runs old copies of the scripts, or nothing has published | Read the task's mail; copy all three runtime files again (§4); run the task once |
-| The hash `--attention` prints differs from the accepted one | a newer index exists but this device has not accepted it | Refresh and Apply |
-| "Piece … is not in the registry" | missing registry evidence | Step (b) |
-| "Unnamed demonstration not attributed" | an empty or inconsistent roster | Step (c) |
-| A file listed "not described by the latest index" | a rename the log does not record, or a file gone | Step (d) or (e) |
-| A class or piece you expect is missing | it was deleted or skipped here | "Hidden and removed from the archive" → Restore |
+| an error, or the accepted hash never moves after you changed the archive | the job has not run yet (every 15 min), failed, or runs old copies of the scripts | `… status` names the hash a scan would publish now; read the task's mail; copy all four runtime files again (§4) |
+| **A piece the archive does not know yet** | an unregistered key, or a misspelt filename | `register` it, or `rename` the file |
+| **A class roster to confirm** | an unnamed demonstration, or a piece named in a class its row does not list | `roster` — only for what the class taught |
+| **A filename the archive cannot read** | no known role, a class recording naming a piece, outside a session folder | `rename` |
+| **A file type the archive does not index** | not `.mp4` / `.pdf` / `.jpg` | save it in one of those types in the same folder |
+| **A link or non-file in a class folder** | a symlink or special file | put the real file there |
+| **The rename log cannot say where a file went** | a fork or a loop | `rename` the one file again, exactly |
+| a class or piece you expect is missing | it was deleted or skipped here | "Hidden and removed from the archive" → Restore |
 
-The checklist — the same for Session 41, 42 and every class after them; no step
-needs a code change, a reseed or another lane:
+### The guided maintenance route
 
-- **(a) Ordinary files for registered pieces** need nothing beyond the existing NAS
-  job and a Refresh. A file NAMED for a registered piece is scoped to it in any
-  session, without listing that session for it.
-- **(b) A genuinely new piece**: run `--attention`, confirm the exact spelling IS the
-  piece (it becomes `canonical_fa` byte for byte), and add that ONE row to
-  PIECES.csv. Musical fields may stay empty until you or the teacher can say.
-- **(c) An unnamed demonstration** stays with the lesson until the class's roster is
-  declared: put the session number in `sessions` for exactly the pieces you can
-  confirm it taught. An EMPTY roster says nothing; an INCONSISTENT one names a
-  piece the roster does not — fix the roster or the filename.
-- **(d) A renamed or moved file**: append ONE exact `old_path,new_path` row to
-  RENAME-LOG.csv per file, after checking the existing chain for that path — never
-  a loop, never a second destination. Old references and hides then follow it.
-  Without the row, the old name stays "not described" and the new one arrives as
-  new material.
-- **(e) Added files and role changes** arrive with the next index. Replacing a
-  file's bytes at the SAME path keeps every reference and opens the NAS's current
-  bytes (the index may not change at all, deliberately). A file the index stops
-  describing is not called deleted: hide it, or repoint your own reference.
+`setar-archive-maintenance.mjs` lives beside the other three runtime files on
+the NAS and is run there against the archive root as `ethan`, who owns the
+archive (the indexer's service user only reads it, since 2026‑10‑31). Its
+publish step runs the existing job as the job's own account, so the published
+index and its scratch file stay the indexer's:
+`PC_MAINT_PUBLISH="sudo -n -u setar-indexer /bin/sh /volume1/practice-compass-index/run-setar-index.sh"`,
+allowed by a one-command sudo rule (`docs/nas-topology.md`, live repair). Run it
+as `ethan`, never as root: its temp-and-rename writes would leave root-owned
+declarations for Drive to carry. It
+asks only for what a filename cannot say, shows exactly what it will change,
+and does nothing until you repeat the command with that preview's id:
 
-Deliberate suppressions still need an explicit Restore.
+```sh
+M="node /volume1/practice-compass-index/setar-archive-maintenance.mjs --root <archive> --state <private folder>"
+$M status                                                   # the attention report, and the hash a scan would publish
+$M register --piece پیش-درامد-ابوعطا-لطفی --session 41       # a genuinely new piece (musical fields optional)
+$M roster --session 40 --pieces <key>,<key>                 # what a class taught: attributes its unnamed demo
+$M rename --from session-40-…/old.mp4 --to session-40-…/new.mp4
+#   … each prints "Preview <id>"; the same command with --apply <id> then does it all:
+#   private copy of both declarations → edit → validate (the scanner's own grammar)
+#   → scratch scan → publish through run-setar-index.sh
+$M retry      # publication unconfirmed: the archive is valid, the branch unknown (an earlier or scheduled write may land) — publish again
+$M rollback   # put the last change back from its private copy and publish that
+$M release-lock [--record <id>]   # a lock no run holds: shown, then released by its exact record
+```
 
-Worked examples of the SAME steps, not special cases: Session 40 is two (b) rows
-(`پیش-درامد-چهارگاه-فروتن`, `چهارمضراب-چهارگاه-عبادی`) and a (c) roster; Session 1
-is three (d) continuations (`ضبط-کلاس-N.mp4` → `نمونه-N.mp4`). The automated proof
-runs these and future sessions 41, 42, 43, 45, 57, 58 and 103 on temporary corpora
-only (`docs/setar-practice-reliability.md`). Only the owner edits PIECES.csv or
-RENAME-LOG.csv; no tool writes them.
+- **No hand edits.** It appends one row or changes one cell, every other byte,
+  quote, extra column and unrelated row exactly as it was; a rename appends
+  one log row under the log's own header.
+- **It refuses rather than guesses**: a "piece" that starts with a role (a
+  filename mistake, shown as such — never a new identity), an already
+  registered key, an unregistered key in a new filename, an overwrite, a fork,
+  a loop, a link (a declaration, a media file, or a session folder that leads
+  outside the archive — checked at preview, apply and rollback), a `--state`
+  inside the archive or written for another archive, and a preview the archive
+  has moved on from (a concurrent edit). A refusal changes nothing.
+- **It never loses a declaration, its own or anyone else's.** Every write
+  proves, AT the write, the exact state it expects: a declaration is moved
+  aside (atomic), its bytes judged, and the new one linked in, which never
+  overwrites; the declaration it replaced is KEPT beside it as
+  `.<name>.superseded-<id>` (the scanner skips dotfiles; a fresh id for every
+  write), never unlinked, so a program still holding it open writes into a
+  kept file whenever it writes. A
+  media file gets its new name by link (never over anything), is judged by
+  size and SHA-256, and only then loses its old name — and any name is dropped
+  only after it is first moved to a private name and judged THERE, so a file
+  renamed onto it meanwhile keeps its name (put back, never overwritten). A
+  private name (a drop's, or a put-back's) is retired without copying a
+  byte: the file first gets a second, hidden name `.<name>.superseded-<id>`
+  beside it (in the root or the session folder), then the file's other name
+  is judged, and only then is one of the two removed — the private name if
+  the other name holds the file, else the hidden one, the file staying at
+  the name being dropped or its private name, named in the refusal. A name
+  is removed only while another of the tool's names holds the same file, so
+  no failure, kill or concurrent write leaves it nameless (killed anywhere,
+  the private name is left for the next run to refuse on), and a program
+  holding the file open keeps writing into a named file. The hidden names
+  are the same file, no extra bytes; the operator may delete them once
+  nothing needs them. A
+  rename stays inside its session folder. The ARCHIVE itself is bound too:
+  each run records the directory `--root` names when it starts (its inode and
+  real path) and does every read-then-write with its working directory on that
+  directory, by bare names — the lock, the declarations, the session folder a
+  move selects, the media — so the archive moved away and another folder (even
+  an exact copy, lock and all) put at its path is never written; re-entering
+  is proved by inode, else the run refuses and its lock stays in the real
+  archive for `release-lock`. The journal records that directory's inode, so
+  a later `rollback` or `retry` refuses another folder at the path too. Every media write runs inside its session folder
+  bound by inode the same way, so a folder swapped for a link meanwhile cannot
+  carry a write outside the archive. An edit, deletion or new file from
+  anyone else at that instant is kept and the run refuses. A failure after
+  the archive changed, and `rollback`, put back only what THIS change wrote —
+  each write recorded the instant it is made, judged first, and proved again
+  at each write against what this change wrote, never a fresh read; "put
+  back" is said only when it was.
+- **A stopped run is finished by hand, never on a guess.** A run killed in
+  the middle of a write leaves a file under a private name
+  (`.<declaration>.captured-…` in the root, `.<file>.dropping-…` in a session
+  folder). Nothing recovers it automatically — a name proves nothing about
+  whose file it is — so every run refuses while one exists, naming each with
+  the `mv -n` that puts it back (never over anything); then `rollback`
+  finishes from the journal (it drops the new name of a move stopped between
+  its two names).
+- **One owner per archive.** The lock is one dot-folder in the archive's root
+  holding one `<run>.json`, shared by every `--state` folder, and every
+  publisher checks it; a release removes only that exact record, so it never
+  takes a newer run's lock: each entry the operator saw is first moved to a
+  private `.releasing-…` name and judged there against what was shown, removed
+  only if it is that. Anything else keeps that private name — the tool never
+  unlinks it, so its very file survives a cut, a failure or a writer at the
+  lock's name — and is linked back as well (never over anything) and named;
+  the operator removes the spare name once the lock's name holds that same
+  file (`ls -li`; for a link, the same `readlink` target) — a replacement at the same name, legacy lock file or folder entry
+  alike, is never removed. Every lock operation addresses objects, never a
+  path that could be swapped under it: a run's ownership is the exact folder
+  and record file it made (by inode), its record is written and removed only
+  inside a folder entered and proved by inode, a release works only inside
+  the very folder shown (its id covers that folder), and the lock is read the
+  same way — a folder replaced by a link or a copy mid-read reads as held,
+  never as absent. A failed take removes only its own record, then its folder
+  only if empty. A lock is
+  never adopted on a guess about a process: a run that finds one refuses and
+  names it. If nothing is running (check `ps`), `release-lock` shows the
+  record and `release-lock --record <id>` releases exactly that one, in any
+  form (a dead run's, a partial or foreign record). Then the journal decides:
+  half-written means `rollback`; applied or restored but not confirmed
+  published means `retry`.
+- **Publication is of the validated index, on evidence.** The job gets the
+  validated contentHash and the run's lock holder (its token and the exact
+  lock it made) as its two arguments and
+  refuses, before any request (exit 3), a scan that differs. After reading the
+  branch and before writing anything, every publisher — the scheduled job
+  too — checks the archive's lock (absent, or held by the run that asked) and
+  scans again; an archive that moved on or is owned by a maintenance run
+  refuses (exit 4). It asks again immediately before the ref write, so a
+  newer decision that moved no ref (an `unchanged` publication) is seen too.
+  And only ONE publisher runs at a time, from its ref read to its ref write's
+  answer: each holds the NAS's publisher seat, a localhost port
+  (`PC_INDEX_SEAT_PORT` in `config.env`, default 47391) that the kernel frees
+  the instant its holder exits — no file to clean up, no pid to guess. The
+  scheduled job finding it taken refuses (exit 4); a maintenance publication
+  waits for it (up to two minutes, then exit 4). So every newer decision, an
+  `unchanged` one included, is made after the older write was answered. A
+  write asked for but never answered (its publisher died, or lost the answer)
+  is recorded first in `setar-publish-intent.json` in the job's work folder;
+  while the branch is still at that write's parent, every publisher moves the
+  ref (a commit even for unchanged content), so it can never land afterwards;
+  only the branch observed elsewhere, or a later write's own acceptance,
+  retires it — never a refused write (a 422 need not mean the ref moved), and
+  a run that ends while one is still guarded — or fails before it could read
+  the branch while any record exists — is unconfirmed, never "nothing
+  published". A paused or orphaned publisher therefore never puts an older index over a
+  newer one. Success needs the publisher's last line
+  `published-index <status> <hash>` naming that hash. The runner is the only
+  entry point on the NAS: its work folder holds the intent record every
+  publisher there shares.
+- **Unconfirmed stays unconfirmed.** Before any remote work the journal names
+  the attempt's validated hash and marks it open; every unconfirmed attempt's
+  hash stays in `unresolved` until a positive observation of the branch.
+  A failure is always unconfirmed: "this attempt published nothing" is said
+  only when the job proved it (exit 2, 3 or 4), and never "the branch is as
+  it was" — a proof covers that attempt, while another publisher's unanswered
+  write (the scheduled job's, in a record this run cannot read) may still
+  land. Exit 1 or any other code, a signal, a lost response or an exit 0
+  without evidence leaves the attempt itself open too. A
+  publication the journal then fails to record is reported as published.
+  Every case: `retry`, which makes no commit if the branch already holds the
+  index.
+- **Repeat is a no-op**, and an unchanged archive makes no commit.
+- Ordinary, correctly named supported files for registered pieces need
+  NOTHING: put them in the session folder; the job publishes; Refresh.
 
-**Order when this lane's scanner reaches the NAS:** deploy the app first (a v16
-app reads both old and new indexes), then copy all three runtime files (§4), then
+Worked examples: Session 41 is one `register` (the demonstration then scopes to
+that piece); Session 40 is one `rename` of
+`تمرین-من-نت-چهارمضراب-چهارگاه-عبادی.mp4` to `تمرین-من-چهارمضراب-چهارگاه-عبادی.mp4`
+(its key already exists; the extra `نت-` made the roster untrusted, so `نمونه.mp4`
+was held back); Session 42 needs only its files. A class you planned in
+Compass is then offered as Link on the next Refresh
+(`docs/setar-lesson-lifecycle.md`).
+
+**Order when this lane's scanner reaches the NAS:** deploy the app first (it
+reads both old and new indexes), then copy all four runtime files (§4), then
 run the job and Refresh.
 
 ## Rules in full
@@ -623,15 +796,17 @@ their budget (UI refresh lane, owner amendment). `AGENTS.md` still states every
 rule below as a short binding line and points here; this section keeps the
 mechanism, identifiers and examples that go with them, in the UI-refresh
 lane's condensed wording of the base rules, every clause kept. Both bind;
-neither weakens the other. Change a rule in both places.
+neither weakens the other. Change a rule in both places. Since 2026-10-30
+(issue #60, to hold AGENTS.md at its ceiling) a few clauses are stated ONLY
+here — `--attention` only prints, among them — and bind exactly as before.
 
 ### The Setar archive is a source: it describes, never testifies
 
 Runbook: `docs/setar-archive.md`; app side `sourceReconcile.ts`.
 
 - The grammar lives once, in the scanner; the app never parses a filename. The scanner never follows a symlink, treats a failed read as empty, splits on token 0 or picks the largest file; a rename loop or fork is diagnosed, never walked. The app refuses a newer index version, recomputes the digest (`parseSourceIndex`), refuses a present but wrong-typed value; `checkSourceGraph` is the one grammar at every door. Fix the grammar or the door, never with a guard in a component.
-- Archive evidence may establish repertoire membership, lesson provenance and source material, never practice, a result, exposure, review completion or scheduling progress. The owner's own practice takes are never a resource; a roster is the registry's, never inferred from files; an unnamed demo never spreads over a guessed set; every role-named file, registered or not, counts against the roster. An imported class is history even when future-dated: upcoming tests go through `isUpcomingLesson`, never a bare date compare. Imported pieces arrive resting.
-- Exact bindings win; weak equivalences ask (Link / Create separately / Skip), never merge; `aliases_seen` is search only, never identity; a built-in `catalogKey` never equals a canonical key. Decisions, Skips and deletions persist; one whose premise (typed value, meaning, exact proposal, never a label) moved is refused as stale; an unanswered offer writes nothing; a registry field is offered only when changed since the accepted graph. Restore lifts one exact suppression tuple; `--attention` only prints; Review Setar setup writes only selected rows, never on load, import, sync or Refresh. The commit re-plans, validates, waits for IndexedDB, never replaces the database or touches a blob. Moving an archive-bound item to another instrument is refused.
+- Archive evidence may establish repertoire membership, lesson provenance and source material, never practice, a result, exposure, review completion or scheduling progress. The owner's own practice takes are never a resource; a roster is the registry's, never inferred from files; an unnamed demo never spreads over a guessed set; every role-named file, registered or not, counts against the roster. A class the import creates is history even when future-dated: upcoming tests go through `isUpcomingLesson`, never a bare date compare; binding the archive to an owner's lesson keeps that lesson's own `origin`. Imported pieces arrive resting.
+- One class, one record: exact bindings win; a unique same-instrument/date/number lesson with exact path evidence adopts; the same without it asks (Link / Create separately / Skip), and a bound session's unbound twin asks (Combine / Keep separate, `consolidateLesson`, never `deleteLesson`); weak equivalences ask, never merge; `aliases_seen` is search only, never identity; a built-in `catalogKey` never equals a canonical key. Decisions, Skips and deletions persist; one whose premise (typed value, meaning, exact proposal, never a label) moved is refused as stale; an unanswered offer writes nothing; a registry field is offered only when changed since the accepted graph. Restore lifts one exact suppression tuple; `--attention` only prints; the declarations change only through `setar-archive-maintenance.mjs`; Review Setar setup writes only selected rows, never on load, import, sync or Refresh. The commit re-plans, validates, waits for IndexedDB, never replaces the database or touches a blob. Moving an archive-bound item to another instrument is refused.
 - Repair legacy paths exactly through the rename log or diagnose them, no fuzzy matching by title, size or modification time; `not-described` never means gone; two rows naming one file both survive. A refresh rewrites references only on lessons the archive owns. **Open gap:** a legacy `setar-classes/` reference on a lesson the archive does not own stays in the old namespace for the owner to repoint.
 - One media base per device, naming the archive folder: no second archive-specific base, no resolver fallback. The shared media root derives from it (`src/domain/mediaRoots.ts`), never guessed; each reference resolves against exactly one; an undecodable base is unrecognised, never thrown. An unreachable NAS is never called absent (`describeArchiveAccess`).
 - The NAS publisher's token is separate and repository-scoped (Contents write, no workflow or admin scope), only in the NAS runtime; the branch restriction is the script's, never called credential isolation. No credential or archive root enters a committed file, app data, a log, sync or a backup.

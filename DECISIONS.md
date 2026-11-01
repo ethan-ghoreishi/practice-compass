@@ -2,6 +2,188 @@
 
 Durable record of non-obvious choices. Newest first.
 
+## Setar maintenance stops and asks rather than recover on a guess (2026-10-31)
+
+Same lane, third sealed rejection; this supersedes the recovery and lock
+bullets below. The owner's direction: the tool is used rarely, so a smaller
+automatic surface that is correct beats recovery that guesses.
+
+- **No automatic recovery from a private name.** A file under one of the
+  tool's private names (`.<declaration>.captured-…`, `.<leaf>.dropping-…`)
+  proves nothing about whose it is; deleting a "second name" or installing a
+  capture lost someone's file. Every run now refuses while one exists, naming
+  each with the `mv -n` that puts it back; `rollback`'s exact judgement then
+  finishes. Only a killed run leaves one, and that run already needs a hand
+  `release-lock`.
+- **A write is recorded the instant the archive changes**, so a failure after
+  it (keeping the replaced file, cleanup, the scan) is judged by the automatic
+  put-back, which says "put back" only when it did. Every set-aside copy gets
+  its own name, so no put-back can displace a kept file a handle still writes.
+- **The lock is a folder holding one `<token>.json`**, renamed into place and
+  released only by unlinking that exact name: no release, stale or concurrent,
+  can take a newer run's lock (POSIX has no compare-and-delete by path; unique
+  names make one).
+- **A rename stays inside one session folder**, and every media write runs in
+  that folder bound by inode (its leaf names only), so swapping the folder for
+  a link cannot carry a write outside.
+- **An unanswered ref write is retired only by evidence.** A non-force write
+  from P can land only while the branch is at P: it stays guarded until the
+  branch is observed elsewhere or a later write is accepted. A refused write
+  (GitHub's 422 can mean validation, not movement) never retires it, and a run
+  that ends while one is guarded never claims "nothing published".
+
+## Setar maintenance: one owner per archive, writes proved at the write, publication open until observed (2026-10-31)
+
+Same lane, second sealed rejection; this supersedes the dead-lock adoption
+bullet of the entry below.
+
+- **The lock belongs to the ARCHIVE, not the `--state` folder.** It is one
+  dotfile in the archive root (the scanner skips it), written whole and then
+  linked into place, so two runs through two state folders serialise and a
+  record is never partial.
+- **No lock is adopted on a guess.** A pid can be reused, a truncated record
+  can name another process, and a publishing child outlives its killed
+  parent; every claim/adopt scheme raced on cleanup. A run that finds a lock
+  refuses and names it; the operator, having seen nothing running, releases
+  that exact record (`release-lock --record <id>`), and the journal then says
+  what to finish. An explicit step beats a silent wrong owner.
+- **Every archive write proves its expected state AT the write.** A
+  declaration is moved aside (atomic), its bytes judged, and the new file
+  linked in (never overwrites); media get the new name by link, are judged,
+  then lose the old one. Recovery passes what THIS change wrote as the
+  expectation, never a fresh read. A run stopped with a declaration set aside
+  has it put back by the next run. The replaced declaration is kept
+  (`.<name>.superseded-<run>`), never unlinked: a handle still open on it can
+  write at any time, even after the run, so only keeping the inode named loses
+  nothing. A media name is dropped only after being moved to a private name
+  and judged there, so a file renamed onto it in that instant keeps its name; a run stopped
+  there has the next run put it back (or drop a second name of the moved file).
+- **Publishers answer to the owner and to the archive as it is now.** Before
+  writing anything after reading the ref, the publisher checks the lock (absent
+  for the scheduled job, the caller's token for maintenance) and rescans; the
+  ref write stays non-force from that read; it asks once more immediately
+  before the ref write, so an `unchanged` newer decision (no ref move) is seen
+  too. That alone cannot stop a publisher stalled after its last check (a
+  slow request, a paused process): GitHub's non-force update guards only
+  ancestry, so a newer decision that moves no ref — a rollback to what the
+  branch already holds — cannot invalidate it. So publishers take turns: a
+  localhost port is the seat, held from ref read to the ref write's answer
+  and freed by the kernel when the holder exits (the read-only scheduled job
+  can take it; no pid, no cleanup). Maintenance waits, the scheduled job
+  refuses. A write asked for but never answered is recorded first; the next
+  publisher, unless the branch shows it landed, moves the ref even for
+  unchanged content — the one case that commits without new content, and
+  only after a publisher died or lost its answer.
+- **"Nothing published" is about one attempt.** The journal names each
+  attempt's validated hash as open before any remote work, keeps every
+  unconfirmed hash in `unresolved`, and clears them only on positive evidence
+  that the branch holds the index. A later failure proved for its own attempt
+  never resets an earlier unknown, and never promises a previous index exists.
+- **The NAS still runs the earlier tool.** Redeploying all four runtime files
+  together (the runner now forwards `--root` and the lock token) is the
+  owner's step; the live checks must then be rerun (`docs/nas-topology.md`).
+
+## Setar recovery undoes only its own write; a link binds only a class still the same (2026-10-31)
+
+Same lane, after the sealed review asked for changes.
+
+- **A Link is about the class the owner saw.** It adopts only a lesson still
+  among the session's candidates (same instrument, date and number, unbound).
+  Re-dated or renumbered before Apply, it is stale and asked again. The store
+  names a stale decision before it raises a rebase question, so Refresh drops
+  it instead of resubmitting it for ever.
+- **Recovery is a compare, not an overwrite.** The journal records digests of
+  what each declaration held before and after this change. `rollback` and the
+  automatic put-back restore a file only from exactly that "after", judge
+  every file (and the renamed media) before writing any, and refuse otherwise.
+  The per-folder lock could never see another `--state` folder; the digest
+  check can.
+- **A dead lock is adopted by any run; the journal decides.** Every run that
+  writes the archive records what it is doing (`prepared`, `rolling-back`)
+  before its first write, so a lock whose process is gone guards nothing the
+  journal does not already say. Adopting only the lock a `prepared` journal
+  named left a run killed during publication, or during a rollback or retry,
+  locked out for good. Archive state (`status`) and publication
+  (`publication`) are separate fields. Same-process interruption is not a
+  dead process, so the test kills real children.
+- **The job proves it published the validated index.** Comparing the scan's
+  hash after a scan-and-publish job is too late. So the hash goes in as the
+  runner's one argument (sudo keeps arguments, not environment), and the
+  publisher refuses before Git. Success needs its evidence line. "The last
+  good index is still published" is said only on proof (exit 2, 3 or 4: the
+  job stopped before its ref write). Any other failure, including a lost
+  response after GitHub accepted the ref, is unconfirmed: a non-zero exit is
+  no proof the ref did not move. `retry` settles it.
+- **The NAS is not redeployed by this rework.** The owner's call. The sudo rule
+  pins the runner's exact arguments, so a redeploy must widen it in the same
+  step (`docs/nas-topology.md`).
+
+## Setar NAS job: who may write what (2026-10-31)
+
+Same lane, live NAS repair (record and rollback: `docs/nas-topology.md`).
+
+- **The archive has one writer account, `ethan`, who owns it.** `setar-indexer`
+  had inherited full control of the whole `homes` share. It now holds only a
+  read grant on the Setar archive. `http` lost its grant on the token-bearing
+  runtime share, because Web Station had no reason to read the token.
+- **The maintenance hand-off is a one-command sudo rule, approved by the owner.**
+  `ethan` may run exactly `/bin/sh …/run-setar-index.sh` as `setar-indexer`,
+  so every publication comes from the job's own account and files. Running as
+  root was rejected because it leaves root-owned declarations for Drive to carry.
+  Publishing as `ethan` was rejected because it skips the job's account.
+- **"All day" means every 15 minutes, 00:00–23:45, while the NAS is powered.**
+  The owner's power schedule was left unchanged.
+
+## One Setar class, one record — from planned lesson to archive session (2026-10-30)
+
+Lane `20261030-keep-setar-lessons-and-preparation-coher-d2ee` (issue #60). The
+identity matrix, consumers and proof routes are `docs/setar-lesson-lifecycle.md`.
+
+- **Provenance is not intent.** Adopting or combining an owner's lesson no
+  longer stamps `origin: 'archive'`; only a lesson the import creates is
+  history-by-marker. A planned Class 42 bound to early material stays the next
+  class until its date; an archive-only session dated ahead of the device clock
+  stays history. Lessons adopted before this keep their marker (no clock-reading
+  migration); they are all in the past.
+- **Same instrument + date + number without path evidence now ASKS.** It used to
+  create a competing lesson (the reported Class 41 pair). Number alone, date
+  alone, another instrument or date (the real Class 38) still never match; a
+  unique exact path still adopts on its own. A bound session is now examined for
+  an unbound twin: Combine (owner's id survives, every reference rebound, no
+  `deleteLesson`, no suppression) or Keep separate.
+- **Keep separate is a lesson-scoped `session` suppression**
+  (`{kind:'session', ref:N, itemId:<lessonId>}`), chosen over a new suppression
+  kind because it passes the v17 validator unchanged: no schema bump, and a
+  device still on the previous build accepts the synced snapshot (it shows the
+  row as a session decision, harmlessly). Only an UNSCOPED session suppression
+  hides a session.
+- **Words in progress block a combine** (a held notes recovery copy or a live
+  question capture on the twin): refused with the words kept, never folded away.
+  Two Combine answers into one archive row contradict each other; the second is
+  stale.
+- **Diagnostics carry a `code`** (additive; index stays version 1, older apps
+  ignore it, digest still verifies). Refresh groups attention by the one action
+  it needs and names the class, never parsing the sentence. One new
+  source-index commit follows, because diagnostics are inside `contentHash`.
+- **One guided maintenance route** (`scripts/setar-archive-maintenance.mjs`)
+  replaces hand-editing `PIECES.csv` / `RENAME-LOG.csv`: register, roster,
+  rename; preview id; private rollback copy outside the archive; validate with
+  the scanner's own grammar; scratch scan; publish through the existing job;
+  `retry` and `rollback`; repeat is a no-op. A "piece name" starting with a role
+  is refused as a filename mistake (Session 40's stacked `تمرین-من-نت-…`), never
+  registered. The scanner stays read-only. This supersedes "only the owner edits
+  the declarations" (2026-09-17): the owner still decides every fact; the tool
+  makes the edit.
+- **Sound recovery stays reachable when the page says ready.** A context left
+  `running` but silent had no practice-screen tap; "No sound? Test it" now is,
+  and a transient constructor refusal offers "Try sound again" (Settings no
+  longer disables Test for it). Same fresh-in-the-tap context; nothing detected
+  or automatic; metronome Start keeps reusing a running context, which after
+  the tap is the fresh one.
+- **CI test, not CI:** the apt-routing test proves per-probe `--max-time`,
+  targets and safeguards by a recording `curl` shim and weakened scratch copies,
+  with a 60 s deadlock guard, instead of racing wall-clock totals.
+
 ## A live teacher question saves itself; a class slot never starts below its floor (2026-10-29)
 
 Rework of the 2026-10-28 lane (same contract, owner amendment of

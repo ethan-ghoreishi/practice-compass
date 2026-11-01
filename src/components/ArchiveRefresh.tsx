@@ -10,7 +10,11 @@ import {
   decisionMatchesSuggestion,
   archiveValueDecision,
   canonicalStringify,
+  diagnosticAction,
+  PLANNED_CLASS_WHY,
   type AnsweredQuestion,
+  type DiagnosticAction,
+  type SourceDiagnostic,
   type ArchiveSource,
   type ImportPlan,
   type MetadataField,
@@ -20,6 +24,7 @@ import {
   type SourceSuppression,
 } from '../domain';
 import { SaveStatus, useAcknowledgedSaves } from './ui';
+import { DuplicateQuestion } from './LessonReconcile';
 
 // ---------------------------------------------------------------------------
 // "Refresh Setar archive" — the ONE routine action.
@@ -111,7 +116,13 @@ export default function ArchiveRefresh() {
    * default (add the piece, adopt the one class left) that nobody chose.
    */
   function undecide(q: ReconcileQuestion) {
-    decide(q.kind === 'item' ? { kind: 'clear-item', pieceKey: q.pieceKey! } : { kind: 'clear-lesson', sessionN: q.sessionN! });
+    decide(
+      q.kind === 'item'
+        ? { kind: 'clear-item', pieceKey: q.pieceKey! }
+        : q.kind === 'duplicate'
+          ? { kind: 'clear-duplicate', sessionN: q.sessionN!, lessonId: q.lessonId! }
+          : { kind: 'clear-lesson', sessionN: q.sessionN! },
+    );
   }
 
   /** "Keep my value": withdraw the choice; Apply then keeps the owner's field. */
@@ -171,7 +182,7 @@ export default function ArchiveRefresh() {
   if (phase.kind === 'preview' && plan) {
     const { sessions, pieces } = phase.fetched.index;
     const at = (q: ReconcileQuestion) =>
-      q.kind === 'lesson' ? sessions.findIndex((x) => x.n === q.sessionN) : sessions.length + pieces.findIndex((x) => x.key === q.pieceKey);
+      q.kind !== 'item' ? sessions.findIndex((x) => x.n === q.sessionN) : sessions.length + pieces.findIndex((x) => x.key === q.pieceKey);
     asked.push(...[...plan.questions, ...plan.answered].sort((a, b) => at(a) - at(b)));
   }
 
@@ -249,7 +260,10 @@ export default function ArchiveRefresh() {
           {asked.length > 0 && (
             <div className="stack-sm">
               <div className="section-label">Needs a decision</div>
-              {asked.map((q) => (
+              {asked.map((q) =>
+                q.kind === 'duplicate' ? (
+                  <DuplicateQuestion key={`${q.kind}-${q.sessionN}-${q.lessonId}`} q={q} onDecide={decide} onClear={() => undecide(q)} />
+                ) : (
                 <div key={`${q.kind}-${q.pieceKey ?? q.sessionN}`} className="list-row stack-sm" style={ROW}>
                   {/* The GROUP is the name and the sentence that belongs to it;
                       the fixed English buttons below sit OUTSIDE it, so a Farsi
@@ -289,7 +303,8 @@ export default function ArchiveRefresh() {
                     )}
                   </div>
                 </div>
-              ))}
+                ),
+              )}
             </div>
           )}
 
@@ -428,8 +443,24 @@ function Summary({ plan, done = false, commitSha, fromArchive }: { plan: ImportP
           {commitSha ? ` · published commit ${commitSha.slice(0, 7)}` : ''}
         </span>
       </div>
+      {s.unchanged && (
+        <div className="tiny faint" style={{ textAlign: 'start' }}>
+          This is the index the NAS job last published. If you changed the archive and this hash has not moved, the
+          job has not published yet (it runs every 15 minutes) or it failed: the maintenance tool’s status names the
+          hash a scan would publish now.
+        </div>
+      )}
       {plan.attention.length > 0 && (
-        <div className="tiny" style={{ textAlign: 'start' }}>
+        <div className="tiny stack-sm" style={{ textAlign: 'start' }}>
+          {attentionGroups(plan.attention, plan.source.sessions).map((g) => (
+            <div key={g.action}>
+              <strong>
+                {ACTIONS[g.action].title} ({g.count}
+                {g.classes.length ? ` · class ${g.classes.join(', ')}` : ''})
+              </strong>{' '}
+              — {ACTIONS[g.action].step}
+            </div>
+          ))}
           <button type="button" className="link tiny" style={LINK_BTN} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
             {open ? 'Hide details' : `Show ${plan.attention.length} needing attention`}
           </button>
@@ -450,8 +481,9 @@ function Summary({ plan, done = false, commitSha, fromArchive }: { plan: ImportP
               </ul>
               <p className="tiny faint" style={{ textAlign: 'start', margin: '6px 0 0' }}>
                 <span dir="ltr">
-                  These are the archive’s own words. A new piece, a class roster or a renamed file is declared in
-                  PIECES.csv or RENAME-LOG.csv on the NAS — running the NAS job again changes nothing until then.
+                  These are the archive’s own words. A new piece, a class roster or a renamed file is settled with the
+                  guided maintenance tool on the NAS, which edits, validates and publishes for you — never by
+                  hand-editing PIECES.csv or RENAME-LOG.csv, and running the NAS job again changes nothing until then.
                 </span>{' '}
                 <a href={RUNBOOK} target="_blank" rel="noreferrer">
                   How to fix each one
@@ -473,6 +505,7 @@ function Summary({ plan, done = false, commitSha, fromArchive }: { plan: ImportP
  */
 function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: () => void }) {
   const items = useStore((s) => s.db.items);
+  const lessons = useStore((s) => s.db.lessons);
   const restore = useStore((s) => s.restoreArchiveSuppression);
   const saves = useAcknowledgedSaves();
   // ONE outcome slot for the section, not one per row: a restored row leaves
@@ -493,7 +526,12 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
   // path), each in its own isolate — the value resolves its own direction.
   const describe = (x: SourceSuppression): { lead: string; name: string; tail: string; owner?: string; there: boolean } => {
     if (x.kind === 'session') {
-      return { lead: 'Class ', name: x.ref, tail: ' — deleted or skipped', there: source.sessions.some((s) => String(s.n) === x.ref && !s.unavailable) };
+      const there = source.sessions.some((s) => String(s.n) === x.ref && !s.unavailable);
+      if (x.itemId) {
+        const mine = lessons.find((l) => l.id === x.itemId);
+        return { lead: 'Class ', name: x.ref, tail: mine ? ` — kept separate from your class of ${mine.date}` : ' — kept separate from a class no longer here', there };
+      }
+      return { lead: 'Class ', name: x.ref, tail: ' — deleted or skipped', there };
     }
     if (x.kind === 'piece') {
       return { lead: 'Piece ', name: x.ref, tail: ' — deleted or skipped', there: source.pieces.some((p) => p.key === x.ref && !p.unavailable) };
@@ -575,6 +613,9 @@ function Recovery({ source, onRestored }: { source: ArchiveSource; onRestored: (
 function askedSentence(q: ReconcileQuestion): string {
   const cleared = 'You cleared your answer, so Apply writes nothing for it; answer it, or a later refresh decides it unasked.';
   if (q.kind === 'item') return q.candidates.length ? 'An existing piece has this exact name.' : `No existing piece has this name now. ${cleared}`;
+  if (q.candidates.length === 1 && q.candidates[0]!.why === PLANNED_CLASS_WHY) {
+    return 'Is this the class you planned in Compass? Link keeps your commitments, questions and notes on it and adds the archive’s files.';
+  }
   return q.candidates.length > 1 ? 'More than one class matches this session.' : `${q.candidates.length ? 'One class' : 'No class'} matches this session now. ${cleared}`;
 }
 
@@ -604,7 +645,9 @@ function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
   const key = (d: ReconcileDecision) =>
     d.kind === 'apply-field'
       ? `field:${d.itemId}:${d.field}`
-      : 'pieceKey' in d
+      : d.kind === 'merge-lesson' || d.kind === 'separate-lesson' || d.kind === 'clear-duplicate'
+        ? `duplicate:${d.sessionN}:${d.lessonId}`
+        : 'pieceKey' in d
         ? `piece:${d.pieceKey}`
         : 'sessionN' in d
           ? `session:${d.sessionN}`
@@ -613,6 +656,37 @@ function sameTarget(a: ReconcileDecision, b: ReconcileDecision): boolean {
 }
 
 const LINK_BTN = { background: 'none', border: 'none', padding: 0 } as const;
+
+/** Each kind of attention, said as the one thing to do about it (by published code, never by wording). */
+const ACTIONS: Record<DiagnosticAction, { title: string; step: string }> = {
+  register: {
+    title: 'A piece the archive does not know yet',
+    step: 'if it is a new piece, register it with the maintenance tool (register); if the filename is wrong, rename the file with it (rename).',
+  },
+  roster: {
+    title: 'A class roster to confirm',
+    step: 'say which pieces that class taught with the maintenance tool (roster); its demonstration stays with the class until then.',
+  },
+  rename: { title: 'A filename the archive cannot read', step: 'rename it to <role>-<piece>.<ext> with the maintenance tool (rename).' },
+  'file-type': { title: 'A file type the archive does not index', step: 'save it as .mp4, .pdf or .jpg in the same folder; nothing else is needed.' },
+  'real-file': { title: 'A link or non-file in a class folder', step: 'put the real file there instead; links are never followed.' },
+  'rename-log': { title: 'The rename log cannot say where a file went', step: 'record that one exact rename again with the maintenance tool (rename).' },
+  other: { title: 'Other notes from the archive', step: 'the details below say what each one is.' },
+};
+
+/** Attention grouped by what to DO, with the classes it concerns — matched by the published folder, never parsed. */
+function attentionGroups(attention: SourceDiagnostic[], sessions: ArchiveSource['sessions']) {
+  const groups = new Map<DiagnosticAction, { action: DiagnosticAction; count: number; classes: number[] }>();
+  for (const d of attention) {
+    const action = diagnosticAction(d);
+    const g = groups.get(action) ?? { action, count: 0, classes: [] };
+    g.count += 1;
+    const n = sessions.find((x) => d.path === x.folder || d.path.startsWith(`${x.folder}/`))?.n;
+    if (n !== undefined && !g.classes.includes(n)) g.classes.push(n);
+    groups.set(action, g);
+  }
+  return [...groups.values()].map((g) => ({ ...g, classes: g.classes.sort((a, b) => a - b) }));
+}
 
 /** Plain names for the registry fields an improvement can touch (the choice group's accessible name). */
 const FIELD_LABELS: Record<MetadataField, string> = {

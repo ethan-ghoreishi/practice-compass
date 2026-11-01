@@ -734,6 +734,7 @@ describe('scanning the archive', () => {
           path: 'x/a.mp4',
           reason:
             'Rename log names more than one destination for this path ("x/b.mp4" and "x/c.mp4") — no replacement name can be read from it.',
+          code: 'rename-log',
         },
       ]);
       // ONE diagnostic naming its destinations in a stable order, whatever

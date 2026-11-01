@@ -2,8 +2,37 @@
 // Publish the scanned Setar index to ONE file on ONE branch of the private
 // data repository, and nothing else, ever.
 //
-//   node scripts/publish-setar-index.mjs --index <file>
+//   node scripts/publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock holder>]
 //     env: PC_INDEX_REPO=owner/name  PC_INDEX_TOKEN=<publisher token>
+//
+// On success the LAST stdout line is the evidence a caller checks:
+//   published-index <unchanged|published|created> <contentHash>
+// `--expect` refuses, before any request, an index whose contentHash is not
+// the one the caller validated (exit 3: nothing was published). Exit 2: usage
+// refused; exit 4: it failed before its ref write (nothing was published). Any other failure,
+// exit 1 included, may have come after GitHub accepted the ref: unknown.
+//
+// THE ARCHIVE IS ASKED AGAIN BEFORE EVERY REF WRITE (`archiveConfirmation`):
+// the index must still be what `--root` scans to NOW, and the archive's
+// maintenance lock must be absent (the scheduled job) or held by `--holder`
+// (the maintenance run that asked for this publication). A publisher paused or
+// orphaned while the archive moved on, or while a maintenance run owns it,
+// therefore refuses (exit 4) instead of putting an older index over a newer
+// one; the ref write itself stays non-force from the commit read.
+//
+// ONE PUBLISHER AT A TIME, from its ref read to its ref write's answer: each
+// holds this NAS's publisher SEAT (a localhost port, `PC_INDEX_SEAT_PORT`,
+// default 47391), which the kernel frees the instant its holder exits — never
+// a file to clean up, never a pid to guess. The scheduled job finding it taken
+// refuses (exit 4); a maintenance publication (`--holder`) waits for it. So a
+// newer decision — even an `unchanged` one that moves no ref — is always made
+// after the older publisher's write has been answered. A write asked for but
+// never answered (its publisher died, or the answer was lost) is recorded
+// first in `setar-publish-intent.json` beside the index: while the branch is
+// still at that write's parent, every later publisher moves the ref (a commit
+// even for unchanged content), so it can never land after them; only the
+// branch observed elsewhere, or a later write's own success, retires it —
+// never a refused write.
 //
 // WHY A SEPARATE BRANCH. The app's own sync writes main's whole tree with no
 // base_tree, so a sidecar placed beside state.json disappears on the next
@@ -20,9 +49,13 @@
 //
 // Node stdlib only.
 
-import { readFileSync, realpathSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { closeSync, constants, fstatSync, lstatSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { scanToIndex } from './scan-setar-classes.mjs';
 
 /** The ONLY branch this publisher may write. */
 export const SOURCE_INDEX_BRANCH = 'source-index';
@@ -32,6 +65,53 @@ export const INDEX_PATH = 'setar/index.json';
 const PROTECTED_PREFIXES = ['main', 'master', 'archive/'];
 
 const MAX_ATTEMPTS = 4;
+/** The publisher seat's default port, and how long a maintenance publication waits for it. */
+export const DEFAULT_SEAT_PORT = 47391;
+const MAINTENANCE_SEAT_WAIT_MS = 120_000;
+
+/**
+ * Take this NAS's publisher seat: listen on a localhost port, which no second
+ * process can, and which the kernel releases when this one exits however it
+ * exits. Taken: wait up to `wait` ms (`onBusy` is told each time), then refuse
+ * — nothing was published. Returns the release.
+ */
+export async function takeSeat({ port = DEFAULT_SEAT_PORT, wait = 0, onBusy }) {
+  const until = Date.now() + wait;
+  for (;;) {
+    const server = createServer();
+    const err = await new Promise((done) => {
+      server.once('error', done);
+      server.listen({ port, host: '127.0.0.1', exclusive: true }, () => done(null));
+    });
+    if (!err) return () => new Promise((done) => server.close(() => done()));
+    if (err.code !== 'EADDRINUSE') throw nothingPublished(err);
+    if (Date.now() >= until) {
+      throw nothingPublished(new Error(`Another publication holds this NAS's publisher seat (port ${port}); nothing was published. The next run publishes what the archive holds.`));
+    }
+    onBusy?.();
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
+/**
+ * Ref writes asked for and not yet answered, each `{ parent, commit }`: a
+ * non-force write from `parent` can land only while the branch is AT `parent`.
+ * Unreadable counts as one that may land on any head.
+ */
+const readIntents = (file) => {
+  let v;
+  try {
+    v = JSON.parse(readFileSync(file, 'utf8'));
+  } catch (err) {
+    return err?.code === 'ENOENT' ? [] : [{ unknown: true }];
+  }
+  return (Array.isArray(v) ? v : [v]).map((e) => (typeof e?.commit === 'string' && (e.parent === null || typeof e.parent === 'string') ? { parent: e.parent, commit: e.commit } : { unknown: true }));
+};
+const writeIntents = (file, list) => {
+  if (!list.length) return rmSync(file, { force: true });
+  writeFileSync(`${file}.tmp`, `${JSON.stringify(list)}\n`);
+  renameSync(`${file}.tmp`, file);
+};
 
 /**
  * Publish `indexText` as a single commit on the source-index branch.
@@ -47,42 +127,255 @@ const MAX_ATTEMPTS = 4;
  * - The ref only ever advances NON-FORCE from the commit that was read, so a
  *   second publisher racing this one loses the update-ref rather than
  *   overwriting it, and the retry re-reads before deciding anything.
- * - An interruption before the ref advances leaves the previous index as the
- *   published one: a blob and a commit nothing points at are invisible.
+ * - An interruption before the ref advances publishes nothing of THIS run: a
+ *   blob and a commit nothing points at are invisible. Such a failure carries
+ *   `nothingPublished: true` — a claim about this run, never the branch. A throw FROM the ref write (a
+ *   lost response, a 5xx) does not: GitHub may have accepted it.
  */
-export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message }) {
+export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message, expectedContentHash, confirm, seat, intent }) {
   if (branch !== SOURCE_INDEX_BRANCH) throw new Error(`This publisher only writes the "${SOURCE_INDEX_BRANCH}" branch.`);
   if (path !== INDEX_PATH) throw new Error(`This publisher only writes "${INDEX_PATH}".`);
   if (PROTECTED_PREFIXES.some((p) => branch === p || branch.startsWith(p))) {
     throw new Error('Refusing to write a protected branch.');
   }
   if (typeof indexText !== 'string' || !indexText.trim()) throw new Error('There is no index to publish.');
-
-  let lastConflict = null;
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-    const ref = await transport.getRef(branch);
-
-    if (ref) {
-      const current = await transport.getFile(ref.sha, path);
-      if (current && current.text === indexText) return { status: 'unchanged', commit: ref.sha };
-    }
-
-    const blobSha = await transport.createBlob(indexText);
-    const baseTreeSha = ref ? (await transport.getCommit(ref.sha)).treeSha : null;
-    const treeSha = await transport.createTree({ baseTreeSha, path, blobSha });
-    const commitSha = await transport.createCommit({
-      message: message ?? 'Update Setar source index',
-      treeSha,
-      parents: ref ? [ref.sha] : [],
-    });
-
-    const outcome = ref
-      ? await transport.updateRef(branch, commitSha, ref.sha)
-      : await transport.createRef(branch, commitSha);
-    if (outcome === 'ok') return { status: ref ? 'published' : 'created', commit: commitSha };
-    lastConflict = outcome;
+  // WHAT WAS VALIDATED IS WHAT IS PUBLISHED, decided before Git is touched:
+  // a job scanning another root, or an archive changed since validation, is
+  // refused here — never compared after the ref has already moved.
+  if (expectedContentHash !== undefined) {
+    const actual = contentHashOf(indexText);
+    if (actual !== expectedContentHash) throw new ExpectationRefused(`This index is ${String(actual).slice(0, 12)}, not the validated ${String(expectedContentHash).slice(0, 12)}; nothing was published.`);
   }
-  throw new Error(`Another publisher updated the index while this one was writing (${lastConflict}); nothing was overwritten.`);
+
+  const confirmed = async () => {
+    if (!confirm) return;
+    const now = await confirm();
+    if (now !== contentHashOf(indexText)) throw new Error('The archive has changed since this index was scanned; nothing was published (the next run publishes what it holds now).');
+  };
+  const leave = seat ? await takeSeat(seat) : async () => {};
+  try {
+    return await attempts();
+  } finally {
+    await leave();
+  }
+
+  async function attempts() {
+    let lastConflict = null;
+    let guarded = false;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+      let ref;
+      let commitSha;
+      let open = [];
+      try {
+        // Until a head is OBSERVED, every recorded unanswered write may still
+        // land: a failed branch read proves nothing about them.
+        const all = intent ? readIntents(intent) : [];
+        guarded = all.length > 0;
+        ref = await transport.getRef(branch);
+        const head = ref?.sha ?? null;
+        // An earlier write asked for and never answered can still land while
+        // the branch is at its parent (and has not already landed). Only an
+        // OBSERVED head elsewhere, or this run's own accepted write, retires
+        // one; a refused write never does. While one is open this write moves
+        // the ref (a commit even for unchanged content), after which it cannot.
+        if (intent) {
+          open = all.filter((e) => e.unknown || (e.parent === head && e.commit !== head));
+          if (open.length !== all.length) writeIntents(intent, open);
+        }
+        guarded = open.length > 0;
+
+        if (ref && !guarded) {
+          const current = await transport.getFile(ref.sha, path);
+          if (current && current.text === indexText) return { status: 'unchanged', commit: ref.sha };
+        }
+        // Asked AFTER the ref is read, before anything is written: an archive
+        // that moved on (or a maintenance run that now owns it) since this index
+        // was scanned refuses, leaving no objects behind.
+        await confirmed();
+
+        const blobSha = await transport.createBlob(indexText);
+        const baseTreeSha = ref ? (await transport.getCommit(ref.sha)).treeSha : null;
+        const treeSha = await transport.createTree({ baseTreeSha, path, blobSha });
+        commitSha = await transport.createCommit({
+          message: message ?? 'Update Setar source index',
+          treeSha,
+          parents: ref ? [ref.sha] : [],
+        });
+        // …and again immediately before the ref write: a newer decision that
+        // moved no ref (an `unchanged` publication) is still seen. The ref write
+        // is non-force from the read above, so a publisher that confirmed later
+        // wins any race that does move the ref.
+        // No newer decision is made between this and the ref write's answer:
+        // every other publisher waits for this one's seat.
+        await confirmed();
+        // Recorded BEFORE it is asked for: if no answer comes, the next publisher knows.
+        if (intent) writeIntents(intent, [...open, { parent: head, commit: commitSha }]);
+      } catch (err) {
+        // Nothing of THIS run was asked for; an earlier unanswered write still may land.
+        throw guarded ? err : nothingPublished(err);
+      }
+
+      // A conflict answer is GitHub refusing THIS write; a throw here is unknown (the intent stays).
+      const outcome = ref
+        ? await transport.updateRef(branch, commitSha, ref.sha)
+        : await transport.createRef(branch, commitSha);
+      if (outcome === 'ok') {
+        // The branch is at a commit no earlier write had as its parent: none of them can land now.
+        if (intent) rmSync(intent, { force: true });
+        return { status: ref ? 'published' : 'created', commit: commitSha };
+      }
+      lastConflict = outcome;
+    }
+    const e = new Error(`Another publisher updated the index while this one was writing (${lastConflict}); nothing was overwritten.`);
+    // Every write of this run was refused — but one asked for earlier may still land: unknown, never "nothing".
+    throw guarded ? e : nothingPublished(e);
+  }
+}
+
+/** Refused before any request: nothing was published. */
+export class ExpectationRefused extends Error {
+  nothingPublished = true;
+}
+
+function nothingPublished(err) {
+  const e = err instanceof Error ? err : new Error(String(err));
+  e.nothingPublished = true;
+  return e;
+}
+
+/**
+ * The archive's maintenance lock: ONE folder in the archive root (the scanner
+ * skips dotfiles) holding exactly one record, `<token>.json`. A run builds the
+ * folder privately and renames it into place, which fails while a lock stands,
+ * so a record is never partial. A lock is judged as OBJECTS, never through a
+ * path that could be replaced meanwhile: the folder is entered and proved by
+ * inode, its entries read by bare name without following a link, and the
+ * folder proved still at its name after; a holder is its token AND the exact
+ * folder and record it made.
+ */
+export const ARCHIVE_LOCK = '.setar-maintenance.lock';
+
+const digestOf = (bytes) => createHash('sha256').update(bytes).digest('hex');
+const sameObject = (a, b) => Boolean(a && b && a.ino === b.ino && a.dev === b.dev);
+const lockChanged = () => new Error('The archive’s maintenance lock changed while it was read; nothing was decided on it. Try again.');
+
+/** One entry as an object: its lstat, and a file's bytes read from the very file judged (never through a link). */
+function readEntry(p) {
+  const st = lstatSync(p, { bigint: true });
+  if (!st.isFile()) return { st, bytes: null };
+  let fd;
+  try {
+    fd = openSync(p, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+  } catch {
+    throw lockChanged(); // replaced by a link (or removed) since its lstat
+  }
+  try {
+    if (!sameObject(fstatSync(fd, { bigint: true }), st)) throw lockChanged();
+    return { st, bytes: readFileSync(fd) };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+/**
+ * The lock as it stands: null (absent, or an empty folder a release left), its
+ * record `{ token, pid, host, since, holder, folder, digest, entries }`, or
+ * `{ unreadable }` with a digest of what is there when it is not exactly one
+ * record in this tool's form — never guessed into one. `holder` names the
+ * token, the folder and the record file as objects; `digest` covers the folder
+ * too, so a record shown is the record of THAT folder. `entries` are what a
+ * release may remove, each `[path from the root, lockEntryDigest]`: the
+ * folder's entries, or the lock's own name when it is not a folder (an earlier
+ * version's file). A lock that changes while it is read is an error, never
+ * null: doubt reads as held. `at` is the test seam, after the folder's lstat.
+ */
+export function readArchiveLock(root, at = () => {}) {
+  const p = join(root, ARCHIVE_LOCK);
+  let st;
+  try {
+    st = lstatSync(p, { bigint: true });
+  } catch (err) {
+    if (err?.code === 'ENOENT') return null;
+    throw err;
+  }
+  if (!st.isDirectory()) {
+    const e = readEntry(p);
+    return { unreadable: true, entries: [[ARCHIVE_LOCK, lockEntryDigest(p)]], digest: digestOf(e.bytes ?? (e.st.isSymbolicLink() ? `link:${readlinkSync(p)}` : `${e.st.mode}`)) };
+  }
+  at('read-lock', p);
+  const parent = statSync(root, { bigint: true });
+  const home = statSync('.', { bigint: true });
+  const back = process.cwd();
+  let parts;
+  try {
+    process.chdir(p);
+  } catch {
+    throw lockChanged();
+  }
+  try {
+    if (!sameObject(statSync('.', { bigint: true }), st)) throw lockChanged();
+    parts = readdirSync('.').sort().map((n) => [n, readEntry(n)]);
+    // Read IN the folder that was the lock — and it is still the lock, at its name, in the same archive.
+    if (!sameObject(lstatSync(join('..', ARCHIVE_LOCK), { bigint: true }), st) || !sameObject(statSync('..', { bigint: true }), parent)) throw lockChanged();
+  } finally {
+    process.chdir(back);
+    if (!sameObject(statSync('.', { bigint: true }), home)) throw new Error('The folder this ran in was moved while the archive’s lock was read; nothing was decided on it.');
+  }
+  if (!parts.length) return null;
+  const digest = digestOf(JSON.stringify([`folder ${st.ino}`, ...parts.map(([n, e]) => [n, e.bytes ? digestOf(e.bytes) : 'not a file'])]));
+  const entries = parts.map(([n, e]) => [join(ARCHIVE_LOCK, n), e.bytes ? digestOf(e.bytes) : null]);
+  if (parts.length === 1 && parts[0][1].bytes) {
+    try {
+      const r = JSON.parse(parts[0][1].bytes.toString('utf8'));
+      if (typeof r?.token === 'string' && /^[0-9a-f-]{36}$/.test(r.token) && parts[0][0] === `${r.token}.json` && Number.isInteger(r.pid) && r.pid > 0 && typeof r.host === 'string' && typeof r.since === 'string') {
+        return { ...r, holder: lockHolder(r.token, st, parts[0][1].st), folder: st, digest, entries };
+      }
+    } catch {
+      // not a record: said as unreadable below
+    }
+  }
+  return { unreadable: true, folder: st, digest, entries };
+}
+
+/** A holder: the run's token AND the exact folder and record file it made (bigint stats), as one opaque string. */
+export const lockHolder = (token, folder, record) => `${token}:${folder.ino}:${record.ino}`;
+
+/**
+ * What one lock entry IS, judged again after it is set aside: a file's bytes or
+ * a link's target, by digest (as the record's digest reads it); null for
+ * anything else, which is never judged and so never removed.
+ */
+export function lockEntryDigest(p) {
+  const { st, bytes } = readEntry(p);
+  return bytes ? digestOf(bytes) : st.isSymbolicLink() ? digestOf(`link:${readlinkSync(p)}`) : null;
+}
+
+/**
+ * What a publisher asks before its ref write: who holds the archive, then what
+ * it scans to now. `holder` is the maintenance run's `lockHolder` — its token
+ * and the exact lock it made; without one (the scheduled job) any lock, or a
+ * lock that will not read still, refuses. `at` is the read's test seam.
+ */
+export function archiveConfirmation(root, holder, at) {
+  return () => {
+    const held = readArchiveLock(root, at);
+    if (holder ? held?.holder !== holder : held) {
+      throw new Error(
+        holder
+          ? 'The maintenance run that asked for this publication no longer holds the archive; nothing was published.'
+          : 'A maintenance run holds the archive; nothing was published. That run publishes when it finishes.',
+      );
+    }
+    return scanToIndex(root).contentHash;
+  };
+}
+
+function contentHashOf(indexText) {
+  try {
+    return JSON.parse(indexText).contentHash ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -180,11 +473,11 @@ export function makeGitHubIndexTransport({ repo, token }) {
 }
 
 async function main() {
-  const { values } = parseArgs({ options: { index: { type: 'string' } } });
+  const { values } = parseArgs({ options: { index: { type: 'string' }, root: { type: 'string' }, expect: { type: 'string' }, holder: { type: 'string' } } });
   const repo = process.env.PC_INDEX_REPO;
   const token = process.env.PC_INDEX_TOKEN;
-  if (!values.index || !repo || !token) {
-    console.error('Usage: publish-setar-index.mjs --index <file>');
+  if (!values.index || !values.root || !repo || !token) {
+    console.error('Usage: publish-setar-index.mjs --index <file> --root <archive> [--expect <contentHash>] [--holder <lock holder>]');
     console.error('  PC_INDEX_REPO=owner/name PC_INDEX_TOKEN=<publisher token> must be set.');
     process.exit(2);
   }
@@ -192,20 +485,37 @@ async function main() {
   try {
     indexText = readFileSync(values.index, 'utf8');
   } catch {
-    console.error('Could not read the scanned index; the published one is unchanged.');
-    process.exit(1);
+    console.error('Could not read the scanned index; this run published nothing.');
+    process.exit(4);
   }
   try {
-    const result = await publishIndex({ transport: makeGitHubIndexTransport({ repo, token }), indexText });
+    const result = await publishIndex({
+      transport: makeGitHubIndexTransport({ repo, token }),
+      indexText,
+      expectedContentHash: values.expect,
+      confirm: archiveConfirmation(values.root, values.holder),
+      seat: { port: Number(process.env.PC_INDEX_SEAT_PORT || DEFAULT_SEAT_PORT), wait: values.holder ? MAINTENANCE_SEAT_WAIT_MS : 0 },
+      intent: join(dirname(resolve(values.index)), 'setar-publish-intent.json'),
+    });
     console.error(
       result.status === 'unchanged'
         ? 'Index unchanged — no commit.'
         : `Index ${result.status} as ${result.commit.slice(0, 12)}.`,
     );
+    console.log(`published-index ${result.status} ${contentHashOf(indexText)}`);
   } catch (err) {
+    if (err instanceof ExpectationRefused) {
+      console.error(`Refused: ${err.message}`);
+      process.exit(3);
+    }
     // Never the URL, never the token, never the archive root.
     console.error(`Publish failed: ${err.message}`);
-    console.error('The previously published index is still the one the app reads.');
+    if (err?.nothingPublished) {
+      // About THIS run only: another publisher's unanswered write may still land.
+      console.error('This run published nothing.');
+      process.exit(4);
+    }
+    console.error('It may already be published; running the job again makes no new commit if so.');
     process.exit(1);
   }
 }

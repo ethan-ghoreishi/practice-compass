@@ -1,0 +1,11 @@
+{
+  "id": "20261030-keep-setar-lessons-and-preparation-coher-d2ee",
+  "contractId": "20261030-keep-setar-lessons-and-preparation-coher-d2ee",
+  "patchId": "31a9461ec314222d759ccf55428e86cd5181f6b1",
+  "decision": "approved",
+  "by": "owner",
+  "at": "2026-11-01T14:37:58.183Z",
+  "algorithm": "ed25519",
+  "signature": "+fgpgBwzYqlqQHxNPC9WhEvmljQZL8AwDxt7bJ4BqsF5xWHbQneoQEm6puQuHmWs/uyMEAibqnbgtOGeFIBfCA==",
+  "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAxxaiErDKWXw9qQrVISVCyYQrsfvEEbOKmcLKt92Rkro=\n-----END PUBLIC KEY-----\n"
+}

@@ -971,7 +971,11 @@ describe('what an archive import may and may not establish', () => {
     const { nextLessonFor } = await import('../domain/selectors');
     const { preparationDatesByItem, defaultTargetLesson } = await import('../domain/lessonAgenda');
     const db = useStore.getState().db;
-    expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+    // 39 sessions bound; the 35 the import CREATED are history by marker, and
+    // the owner's 4 adopted classes keep their own intent (all long past).
+    expect(db.lessons.filter((l) => l.source)).toHaveLength(39);
+    expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(35);
+    expect(db.lessons.filter((l) => l.source && !l.origin).map((l) => l.id).sort()).toEqual(['L-1', 'L-13', 'L-25', 'L-28']);
     expect(nextLessonFor(db.lessons, SETAR, NOW)!.id).toBe('L-38-upcoming');
     expect(defaultTargetLesson(db.lessons, SETAR, NOW)!.id).toBe('L-38-upcoming');
     expect([...preparationDatesByItem(db.lessonAgenda, db.lessons, NOW).values()]).toEqual([]);

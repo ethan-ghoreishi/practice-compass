@@ -26,6 +26,7 @@ export * from './recordings';
 export * from './setarClasses';
 export * from './sourceArchive';
 export * from './sourceReconcile';
+export * from './lessonReconcile';
 export * from './sync';
 export * from './canonical';
 export * from './files';

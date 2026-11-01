@@ -1,0 +1,178 @@
+{
+  "_about": "The owner-authored records of the reported Class 41 pair, in the shape of the owner's schema-17 export of 2026-10-30 — synthetic ids and words, never the owner's text. The archive-bound twin is NOT here: it is what an earlier Refresh created (src-… for session 41), and the tests re-create it by importing the source index exactly as that Refresh did.",
+  "instrument": {
+    "id": "inst-setar",
+    "name": "Setar",
+    "family": "Persian",
+    "active": true,
+    "createdAt": "2026-10-20T18:00:00.000Z",
+    "updatedAt": "2026-10-20T18:00:00.000Z"
+  },
+  "items": [
+    {
+      "id": "it-abouata",
+      "instrumentId": "inst-setar",
+      "title": "پیش‌درآمد ابوعطا",
+      "itemType": "full_piece",
+      "status": "usable",
+      "importance": 3,
+      "difficulty": 3,
+      "timesPractised": 0,
+      "totalMinutes": 0,
+      "saturationWarning": false,
+      "createdAt": "2026-10-20T18:00:00.000Z",
+      "updatedAt": "2026-10-20T18:00:00.000Z"
+    },
+    {
+      "id": "it-chahargah",
+      "instrumentId": "inst-setar",
+      "title": "چهارمضراب چهارگاه",
+      "itemType": "full_piece",
+      "status": "usable",
+      "importance": 3,
+      "difficulty": 3,
+      "timesPractised": 0,
+      "totalMinutes": 0,
+      "saturationWarning": false,
+      "createdAt": "2026-10-20T18:00:00.000Z",
+      "updatedAt": "2026-10-20T18:00:00.000Z"
+    },
+    {
+      "id": "it-extra",
+      "instrumentId": "inst-setar",
+      "title": "Left-hand drill",
+      "itemType": "exercise",
+      "status": "usable",
+      "importance": 3,
+      "difficulty": 3,
+      "timesPractised": 0,
+      "totalMinutes": 0,
+      "saturationWarning": false,
+      "createdAt": "2026-10-20T18:00:00.000Z",
+      "updatedAt": "2026-10-20T18:00:00.000Z"
+    }
+  ],
+  "manualLesson": {
+    "id": "L41-mine",
+    "instrumentId": "inst-setar",
+    "date": "2026-10-27",
+    "number": 41,
+    "itemIds": [
+      "it-abouata",
+      "it-chahargah"
+    ],
+    "createdAt": "2026-10-20T18:00:00.000Z",
+    "updatedAt": "2026-10-20T18:00:00.000Z"
+  },
+  "agenda": [
+    {
+      "id": "prep-41-a",
+      "kind": "preparation",
+      "itemId": "it-abouata",
+      "instrumentId": "inst-setar",
+      "lessonId": "L41-mine",
+      "createdAt": "2026-10-20T18:00:00.000Z",
+      "updatedAt": "2026-10-20T18:00:00.000Z"
+    },
+    {
+      "id": "prep-41-b",
+      "kind": "preparation",
+      "itemId": "it-chahargah",
+      "instrumentId": "inst-setar",
+      "lessonId": "L41-mine",
+      "createdAt": "2026-10-20T18:00:00.000Z",
+      "updatedAt": "2026-10-20T18:00:00.000Z"
+    },
+    {
+      "id": "q-41-a",
+      "kind": "question",
+      "text": "Where does the ornament fall in bar 3?",
+      "instrumentId": "inst-setar",
+      "itemId": "it-abouata",
+      "lessonId": "L41-mine",
+      "createdAt": "2026-10-20T18:00:00.000Z",
+      "updatedAt": "2026-10-20T18:00:00.000Z"
+    },
+    {
+      "id": "q-41-b",
+      "kind": "question",
+      "text": "چه سرعتی برای تمرین؟",
+      "instrumentId": "inst-setar",
+      "itemId": "it-chahargah",
+      "lessonId": "L41-mine",
+      "createdAt": "2026-10-20T18:00:00.000Z",
+      "updatedAt": "2026-10-20T18:00:00.000Z"
+    }
+  ],
+  "extended": {
+    "_about": "ac-3's extension of the real shape: authored data on BOTH sides, so nothing can be preserved by accident.",
+    "manualNotes": "My notes before class.",
+    "twinNotes": "یادداشت بعد از کلاس.",
+    "twinItemIds": [
+      "it-chahargah",
+      "it-extra"
+    ],
+    "manualRecording": {
+      "id": "rec-mine",
+      "title": "Class 41 — my timestamps",
+      "path": "session-41-27-10-2026/ضبط-کلاس.mp4",
+      "kind": "video",
+      "notes": "12:30 the ornament",
+      "createdAt": "2026-10-20T18:00:00.000Z"
+    },
+    "twinRecording": {
+      "id": "rec-twin",
+      "title": "Class recording",
+      "path": "session-41-27-10-2026/ضبط-کلاس.mp4",
+      "kind": "video",
+      "notes": "watch from 40:00",
+      "createdAt": "2026-10-20T18:00:00.000Z"
+    },
+    "twinAgenda": [
+      {
+        "id": "q-41-asked",
+        "kind": "question",
+        "text": "Is the tremolo even?",
+        "instrumentId": "inst-setar",
+        "lessonId": "TWIN",
+        "askedAt": "2026-10-27T18:30:00.000Z",
+        "answer": "Not yet — slower.",
+        "createdAt": "2026-10-20T18:00:00.000Z",
+        "updatedAt": "2026-10-20T18:00:00.000Z"
+      },
+      {
+        "id": "q-41-history",
+        "kind": "question",
+        "text": "An older question once for this class",
+        "instrumentId": "inst-setar",
+        "detachedFromLessonId": "TWIN",
+        "createdAt": "2026-10-20T18:00:00.000Z",
+        "updatedAt": "2026-10-20T18:00:00.000Z"
+      }
+    ],
+    "attachments": [
+      {
+        "id": "att-mine",
+        "ownerType": "lesson",
+        "ownerId": "L41-mine",
+        "name": "mine.txt",
+        "mime": "text/plain",
+        "size": 9,
+        "kind": "other",
+        "createdAt": "2026-10-20T18:00:00.000Z",
+        "text": "mine 41\n!"
+      },
+      {
+        "id": "att-twin",
+        "ownerType": "lesson",
+        "ownerId": "TWIN",
+        "name": "twin.txt",
+        "mime": "text/plain",
+        "size": 9,
+        "kind": "other",
+        "createdAt": "2026-10-20T18:00:00.000Z",
+        "text": "twin 41\n!"
+      }
+    ]
+  }
+}

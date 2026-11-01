@@ -34,6 +34,7 @@ import { relativeDay } from '../components/format';
 import Attachments from '../components/Attachments';
 import ClassQuestions from '../components/ClassQuestions';
 import LessonNotes from '../components/LessonNotes';
+import { LessonTwinNotice } from '../components/LessonReconcile';
 import { LessonMaterial } from '../components/ItemMaterial';
 import { LessonAgendaPanel } from '../components/LessonAgenda';
 import QuickAdd from '../components/QuickAdd';
@@ -210,7 +211,7 @@ function WideLessons({ now, instruments }: { now: Date; instruments: Instrument[
                     onChange={(e) => setNum(e.target.value)}
                     style={{ width: 72 }}
                   />
-                  <input className="input grow" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+                  <input className="input grow" type="date" aria-label="Class date" value={date} onChange={(e) => setDate(e.target.value)} />
                   <button
                     className="btn btn-sm btn-primary"
                     onClick={() => {
@@ -377,7 +378,9 @@ function LessonCard({ lesson, now, onDelete }: { lesson: Lesson; now: Date; onDe
   // class has no notes by construction, and thirty-nine of them opening at once
   // turns the phone list into a wall — history starts COMPACT, and the owner
   // opens what they want to read.
-  const [open, setOpen] = useState(lesson.origin === 'archive' ? false : upcoming || !lesson.notes);
+  // A class bound to the archive is history unless it is still ahead — whether
+  // the import created it or the owner planned it and the archive bound to it.
+  const [open, setOpen] = useState(lesson.origin === 'archive' ? false : upcoming || (!lesson.notes && !lesson.source));
 
   return (
     <article className="card stack-sm">
@@ -420,6 +423,7 @@ function LessonDetail({ lesson, onDelete }: { lesson: Lesson; onDelete: () => vo
       {/* The SAME durable editor as the item's notebook. Blur-only saving
           made a stale copy authoritative the moment anything stole focus, and
           could not clear the text at all. */}
+      <LessonTwinNotice lessonId={lesson.id} />
       <LessonNotes lessonId={lesson.id} />
 
       <LessonItems lesson={lesson} />

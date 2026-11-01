@@ -135,7 +135,10 @@ describe('the archive graph at every inbound door', () => {
       expect(db.schemaVersion).toBe(SCHEMA_VERSION);
       expect(db.archiveSources).toHaveLength(1);
       expect(db.items.filter((i) => i.source)).toHaveLength(93);
-      expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(39);
+      // 39 sessions bound: 35 the import created (history by marker), and the
+      // owner's 4 adopted legacy classes keep their own origin (all long past).
+      expect(db.lessons.filter((l) => l.source)).toHaveLength(39);
+      expect(db.lessons.filter((l) => l.origin === 'archive')).toHaveLength(35);
       // The owner's suppression came through, and the piece it names is absent.
       expect(db.archiveSources[0]!.suppressions.map((s) => s.ref)).toEqual(['عراق']);
       expect(db.items.some((i) => i.source?.pieceKey === 'عراق')).toBe(false);

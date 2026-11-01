@@ -3,6 +3,7 @@ import { hasValue, isTermRef, resolveValue, TERM_FIELD_KIND, valueLabel, vocabul
 import { createItem, createLesson } from './factories';
 import { classifyPiece } from './setarSetup';
 import { nowISO } from './util';
+import { consolidateLesson, isLessonKeptSeparate, type LessonMerge } from './lessonReconcile';
 import {
   isSafeSourcePath,
   sourceItemId,
@@ -55,6 +56,14 @@ export type ReconcileDecision =
   | { kind: 'clear-item'; pieceKey: string }
   | { kind: 'clear-lesson'; sessionN: number }
   /**
+   * A BOUND session's twin (D4, docs/setar-lesson-lifecycle.md): fold the
+   * archive-bound lesson `boundId` into the owner's `lessonId`, or keep the two
+   * apart for good. `boundId` is the premise: a different bound row is stale.
+   */
+  | { kind: 'merge-lesson'; sessionN: number; lessonId: ID; boundId: ID }
+  | { kind: 'separate-lesson'; sessionN: number; lessonId: ID }
+  | { kind: 'clear-duplicate'; sessionN: number; lessonId: ID }
+  /**
    * A REGISTRY VALUE THE OWNER CHOSE TO TAKE — bound to the RECORD it was shown
    * against (`itemId`), the owner's value it was chosen over, TYPED (`from`: a
    * term reference stays a reference, text stays text, `null` is empty), what
@@ -89,10 +98,13 @@ export interface ReconcileCandidate {
 }
 
 export interface ReconcileQuestion {
-  kind: 'item' | 'lesson';
+  kind: 'item' | 'lesson' | 'duplicate';
   /** Exactly one of these is set. */
   pieceKey?: string;
   sessionN?: number;
+  /** A `duplicate` question: the owner's lesson, and the bound twin it would absorb. */
+  lessonId?: ID;
+  boundId?: ID;
   label: string;
   candidates: ReconcileCandidate[];
 }
@@ -246,6 +258,8 @@ export interface ImportPlan {
   repairedLessons: Lesson[];
   /** Existing items adopted by an explicit owner decision. */
   adoptedItems: PracticeItem[];
+  /** Bound twins the owner chose to fold into their own lesson (`consolidateLesson`). */
+  merges: LessonMerge[];
   /** The OPEN questions — what "N to decide" counts — a cleared answer's among them, whatever its candidates now are. */
   questions: ReconcileQuestion[];
   /**
@@ -543,6 +557,9 @@ function retainMissing(previous: ArchiveSource | undefined, index: SourceIndex, 
 
 // --- planning --------------------------------------------------------------
 
+/** Why a planned class, with no path evidence, is offered for a session (D3). */
+export const PLANNED_CLASS_WHY = 'Same date and number — the class you planned in Compass.';
+
 export interface PlanInput {
   db: PracticeDB;
   index: SourceIndex;
@@ -600,8 +617,8 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
   // a refresh, a reload and a sync all already respect.
   const addedSuppressions: SourceSuppression[] = [];
   const knownSuppressions = new Set(suppressions.map(suppressionKey));
-  const suppress = (kind: SourceSuppression['kind'], ref: string) => {
-    const entry: SourceSuppression = { kind, ref, at: nowISO(now) };
+  const suppress = (kind: SourceSuppression['kind'], ref: string, itemId?: ID) => {
+    const entry: SourceSuppression = { kind, ref, ...(itemId ? { itemId } : {}), at: nowISO(now) };
     if (knownSuppressions.has(suppressionKey(entry))) return;
     knownSuppressions.add(suppressionKey(entry));
     addedSuppressions.push(entry);
@@ -618,6 +635,15 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
 
   const newLessons: Lesson[] = [];
   const adoptedLessons: Lesson[] = [];
+  const merges: LessonMerge[] = [];
+  const keptSeparate = (n: number, lessonId: ID) => isLessonKeptSeparate(existing, n, lessonId);
+  // THE SAME CLASS, by the archive's own facts: same instrument, same date,
+  // same number, not yet bound, and not one the owner said is a different
+  // class. The source date FINDS candidates; it is never a second identity.
+  const sameClass = (session: { n: number; date: ISODate }) =>
+    db.lessons.filter(
+      (l) => !l.source && l.instrumentId === instrumentId && l.date === session.date && l.number === session.n && !keptSeparate(session.n, l.id),
+    );
   const questions: ReconcileQuestion[] = [];
   const answered: AnsweredQuestion[] = [];
   // The question an answer belongs to, reported with it whenever the answer
@@ -633,27 +659,66 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
   };
 
   for (const session of index.sessions) {
-    if (boundLessons.has(session.n)) continue;
     if (isSuppressed('session', String(session.n))) continue;
+    const bound = boundLessons.get(session.n);
+    if (bound) {
+      // A BOUND SESSION IS STILL LOOKED AT (D4). The owner's own planned
+      // class and an archive-created twin for the same session were left side
+      // by side for ever, because this loop simply skipped every bound
+      // session. Each unbound twin is ONE question: combine, or keep apart.
+      let mergedOne = false;
+      for (const twin of sameClass(session)) {
+        const ask: ReconcileQuestion = {
+          kind: 'duplicate',
+          sessionN: session.n,
+          lessonId: twin.id,
+          boundId: bound.id,
+          label: `Class ${session.n} · ${session.date}`,
+          candidates: [{ id: twin.id, title: `${twin.date} · class ${twin.number}`, why: 'Your class with the same date and number as the archive’s.' }],
+        };
+        const about = (d: ReconcileDecision) => 'lessonId' in d && d.sessionN === session.n && d.lessonId === twin.id;
+        if (acted(decisionFor('clear-duplicate', about))) {
+          questions.push(ask);
+          continue;
+        }
+        const separate = decisionFor('separate-lesson', about);
+        if (separate) {
+          acted(separate);
+          suppress('session', String(session.n), twin.id);
+          answer(ask, true, separate);
+          continue;
+        }
+        const merge = decisionFor('merge-lesson', about) as Extract<ReconcileDecision, { kind: 'merge-lesson' }> | undefined;
+        // ONE fold per session per commit: after it, the survivor IS the bound
+        // lesson, and any further twin is a question about THAT one.
+        if (merge && merge.boundId === bound.id && !mergedOne) {
+          acted(merge);
+          mergedOne = true;
+          merges.push({ archiveId, sessionN: session.n, lessonId: twin.id, boundId: bound.id });
+          answer(ask, true, merge);
+          continue;
+        }
+        questions.push(ask);
+      }
+      continue;
+    }
 
     // AUTO-ADOPT only a UNIQUE candidate with all three: same instrument, same
     // date, same number, and a reference that actually points into this
-    // session's own folder.
-    const candidates = db.lessons.filter(
-      (l) =>
-        !l.source &&
-        l.instrumentId === instrumentId &&
-        l.date === session.date &&
-        l.number === session.n &&
-        hasSourcePathEvidence(l, session.folder, renames, verifiedBase),
-    );
+    // session's own folder. The SAME class without that evidence is asked
+    // about (D3) — never silently given a competing second lesson.
+    const all = sameClass(session);
+    const evidenced = all.filter((l) => hasSourcePathEvidence(l, session.folder, renames, verifiedBase));
+    const candidates = all;
     const lessonCandidate = (l: Lesson): ReconcileCandidate => ({
       id: l.id,
       title: `${l.date}${l.number ? ` · class ${l.number}` : ''}`,
-      why: 'Same date and number, and it already links to this folder.',
+      why: evidenced.includes(l)
+        ? 'Same date and number, and it already links to this folder.'
+        : PLANNED_CLASS_WHY,
     });
     const ask: ReconcileQuestion = { kind: 'lesson', sessionN: session.n, label: `Class ${session.n} · ${session.date}`, candidates: candidates.map(lessonCandidate) };
-    const ambiguous = candidates.length > 1;
+    const ambiguous = all.length > 1 || (all.length === 1 && evidenced.length === 0);
 
     if (acted(decisionFor('clear-lesson', (d) => 'sessionN' in d && d.sessionN === session.n))) {
       questions.push(ask);
@@ -675,6 +740,9 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     if (createSeparately) {
       acted(createSeparately);
       newLessons.push(lessonForSession(archiveId, instrumentId, session, now));
+      // …and SAYS so durably: each class it was asked against is a different
+      // class, so the bound session never comes back as their twin (D6).
+      for (const l of candidates) suppress('session', String(session.n), l.id);
       answer(ask, ambiguous, createSeparately);
       continue;
     }
@@ -684,21 +752,28 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
       | undefined;
     if (linked) {
       // The SAME conditions the candidate list is built from — a link may only
-      // adopt a record that is still unbound and still this instrument's.
-      // Deleted, bound elsewhere or moved since the preview, the decision is
-      // STALE, never silently turned into "create a new class instead".
+      // adopt a record that is still one of THIS session's candidates: unbound,
+      // this instrument's, and still the archive's date AND number. Deleted,
+      // bound elsewhere, moved instrument, or re-dated/renumbered since the
+      // preview (a sync, an import, the owner's own edit), the decision is
+      // STALE and the question is asked again — never silently turned into
+      // "create a new class instead", never bound to a class it no longer is.
       acted(linked);
-      const target = db.lessons.find((l) => l.id === linked.lessonId);
-      if (target && !target.source && target.instrumentId === instrumentId) {
-        adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n }, origin: 'archive' });
-        answer(ask, ambiguous, linked, lessonCandidate(target));
+      const target = all.find((l) => l.id === linked.lessonId);
+      if (target) {
+        // The owner's lesson keeps its own `origin`: binding the archive's
+        // material is provenance, never a cancelled plan (D7).
+        adoptedLessons.push({ ...target, source: { archiveId, sessionN: session.n } });
+        answer(ask, ambiguous, linked);
         continue;
       }
       staleDecisions.push(linked);
+      questions.push(ask);
+      continue;
     }
 
-    if (candidates.length === 1) {
-      adoptedLessons.push({ ...candidates[0]!, source: { archiveId, sessionN: session.n }, origin: 'archive' });
+    if (all.length === 1 && evidenced.length === 1) {
+      adoptedLessons.push({ ...evidenced[0]!, source: { archiveId, sessionN: session.n } });
       continue;
     }
     if (ambiguous) {
@@ -919,6 +994,12 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
         return boundLessons.get(d.sessionN)?.id === d.lessonId;
       case 'create-lesson':
         return boundLessons.get(d.sessionN)?.id === sourceLessonId(archiveId, d.sessionN);
+      case 'clear-duplicate':
+        return true;
+      case 'merge-lesson':
+        return boundLessons.get(d.sessionN)?.id === d.lessonId;
+      case 'separate-lesson':
+        return keptSeparate(d.sessionN, d.lessonId);
       case 'apply-field': {
         // No live difference can mean two opposite things. The registry's
         // value is already in the owner's field, exactly as chosen — done — or
@@ -941,6 +1022,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     adoptedLessons.length > 0 ||
     adoptedItems.length > 0 ||
     repairedLessons.length > 0 ||
+    merges.length > 0 ||
     addedSuppressions.length > 0 ||
     appliedFields.length > 0;
   const sameGraph = existing?.indexHash === index.contentHash;
@@ -956,6 +1038,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     adoptedLessons: repairedAdopted,
     repairedLessons,
     adoptedItems,
+    merges,
     questions,
     answered,
     suggestions: differences.filter((d) => d.fresh),
@@ -965,7 +1048,7 @@ export function planArchiveImport({ db, index, instrumentId, decisions = [], ver
     summary: {
       addedItems: newItems.length,
       addedLessons: newLessons.length,
-      updatedLessons: repairedAdopted.length + adoptedItems.length + repairedLessons.length,
+      updatedLessons: repairedAdopted.length + adoptedItems.length + repairedLessons.length + merges.length,
       questions: questions.length,
       attention: attention.length,
       metadata: differences.filter((d) => d.fresh).length,
@@ -1015,6 +1098,7 @@ export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: 
     plan.adoptedLessons.length === 0 &&
     plan.repairedLessons.length === 0 &&
     plan.adoptedItems.length === 0 &&
+    plan.merges.length === 0 &&
     applied.length === 0;
   if (nothingToDo) return db;
 
@@ -1050,7 +1134,7 @@ export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: 
 
   const sources = (db.archiveSources ?? []).filter((s) => s.id !== plan.archiveId);
 
-  return {
+  const installed: PracticeDB = {
     ...db,
     // Adopted records are rewritten IN PLACE above — they keep their own ids,
     // their practice history and their position. Only genuinely new records are
@@ -1059,6 +1143,10 @@ export function applyArchiveImport(db: PracticeDB, plan: ImportPlan, decisions: 
     lessons: [...lessons, ...plan.newLessons],
     archiveSources: [...sources, plan.source],
   };
+  // Folds last, over the installed graph, in the SAME mutation: no window in
+  // which the twin is gone and the binding is not yet on the survivor.
+  const at = new Date(plan.source.acceptedAt);
+  return plan.merges.reduce((acc, m) => consolidateLesson(acc, m, at), installed);
 }
 
 // --- suppression -----------------------------------------------------------

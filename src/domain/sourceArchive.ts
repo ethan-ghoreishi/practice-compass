@@ -93,6 +93,35 @@ export interface SourceRename {
 export interface SourceDiagnostic {
   path: string;
   reason: string;
+  /**
+   * What KIND of attention it needs (the scanner's `DIAGNOSTIC_CODES`).
+   * Optional and additive: an index from an older scanner has none, and a code
+   * this build does not know reads as `other`. Never parsed out of `reason`.
+   */
+  code?: string;
+}
+
+/** What the owner does about each kind of diagnostic — the one action, said plainly. */
+export type DiagnosticAction = 'rename' | 'register' | 'roster' | 'file-type' | 'real-file' | 'rename-log' | 'other';
+
+const DIAGNOSTIC_ACTIONS: Record<string, DiagnosticAction> = {
+  'no-role': 'rename',
+  'class-names-piece': 'rename',
+  'not-session-folder': 'rename',
+  'outside-session': 'rename',
+  'unsupported-type': 'file-type',
+  unregistered: 'register',
+  roster: 'roster',
+  'demo-unattributed': 'roster',
+  'rename-log': 'rename-log',
+  symlink: 'real-file',
+  'not-file': 'real-file',
+  'not-directory': 'real-file',
+};
+
+/** The action a diagnostic calls for, by its published code — never by its wording. */
+export function diagnosticAction(d: SourceDiagnostic): DiagnosticAction {
+  return (d.code && Object.hasOwn(DIAGNOSTIC_ACTIONS, d.code) ? DIAGNOSTIC_ACTIONS[d.code] : undefined) ?? 'other';
 }
 
 export interface SourceIndex {
@@ -490,6 +519,7 @@ export function decodeSourceIndex(input: unknown): SourceIndex {
     diagnostics.push({
       path: text(d.path, 'A diagnostic path'),
       reason: text(d.reason, 'A diagnostic reason'),
+      ...(d.code === undefined ? {} : { code: text(d.code, 'A diagnostic code') }),
     });
   }
 
@@ -903,6 +933,7 @@ function checkSourceGraph(
       if (!isRecord(rawDiag)) return `${label} has a diagnostic entry that is not an object.`;
       const d = rawDiag as Partial<SourceDiagnostic>;
       if (!text(d.path) || !text(d.reason)) return `${label} has an unreadable diagnostic entry.`;
+      if (!(d.code === undefined || text(d.code))) return `${label} has a diagnostic with an unreadable code.`;
     }
   }
 

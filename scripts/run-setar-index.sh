@@ -2,7 +2,17 @@
 # Scan the Setar archive and publish its index. This is the whole production
 # job: a DSM scheduled task runs THIS file, nothing else.
 #
-#   sh run-setar-index.sh
+#   sh run-setar-index.sh                      # the scheduled task
+#   sh run-setar-index.sh <contentHash> <lock>  # the maintenance route: publish
+#                                              # only if THIS scan is the index
+#                                              # it validated (refused before
+#                                              # any request otherwise, exit 3)
+#                                              # and while that run still holds
+#                                              # the archive's maintenance lock
+#
+# Before its ref write the publisher scans the archive again and checks its
+# maintenance lock: the scheduled run refuses (exit 4) while a maintenance run
+# holds it, and any run refuses once the archive has moved on from its scan.
 #
 # Configuration comes from a protected operator file — never from the archive,
 # never from the app, never from a commit. Default location:
@@ -18,8 +28,11 @@
 #
 # WHAT THIS JOB MAY DO: read the archive, write ONE scratch file in its own
 # runtime directory, and update source-index/setar/index.json. Nothing else.
-# A failed scan or a failed publish leaves the last published index in place,
-# which is what the app keeps reading.
+# Exits that PROVE this run published nothing — never that the branch is as it
+# was, since another run's unanswered write may still land: 2 (configuration
+# refused, nothing ran), 3 (the scan was not the validated index) and 4 (the
+# scan, or the publisher before its ref write, failed). Any other failure may have come after GitHub accepted the
+# ref: unknown, and running the job again is safe (unchanged makes no commit).
 #
 # ROLLBACK: disable the scheduled task. The app keeps the source graph it last
 # accepted and goes on working offline; `git push --force-with-lease` of an
@@ -33,14 +46,14 @@ if [ -r "$CONFIG" ]; then
   # shellcheck disable=SC1090
   . "$CONFIG"
 else
-  echo "No readable config at $CONFIG; nothing was published." >&2
+  echo "No readable config at $CONFIG; this run published nothing." >&2
   exit 2
 fi
 
-: "${PC_ARCHIVE_ROOT:?PC_ARCHIVE_ROOT is not set}"
-: "${PC_INDEX_REPO:?PC_INDEX_REPO is not set}"
-: "${PC_INDEX_TOKEN:?PC_INDEX_TOKEN is not set}"
-export PC_INDEX_REPO PC_INDEX_TOKEN
+for v in PC_ARCHIVE_ROOT PC_INDEX_REPO PC_INDEX_TOKEN; do
+  eval "[ -n \"\${$v:-}\" ]" || { echo "$v is not set; this run published nothing." >&2; exit 2; }
+done
+export PC_INDEX_REPO PC_INDEX_TOKEN PC_INDEX_SEAT_PORT  # the seat port, if set, must be the same for every publisher here
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 NODE="${PC_NODE:-node}"
@@ -55,8 +68,18 @@ if [ ! -d "$WORK" ]; then
   exit 2
 fi
 
-# Scan first. If it fails, stop here: the published index is still the good one.
-"$NODE" "$HERE/scan-setar-classes.mjs" --root "$PC_ARCHIVE_ROOT" --out "$OUT"
+# Scan first. If it fails, stop here: this run publishes nothing.
+"$NODE" "$HERE/scan-setar-classes.mjs" --root "$PC_ARCHIVE_ROOT" --out "$OUT" || {
+  echo "The scan failed; this run published nothing." >&2
+  exit 4
+}
 
-# Then publish. An unchanged index makes no commit.
-"$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT"
+# Then publish. An unchanged index makes no commit. Its last stdout line,
+# `published-index <status> <contentHash>`, is the evidence a caller checks.
+if [ "$#" -gt 1 ]; then
+  "$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT" --root "$PC_ARCHIVE_ROOT" --expect "$1" --holder "$2"
+elif [ "$#" -gt 0 ]; then
+  "$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT" --root "$PC_ARCHIVE_ROOT" --expect "$1"
+else
+  "$NODE" "$HERE/publish-setar-index.mjs" --index "$OUT" --root "$PC_ARCHIVE_ROOT"
+fi
