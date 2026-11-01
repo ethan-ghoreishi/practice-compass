@@ -22,8 +22,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:34.532Z
-        commit: de7881e74b40926f06088028875f5183b506f7a9
+        at: 2026-11-01T19:45:56.444Z
+        commit: 1ee4bff22f6eff41f2b4c9ab31f485efe3cdc081
     - actor: The musician
       action: Rewatches the class and types the notes, in Farsi or English.
       shows: A direction-aware notes field; the list shows 'notes ✓' once there is
@@ -36,8 +36,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:34.532Z
-        commit: de7881e74b40926f06088028875f5183b506f7a9
+        at: 2026-11-01T19:45:56.444Z
+        commit: 1ee4bff22f6eff41f2b4c9ab31f485efe3cdc081
     - actor: The musician
       action: Adds a link to the class recording and to any scores — a NAS path or a
         full https link.
@@ -48,8 +48,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:34.532Z
-        commit: de7881e74b40926f06088028875f5183b506f7a9
+        at: 2026-11-01T19:45:56.444Z
+        commit: 1ee4bff22f6eff41f2b4c9ab31f485efe3cdc081
     - actor: The musician
       action: Taps 'Open' on a link.
       shows: The file opens in a new tab, resolved against the NAS base URL from
@@ -61,8 +61,8 @@ truth:
           device
       evidence:
         method: manual
-        at: 2026-10-29T21:06:34.532Z
-        commit: de7881e74b40926f06088028875f5183b506f7a9
+        at: 2026-11-01T19:45:56.444Z
+        commit: 1ee4bff22f6eff41f2b4c9ab31f485efe3cdc081
     - actor: The musician
       action: Links or quick-adds the practice items that came out of the class, and
         commits the ones to be ready for a class with 'Prepare for Class N ·
@@ -76,8 +76,9 @@ truth:
         that raises the item’s priority as it nears.
       assumes: []
       evidence:
-        method: inferred
-        at: 2026-10-30T23:13:30.267Z
+        method: manual
+        at: 2026-11-01T19:45:56.444Z
+        commit: 1ee4bff22f6eff41f2b4c9ab31f485efe3cdc081
     - actor: The musician
       action: Optionally attaches small hand-outs (a PDF, a photo, a short audio).
       shows: Files over 10 MB and any video are warned about; over 40 MB is refused
@@ -86,8 +87,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:34.532Z
-        commit: de7881e74b40926f06088028875f5183b506f7a9
+        at: 2026-11-01T19:45:56.444Z
+        commit: 1ee4bff22f6eff41f2b4c9ab31f485efe3cdc081
     - actor: The musician
       action: After the class, puts its recording and material in the ordinary
         session-N-DD-MM-YYYY folder on the NAS; the scheduled job publishes the
@@ -102,8 +103,9 @@ truth:
       assumes:
         - The NAS job has published the session
       evidence:
-        method: inferred
-        at: 2026-10-30T23:13:30.267Z
+        method: manual
+        at: 2026-11-01T19:45:56.444Z
+        commit: 1ee4bff22f6eff41f2b4c9ab31f485efe3cdc081
   endsWith: The class is on record once, with its archive material, its material
     is real practice items, and the work due before the next class is
     prioritised automatically.
@@ -275,4 +277,3 @@ The class is on record once, with its archive material, its material is real pra
 - The musician
 - The teacher (indirectly)
 - The NAS
-
