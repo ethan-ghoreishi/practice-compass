@@ -21,13 +21,15 @@
 //
 // The scanner stays read-only; this is the only writer, and it writes only
 // PIECES.csv, RENAME-LOG.csv, the one file a `rename` names, its own dotfiles
-// in the archive root (the archive's lock, a write's temp and capture) and its
-// own --state folder. Every write is proved against the exact state it expects
+// in the archive root (the archive's lock, a write's temp and capture) and in
+// that file's folder, and its own --state folder. A name it takes away is
+// never unlinked: it is kept as a hidden `.<name>.superseded-<id>` (the same
+// file, no bytes copied), so nothing anyone has open loses its file. Every write is proved against the exact state it expects
 // at the moment it is made, under the archive's one lock. Node stdlib only.
 
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { closeSync, constants, copyFileSync, existsSync, fchmodSync, futimesSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
+import { constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -266,7 +268,8 @@ const rootIdOf = (root) => sha(realpathSync.native(root).normalize('NFC'));
  *
  * `status` says what the ARCHIVE holds (prepared | applied | rolling-back |
  * rolled-back), `publication` what is known of the source-index branch
- * (pending | published | failed | unknown | not-needed), and `unresolved` the
+ * (pending | published | unknown | not-needed; an older journal's `failed` reads
+ * as unknown), and `unresolved` the
  * validated hashes of every attempt whose remote outcome is NOT known — kept
  * until a positive observation of the branch, never reset by a later failure.
  */
@@ -286,7 +289,7 @@ function journalFor(state, root, recovering) {
   else if (j.status === 'applied' || j.status === 'rolled-back') {
     if (!j.publication) j = { ...j, publication: 'pending' };
     else if (j.publication === 'unchanged' || j.publication === 'created') j = { ...j, publication: 'published' };
-    else if (j.publication === 'publish-failed') j = { ...j, publication: 'unknown' };
+    else if (j.publication === 'publish-failed' || j.publication === 'failed') j = { ...j, publication: 'unknown' };
   }
   // An open attempt from before `unresolved` existed stays open, under its hash if it recorded one.
   const open = ['pending', 'unknown'].includes(j.publication) ? [j.contentHash ?? 'unrecorded'] : [];
@@ -453,44 +456,25 @@ function capture(dir, name) {
 }
 
 /**
- * THE ONE PLACE a private name of this tool is removed: only while `kept`
- * still names the same file (a link: the same target), so a file never loses
- * its last name. The file is held open throughout: if `kept` is replaced or
- * removed in the instant between that judgement and the unlink, its bytes are
- * written back under the private name from the open file. Returns whether the
- * private name is gone and `kept` held the file after it went; on false the
- * private name holds the file (or its bytes). `at(point, label)` is the seam.
+ * THE ONE PLACE a private name of this tool is retired — NEVER unlinked, and
+ * its bytes never copied: it is RENAMED to a retained `.superseded-` name (the
+ * scanner skips dotfiles; a rename never drops a file's last name), and only
+ * then is `kept` judged to still name the same file (a link: the same
+ * target). If it does not, the retained name is renamed back to `aside` and
+ * false is returned: the private name still holds the very file. So no
+ * failure, interruption or concurrent replacement can leave the file without
+ * a name, and a program holding it open keeps writing into a named file.
+ * `at(point, label)` is the seam, between the rename and the judgement.
  */
-function unlinkKeeping(aside, kept, at, label) {
+function retireKeeping(aside, kept, at, label) {
   const st = lstatSync(aside);
   const target = st.isSymbolicLink() ? readlinkSync(aside) : null;
-  const fd = target === null ? openSync(aside, 'r') : null;
-  const holds = () => {
-    const k = lstatOrNull(kept);
-    return target === null ? same(k, st) : Boolean(k?.isSymbolicLink()) && readlinkSync(kept) === target;
-  };
-  try {
-    if (!holds()) return false;
-    at('unlink-aside', label);
-    rmSync(aside);
-    if (holds()) return true;
-    if (target !== null) symlinkSync(target, aside);
-    else {
-      const out = openSync(aside, 'wx');
-      try {
-        const buf = Buffer.allocUnsafe(1 << 20);
-        for (let pos = 0, n; (n = readSync(fd, buf, 0, buf.length, pos)) > 0; pos += n) writeSync(out, buf, 0, n);
-        // ponytail: mode and times kept; the owner is this tool's (chown needs root), the operator fixes it if it matters.
-        fchmodSync(out, st.mode & 0o7777);
-        futimesSync(out, st.atime, st.mtime);
-      } finally {
-        closeSync(out);
-      }
-    }
-    return false;
-  } finally {
-    if (fd !== null) closeSync(fd);
-  }
+  const retained = keep(aside);
+  at('retain-aside', label);
+  const k = lstatOrNull(kept);
+  if (target === null ? same(k, st) : Boolean(k?.isSymbolicLink()) && readlinkSync(kept) === target) return true;
+  renameSync(retained, aside);
+  return false;
 }
 
 /** Put a captured file back, never over anything that appeared meanwhile, nor losing it if its name is replaced again — then both are kept, and said. */
@@ -506,15 +490,15 @@ function putBack(dir, name, aside, at, label = name) {
     throw err;
   }
   at('put-back', label);
-  if (!unlinkKeeping(aside, join(dir, name), at, label)) throw new Refusal(both);
+  if (!retireKeeping(aside, join(dir, name), at, label)) throw new Refusal(both);
 }
 
-/** A replaced declaration is KEPT, never unlinked, under a name no other write uses. */
-const keep = (aside) => {
-  const kept = aside.replace('.captured-', '.superseded-');
+/** A private name RETIRED: the file is kept, never unlinked, under a name no other write uses. */
+function keep(aside) {
+  const kept = aside.replace(/\.(captured|dropping)-/, '.superseded-');
   renameSync(aside, kept);
   return kept;
-};
+}
 
 /**
  * Replace a declaration (or, with `text` null, take it out of the archive) only
@@ -601,7 +585,7 @@ function inFolder(root, folder, fn) {
  * moving bytes other than the recorded ones: the new name is LINKED (fails if
  * anything is there), what it names is judged (same file, recorded size and
  * SHA-256, the folder still at its name), and only then is the old name
- * removed — while the new name still holds the file. A judged failure removes
+ * retired to a hidden `.superseded-` name, never unlinked — while the new name still holds the file. A judged failure removes
  * only the name this call made, while the old name still holds the file —
  * inside the bound folder, wherever it now is; nothing has moved. Whichever
  * name another writer replaces meanwhile, the file keeps the other, and the
@@ -633,7 +617,7 @@ function moveExact({ root, owner, at, written }, fromRel, toRel, expect) {
         written?.delete('rename');
         throw new Refusal(`${why}, and "${toRel}" was then replaced or removed; whatever stands there is left, and nothing was moved.`);
       }
-      throw new Refusal(bound ? `${why}; nothing was moved.` : `${why}; the name this run made there was removed again, and nothing outside it was touched.`);
+      throw new Refusal(bound ? `${why}; nothing was moved.` : `${why}; the name this run made there was taken out again (kept hidden beside it), and nothing outside it was touched.`);
     }
     at('unlink', fromRel);
     const drop = dropName(from, b, to, at, join(root, fromRel), join(root, toRel));
@@ -646,7 +630,8 @@ function moveExact({ root, owner, at, written }, fromRel, toRel, expect) {
 }
 
 /**
- * Remove the leaf name `name` (inside a bound folder) only while it names the
+ * Take the leaf name `name` away (inside a bound folder; kept hidden, never
+ * unlinked: `retireKeeping`) only while it names the
  * file `inode` (an lstat) AND its other name `kept` still does — judged on a
  * PRIVATE name it was first moved to (atomic: whatever held the name at that
  * instant), so no file renamed onto either name meanwhile, nor the file
@@ -668,7 +653,7 @@ function dropName(name, inode, kept, at, label, keptLabel) {
     putBack('.', name, aside, at, label);
     return 'changed';
   }
-  if (unlinkKeeping(aside, kept, at, keptLabel)) return 'dropped';
+  if (retireKeeping(aside, kept, at, keptLabel)) return 'dropped';
   putBack('.', name, aside, at, label);
   return 'kept-changed';
 }
@@ -692,9 +677,10 @@ function validateAndScan(root, state, action) {
 
 /**
  * Publication failed. `nothingPublished` is a CLAIM about THIS attempt only,
- * made when the job proved it (it refused or failed before its ref write);
- * every other failure — a non-zero or signalled exit, a lost response, an
- * ordinary exception — is UNKNOWN and said so, never promised.
+ * made when the job proved it (it refused or failed before its ref write) —
+ * never about the branch, which another publisher may still change; every
+ * other failure — a non-zero or signalled exit, a lost response, an ordinary
+ * exception — leaves this attempt itself open too.
  */
 export class PublishFailed extends Error {
   constructor(message, nothingPublished) {
@@ -722,23 +708,24 @@ async function publishStep(state, base, scanned, publish, token) {
     // POSITIVE EVIDENCE or it did not happen: a publisher that returns no status has proved nothing.
     if (!PUBLISHED.has(result?.status)) throw new PublishFailed('the publisher reported no publication', false);
   } catch (err) {
+    // A proof covers THIS attempt only, never the branch: another publisher's
+    // unanswered write (the scheduled job's, recorded where this run cannot
+    // read) may still land. So a failure is always `unknown` until a positive
+    // observation of the branch.
     const proved = err?.nothingPublished === true;
     const unresolved = proved ? before : attempt.unresolved;
-    const publication = unresolved.length ? 'unknown' : 'failed';
     const why = err?.message ?? 'unknown';
     try {
-      writeJournal(state, { ...attempt, publication, unresolved });
+      writeJournal(state, { ...attempt, publication: 'unknown', unresolved });
     } catch (e) {
-      throw new Error(`Publication ${publication === 'failed' ? 'failed' : 'could not be confirmed'} (${why}), and the private journal could not record that (${e.message}); it still says pending, which counts as unconfirmed. Run \`retry\`.`);
+      throw new Error(`Publication could not be confirmed (${why}), and the private journal could not record that (${e.message}); it still says pending, which counts as unconfirmed. Run \`retry\`.`);
     }
+    const earlier = before.length ? 'an earlier attempt is still unconfirmed and may have been published' : 'what the source-index branch holds is not confirmed (an earlier or scheduled publication may still land)';
     return {
       ok: false,
       status: 'publish-failed',
       contentHash,
-      message:
-        publication === 'failed'
-          ? `The archive is valid, but publication failed (${why}). This attempt published nothing, so the source-index branch is as it was. Run \`retry\` to publish again.`
-          : `The archive is valid, but publication could not be confirmed (${why}); ${proved ? 'this attempt published nothing, but an earlier attempt is still unconfirmed and may have been published' : 'it may already be published'}. Run \`retry\`: it makes no new commit if the source-index branch already holds this index.`,
+      message: `The archive is valid, but publication could not be confirmed (${why}); ${proved ? `this attempt published nothing, but ${earlier}` : 'it may already be published'}. Run \`retry\`: it publishes this index, and makes no new commit if the source-index branch already holds it.`,
     };
   }
   // Published: a failure to RECORD it is never reported as a failure to publish.

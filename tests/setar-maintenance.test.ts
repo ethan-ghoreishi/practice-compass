@@ -6,11 +6,11 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 // @ts-expect-error — untyped operator tools; these are the real ones.
-import { applyMaintenance, Interrupted, planMaintenance, releaseLock, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
+import { applyMaintenance, Interrupted, planMaintenance, publishWithRunner, releaseLock, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
 // @ts-expect-error — see above.
 import { scanToIndex } from '../scripts/scan-setar-classes.mjs';
 // @ts-expect-error — see above.
-import { archiveConfirmation, ARCHIVE_LOCK, DEFAULT_SEAT_PORT, makeGitHubIndexTransport, publishIndex, readArchiveLock, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../scripts/publish-setar-index.mjs';
+import { archiveConfirmation, ARCHIVE_LOCK, DEFAULT_SEAT_PORT, makeGitHubIndexTransport, publishIndex, readArchiveLock, SOURCE_INDEX_BRANCH, INDEX_PATH, takeSeat } from '../scripts/publish-setar-index.mjs';
 import { followRenames } from '../src/domain/sourceReconcile';
 import SOURCE from './fixtures/setar-lifecycle-source.json' with { type: 'json' };
 import EXPECTED from './fixtures/setar-lifecycle-expected.json' with { type: 'json' };
@@ -46,14 +46,16 @@ function scratch() {
   return { base, root, state };
 }
 
-/** Every media byte, by path — what "without altering media" is checked against. */
+/** Every media byte, by path, as the scanner sees it (dotfiles skipped) — what "without altering media" is checked against. */
 function media(root: string): Record<string, string> {
   const out: Record<string, string> = {};
   for (const d of readdirSync(root).filter((n) => n.startsWith('session-'))) {
-    for (const f of readdirSync(join(root, d))) out[`${d}/${f}`] = sha(readFileSync(join(root, d, f)));
+    for (const f of readdirSync(join(root, d)).filter((n) => !n.startsWith('.'))) out[`${d}/${f}`] = sha(readFileSync(join(root, d, f)));
   }
   return out;
 }
+/** The hidden names a run retired in a session folder (never unlinked): each must be the inode of a file still there. */
+const retained = (root: string, folder: string) => readdirSync(join(root, folder)).filter((n) => n.includes('.superseded-'));
 const declarations = (root: string) => ({ pieces: readFileSync(join(root, 'PIECES.csv'), 'utf8'), log: readFileSync(join(root, 'RENAME-LOG.csv'), 'utf8') });
 
 /** A fake Git boundary; its `publish` is the real publisher, confirming against `root` before every ref write. */
@@ -258,6 +260,8 @@ describe('maintaining the Setar archive', () => {
       expect(await apply({ kind: 'rename', from, to })).toMatchObject({ ok: true, status: 'unchanged' });
       const unmoved = Object.fromEntries(Object.entries(media0).filter(([path]) => path !== from));
       expect(media(root)).toEqual({ ...unmoved, [to]: media0[from] });
+      // The old name is never unlinked: it is retired to ONE hidden name of the very same file (no bytes copied).
+      expect(retained(root, from.split('/')[0]!).map((n) => lstatSync(join(root, from.split('/')[0]!, n)).ino)).toEqual([lstatSync(join(root, to)).ino]);
 
       // --- AN EXACT CONTINUATION, and no fork or loop ever -----------------
       const a = `${S39}/نمونه-ضربی-سه-گاه-لطفی.mp4`;
@@ -345,7 +349,9 @@ describe('maintaining the Setar archive', () => {
       git.fail(true);
       const failed = await apply({ kind: 'roster', session: 41, pieces: [z] });
       expect(failed).toMatchObject({ ok: false, status: 'publish-failed' });
-      expect(failed.message).toMatch(/This attempt published nothing, so the source-index branch is as it was.*retry/s);
+      // A proof covers THIS attempt only, never the branch: unconfirmed, never "as it was".
+      expect(failed.message).toMatch(/this attempt published nothing, but what the source-index branch holds is not confirmed.*retry/s);
+      expect(failed.message).not.toMatch(/as it was/);
       expect(git.published()).toBe(good);
       await expect(apply({ kind: 'register', piece: 'یکی-دیگر' })).rejects.toThrow(/retry/);
       git.fail(false);
@@ -570,7 +576,8 @@ describe('maintaining the Setar archive', () => {
       const done = await cli(['register', '--piece', 'یکی-دیگر', '--apply', id!]);
       // No config here, so the job itself refuses: the change stands, validated, with a retry.
       expect(done.code).toBe(1);
-      expect(done.out).toMatch(/publication failed .*NAS job exited 2.*retry/s);
+      expect(done.out).toMatch(/could not be confirmed .*NAS job exited 2 before publishing: No readable config.*this run published nothing.*this attempt published nothing, but what the source-index branch holds is not confirmed.*retry/s);
+      expect(done.out).not.toMatch(/as it was/);
       expect(declarations(root).pieces).toContain('یکی-دیگر,');
 
       // --- THE REAL WRAPPER publishes only the validated index, on evidence -
@@ -614,7 +621,7 @@ describe('maintaining the Setar archive', () => {
       mkdirSync(noArchive);
       writeFileSync(join(noArchive, 'config.env'), `PC_ARCHIVE_ROOT=${join(noArchive, 'missing')}\nPC_INDEX_REPO=nobody/nothing\nPC_INDEX_TOKEN=not-a-token\nPC_INDEX_WORKDIR=${noArchive}\n`);
       const scanFailed = await via(undefined, { PC_INDEX_CONFIG: join(noArchive, 'config.env') });
-      expect([scanFailed.code, scanFailed.out]).toEqual([1, expect.stringMatching(/exited 4 before publishing: The scan failed; nothing was published.*an earlier attempt is still unconfirmed/s)]);
+      expect([scanFailed.code, scanFailed.out]).toEqual([1, expect.stringMatching(/exited 4 before publishing: The scan failed; this run published nothing.*an earlier attempt is still unconfirmed/s)]);
       // The REAL runner, configured for ANOTHER archive root, refuses before
       // any request — the published index is untouched, and it says so.
       const otherArchive = scratch();
@@ -697,7 +704,8 @@ describe('maintaining the Setar archive', () => {
           expect(edit === 'replace' ? readFileSync(k.at(name), 'utf8') : existsSync(k.at(name)), `${name} ${edit}`).toBe(edit === 'replace' ? theirs : false);
           expect([media(k.root), k.g.published(), k.g.calls, existsSync(k.lock)], `${name} ${edit}`).toEqual([pre.media, pre.index, [], false]);
           expect(k.j(), `${name} ${edit}`).toMatchObject({ status: 'rolled-back', publication: 'not-needed' });
-          expect(hidden(k.root, `.${name}`), `${name} ${edit}`).toEqual([]);
+          // Theirs, put back, keeps the private name it was judged on as a hidden name of the SAME file — never unlinked.
+          expect(hidden(k.root, `.${name}`).map((f) => lstatSync(k.at(f)).ino), `${name} ${edit}`).toEqual(edit === 'replace' ? [lstatSync(k.at(name)).ino] : []);
         }
       }
       {
@@ -918,46 +926,119 @@ describe('maintaining the Setar archive', () => {
         expect([sha(readFileSync(y.at(A))), existsSync(y.at(B))]).toEqual([yBytes, false]);
         for (const x of [f, u, v, g, h, w, y]) expect(leftovers(x)).toEqual([]);
         // The OTHER name — the one a drop leaves the file under — replaced or removed at the judgement, or
-        // between the judgement and the unlink: the file never loses its last name. It goes back to the
-        // name being dropped (from the still-open file if its name was already gone), the run refuses, and
-        // says only what is true: a move's final drop, its judged-failure undo (the concurrent in-place
-        // bytes kept), a rollback's reverse move, and a stopped move's recovery alike.
-        for (const point of ['judge-drop', 'unlink-aside'] as const) {
+        // after the private name was retired: the file never loses its last name. The VERY file (its inode,
+        // never a copy of its bytes) goes back to the name being dropped, the run refuses, and says only
+        // what is true: a move's final drop, its judged-failure undo (the concurrent in-place bytes kept), a
+        // rollback's reverse move, and a stopped move's recovery alike. A handle opened before the run
+        // writes into that file after it.
+        for (const point of ['judge-drop', 'retain-aside'] as const) {
           for (const other of ['replace', 'remove'] as const) {
             const tag = `${point} ${other}`;
             type Box = ReturnType<typeof box>;
             const hit = (x: Box, rel: string) => (other === 'replace' ? swapIn(x.at(rel), `theirs at ${rel}`) : () => rmSync(x.at(rel)));
             const stands = (x: Box, rel: string) => (existsSync(x.at(rel)) ? readFileSync(x.at(rel), 'utf8') : null);
             const theirs = (rel: string) => (other === 'replace' ? `theirs at ${rel}` : null);
-            /** The seam: at the drop's judgement of `dropped`, or just before the unlink judged against `kept`. */
+            /** The seam: at the drop's judgement of `dropped`, or after its private name was retired, before `kept` is judged. */
             const seam = (x: Box, dropped: string, kept: string, ...before: [string, string, () => void][]) =>
-              when(...before, point === 'judge-drop' ? ['judge-drop', x.at(dropped), hit(x, kept)] : ['unlink-aside', x.at(kept), hit(x, kept)]);
+              when(...before, point === 'judge-drop' ? ['judge-drop', x.at(dropped), hit(x, kept)] : ['retain-aside', x.at(kept), hit(x, kept)]);
             const fw = box();
             const fwBytes = sha(readFileSync(fw.at(A)));
             const fwDecl = declarations(fw.root);
             const fwIno = lstatSync(fw.at(A)).ino;
             chmodSync(fw.at(A), 0o640);
             utimesSync(fw.at(A), 1_700_000_000, 1_700_000_000);
+            const fwFd = openSync(fw.at(A), 'r+');
             await expect(fw.go(MOVE, { at: seam(fw, A, B) }), tag).rejects.toThrow(/was replaced or removed while this ran; whatever stands there is left, and .* was put back — nothing was moved.*everything it changed was put back/s);
             expect([sha(readFileSync(fw.at(A))), stands(fw, B), declarations(fw.root), fw.j().status, leftovers(fw)], tag).toEqual([fwBytes, theirs(B), fwDecl, 'rolled-back', []]);
-            // Caught before the unlink, it is the original file itself; only a name lost IN that instant is a copy of its bytes.
-            expect(lstatSync(fw.at(A)).ino === fwIno, tag).toBe(point === 'judge-drop');
+            // At either instant it is the original file itself: nothing is ever reconstructed from bytes.
+            expect(lstatSync(fw.at(A)).ino, tag).toBe(fwIno);
             expect([lstatSync(fw.at(A)).mode & 0o7777, lstatSync(fw.at(A)).mtimeMs], tag).toEqual([0o640, 1_700_000_000_000]);
+            writeSync(fwFd, 'later', 0);
+            closeSync(fwFd);
+            expect(readFileSync(fw.at(A)).subarray(0, 5).toString(), tag).toBe('later');
             const un = box();
             const inPlace = sha(Buffer.alloc(500, 7));
+            const unIno = lstatSync(un.at(A)).ino;
             await expect(un.go(MOVE, { at: seam(un, B, A, ['link', B, () => writeFileSync(un.at(A), Buffer.alloc(500, 7))]) }), tag).rejects.toThrow(/does not hold the bytes this change recorded.*was then replaced or removed; the file it named is kept as .*could not be put back automatically/s);
-            expect([sha(readFileSync(un.at(B))), stands(un, A), un.j().status, leftovers(un)], tag).toEqual([inPlace, theirs(A), 'prepared', []]);
+            expect([sha(readFileSync(un.at(B))), stands(un, A), un.j().status, leftovers(un), lstatSync(un.at(B)).ino], tag).toEqual([inPlace, theirs(A), 'prepared', [], unIno]);
             const rv = box();
             const rvBytes = sha(readFileSync(rv.at(A)));
+            const rvIno = lstatSync(rv.at(A)).ino;
             expect(await rv.go(MOVE)).toMatchObject({ ok: true });
             await expect(rv.back({ at: seam(rv, B, A) }), tag).rejects.toThrow(/was replaced or removed while this ran; whatever stands there is left, and .* was put back — nothing was moved/);
-            expect([sha(readFileSync(rv.at(B))), stands(rv, A), leftovers(rv)], tag).toEqual([rvBytes, theirs(A), []]);
+            expect([sha(readFileSync(rv.at(B))), stands(rv, A), leftovers(rv), lstatSync(rv.at(B)).ino], tag).toEqual([rvBytes, theirs(A), [], rvIno]);
             const st = box();
             const stBytes = sha(readFileSync(st.at(A)));
+            const stIno = lstatSync(st.at(A)).ino;
             await expect(st.go(MOVE, { at: when(['unlink', A, cut]) })).rejects.toThrow(/power cut/);
             await expect(st.back({ at: seam(st, B, A) }), tag).rejects.toThrow(/was replaced or removed while this ran; the bytes stay as .*nothing was put back/);
-            expect([sha(readFileSync(st.at(B))), stands(st, A), leftovers(st)], tag).toEqual([stBytes, theirs(A), []]);
+            expect([sha(readFileSync(st.at(B))), stands(st, A), leftovers(st), lstatSync(st.at(B)).ino], tag).toEqual([stBytes, theirs(A), [], stIno]);
           }
+        }
+        // A run KILLED right after a private name was retired, at every consumer: the file is never without a
+        // name — the original inode is at a visible name or a hidden `.superseded-` one, never only in a dead
+        // process's descriptor — no private name is left to refuse on, and Rollback finishes (or, where the
+        // archive is not as any change left it, refuses, leaving it exactly so).
+        {
+          type Box = ReturnType<typeof box>;
+          const inodesIn = (x: Box, folder: string) => readdirSync(x.at(folder)).map((n) => lstatSync(x.at(`${folder}/${n}`)).ino);
+          const killed = async (x: Box, run: Promise<unknown>) => {
+            await expect(run).rejects.toThrow(/power cut/);
+            expect(leftovers(x)).toEqual([]);
+          };
+          // Apply's final drop: rolled back to the very file.
+          const fd = box();
+          const fdIno = lstatSync(fd.at(A)).ino;
+          const fdBytes = sha(readFileSync(fd.at(A)));
+          await killed(fd, fd.go(MOVE, { at: when(['retain-aside', fd.at(B), cut]) }));
+          expect(inodesIn(fd, S39)).toContain(fdIno);
+          expect(await fd.back()).toMatchObject({ ok: true });
+          expect([lstatSync(fd.at(A)).ino, sha(readFileSync(fd.at(A))), existsSync(fd.at(B))]).toEqual([fdIno, fdBytes, false]);
+          // The judged-failure undo: the in-place bytes stay in the very file at the old name.
+          const ju = box();
+          const juIno = lstatSync(ju.at(A)).ino;
+          await killed(ju, ju.go(MOVE, { at: when(['link', B, () => writeFileSync(ju.at(A), Buffer.alloc(500, 7))], ['retain-aside', ju.at(A), cut]) }));
+          expect(await ju.back()).toMatchObject({ ok: true });
+          expect([lstatSync(ju.at(A)).ino, sha(readFileSync(ju.at(A))), existsSync(ju.at(B))]).toEqual([juIno, sha(Buffer.alloc(500, 7)), false]);
+          // Rollback's reverse move, and a stopped move's recovery: the next rollback finishes.
+          for (const stopped of [false, true]) {
+            const rb = box();
+            const rbIno = lstatSync(rb.at(A)).ino;
+            if (stopped) await expect(rb.go(MOVE, { at: when(['unlink', A, cut]) })).rejects.toThrow(/power cut/);
+            else expect(await rb.go(MOVE)).toMatchObject({ ok: true });
+            await killed(rb, rb.back({ at: when(['retain-aside', rb.at(A), cut]) }));
+            expect(await rb.back()).toMatchObject({ ok: true });
+            expect([lstatSync(rb.at(A)).ino, existsSync(rb.at(B)), declarations(rb.root)], `stopped ${stopped}`).toEqual([rbIno, false, declarations(box().root)]);
+          }
+          // A put-back's own retirement — a declaration that changed, an install that failed, a name that changed
+          // at its drop: the file put back is the very file, at its name; nothing is lost.
+          const dm = box();
+          let theirsIno = 0;
+          const save = () => (replaceWith(dm.at('PIECES.csv'), 'their save\n')(), (theirsIno = lstatSync(dm.at('PIECES.csv')).ino));
+          await killed(dm, dm.go(REG, { at: when(['capture', 'PIECES.csv', save], ['retain-aside', 'PIECES.csv', cut]) }));
+          expect([readFileSync(dm.at('PIECES.csv'), 'utf8'), lstatSync(dm.at('PIECES.csv')).ino]).toEqual(['their save\n', theirsIno]);
+          await expect(dm.back()).rejects.toThrow(/PIECES\.csv has changed since this change was made; it is left exactly as it is/);
+          expect(readFileSync(dm.at('PIECES.csv'), 'utf8')).toBe('their save\n');
+          const ie = box();
+          const ieIno = lstatSync(ie.at('PIECES.csv')).ino;
+          const ieDecl = declarations(ie.root);
+          await killed(ie, ie.go(REG, { at: when(['install', 'PIECES.csv', () => rmSync(ie.at(hidden(ie.root, '.PIECES.csv.maintenance-')[0]!))], ['retain-aside', 'PIECES.csv', cut]) }));
+          expect(await ie.back()).toMatchObject({ ok: true });
+          expect([lstatSync(ie.at('PIECES.csv')).ino, declarations(ie.root)]).toEqual([ieIno, ieDecl]);
+          const dc = box();
+          const dcIno = lstatSync(dc.at(A)).ino;
+          let dcTheirs = 0;
+          const swap = () => (swapIn(dc.at(A), 'theirs at the old name')(), (dcTheirs = lstatSync(dc.at(A)).ino));
+          await killed(dc, dc.go(MOVE, { at: when(['unlink', A, swap], ['retain-aside', dc.at(A), cut]) }));
+          expect([readFileSync(dc.at(A), 'utf8'), lstatSync(dc.at(A)).ino, lstatSync(dc.at(B)).ino]).toEqual(['theirs at the old name', dcTheirs, dcIno]);
+          // A handle opened before a SUCCESSFUL move writes, after it, into the file at its new name — and its
+          // retired old name is a hidden name of that same file, never a copy.
+          const ok = box();
+          const okFd = openSync(ok.at(A), 'r+');
+          expect(await ok.go(MOVE)).toMatchObject({ ok: true });
+          writeSync(okFd, 'later', 0);
+          closeSync(okFd);
+          expect([readFileSync(ok.at(B)).subarray(0, 5).toString(), retained(ok.root, S39).map((n) => lstatSync(ok.at(`${S39}/${n}`)).ino)]).toEqual(['later', [lstatSync(ok.at(B)).ino]]);
         }
         // The name being DROPPED removed just before its drop: the moved file keeps its new name, said as such.
         {
@@ -969,7 +1050,7 @@ describe('maintaining the Setar archive', () => {
         // A PUT-BACK's own link-to-unlink interval: the name it just restored replaced or removed again
         // before its private name goes — the restored file keeps that private name (its bytes from the
         // still-open file if the name was already gone), named in the refusal; nothing is lost.
-        for (const point of ['put-back', 'unlink-aside'] as const) {
+        for (const point of ['put-back', 'retain-aside'] as const) {
           for (const other of ['replace', 'remove'] as const) {
             const tag = `${point} ${other}`;
             const d = box();
@@ -1305,11 +1386,11 @@ describe('maintaining the Setar archive', () => {
         };
         const hashNow = () => scanToIndex(k.root).contentHash as string;
 
-        // A FIRST publication failing before its branch read: "as it was" — no promise that any index exists.
+        // A FIRST publication failing before its branch read: this attempt proved nothing published, the branch unconfirmed.
         const first = await k.go(REG, { publish: spy(failing('getRef')) });
-        expect(first.message).toMatch(/This attempt published nothing, so the source-index branch is as it was/);
-        expect(first.message).not.toMatch(/last good|previous|still the published/);
-        expect([k.j().publication, k.j().unresolved, k.g.published()]).toEqual(['failed', [], null]);
+        expect(first.message).toMatch(/this attempt published nothing, but what the source-index branch holds is not confirmed/);
+        expect(first.message).not.toMatch(/as it was|last good|previous|still the published/);
+        expect([k.j().publication, k.j().unresolved, k.g.published()]).toEqual(['unknown', [], null]);
         // Accepted, response lost: unknown, bound to H.
         const H = hashNow();
         expect(await k.again({ publish: spy(lossy) })).toMatchObject({ ok: false, message: expect.stringMatching(/may already be published/) });
@@ -1394,6 +1475,90 @@ describe('maintaining the Setar archive', () => {
         // Only a positive observation closes it: the retry publishes over whatever landed, and retires the record.
         expect(await k.again({ publish: k.g.publish }), variant).toMatchObject({ ok: true });
         expect([k.j().publication, k.j().unresolved, JSON.parse(k.g.published()!).contentHash, existsSync(k.g.shared.intent)], variant).toEqual(['published', [], H0, false]);
+      }
+      // The same SCHEDULED predecessor, and a newer run whose publication fails BEFORE the publisher reads
+      // any record — an expected-hash refusal, a busy or unbindable seat, the publisher CLI's unreadable index,
+      // the real runner's refused configuration, missing value, missing work folder and failed scan, and the
+      // wrapper's every proving exit (2, 3, 4). Each proves only that THIS attempt published nothing: Apply,
+      // Retry and Rollback alike stay unconfirmed, never "the branch is as it was" — and the scheduled
+      // write can indeed still land, until a retry publishes over it.
+      {
+        const PUBLISHER = join(process.cwd(), 'scripts', 'publish-setar-index.mjs');
+        const withEnv = (env: Record<string, string | undefined>, inner: (text: string, hash: string, holder: string) => Promise<unknown>) => async (text: string, hash: string, holder: string) => {
+          const saved = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
+          const put = (e: Record<string, string | undefined>) => Object.entries(e).forEach(([key, v]) => (v === undefined ? delete process.env[key] : (process.env[key] = v)));
+          put(env);
+          try {
+            return await inner(text, hash, holder);
+          } finally {
+            put(saved);
+          }
+        };
+        type Box = ReturnType<typeof box>;
+        const runner = (k: Box, config: string | null, extra: Record<string, string> = {}) => {
+          const file = join(k.base, `config-${Object.keys(extra).join('-') || 'plain'}.env`);
+          if (config !== null) writeFileSync(file, config);
+          return withEnv({ PC_MAINT_PUBLISH: undefined, PC_INDEX_CONFIG: config === null ? join(k.base, 'no-config.env') : file, ...extra }, publishWithRunner(k.root));
+        };
+        const full = (k: Box, archive: string) => `PC_ARCHIVE_ROOT=${archive}\nPC_INDEX_REPO=o/r\nPC_INDEX_TOKEN=t\n`;
+        const stubExit = (k: Box, code: number) => {
+          const stub = join(k.base, 'exit-job.mjs');
+          writeFileSync(stub, `process.stderr.write('refused\\n'); process.exit(${code});`);
+          return withEnv({ PC_MAINT_PUBLISH: `node ${JSON.stringify(stub)}` }, publishWithRunner(k.root));
+        };
+        const direct = (k: Box, opts: (hash: string) => object) => async (text: string, hash: string, holder: string) =>
+          publishIndex({ transport: k.g.transport, indexText: text, expectedContentHash: hash, confirm: archiveConfirmation(k.root, holder), intent: k.g.shared.intent, ...opts(hash) });
+        const modes: [string, (k: Box) => (text: string, hash: string, holder: string) => Promise<unknown>][] = [
+          ['expected-hash refusal', (k) => direct(k, (hash) => ({ expectedContentHash: hash.replace(/./, (c) => (c === 'f' ? '0' : 'f')) }))],
+          ['seat busy', (k) => async (text, hash, holder) => {
+            const leave = await takeSeat({ port: DEFAULT_SEAT_PORT + 3 });
+            try {
+              return await direct(k, () => ({ seat: { port: DEFAULT_SEAT_PORT + 3, wait: 0 } }))(text, hash, holder);
+            } finally {
+              await leave();
+            }
+          }],
+          ['seat cannot bind', (k) => direct(k, () => ({ seat: { port: 70_000, wait: 0 } }))],
+          ['runner without config', (k) => runner(k, null)],
+          ['runner missing a value', (k) => runner(k, `PC_ARCHIVE_ROOT=${k.root}\nPC_INDEX_REPO=o/r\n`)],
+          ['runner without work folder', (k) => runner(k, full(k, k.root), { PC_INDEX_WORKDIR: join(k.base, 'no-such-folder') })],
+          ['runner scan fails', (k) => runner(k, full(k, join(k.base, 'no-archive')), { PC_INDEX_WORKDIR: k.base })],
+          ['publisher cannot read its index', (k) => withEnv({ PC_MAINT_PUBLISH: `f() { PC_INDEX_REPO=o/r PC_INDEX_TOKEN=t node ${JSON.stringify(PUBLISHER)} --index ${JSON.stringify(join(k.base, 'missing.json'))} --root ${JSON.stringify(k.root)} --expect "$1" --holder "$2"; }; f` }, publishWithRunner(k.root))],
+          ['job exit 2', (k) => stubExit(k, 2)],
+          ['job exit 3', (k) => stubExit(k, 3)],
+          ['job exit 4', (k) => stubExit(k, 4)],
+        ];
+        for (const variant of ['update', 'create', 'unknown'] as const) {
+          for (const [mode, make] of modes) {
+            const tag = `${variant} / ${mode}`;
+            const k = box();
+            const t = k.g.transport as Record<string, (...a: unknown[]) => Promise<unknown>>;
+            if (variant === 'update') expect(await k.go(REG), tag).toMatchObject({ ok: true, status: 'published' });
+            const lost = async () => Promise.reject(new TypeError('fetch failed: the response was lost'));
+            if (variant === 'unknown') writeFileSync(k.g.shared.intent, 'not json');
+            else await expect(publishIndex({ transport: { ...t, updateRef: lost, createRef: lost }, indexText: '{"scheduled":1}\n', intent: k.g.shared.intent }), tag).rejects.not.toHaveProperty('nothingPublished');
+            const pending = readFileSync(k.g.shared.intent, 'utf8');
+            const fails = make(k);
+            const outcomes = [
+              await k.go(variant === 'update' ? { kind: 'register', piece: 'یکی-دیگر' } : REG, { publish: fails }),
+              await k.again({ publish: fails }),
+              await k.back({ publish: fails }),
+            ];
+            for (const [i, r] of outcomes.entries()) {
+              expect(r, `${tag} #${i}`).toMatchObject({ ok: false, message: expect.stringMatching(/could not be confirmed/) });
+              expect(r.message, `${tag} #${i}`).not.toMatch(/as it was|still the good|published one is unchanged/);
+            }
+            expect([k.j().status, k.j().publication, readFileSync(k.g.shared.intent, 'utf8')], tag).toEqual(['rolled-back', 'unknown', pending]);
+            await expect(k.go({ kind: 'register', piece: 'یکی-دیگر-باز' }), tag).rejects.toThrow(/Run `retry`/);
+            if (variant !== 'unknown') {
+              const [{ parent, commit }] = JSON.parse(pending) as { parent: string | null; commit: string }[];
+              expect(await (parent ? t.updateRef!(SOURCE_INDEX_BRANCH, commit, parent) : t.createRef!(SOURCE_INDEX_BRANCH, commit)), tag).toBe('ok');
+              expect(k.g.published(), tag).toBe('{"scheduled":1}\n');
+            }
+            expect(await k.again({ publish: k.g.publish }), tag).toMatchObject({ ok: true });
+            expect([k.j().publication, k.j().unresolved, JSON.parse(k.g.published()!).contentHash, existsSync(k.g.shared.intent)], tag).toEqual(['published', [], scanToIndex(k.root).contentHash, false]);
+          }
+        }
       }
     } finally {
       for (const b of boxes) rmSync(b, { recursive: true, force: true });

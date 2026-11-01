@@ -668,11 +668,15 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   size and SHA-256, and only then loses its old name — and any name is dropped
   only after it is first moved to a private name and judged THERE, so a file
   renamed onto it meanwhile keeps its name (put back, never overwritten). A
-  private name (a drop's, or a put-back's) is removed only while the file's
-  other name still holds it, with the file held open: that name replaced or
-  removed at any instant, the file keeps a name — back at the one being
-  dropped, or its private name, named in the refusal; its bytes from the open
-  file if its name was already gone — so no file ever loses its last name. A
+  private name (a drop's, or a put-back's) is NEVER unlinked and its bytes
+  never copied: it is renamed to a hidden `.<name>.superseded-<id>` beside it
+  (in the root or the session folder), and only then is the file's other name
+  judged; replaced or removed, the hidden name is renamed back and the file
+  stays at the name being dropped, or its private name, named in the
+  refusal. A rename never takes a file's last name, so no failure, kill or
+  concurrent write can, and a program holding the file open keeps writing
+  into a named file. The hidden names are the same file, no extra bytes; the
+  operator may delete them once nothing needs them. A
   rename stays inside its session folder, and every media write runs inside
   that folder bound by inode, so a folder swapped for a link meanwhile cannot
   carry a write outside the archive. An edit, deletion or new file from
@@ -730,10 +734,12 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
 - **Unconfirmed stays unconfirmed.** Before any remote work the journal names
   the attempt's validated hash and marks it open; every unconfirmed attempt's
   hash stays in `unresolved` until a positive observation of the branch.
-  "This attempt published nothing; the branch is as it was" is said only when
-  the job proved it (exit 2, 3 or 4) AND no earlier attempt is open. Exit 1
-  or any other code, a signal, a lost response, an exit 0 without evidence,
-  or a proved failure after an open attempt is reported as unconfirmed. A
+  A failure is always unconfirmed: "this attempt published nothing" is said
+  only when the job proved it (exit 2, 3 or 4), and never "the branch is as
+  it was" — a proof covers that attempt, while another publisher's unanswered
+  write (the scheduled job's, in a record this run cannot read) may still
+  land. Exit 1 or any other code, a signal, a lost response or an exit 0
+  without evidence leaves the attempt itself open too. A
   publication the journal then fails to record is reported as published.
   Every case: `retry`, which makes no commit if the branch already holds the
   index.

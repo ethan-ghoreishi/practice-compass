@@ -127,9 +127,9 @@ const writeIntents = (file, list) => {
  * - The ref only ever advances NON-FORCE from the commit that was read, so a
  *   second publisher racing this one loses the update-ref rather than
  *   overwriting it, and the retry re-reads before deciding anything.
- * - An interruption before the ref advances leaves the previous index as the
- *   published one: a blob and a commit nothing points at are invisible. Such
- *   a failure carries `nothingPublished: true`. A throw FROM the ref write (a
+ * - An interruption before the ref advances publishes nothing of THIS run: a
+ *   blob and a commit nothing points at are invisible. Such a failure carries
+ *   `nothingPublished: true` — a claim about this run, never the branch. A throw FROM the ref write (a
  *   lost response, a 5xx) does not: GitHub may have accepted it.
  */
 export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message, expectedContentHash, confirm, seat, intent }) {
@@ -427,7 +427,7 @@ async function main() {
   try {
     indexText = readFileSync(values.index, 'utf8');
   } catch {
-    console.error('Could not read the scanned index; the published one is unchanged.');
+    console.error('Could not read the scanned index; this run published nothing.');
     process.exit(4);
   }
   try {
@@ -453,7 +453,8 @@ async function main() {
     // Never the URL, never the token, never the archive root.
     console.error(`Publish failed: ${err.message}`);
     if (err?.nothingPublished) {
-      console.error('This run published nothing; the source-index branch is as it was.');
+      // About THIS run only: another publisher's unanswered write may still land.
+      console.error('This run published nothing.');
       process.exit(4);
     }
     console.error('It may already be published; running the job again makes no new commit if so.');

@@ -28,9 +28,10 @@
 #
 # WHAT THIS JOB MAY DO: read the archive, write ONE scratch file in its own
 # runtime directory, and update source-index/setar/index.json. Nothing else.
-# Exits that PROVE nothing was published: 2 (configuration refused, nothing
-# ran), 3 (the scan was not the validated index) and 4 (the scan, or the
-# publisher before its ref write, failed). Any other failure may have come after GitHub accepted the
+# Exits that PROVE this run published nothing — never that the branch is as it
+# was, since another run's unanswered write may still land: 2 (configuration
+# refused, nothing ran), 3 (the scan was not the validated index) and 4 (the
+# scan, or the publisher before its ref write, failed). Any other failure may have come after GitHub accepted the
 # ref: unknown, and running the job again is safe (unchanged makes no commit).
 #
 # ROLLBACK: disable the scheduled task. The app keeps the source graph it last
@@ -45,12 +46,12 @@ if [ -r "$CONFIG" ]; then
   # shellcheck disable=SC1090
   . "$CONFIG"
 else
-  echo "No readable config at $CONFIG; nothing was published." >&2
+  echo "No readable config at $CONFIG; this run published nothing." >&2
   exit 2
 fi
 
 for v in PC_ARCHIVE_ROOT PC_INDEX_REPO PC_INDEX_TOKEN; do
-  eval "[ -n \"\${$v:-}\" ]" || { echo "$v is not set; nothing was published." >&2; exit 2; }
+  eval "[ -n \"\${$v:-}\" ]" || { echo "$v is not set; this run published nothing." >&2; exit 2; }
 done
 export PC_INDEX_REPO PC_INDEX_TOKEN PC_INDEX_SEAT_PORT  # the seat port, if set, must be the same for every publisher here
 
@@ -67,9 +68,9 @@ if [ ! -d "$WORK" ]; then
   exit 2
 fi
 
-# Scan first. If it fails, stop here: the published index is still the good one.
+# Scan first. If it fails, stop here: this run publishes nothing.
 "$NODE" "$HERE/scan-setar-classes.mjs" --root "$PC_ARCHIVE_ROOT" --out "$OUT" || {
-  echo "The scan failed; nothing was published." >&2
+  echo "The scan failed; this run published nothing." >&2
   exit 4
 }
 
