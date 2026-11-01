@@ -24,8 +24,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:08:40.973Z
-        commit: 90724359a63076f30013637fd37af04c5cbed4a8
+        at: 2026-11-01T19:48:34.800Z
+        commit: 18415542a3097888b2140fc1e91c99af423c3e07
     - actor: The musician
       action: Taps + on a suggestion.
       shows: "'Added … — not practised yet.' The row now plays that item, and the same
@@ -36,8 +36,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:08:40.973Z
-        commit: 90724359a63076f30013637fd37af04c5cbed4a8
+        at: 2026-11-01T19:48:34.800Z
+        commit: 18415542a3097888b2140fc1e91c99af423c3e07
     - actor: The musician
       action: "Optionally uses a row's ⋯ menu: Remove from pathway (first, set apart
         from Unlink), Link an existing item, Unlink reference, or Hide this
@@ -51,8 +51,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:08:40.973Z
-        commit: 90724359a63076f30013637fd37af04c5cbed4a8
+        at: 2026-11-01T19:48:34.800Z
+        commit: 18415542a3097888b2140fc1e91c99af423c3e07
     - actor: The musician
       action: Taps ▶ on a row to practise it.
       shows: The ordinary active block.
@@ -60,8 +60,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:08:40.973Z
-        commit: 90724359a63076f30013637fd37af04c5cbed4a8
+        at: 2026-11-01T19:48:34.800Z
+        commit: 18415542a3097888b2140fc1e91c99af423c3e07
     - actor: The musician
       action: Optionally pins the stage as the current one, edits it, or
         archives/restores the pathway.
@@ -72,8 +72,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:08:40.973Z
-        commit: 90724359a63076f30013637fd37af04c5cbed4a8
+        at: 2026-11-01T19:48:34.800Z
+        commit: 18415542a3097888b2140fc1e91c99af423c3e07
   endsWith: The next piece of the route is a real practice item — taken once —
     with real practice behind it, and the stage's progress reflects it honestly.
   variations:
