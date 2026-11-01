@@ -34,8 +34,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:07:19.292Z
-        commit: dd59c9a29d71db3a547cf242c48d367064258d3b
+        at: 2026-11-01T19:48:03.914Z
+        commit: 1e1365e0899aa993d5be6c8777103ec551cf8be1
     - actor: The musician
       action: Reorders (Move earlier / Move later, by keyboard or touch), swaps,
         removes or regenerates segments until the shape looks right.
@@ -51,8 +51,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:07:19.292Z
-        commit: dd59c9a29d71db3a547cf242c48d367064258d3b
+        at: 2026-11-01T19:48:03.914Z
+        commit: 1e1365e0899aa993d5be6c8777103ec551cf8be1
     - actor: The musician
       action: Taps 'Start plan' — or, when class work is left out, 'Start without N
         class items', a choice bound to exactly that coverage.
@@ -65,8 +65,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:07:19.292Z
-        commit: dd59c9a29d71db3a547cf242c48d367064258d3b
+        at: 2026-11-01T19:48:03.914Z
+        commit: 1e1365e0899aa993d5be6c8777103ec551cf8be1
     - actor: The musician
       action: Taps 'Start' on the current segment.
       shows: The ordinary active-block screen, with the segment's minutes as the
@@ -78,8 +78,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:07:19.292Z
-        commit: dd59c9a29d71db3a547cf242c48d367064258d3b
+        at: 2026-11-01T19:48:03.914Z
+        commit: 1e1365e0899aa993d5be6c8777103ec551cf8be1
     - actor: The musician
       action: Finishes and saves the block as usual.
       shows: Back on the plan, that segment reads 'done' with the minutes actually
@@ -90,8 +90,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:07:19.292Z
-        commit: dd59c9a29d71db3a547cf242c48d367064258d3b
+        at: 2026-11-01T19:48:03.914Z
+        commit: 1e1365e0899aa993d5be6c8777103ec551cf8be1
     - actor: The musician
       action: Skips any segment not yet started, skips the running one with 'Skip this
         one — save nothing', or ends the plan at any time; Finish (then Save,
@@ -105,8 +105,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:07:19.292Z
-        commit: dd59c9a29d71db3a547cf242c48d367064258d3b
+        at: 2026-11-01T19:48:03.914Z
+        commit: 1e1365e0899aa993d5be6c8777103ec551cf8be1
   endsWith: The available time was spent on real, logged practice in a sensible
     order — and the plan itself leaves no trace in the data.
   variations:
