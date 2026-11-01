@@ -1,60 +1,49 @@
 ---
 id: 20261030-keep-setar-lessons-and-preparation-coher-d2ee
 contractId: 20261030-keep-setar-lessons-and-preparation-coher-d2ee
-patchId: 5872c7256acee8636b2119d621a7f9a281115999
+patchId: 40654aa66522d370681b21d8814b44881da5d6b9
 reviewer: codex
 state: sealed
 verdict: request_changes
 findings:
   - family: maintenance-recovery-preserves-concurrent-state
-    summary: "P1: archive mutations and lock release still trust replaceable
-      pathnames rather than the exact authorised objects."
-    counterexample: "HEAD d197d4a5078ba74cd089915083f0d9d5fd206672; patch
-      5872c7256acee8636b2119d621a7f9a281115999. Production function bodies on an
-      in-memory filesystem reproduce: after assertOwner, retarget the archive
-      pathname to an external copy. replaceDeclaration(text=null), at capture,
-      removes the external RENAME-LOG.csv public name and returns success while
-      the real log remains; moveExact, before inFolder selects its directory,
-      renames external media and returns success. rootId hashes an earlier
-      resolved pathname, not a directory binding. Instances: replaceDeclaration
-      520-563 via Apply registry/log 805/807 and restore 862, including
-      automatic recovery 816 and Rollback 934; moveExact 601-636 via Apply 809
-      and restore reverse move 874; stopped-move recovery 879-885 also selects
-      its directory after the owner check. Separately, production
-      readArchiveLock/releaseLock delete replacement B after record A was
-      approved, for both a legacy lock file and a foreign/partial folder entry
-      reused at the same name, at 408. Checked clean: token-specific
-      release/unlock on a stable root, session-folder replacement after binding,
-      declaration comparison/refusal, private leftovers, Retry media
-      non-mutation, and original-inode retention in 30 focused retireKeeping
-      failure cases. Bind archive mutations and lock housekeeping to the
-      authorised directory and captured object. Extend the SAME exact ac-2
-      title, setar guided maintenance is reversible stale safe and idempotent
-      without altering media, across all these consumers and parent/entry
-      replacements. Limits: read-only virtual filesystem probes; no live NAS or
-      OS crash test."
-  - family: maintenance-publication-matches-validated-index
-    summary: "P2: current operator instructions still promise that failed
-      publication leaves the previous index published."
-    counterexample: "Same HEAD and patch. Invariant: failure proves only this
-      attempt; an unanswered earlier or scheduled write can still land.
-      Remaining current claims: docs/setar-archive.md:223-226, :314-315, :645;
-      docs/nas-topology.md:308-310. A scheduled ref update loses its answer,
-      newer maintenance publication fails before intent inspection or because
-      sudo cannot run, then the scheduled update lands. Those failures cannot
-      establish an unchanged branch. Reconcile every current instruction with
-      the attempt-only rule. Runtime consumers checked clean: shared
-      Apply/Retry/Rollback publishStep, legacy failed-state normalisation,
-      expected-hash and seat admission, first-ref failure, intent
-      retention/protective writes, CLI exit mapping, runner failures and
-      publishWithRunner evidence handling. Six production publishStep probes
-      retained unknown state and prior hashes. Keep the SAME exact ac-2 title,
-      setar guided maintenance is reversible stale safe and idempotent without
-      altering media, with its scheduled-predecessor/pre-intent matrix.
-      Superseded dated DECISIONS entries are historical. No live GitHub mutation
-      or wholesale Check rerun."
-createdAt: 2026-11-01T01:37:29.014Z
-sealedAt: 2026-11-01T01:49:40.700Z
+    summary: "P1: lock creation, ownership checks and cleanup still trust
+      replaceable child paths beneath the bound archive."
+    counterexample: "HEAD 3e59e7a64f0e42eb1c81ef83aab3b496cc277e10; patch
+      40654aa66522d370681b21d8814b44881da5d6b9. Invariant: every lock operation
+      must address the authorised directory and exact owned or approved object.
+      Production-body probes on an in-memory filesystem reproduce seven failing
+      scenarios: operator release sees partial.json=A, then its release seam
+      moves the lock folder and substitutes a symlink to an external folder
+      containing A; removeLockEntry deletes the external entry, returns
+      released:true and leaves the original lock. assertOwner accepts token
+      files through symlinked or replacement real lock folders; unlock deletes
+      their replacement files. Replacing only the token leaf on a stable parent
+      also makes unlock delete another writer's file. lock writes outside the
+      archive when its private directory becomes a symlink before the token
+      write; its error cleanup recursively removes a replacement private
+      directory containing another writer's file. readArchiveLock follows a lock
+      directory replaced after its directory lstat, and archiveConfirmation
+      accepts the external copied token. Instances:
+      setar-archive-maintenance.mjs lock 405-414, assertOwner 432-435,
+      unlock/release 448-465, removeLockEntry/releaseBound 480-547;
+      publish-setar-index.mjs readArchiveLock 265-295 and archiveConfirmation
+      313-324. Consumers swept: Apply, automatic recovery, Rollback including
+      stopped moves, Retry, operator release, maintenance and scheduled
+      publishers. Checked clean: bound archive-root replacement,
+      declaration/session-media directory binding, cross-run rootIno refusal,
+      stable release, changed operator-release leaves on stable parents, and
+      publisher refusal when the symlink already exists before inspection. Four
+      dynamic control scenarios pass. Extend the SAME exact ac-2 title, setar
+      guided maintenance is reversible stale safe and idempotent without
+      altering media, across lock-parent/private-directory replacement,
+      token-leaf replacement, creation-error cleanup and publisher read races.
+      The attempt-only publication wording family is closed; eight focused
+      publishStep probes preserve unknown state and prior unresolved hashes. No
+      files or records changed; no wholesale Check rerun, live NAS, GitHub
+      mutation or OS crash proof."
+createdAt: 2026-11-01T02:44:44.264Z
+sealedAt: 2026-11-01T02:51:42.976Z
 ---
 
 # Review: Keep Setar lessons and preparation coherent from archive to next class
@@ -68,7 +57,7 @@ sealedAt: 2026-11-01T01:49:40.700Z
 - **Contract:** 20261030-keep-setar-lessons-and-preparation-coher-d2ee
 - **Issue:** https://github.com/ethan-ghoreishi/practice-compass/issues/60
 - **Risk tier:** heavy — auth, payments, saved data, schema/migrations — full checks, sealed review, a signed owner decision, and a tested rollback route
-- **Diff patch-id:** `5872c7256acee8636b2119d621a7f9a281115999`
+- **Diff patch-id:** `40654aa66522d370681b21d8814b44881da5d6b9`
 - **Computed by:** prismatica 0.11.0 · build sha256:a53354b36e378c8f · installed package, not registry-verified
 
 ## The Delta this change was framed from
@@ -118,817 +107,1149 @@ still breaks it is not closed.
 
 **Findings from the previous review:**
 
-- **maintenance-recovery-preserves-concurrent-state** — P1: unlinkKeeping can destroy recoverable originals or truncate the only retained copy.
-  _counterexample:_ BOUND HEAD 235d4b33c72966dcc397563c33acdc8c61228158; patch d71aba3a0c14a5e4c9ff083cff704a64d7374e8c. Invariant: mutations and recovery preserve concurrent state and recoverable originals across failures and interruptions. Production function bodies with an in-memory filesystem reproduce: A is linked to B; another writer replaces B at unlink-aside; unlinkKeeping removes the last original name at scripts/setar-archive-maintenance.mjs:475, then openSync(aside, wx) fails ENOSPC at 479. Finally closes the only recovery descriptor, leaving no original bytes under any name. A death after unlink has the same loss window. A short write at 482 leaves only ORIG from ORIGINAL-BYTES because the writeSync return is ignored. Even successful copying drops the original inode, so subsequent saves through an already-open handle have no retained filename. ALL INSTANCES: moveExact final drop 639 (Apply forward and Rollback reverse), judged-failure undo 630, restore stopped-move drop 888; putBack 509 reached by declaration mismatch 551, declaration install error 562, and dropName mismatch/counterpart recovery 668/672. Checked clean by inspection: keep retains superseded declaration inodes, own temporary-file cleanup, refusal of private leftovers, directory binding, token-specific lock release; Retry does not drop media. Extend the SAME exact ac-2 title, setar guided maintenance is reversible stale safe and idempotent without altering media, across every consumer with reconstruction I/O failure, short writes, interruption after unlink and later writes through existing handles. Retain a recoverable original before deleting its last name; an open descriptor alone is not a durable recovery copy. Limits: read-only virtual filesystem probes, no live NAS or real OS crash test.
-- **maintenance-publication-matches-validated-index** — P2: failures before intent inspection still turn an unanswered scheduled publication into a false unchanged-branch claim.
-  _counterexample:_ BOUND to the same HEAD and patch. Invariant: earlier publication uncertainty stays explicit until positive remote evidence excludes it; failure of a newer attempt proves only that attempt. Production publishIndex/takeSeat/publishStep with in-memory Git and filesystem reproduce a scheduled lost-answer write that records its real intent; the newer maintenance journal has unresolved=[]; expected-hash refusal at scripts/publish-setar-index.mjs:145-147 or publisher-seat busy/bind failure at 87-89/155 occurs before readIntents at 172. publishStep records failed with unresolved=[] and says the source-index branch is as it was at scripts/setar-archive-maintenance.mjs:740. The delayed scheduled write then succeeds and publishes its older index. Reproduced for pending update, pending create and unreadable-intent variants; first-getRef failure is now correctly unknown. ALL INSTANCES: expected-hash refusal and seat admission; publisher CLI unreadable-index exit 4 at 428-431; runner missing configuration/required values/work directory and failed scan at scripts/run-setar-index.sh:43-73; publisher CLI exit mapping 449-457 and publishWithRunner 982-983 feed the shared publishStep used by Apply, Retry and Rollback. Checked clean by probes or inspection: first-ref failure with pending intent, intent retention, lost-answer classification after ref writes, protective-ref fencing, unchanged path without pending intent, and preservation of earlier unresolved hashes already in the maintenance journal. Extend the SAME exact ac-2 title with scheduled predecessor plus every pre-intent exit and wrapper mapping, including update/create/unknown variants. Do not infer whole-branch certainty from current-attempt non-publication. Limits: synthetic transport and in-memory intent/journal, no live GitHub mutation or wholesale Check rerun.
+- **maintenance-recovery-preserves-concurrent-state** — P1: archive mutations and lock release still trust replaceable pathnames rather than the exact authorised objects.
+  _counterexample:_ HEAD d197d4a5078ba74cd089915083f0d9d5fd206672; patch 5872c7256acee8636b2119d621a7f9a281115999. Production function bodies on an in-memory filesystem reproduce: after assertOwner, retarget the archive pathname to an external copy. replaceDeclaration(text=null), at capture, removes the external RENAME-LOG.csv public name and returns success while the real log remains; moveExact, before inFolder selects its directory, renames external media and returns success. rootId hashes an earlier resolved pathname, not a directory binding. Instances: replaceDeclaration 520-563 via Apply registry/log 805/807 and restore 862, including automatic recovery 816 and Rollback 934; moveExact 601-636 via Apply 809 and restore reverse move 874; stopped-move recovery 879-885 also selects its directory after the owner check. Separately, production readArchiveLock/releaseLock delete replacement B after record A was approved, for both a legacy lock file and a foreign/partial folder entry reused at the same name, at 408. Checked clean: token-specific release/unlock on a stable root, session-folder replacement after binding, declaration comparison/refusal, private leftovers, Retry media non-mutation, and original-inode retention in 30 focused retireKeeping failure cases. Bind archive mutations and lock housekeeping to the authorised directory and captured object. Extend the SAME exact ac-2 title, setar guided maintenance is reversible stale safe and idempotent without altering media, across all these consumers and parent/entry replacements. Limits: read-only virtual filesystem probes; no live NAS or OS crash test.
+- **maintenance-publication-matches-validated-index** — P2: current operator instructions still promise that failed publication leaves the previous index published.
+  _counterexample:_ Same HEAD and patch. Invariant: failure proves only this attempt; an unanswered earlier or scheduled write can still land. Remaining current claims: docs/setar-archive.md:223-226, :314-315, :645; docs/nas-topology.md:308-310. A scheduled ref update loses its answer, newer maintenance publication fails before intent inspection or because sudo cannot run, then the scheduled update lands. Those failures cannot establish an unchanged branch. Reconcile every current instruction with the attempt-only rule. Runtime consumers checked clean: shared Apply/Retry/Rollback publishStep, legacy failed-state normalisation, expected-hash and seat admission, first-ref failure, intent retention/protective writes, CLI exit mapping, runner failures and publishWithRunner evidence handling. Six production publishStep probes retained unknown state and prior hashes. Keep the SAME exact ac-2 title, setar guided maintenance is reversible stale safe and idempotent without altering media, with its scheduled-predecessor/pre-intent matrix. Superseded dated DECISIONS entries are historical. No live GitHub mutation or wholesale Check rerun.
 
 **What changed since the previously reviewed head:**
 
-```diff
+````diff
+diff --git a/docs/nas-topology.md b/docs/nas-topology.md
+index 425ae28372fd401db05019b638d7a01faad58424..50d0bafffb01d50dce03beb398c51668ad71af35 100644
+--- a/docs/nas-topology.md
++++ b/docs/nas-topology.md
+@@ -306,8 +306,10 @@ rename below.
+   `synoacltool -enforce-inherit` on each file.
+ - **Sudo.** Delete `/etc/sudoers.d/practice-compass-maint`.
+   - A DSM update may remove it too. The failure is safe: the job never runs,
+-    the last good index stays published, and an apply ends `publish-failed`
+-    (reported as unconfirmed). Reinstall the one line and run `… retry`.
++    so that attempt publishes nothing, and an apply ends `publish-failed`
++    (reported as unconfirmed — an earlier or scheduled write may still land,
++    so the branch is not known to be unchanged). Reinstall the one line and
++    run `… retry`.
+ 
+ **Still broader than needed (recorded, not changed):** through the runtime
+ share's inherited ACE, `setar-indexer` can write its own scripts and
 diff --git a/docs/setar-archive.md b/docs/setar-archive.md
-index bdfcad4a35bcd5ab4d4e22fd948d11c3d04ca8cc..5843d90a9a77dcdf6beb7c742737e4033c9389c3 100644
+index 5843d90a9a77dcdf6beb7c742737e4033c9389c3..61ceca2193530e965d196d5afbad81a845614827 100644
 --- a/docs/setar-archive.md
 +++ b/docs/setar-archive.md
-@@ -668,11 +668,18 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
-   size and SHA-256, and only then loses its old name — and any name is dropped
-   only after it is first moved to a private name and judged THERE, so a file
-   renamed onto it meanwhile keeps its name (put back, never overwritten). A
--  private name (a drop's, or a put-back's) is removed only while the file's
--  other name still holds it, with the file held open: that name replaced or
--  removed at any instant, the file keeps a name — back at the one being
--  dropped, or its private name, named in the refusal; its bytes from the open
--  file if its name was already gone — so no file ever loses its last name. A
-+  private name (a drop's, or a put-back's) is retired without copying a
-+  byte: the file first gets a second, hidden name `.<name>.superseded-<id>`
-+  beside it (in the root or the session folder), then the file's other name
-+  is judged, and only then is one of the two removed — the private name if
-+  the other name holds the file, else the hidden one, the file staying at
-+  the name being dropped or its private name, named in the refusal. A name
-+  is removed only while another of the tool's names holds the same file, so
-+  no failure, kill or concurrent write leaves it nameless (killed anywhere,
-+  the private name is left for the next run to refuse on), and a program
-+  holding the file open keeps writing into a named file. The hidden names
-+  are the same file, no extra bytes; the operator may delete them once
-+  nothing needs them. A
-   rename stays inside its session folder, and every media write runs inside
-   that folder bound by inode, so a folder swapped for a link meanwhile cannot
+@@ -220,10 +220,13 @@ target is refused before a request is made.
+ - The branch ref advances **non-force** from the commit that was read, with
+   `expected_head_sha`, so a racing publisher loses the update rather than
+   overwriting it; the retry re-reads before deciding anything.
+-- An interruption before the ref advances leaves the previous index published —
+-  a blob and a commit nothing points at are invisible. Such a failure exits 4.
+-  A failure of the ref write itself (a lost response, a 5xx) may have landed:
+-  exit 1, said as unknown, and a rerun makes no commit if it did.
++- An interruption before the ref advances means THIS attempt moved nothing — a
++  blob and a commit nothing points at are invisible. Such a failure exits 4. It
++  proves nothing about the branch: an earlier or scheduled write whose answer
++  was lost may still land, so what the branch holds stays unconfirmed until it
++  is observed (`retry`). A failure of the ref write itself (a lost response, a
++  5xx) may have landed: exit 1, said as unknown, and a rerun makes no commit if
++  it did.
+ - Error messages are built from the HTTP status and the endpoint name only.
+   **No token, no repository URL and no archive path ever reaches a log.**
+ 
+@@ -311,8 +314,9 @@ with `main` unchanged, and the behaviour when the token is revoked.
+ Disable the scheduled task. The app keeps the source graph it last accepted and
+ goes on working offline from it. To go back to an earlier index,
+ `git push --force-with-lease` an earlier `source-index` commit. Neither touches
+-the app's own data on `main`. Revoking the token stops publication and leaves the
+-last good index exactly where it is.
++the app's own data on `main`. Revoking the token stops every LATER request; a
++write already sent may still land, so the branch is whatever GitHub shows, read
++there before deciding anything.
+ 
+ ---
+ 
+@@ -642,7 +646,7 @@ $M rename --from session-40-…/old.mp4 --to session-40-…/new.mp4
+ #   … each prints "Preview <id>"; the same command with --apply <id> then does it all:
+ #   private copy of both declarations → edit → validate (the scanner's own grammar)
+ #   → scratch scan → publish through run-setar-index.sh
+-$M retry      # publication failed: the archive is valid, the old index still published — publish again
++$M retry      # publication unconfirmed: the archive is valid, the branch unknown (an earlier or scheduled write may land) — publish again
+ $M rollback   # put the last change back from its private copy and publish that
+ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by its exact record
+ ```
+@@ -680,8 +684,16 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
+   holding the file open keeps writing into a named file. The hidden names
+   are the same file, no extra bytes; the operator may delete them once
+   nothing needs them. A
+-  rename stays inside its session folder, and every media write runs inside
+-  that folder bound by inode, so a folder swapped for a link meanwhile cannot
++  rename stays inside its session folder. The ARCHIVE itself is bound too:
++  each run records the directory `--root` names when it starts (its inode and
++  real path) and does every read-then-write with its working directory on that
++  directory, by bare names — the lock, the declarations, the session folder a
++  move selects, the media — so the archive moved away and another folder (even
++  an exact copy, lock and all) put at its path is never written; re-entering
++  is proved by inode, else the run refuses and its lock stays in the real
++  archive for `release-lock`. The journal records that directory's inode, so
++  a later `rollback` or `retry` refuses another folder at the path too. Every media write runs inside its session folder
++  bound by inode the same way, so a folder swapped for a link meanwhile cannot
    carry a write outside the archive. An edit, deletion or new file from
-@@ -730,10 +737,12 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
- - **Unconfirmed stays unconfirmed.** Before any remote work the journal names
-   the attempt's validated hash and marks it open; every unconfirmed attempt's
-   hash stays in `unresolved` until a positive observation of the branch.
--  "This attempt published nothing; the branch is as it was" is said only when
--  the job proved it (exit 2, 3 or 4) AND no earlier attempt is open. Exit 1
--  or any other code, a signal, a lost response, an exit 0 without evidence,
--  or a proved failure after an open attempt is reported as unconfirmed. A
-+  A failure is always unconfirmed: "this attempt published nothing" is said
-+  only when the job proved it (exit 2, 3 or 4), and never "the branch is as
-+  it was" — a proof covers that attempt, while another publisher's unanswered
-+  write (the scheduled job's, in a record this run cannot read) may still
-+  land. Exit 1 or any other code, a signal, a lost response or an exit 0
-+  without evidence leaves the attempt itself open too. A
-   publication the journal then fails to record is reported as published.
-   Every case: `retry`, which makes no commit if the branch already holds the
-   index.
+   anyone else at that instant is kept and the run refuses. A failure after
+   the archive changed, and `rollback`, put back only what THIS change wrote —
+@@ -699,7 +711,11 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
+ - **One owner per archive.** The lock is one dot-folder in the archive's root
+   holding one `<run>.json`, shared by every `--state` folder, and every
+   publisher checks it; a release removes only that exact record, so it never
+-  takes a newer run's lock. A lock is
++  takes a newer run's lock: each entry the operator saw is first moved to a
++  private `.releasing-…` name and judged there against what was shown, removed
++  only if it is that, else linked back (never over anything) or kept and
++  named — a replacement at the same name, legacy lock file or folder entry
++  alike, is never removed. A lock is
+   never adopted on a guess about a process: a run that finds one refuses and
+   names it. If nothing is running (check `ps`), `release-lock` shows the
+   record and `release-lock --record <id>` releases exactly that one, in any
 diff --git a/scripts/publish-setar-index.mjs b/scripts/publish-setar-index.mjs
-index fb09a75aca841e20a9af424a152eb5a35531d1e9..e06d7b8e6250ce8986ee6972977927e8f970b6a8 100644
+index e06d7b8e6250ce8986ee6972977927e8f970b6a8..246b8de5fe65f396dd27865a155c9ebbf3badbed 100644
 --- a/scripts/publish-setar-index.mjs
 +++ b/scripts/publish-setar-index.mjs
-@@ -127,9 +127,9 @@ const writeIntents = (file, list) => {
-  * - The ref only ever advances NON-FORCE from the commit that was read, so a
-  *   second publisher racing this one loses the update-ref rather than
-  *   overwriting it, and the retry re-reads before deciding anything.
-- * - An interruption before the ref advances leaves the previous index as the
-- *   published one: a blob and a commit nothing points at are invisible. Such
-- *   a failure carries `nothingPublished: true`. A throw FROM the ref write (a
-+ * - An interruption before the ref advances publishes nothing of THIS run: a
-+ *   blob and a commit nothing points at are invisible. Such a failure carries
-+ *   `nothingPublished: true` — a claim about this run, never the branch. A throw FROM the ref write (a
-  *   lost response, a 5xx) does not: GitHub may have accepted it.
+@@ -256,10 +256,11 @@ const digestOf = (bytes) => createHash('sha256').update(bytes).digest('hex');
+ 
+ /**
+  * The lock as it stands: null (absent, or an empty folder a release left), its
+- * record `{ token, pid, host, since, digest, names }`, or `{ unreadable }` with
++ * record `{ token, pid, host, since, digest, entries }`, or `{ unreadable }` with
+  * a digest of what is there when it is not exactly one record in this tool's
+- * form — never guessed into one. `names` are the entries a release removes;
+- * null for something at the lock's name that is not a folder.
++ * form — never guessed into one. `entries` are what a release may remove, each
++ * `[path from the root, lockEntryDigest]`: the folder's entries, or the lock's
++ * own name when it is not a folder (an earlier version's file).
   */
- export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX_BRANCH, path = INDEX_PATH, message, expectedContentHash, confirm, seat, intent }) {
-@@ -427,7 +427,7 @@ async function main() {
-   try {
-     indexText = readFileSync(values.index, 'utf8');
-   } catch {
--    console.error('Could not read the scanned index; the published one is unchanged.');
-+    console.error('Could not read the scanned index; this run published nothing.');
-     process.exit(4);
+ export function readArchiveLock(root) {
+   const p = join(root, ARCHIVE_LOCK);
+@@ -271,7 +272,7 @@ export function readArchiveLock(root) {
+     throw err;
    }
-   try {
-@@ -453,7 +453,8 @@ async function main() {
-     // Never the URL, never the token, never the archive root.
-     console.error(`Publish failed: ${err.message}`);
-     if (err?.nothingPublished) {
--      console.error('This run published nothing; the source-index branch is as it was.');
-+      // About THIS run only: another publisher's unanswered write may still land.
-+      console.error('This run published nothing.');
-       process.exit(4);
+   if (!st.isDirectory()) {
+-    return { unreadable: true, names: null, digest: digestOf(st.isFile() ? readFileSync(p) : st.isSymbolicLink() ? `link:${readlinkSync(p)}` : `${st.mode}`) };
++    return { unreadable: true, entries: [[ARCHIVE_LOCK, lockEntryDigest(p)]], digest: digestOf(st.isFile() ? readFileSync(p) : st.isSymbolicLink() ? `link:${readlinkSync(p)}` : `${st.mode}`) };
+   }
+   const names = readdirSync(p).sort();
+   if (!names.length) return null;
+@@ -280,17 +281,28 @@ export function readArchiveLock(root) {
+     return [n, e.isFile() ? readFileSync(join(p, n)) : null];
+   });
+   const digest = digestOf(JSON.stringify(parts.map(([n, b]) => [n, b ? digestOf(b) : 'not a file'])));
++  const entries = parts.map(([n, b]) => [join(ARCHIVE_LOCK, n), b ? digestOf(b) : null]);
+   if (parts.length === 1 && parts[0][1]) {
+     try {
+       const r = JSON.parse(parts[0][1].toString('utf8'));
+       if (typeof r?.token === 'string' && /^[0-9a-f-]{36}$/.test(r.token) && names[0] === `${r.token}.json` && Number.isInteger(r.pid) && r.pid > 0 && typeof r.host === 'string' && typeof r.since === 'string') {
+-        return { ...r, digest, names };
++        return { ...r, digest, entries };
+       }
+     } catch {
+       // not a record: said as unreadable below
      }
-     console.error('It may already be published; running the job again makes no new commit if so.');
-diff --git a/scripts/run-setar-index.sh b/scripts/run-setar-index.sh
-index 906192e6e10af8a5286c69ad10d5b2f329b2f5d8..3f45667c03d9cf634a7ad84ebd667f8aecf8f49b 100755
---- a/scripts/run-setar-index.sh
-+++ b/scripts/run-setar-index.sh
-@@ -28,9 +28,10 @@
- #
- # WHAT THIS JOB MAY DO: read the archive, write ONE scratch file in its own
- # runtime directory, and update source-index/setar/index.json. Nothing else.
--# Exits that PROVE nothing was published: 2 (configuration refused, nothing
--# ran), 3 (the scan was not the validated index) and 4 (the scan, or the
--# publisher before its ref write, failed). Any other failure may have come after GitHub accepted the
-+# Exits that PROVE this run published nothing — never that the branch is as it
-+# was, since another run's unanswered write may still land: 2 (configuration
-+# refused, nothing ran), 3 (the scan was not the validated index) and 4 (the
-+# scan, or the publisher before its ref write, failed). Any other failure may have come after GitHub accepted the
- # ref: unknown, and running the job again is safe (unchanged makes no commit).
- #
- # ROLLBACK: disable the scheduled task. The app keeps the source graph it last
-@@ -45,12 +46,12 @@ if [ -r "$CONFIG" ]; then
-   # shellcheck disable=SC1090
-   . "$CONFIG"
- else
--  echo "No readable config at $CONFIG; nothing was published." >&2
-+  echo "No readable config at $CONFIG; this run published nothing." >&2
-   exit 2
- fi
- 
- for v in PC_ARCHIVE_ROOT PC_INDEX_REPO PC_INDEX_TOKEN; do
--  eval "[ -n \"\${$v:-}\" ]" || { echo "$v is not set; nothing was published." >&2; exit 2; }
-+  eval "[ -n \"\${$v:-}\" ]" || { echo "$v is not set; this run published nothing." >&2; exit 2; }
- done
- export PC_INDEX_REPO PC_INDEX_TOKEN PC_INDEX_SEAT_PORT  # the seat port, if set, must be the same for every publisher here
- 
-@@ -67,9 +68,9 @@ if [ ! -d "$WORK" ]; then
-   exit 2
- fi
- 
--# Scan first. If it fails, stop here: the published index is still the good one.
-+# Scan first. If it fails, stop here: this run publishes nothing.
- "$NODE" "$HERE/scan-setar-classes.mjs" --root "$PC_ARCHIVE_ROOT" --out "$OUT" || {
--  echo "The scan failed; nothing was published." >&2
-+  echo "The scan failed; this run published nothing." >&2
-   exit 4
+   }
+-  return { unreadable: true, digest, names };
++  return { unreadable: true, digest, entries };
++}
++
++/**
++ * What one lock entry IS, judged again after it is set aside: a file's bytes or
++ * a link's target, by digest (as the record's digest reads it); null for
++ * anything else, which is never judged and so never removed.
++ */
++export function lockEntryDigest(p) {
++  const st = lstatSync(p);
++  return st.isFile() ? digestOf(readFileSync(p)) : st.isSymbolicLink() ? digestOf(`link:${readlinkSync(p)}`) : null;
  }
  
+ /**
 diff --git a/scripts/setar-archive-maintenance.mjs b/scripts/setar-archive-maintenance.mjs
-index 1ae82bf4de0bb66131a05e5e7ce1995e795b948f..2ec6088f22d9a8156e8a2db15cea5041db4ecc13 100644
+index 2ec6088f22d9a8156e8a2db15cea5041db4ecc13..9c2732cd224821b1d4c17953b83841d42a0fc242 100644
 --- a/scripts/setar-archive-maintenance.mjs
 +++ b/scripts/setar-archive-maintenance.mjs
-@@ -21,13 +21,16 @@
- //
- // The scanner stays read-only; this is the only writer, and it writes only
- // PIECES.csv, RENAME-LOG.csv, the one file a `rename` names, its own dotfiles
--// in the archive root (the archive's lock, a write's temp and capture) and its
--// own --state folder. Every write is proved against the exact state it expects
-+// in the archive root (the archive's lock, a write's temp and capture) and in
-+// that file's folder, and its own --state folder. A name it takes away stays
-+// as a hidden `.<name>.superseded-<id>` (the same file, no bytes copied), and
-+// a private name is removed only while another of its names holds the same
-+// file, so nothing anyone has open loses its file. Every write is proved against the exact state it expects
- // at the moment it is made, under the archive's one lock. Node stdlib only.
+@@ -51,7 +51,7 @@ import {
+   readTable,
+   writeIndexAtomically,
+ } from './scan-setar-classes.mjs';
+-import { ARCHIVE_LOCK, readArchiveLock } from './publish-setar-index.mjs';
++import { ARCHIVE_LOCK, lockEntryDigest, readArchiveLock } from './publish-setar-index.mjs';
  
- import { createHash, randomUUID } from 'node:crypto';
- import { spawnSync } from 'node:child_process';
--import { closeSync, constants, copyFileSync, existsSync, fchmodSync, futimesSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
-+import { constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
- import { hostname } from 'node:os';
- import { basename, dirname, join, resolve, sep } from 'node:path';
- import { fileURLToPath } from 'node:url';
-@@ -266,7 +269,8 @@ const rootIdOf = (root) => sha(realpathSync.native(root).normalize('NFC'));
-  *
-  * `status` says what the ARCHIVE holds (prepared | applied | rolling-back |
-  * rolled-back), `publication` what is known of the source-index branch
-- * (pending | published | failed | unknown | not-needed), and `unresolved` the
-+ * (pending | published | unknown | not-needed; an older journal's `failed` reads
-+ * as unknown), and `unresolved` the
+ const REGISTRY = 'PIECES.csv';
+ const LOG = 'RENAME-LOG.csv';
+@@ -241,12 +241,12 @@ function finish(plan, registryText, logText) {
+ 
+ // --- the private state folder -----------------------------------------------
+ 
+-function stateDir(rootArg, stateArg) {
++function stateDir(arc, stateArg) {
+   if (!stateArg) throw new Refusal('Give a private --state folder outside the archive; it holds the rollback copies.');
+   const st = lstatOrNull(stateArg);
+   if (!st?.isDirectory()) throw new Refusal('The --state folder must already exist as a real folder (a link is never written through).');
+   const state = realpathSync.native(stateArg).normalize('NFC');
+-  const root = realpathSync.native(resolve(rootArg)).normalize('NFC');
++  const root = arc.path.normalize('NFC');
+   if (state === root || state.startsWith(root + sep)) throw new Refusal('The --state folder must be OUTSIDE the archive: rollback copies are private.');
+   return state;
+ }
+@@ -258,8 +258,8 @@ const writeJournal = (state, j) => {
+   renameSync(`${journalPath(state)}.tmp`, journalPath(state));
+ };
+ 
+-/** Which archive a --state folder serves: a digest, never the path itself. */
+-const rootIdOf = (root) => sha(realpathSync.native(root).normalize('NFC'));
++/** Which archive a --state folder serves: a digest of the BOUND archive's real path (`bindArchive`), never the path itself. */
++const rootIdOf = (arc) => sha(arc.path.normalize('NFC'));
+ 
+ /**
+  * The journal, refused when it was written for another archive. One from an
+@@ -274,7 +274,7 @@ const rootIdOf = (root) => sha(realpathSync.native(root).normalize('NFC'));
   * validated hashes of every attempt whose remote outcome is NOT known — kept
   * until a positive observation of the branch, never reset by a later failure.
   */
-@@ -286,7 +290,7 @@ function journalFor(state, root, recovering) {
-   else if (j.status === 'applied' || j.status === 'rolled-back') {
-     if (!j.publication) j = { ...j, publication: 'pending' };
-     else if (j.publication === 'unchanged' || j.publication === 'created') j = { ...j, publication: 'published' };
--    else if (j.publication === 'publish-failed') j = { ...j, publication: 'unknown' };
-+    else if (j.publication === 'publish-failed' || j.publication === 'failed') j = { ...j, publication: 'unknown' };
+-function journalFor(state, root, recovering) {
++function journalFor(state, arc, recovering) {
+   let j = readJournal(state);
+   if (!j) return null;
+   if (!j.rootId) {
+@@ -283,7 +283,11 @@ function journalFor(state, root, recovering) {
+     }
+     return null;
    }
-   // An open attempt from before `unresolved` existed stays open, under its hash if it recorded one.
-   const open = ['pending', 'unknown'].includes(j.publication) ? [j.contentHash ?? 'unrecorded'] : [];
-@@ -453,44 +457,31 @@ function capture(dir, name) {
+-  if (j.rootId !== rootIdOf(root)) throw new Refusal('This --state folder belongs to another archive; nothing was changed. Use that archive’s own --state folder.');
++  if (j.rootId !== rootIdOf(arc)) throw new Refusal('This --state folder belongs to another archive; nothing was changed. Use that archive’s own --state folder.');
++  // Across runs too, the archive is the DIRECTORY the change was made in, never whatever now stands at its path.
++  if (j.rootIno !== undefined && j.rootIno !== arc.ino) {
++    throw new Refusal('The folder at this archive’s path is not the one this change was made in (it was moved, or another folder put there); nothing was changed. Put the archive back where it was, then run this again.');
++  }
+   // Earlier versions of this lane folded status and publication together; read them conservatively.
+   if (j.status === 'published') j = { ...j, status: 'applied', publication: 'published' };
+   else if (j.status === 'publish-failed') j = { ...j, status: 'applied', publication: 'unknown' };
+@@ -297,6 +301,74 @@ function journalFor(state, root, recovering) {
+   return { ...j, unresolved: j.unresolved ?? open };
  }
  
- /**
-- * THE ONE PLACE a private name of this tool is removed: only while `kept`
-- * still names the same file (a link: the same target), so a file never loses
-- * its last name. The file is held open throughout: if `kept` is replaced or
-- * removed in the instant between that judgement and the unlink, its bytes are
-- * written back under the private name from the open file. Returns whether the
-- * private name is gone and `kept` held the file after it went; on false the
-- * private name holds the file (or its bytes). `at(point, label)` is the seam.
-+ * THE ONE PLACE a private name of this tool is retired, its bytes never
-+ * copied: the file first gets a SECOND private name, a hidden `.superseded-`
-+ * one (the scanner skips dotfiles; a fresh id, never the `mv -n` target a
-+ * refusal suggests), then `kept` is judged to still name the same file (a
-+ * link: the same target), and only then is ONE of the two removed — `aside`
-+ * when `kept` holds it (the hidden name stays), else the hidden one (false:
-+ * `aside` still holds the very file). A name is removed only while another
-+ * private name of this tool holds the same file, so no failure, kill or
-+ * concurrent replacement leaves it without a name — killed anywhere, `aside`
-+ * is still there for the next run to refuse on and name — and a program
-+ * holding it open keeps writing into a named file. `at` is the seam, between
-+ * the second name and the judgement.
++// --- the archive, bound -------------------------------------------------------
++//
++// Node has no openat/linkat, and a pathname can be replaced at any instant: an
++// archive renamed away, another folder (an external copy) put at its path. So
++// the tool never writes THROUGH the archive's path. `bindArchive` records the
++// directory `--root` names when the run starts — its device and inode, and the
++// real path it had — and every read-then-write runs inside `inArchive`, with the
++// process's working directory ON that directory and every name a bare relative
++// one, resolved by the kernel against the directory itself. Entering is proved
++// by inode, never assumed: a path that names another folder now is refused, and
++// nothing more is done. A section never spans an `await` (another run in the
++// same process may move the working directory meanwhile).
++
++const statOrNull = (p) => {
++  try {
++    return statSync(p);
++  } catch {
++    return null;
++  }
++};
++
++/** THE authorised archive: what `root` names at this instant, by inode, with its real path. */
++export function bindArchive(root) {
++  const back = process.cwd();
++  process.chdir(root);
++  try {
++    // `ino` (exact, as text) is what a journal records across runs; never the device, which a remount may renumber.
++    return { path: realpathSync.native('.'), home: statSync('.'), ino: statSync('.', { bigint: true }).ino.toString() };
++  } finally {
++    process.chdir(back);
++  }
++}
++
++const movedRefusal = () => new Refusal('The archive folder was moved, or another folder put at its path, while this ran; nothing more was done in it. Put it back where it was, then run `rollback`.');
++
++/** The working directory IS the bound archive, and its recorded path still names it (the scanner reads through a path). */
++function ensureHome(arc) {
++  if (!same(statSync('.'), arc.home) || !same(statOrNull(arc.path), arc.home)) throw movedRefusal();
++}
++
++/** Into the bound archive by its recorded path, proved by inode, or refused. */
++function enter(arc) {
++  try {
++    process.chdir(arc.path);
++  } catch {
++    throw movedRefusal();
++  }
++  ensureHome(arc);
++}
++
++/** Run `fn` with the working directory on the bound archive; the caller's is restored after. */
++export function inArchive(arc, fn) {
++  const back = process.cwd();
++  try {
++    enter(arc);
++    return fn();
++  } finally {
++    process.chdir(back);
++  }
++}
++
++/** A test seam may start a nested run, which restores the working directory by path: it is proved unchanged after, or this run stops. */
++const guarded = (at) => (point, name) => {
++  const here = statSync('.');
++  at(point, name);
++  if (!same(statSync('.'), here)) throw new Refusal('The folder this run works in changed under it; nothing more was done.');
++};
++
+ // --- who owns the archive ----------------------------------------------------
+ //
+ // ONE lock per ARCHIVE (`ARCHIVE_LOCK` in its root, which the scanner skips),
+@@ -313,8 +385,8 @@ function journalFor(state, root, recovering) {
+ const same = (a, b) => Boolean(a && b && a.ino === b.ino && a.dev === b.dev);
+ const holderLine = (h) => (h.unreadable ? 'a record not in this tool’s form' : `run ${h.token.slice(0, 8)} (pid ${h.pid} on ${h.host}, since ${h.since})`);
+ 
+-function lockRefusal(root) {
+-  const held = readArchiveLock(root);
++function lockRefusal() {
++  const held = readArchiveLock('.');
+   if (!held) return new Refusal('Another maintenance run was just releasing the archive’s lock; nothing was changed. Try again.');
+   return new Refusal(
+     `The archive’s maintenance lock is held by ${holderLine(held)}; nothing was changed. If that run is still going, wait for it. ` +
+@@ -330,50 +402,107 @@ function lockRefusal(root) {
+  * tool's private names: it is never recovered from automatically (a name proves
+  * nothing about whose file it is); the run refuses and names it.
   */
--function unlinkKeeping(aside, kept, at, label) {
-+function retireKeeping(aside, kept, at, label) {
-   const st = lstatSync(aside);
-   const target = st.isSymbolicLink() ? readlinkSync(aside) : null;
--  const fd = target === null ? openSync(aside, 'r') : null;
--  const holds = () => {
--    const k = lstatOrNull(kept);
--    return target === null ? same(k, st) : Boolean(k?.isSymbolicLink()) && readlinkSync(kept) === target;
--  };
--  try {
--    if (!holds()) return false;
--    at('unlink-aside', label);
--    rmSync(aside);
--    if (holds()) return true;
--    if (target !== null) symlinkSync(target, aside);
--    else {
--      const out = openSync(aside, 'wx');
--      try {
--        const buf = Buffer.allocUnsafe(1 << 20);
--        for (let pos = 0, n; (n = readSync(fd, buf, 0, buf.length, pos)) > 0; pos += n) writeSync(out, buf, 0, n);
--        // ponytail: mode and times kept; the owner is this tool's (chown needs root), the operator fixes it if it matters.
--        fchmodSync(out, st.mode & 0o7777);
--        futimesSync(out, st.atime, st.mtime);
--      } finally {
--        closeSync(out);
--      }
--    }
--    return false;
--  } finally {
--    if (fd !== null) closeSync(fd);
--  }
-+  const retained = aside.replace(/\.(captured|dropping)-[^/]*$/, `.superseded-${randomUUID()}`);
-+  // A link is re-made, never hard-linked: link(2) follows a symlink on macOS.
-+  if (target === null) linkSync(aside, retained);
-+  else symlinkSync(target, retained);
-+  at('retain-aside', label);
-+  const k = lstatOrNull(kept);
-+  const holds = target === null ? same(k, st) : Boolean(k?.isSymbolicLink()) && readlinkSync(kept) === target;
-+  rmSync(holds ? aside : retained);
-+  return holds;
- }
- 
- /** Put a captured file back, never over anything that appeared meanwhile, nor losing it if its name is replaced again — then both are kept, and said. */
-@@ -506,7 +497,7 @@ function putBack(dir, name, aside, at, label = name) {
+-function lock(root) {
++function lock() {
+   const token = randomUUID();
+-  const tmp = join(root, `${ARCHIVE_LOCK}.${token}`);
++  const tmp = `${ARCHIVE_LOCK}.${token}`;
+   mkdirSync(tmp);
+   try {
+     writeFileSync(join(tmp, `${token}.json`), `${JSON.stringify({ token, pid: process.pid, host: hostname(), since: new Date().toISOString() })}\n`, { flag: 'wx' });
+-    renameSync(tmp, join(root, ARCHIVE_LOCK));
++    renameSync(tmp, ARCHIVE_LOCK);
+   } catch (err) {
+     rmSync(tmp, { recursive: true, force: true }); // this run's own private folder
+-    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR'].includes(err?.code)) throw lockRefusal(root);
++    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR'].includes(err?.code)) throw lockRefusal();
      throw err;
    }
-   at('put-back', label);
--  if (!unlinkKeeping(aside, join(dir, name), at, label)) throw new Refusal(both);
-+  if (!retireKeeping(aside, join(dir, name), at, label)) throw new Refusal(both);
- }
- 
- /** A replaced declaration is KEPT, never unlinked, under a name no other write uses. */
-@@ -601,7 +592,7 @@ function inFolder(root, folder, fn) {
-  * moving bytes other than the recorded ones: the new name is LINKED (fails if
-  * anything is there), what it names is judged (same file, recorded size and
-  * SHA-256, the folder still at its name), and only then is the old name
-- * removed — while the new name still holds the file. A judged failure removes
-+ * retired to a hidden `.superseded-` name of the same file — while the new name still holds it. A judged failure removes
-  * only the name this call made, while the old name still holds the file —
-  * inside the bound folder, wherever it now is; nothing has moved. Whichever
-  * name another writer replaces meanwhile, the file keeps the other, and the
-@@ -633,7 +624,7 @@ function moveExact({ root, owner, at, written }, fromRel, toRel, expect) {
-         written?.delete('rename');
-         throw new Refusal(`${why}, and "${toRel}" was then replaced or removed; whatever stands there is left, and nothing was moved.`);
-       }
--      throw new Refusal(bound ? `${why}; nothing was moved.` : `${why}; the name this run made there was removed again, and nothing outside it was touched.`);
-+      throw new Refusal(bound ? `${why}; nothing was moved.` : `${why}; the name this run made there was taken out again (kept hidden beside it), and nothing outside it was touched.`);
-     }
-     at('unlink', fromRel);
-     const drop = dropName(from, b, to, at, join(root, fromRel), join(root, toRel));
-@@ -646,7 +637,8 @@ function moveExact({ root, owner, at, written }, fromRel, toRel, expect) {
- }
- 
- /**
-- * Remove the leaf name `name` (inside a bound folder) only while it names the
-+ * Take the leaf name `name` away (inside a bound folder; kept hidden:
-+ * `retireKeeping`) only while it names the
-  * file `inode` (an lstat) AND its other name `kept` still does — judged on a
-  * PRIVATE name it was first moved to (atomic: whatever held the name at that
-  * instant), so no file renamed onto either name meanwhile, nor the file
-@@ -668,7 +660,7 @@ function dropName(name, inode, kept, at, label, keptLabel) {
-     putBack('.', name, aside, at, label);
-     return 'changed';
-   }
--  if (unlinkKeeping(aside, kept, at, keptLabel)) return 'dropped';
-+  if (retireKeeping(aside, kept, at, keptLabel)) return 'dropped';
-   putBack('.', name, aside, at, label);
-   return 'kept-changed';
- }
-@@ -692,9 +684,10 @@ function validateAndScan(root, state, action) {
- 
- /**
-  * Publication failed. `nothingPublished` is a CLAIM about THIS attempt only,
-- * made when the job proved it (it refused or failed before its ref write);
-- * every other failure — a non-zero or signalled exit, a lost response, an
-- * ordinary exception — is UNKNOWN and said so, never promised.
-+ * made when the job proved it (it refused or failed before its ref write) —
-+ * never about the branch, which another publisher may still change; every
-+ * other failure — a non-zero or signalled exit, a lost response, an ordinary
-+ * exception — leaves this attempt itself open too.
-  */
- export class PublishFailed extends Error {
-   constructor(message, nothingPublished) {
-@@ -722,23 +715,24 @@ async function publishStep(state, base, scanned, publish, token) {
-     // POSITIVE EVIDENCE or it did not happen: a publisher that returns no status has proved nothing.
-     if (!PUBLISHED.has(result?.status)) throw new PublishFailed('the publisher reported no publication', false);
+   try {
+-    refuseLeftovers(root);
++    refuseLeftovers();
    } catch (err) {
-+    // A proof covers THIS attempt only, never the branch: another publisher's
-+    // unanswered write (the scheduled job's, recorded where this run cannot
-+    // read) may still land. So a failure is always `unknown` until a positive
-+    // observation of the branch.
-     const proved = err?.nothingPublished === true;
-     const unresolved = proved ? before : attempt.unresolved;
--    const publication = unresolved.length ? 'unknown' : 'failed';
-     const why = err?.message ?? 'unknown';
-     try {
--      writeJournal(state, { ...attempt, publication, unresolved });
-+      writeJournal(state, { ...attempt, publication: 'unknown', unresolved });
-     } catch (e) {
--      throw new Error(`Publication ${publication === 'failed' ? 'failed' : 'could not be confirmed'} (${why}), and the private journal could not record that (${e.message}); it still says pending, which counts as unconfirmed. Run \`retry\`.`);
-+      throw new Error(`Publication could not be confirmed (${why}), and the private journal could not record that (${e.message}); it still says pending, which counts as unconfirmed. Run \`retry\`.`);
-     }
-+    const earlier = before.length ? 'an earlier attempt is still unconfirmed and may have been published' : 'what the source-index branch holds is not confirmed (an earlier or scheduled publication may still land)';
-     return {
-       ok: false,
-       status: 'publish-failed',
-       contentHash,
--      message:
--        publication === 'failed'
--          ? `The archive is valid, but publication failed (${why}). This attempt published nothing, so the source-index branch is as it was. Run \`retry\` to publish again.`
--          : `The archive is valid, but publication could not be confirmed (${why}); ${proved ? 'this attempt published nothing, but an earlier attempt is still unconfirmed and may have been published' : 'it may already be published'}. Run \`retry\`: it makes no new commit if the source-index branch already holds this index.`,
-+      message: `The archive is valid, but publication could not be confirmed (${why}); ${proved ? `this attempt published nothing, but ${earlier}` : 'it may already be published'}. Run \`retry\`: it publishes this index, and makes no new commit if the source-index branch already holds it.`,
-     };
+-    unlock(root, token);
++    unlock(token);
+     throw err;
    }
-   // Published: a failure to RECORD it is never reported as a failure to publish.
+   return token;
+ }
+ 
+-/** Every archive write first proves this run still holds the lock (an operator may have released it). */
+-function assertOwner(root, owner) {
+-  if (!lstatOrNull(join(root, ARCHIVE_LOCK, `${owner}.json`))?.isFile()) throw new Refusal('This run no longer holds the archive’s maintenance lock (it was released by hand); it stopped before its next write.');
++/**
++ * Every archive write first proves it is IN the bound archive and this run
++ * still holds its lock (an operator may have released it). What follows works
++ * by bare names in that archive, so nothing done to its path after this check
++ * reaches the write. `owned` is the test seam, just after the check.
++ */
++function assertOwner({ arc, owner, at }, label) {
++  ensureHome(arc);
++  if (!lstatOrNull(join(ARCHIVE_LOCK, `${owner}.json`))?.isFile()) throw new Refusal('This run no longer holds the archive’s maintenance lock (it was released by hand); it stopped before its next write.');
++  at('owned', label);
+ }
+ 
+ /** Remove the lock's folder once empty — never one holding anyone's record. */
+-function dropEmptyLock(root) {
++function dropEmptyLock() {
+   try {
+-    rmdirSync(join(root, ARCHIVE_LOCK));
++    rmdirSync(ARCHIVE_LOCK);
+   } catch {
+     // not empty (a newer run holds it), already gone, or not a folder: left as it is
+   }
+ }
+ 
+ /** Release THIS run's lock: only its own record, by its unique name; a newer run's is never touched. */
+-function unlock(root, token) {
++function unlock(token) {
+   try {
+-    unlinkSync(join(root, ARCHIVE_LOCK, `${token}.json`));
++    unlinkSync(join(ARCHIVE_LOCK, `${token}.json`));
+   } catch (err) {
+     if (err?.code === 'ENOENT') return; // released by hand already
+     throw err;
+   }
+-  dropEmptyLock(root);
++  dropEmptyLock();
++}
++
++/**
++ * A run's end: its own record released INSIDE the bound archive. When the
++ * archive can no longer be entered, the lock is left where it is — never
++ * removed through another folder — and the next run names it (release-lock).
++ */
++function release(arc, token) {
++  try {
++    inArchive(arc, () => unlock(token));
++  } catch (err) {
++    if (!(err instanceof Refusal)) throw err;
++  }
++}
++
++/**
++ * THE ONE PLACE a lock entry is removed: only while what stands at `p` is
++ * exactly what the operator saw (`digest`), judged on a private name it was
++ * first moved to — atomic: whatever held the name at that instant — so an
++ * entry put at that name since, or replacing it in the judgement's instant,
++ * is never removed: it is linked back, never over anything, or kept under the
++ * private name and said. Returns whether it removed the entry. `at` is the
++ * test seam, between the move and the judgement.
++ */
++function removeLockEntry(p, digest, at) {
++  const aside = `${p}.releasing-${randomUUID()}`;
++  try {
++    renameSync(p, aside);
++  } catch (err) {
++    if (err?.code === 'ENOENT') return false;
++    throw err;
++  }
++  at('judge-release', p);
++  const st = lstatSync(aside);
++  if ((st.isFile() || st.isSymbolicLink()) && lockEntryDigest(aside) === digest) {
++    unlinkSync(aside);
++    return true;
++  }
++  try {
++    if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), p);
++    else if (st.isFile()) linkSync(aside, p);
++    else renameSync(aside, p); // a folder: replaces only an empty one, never anyone's record
++  } catch (err) {
++    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR'].includes(err?.code)) {
++      throw new Refusal(`The lock changed while it was being released, and a newer one now stands; what had replaced the record you saw is kept as ${aside}. Nothing else was removed.`);
++    }
++    throw err;
++  }
++  if (!st.isDirectory()) unlinkSync(aside); // `p` holds that very file again
++  return false;
+ }
+ 
+ /**
+@@ -384,8 +513,11 @@ function unlock(root, token) {
+  * touched. `at` is the test seam.
+  */
+ export function releaseLock({ root: rootArg, record, at = noSeam }) {
+-  const root = resolve(rootArg);
+-  const held = readArchiveLock(root);
++  return inArchive(bindArchive(resolve(rootArg)), () => releaseBound(record, guarded(at)));
++}
++
++function releaseBound(record, at) {
++  const held = readArchiveLock('.');
+   if (!held) return { released: false, lines: ['The archive holds no maintenance lock. Nothing to do.'] };
+   const id = held.digest.slice(0, 16);
+   if (!record) {
+@@ -401,18 +533,17 @@ export function releaseLock({ root: rootArg, record, at = noSeam }) {
+   const stale = () => new Refusal('The lock is not the record you saw (it changed or was released since); nothing was changed. Run release-lock again to see it.');
+   if (record !== id) throw stale();
+   at('release', ARCHIVE_LOCK);
++  // Only a file or a link can be judged again; anything else is the operator's to remove by hand.
++  if (held.entries.some(([, d]) => d === null)) {
++    throw new Refusal(`The lock holds something that is not a file (${held.entries.filter(([, d]) => d === null).map(([p]) => p).join(', ')}); nothing was changed. Once no run holds it, remove it by hand.`);
++  }
+   let removed = 0;
+-  // Something at the lock's name that is not a folder is never this version's lock: unlink removes only it.
+-  for (const p of held.names ? held.names.map((n) => join(root, ARCHIVE_LOCK, n)) : [join(root, ARCHIVE_LOCK)]) {
+-    try {
+-      unlinkSync(p);
+-      removed += 1;
+-    } catch (err) {
+-      if (err?.code !== 'ENOENT') throw err;
+-    }
++  for (const [p, digest] of held.entries) if (removeLockEntry(p, digest, at)) removed += 1;
++  dropEmptyLock();
++  if (removed < held.entries.length) {
++    if (!removed) throw stale();
++    throw new Refusal(`Part of the lock changed since you saw it: ${removed} of its ${held.entries.length} entries, still exactly as shown, were removed; the rest is left as it is. Run release-lock again to see it.`);
+   }
+-  dropEmptyLock(root);
+-  if (!removed) throw stale();
+   return { released: true, lines: [`Released the lock of ${holderLine(held)}. The next run says what, if anything, it left to finish.`] };
+ }
+ 
+@@ -424,14 +555,16 @@ export function releaseLock({ root: rootArg, record, at = noSeam }) {
+  * renames it back — never over anything — before running again; the journal's
+  * own exact judgement (`rollback`) then finishes.
+  */
+-function refuseLeftovers(root) {
++function refuseLeftovers() {
+   const found = [];
+-  for (const d of readdirSync(root, { withFileTypes: true })) {
++  for (const d of readdirSync('.', { withFileTypes: true })) {
++    // A lock a release-lock set aside and stopped before judging — a file, a link or a newer run's folder alike.
++    if (d.name.startsWith(`${ARCHIVE_LOCK}.releasing-`)) found.push(`  mv -n '${d.name}' '${ARCHIVE_LOCK}'   (a lock record a release set aside; then run release-lock to see it)`);
+     if (d.isFile() || d.isSymbolicLink()) {
+       const m = /^\.(PIECES\.csv|RENAME-LOG\.csv)\.captured-/.exec(d.name);
+       if (m) found.push(`  mv -n '${d.name}' '${m[1]}'   (if ${m[1]} is there, it is the copy a write replaced: mv -n '${d.name}' '${d.name.replace('.captured-', '.superseded-')}')`);
+     } else if (d.isDirectory() && parseSessionFolderName(d.name)) {
+-      for (const f of readdirSync(join(root, d.name))) {
++      for (const f of readdirSync(d.name)) {
+         const m = /^\.(.+)\.dropping-/.exec(f);
+         if (m) found.push(`  mv -n '${d.name}/${f}' '${d.name}/${m[1]}'   (if that name is taken, keep both and compare them)`);
+       }
+@@ -517,10 +650,12 @@ const keep = (aside) => {
+  * it is recorded in `written`, so a later failure is judged, never skipped.
+  * `at` is the test seam.
+  */
+-function replaceDeclaration({ root, owner, at, written }, name, text, expected, keepDir) {
+-  assertOwner(root, owner);
+-  const p = join(root, name);
+-  const tmp = text === null ? null : join(root, `.${name}.maintenance-${randomUUID()}`);
++function replaceDeclaration(ctx, name, text, expected, keepDir) {
++  const { at, written } = ctx;
++  assertOwner(ctx, name);
++  // Bare names, inside the bound archive (`inArchive`): never its path again.
++  const p = name;
++  const tmp = text === null ? null : `.${name}.maintenance-${randomUUID()}`;
+   if (tmp) writeFileSync(tmp, text, { flag: 'wx' });
+   try {
+     at('capture', name);
+@@ -535,11 +670,11 @@ function replaceDeclaration({ root, owner, at, written }, name, text, expected,
+       written?.add(name);
+       return;
+     }
+-    const aside = capture(root, name);
++    const aside = capture('.', name);
+     if (!aside) throw new Refusal(`${name} was removed while this ran; nothing was put in its place.`);
+     const st = lstatSync(aside);
+     if (!st.isFile() || sha(readFileSync(aside)) !== expected) {
+-      putBack(root, name, aside, at);
++      putBack('.', name, aside, at);
+       throw new Refusal(`${name} changed while this ran; it was left as the other edit made it.`);
+     }
+     at('install', name);
+@@ -550,7 +685,7 @@ function replaceDeclaration({ root, owner, at, written }, name, text, expected,
+       if (tmp && err?.code === 'EEXIST') {
+         throw new Refusal(`${name} was written by someone else while this ran; theirs stands, and the one it replaced is kept beside it as ${basename(keep(aside))}.`);
+       }
+-      putBack(root, name, aside, at);
++      putBack('.', name, aside, at);
+       throw err;
+     }
+     written?.add(name);
+@@ -565,25 +700,34 @@ function replaceDeclaration({ root, owner, at, written }, name, text, expected,
+ }
+ 
+ /**
+- * Run `fn(stillBound)` INSIDE one session folder, bound by its inode: it must
+- * be a real folder directly in the archive at the instant this starts (never a
+- * link), and every name `fn` touches is a bare leaf resolved against that
+- * bound folder — never the folder's path again, so swapping the folder for a
+- * link cannot carry a write outside. `stillBound()` says whether the folder
+- * still stands at its name; `fn` asks before each step that commits anything.
++ * Run `fn(stillBound)` INSIDE one session folder of the BOUND archive
++ * (`inArchive`), bound by its inode: it must be a real folder directly in that
++ * archive at the instant this starts (never a link), selected by its bare name
++ * against the archive itself, and every name `fn` touches is a bare leaf
++ * resolved against that bound folder — never a path again, so swapping the
++ * folder for a link, or the archive's path for another folder, cannot carry a
++ * write outside. `stillBound()` says whether the folder still stands at its
++ * name in the bound archive, judged through its own `..`; `fn` asks before
++ * each step that commits anything. Back in the archive by `..`, proved, or by
++ * its recorded path, proved, or refused.
+  */
+ // ponytail: process-wide cwd, the only stdlib way to resolve names against a
+ // bound directory (Node has no linkat/openat); the tool is single-threaded.
+-function inFolder(root, folder, fn) {
+-  const st = lstatOrNull(join(root, folder));
++function inFolder(arc, folder, fn) {
++  const st = lstatOrNull(folder);
+   if (!st?.isDirectory()) throw new Refusal(`The folder "${folder}" is not a real folder in the archive (a link is never followed); nothing was moved.`);
+-  const back = process.cwd();
+-  process.chdir(join(root, folder));
++  process.chdir(folder);
+   try {
+     if (!same(statSync('.'), st)) throw new Refusal(`The folder "${folder}" changed while this ran; nothing was moved.`);
+-    return fn(() => same(lstatOrNull(join(root, folder)), st));
++    // The entry first, then its parent: a folder moved out between the two is caught by the second.
++    return fn(() => same(lstatOrNull(join('..', folder)), st) && same(statSync('..'), arc.home));
+   } finally {
+-    process.chdir(back);
++    try {
++      process.chdir('..');
++    } catch {
++      // the folder is gone: back by the archive's path below
++    }
++    if (!same(statSync('.'), arc.home)) enter(arc);
+   }
+ }
+ 
+@@ -598,10 +742,12 @@ function inFolder(root, folder, fn) {
+  * name another writer replaces meanwhile, the file keeps the other, and the
+  * refusal says which.
+  */
+-function moveExact({ root, owner, at, written }, fromRel, toRel, expect) {
+-  assertOwner(root, owner);
++function moveExact(ctx, fromRel, toRel, expect) {
++  // `root` is the archive's given path, ONLY for what the test seam is told.
++  const { root, arc, at, written } = ctx;
++  assertOwner(ctx, fromRel);
+   const [from, to] = [fromRel, toRel].map((rel) => rel.split('/')[1]);
+-  inFolder(root, fromRel.split('/')[0], (stillBound) => {
++  inFolder(arc, fromRel.split('/')[0], (stillBound) => {
+     if (!lstatOrNull(from)?.isFile()) throw new Refusal(`"${fromRel}" is not a regular file in the archive any more; nothing was moved.`);
+     at('link', toRel);
+     try {
+@@ -671,14 +817,17 @@ export class Interrupted extends Error {}
+ // --- validation, scan and publication ---------------------------------------
+ 
+ /** Scan the archive now (the scanner's two-read rule), check the action took, write the scratch index. */
+-function validateAndScan(root, state, action) {
+-  const index = buildIndex(readStableSource(root));
++function validateAndScan(arc, state, action) {
++  // The scanner reads through a path (the working directory's): proved to be the bound archive before and after.
++  ensureHome(arc);
++  const index = buildIndex(readStableSource('.'));
++  ensureHome(arc);
+   if (action?.kind === 'register' && !index.pieces.some((p) => p.key === action.piece)) throw new Error('The registry does not show the new piece after the edit.');
+   if (action?.kind === 'roster' && !action.pieces.every((k) => index.pieces.find((p) => p.key === k)?.sessions.includes(action.session))) {
+     throw new Error('The registry does not show the roster after the edit.');
+   }
+   const text = `${JSON.stringify(index, null, 2)}\n`;
+-  writeIndexAtomically(join(state, 'scratch-index.json'), text, root);
++  writeIndexAtomically(join(state, 'scratch-index.json'), text, '.');
+   return { index, text };
+ }
+ 
+@@ -756,76 +905,82 @@ async function publishStep(state, base, scanned, publish, token) {
+  */
+ export async function applyMaintenance({ root: rootArg, state: stateArg, action, previewId, publish, interruptAfter, at = noSeam }) {
+   const root = resolve(rootArg);
+-  const state = stateDir(root, stateArg);
+-  const token = lock(root);
++  const arc = bindArchive(root);
++  const state = stateDir(arc, stateArg);
++  const token = inArchive(arc, lock);
+   // What THIS run has changed in the archive, recorded at the instant of each change: its automatic put-back judges only those.
+-  const ctx = { root, owner: token, at, written: new Set() };
++  const ctx = { root, arc, owner: token, at: guarded(at), written: new Set() };
+   let interrupted = false;
+   try {
+-    const prior = journalFor(state, root);
+-    if (prior?.status === 'prepared' || prior?.status === 'rolling-back') {
+-      throw new Refusal(`An earlier ${prior.status === 'prepared' ? 'apply' : 'rollback'} did not finish. Run \`rollback\` first; nothing else was changed.`);
+-    }
+-    if (prior && !['published', 'not-needed'].includes(prior.publication)) {
+-      throw new Refusal('An earlier change is not yet published (or its publication is unconfirmed). Run `retry` first; nothing else was changed.');
+-    }
+-    const plan = planMaintenance(root, action);
+-    if (plan.id !== previewId) throw new Refusal('The archive changed since that preview (or the preview is for something else). Preview again; nothing was changed.');
+-    if (plan.noop) return { ok: true, status: 'unchanged', lines: plan.lines };
+-
+-    // 1. The private rollback copy, BEFORE any edit.
+-    const copy = join(state, `${new Date().toISOString().replace(/[:.]/g, '-')}-${plan.id}`);
+-    mkdirSync(copy);
+-    // BOTH declarations, whatever this action edits: a rollback restores the pair as it was.
+-    const registryBefore = readDeclaration(root, REGISTRY, true);
+-    const logBefore = readDeclaration(root, LOG, false);
+-    const logWasPresent = logBefore !== null;
+-    writeFileSync(join(copy, REGISTRY), registryBefore, { flag: 'wx' });
+-    if (logWasPresent) writeFileSync(join(copy, LOG), logBefore, { flag: 'wx' });
+-    // What this change WROTE, by digest: the only state a restore may undo.
+-    const digest = (t) => (t === null ? null : sha(t));
+-    const wrote = {
+-      registry: { before: digest(registryBefore), after: digest(plan.registry ? plan.registry.after : registryBefore) },
+-      log: { before: digest(logBefore), after: digest(plan.log ? plan.log.after : logBefore) },
+-    };
+-    const journal = { id: plan.id, action, copy, rootId: rootIdOf(root), logWasPresent, wrote, rename: plan.rename, lockToken: token, status: 'prepared' };
+-    writeFileSync(join(copy, 'manifest.json'), `${JSON.stringify(journal, null, 2)}\n`);
+-    writeJournal(state, journal);
+-    const step = (name) => {
+-      if (interruptAfter === name) {
+-        interrupted = true;
+-        throw new Interrupted(`interrupted after ${name}`);
++    // Everything up to publication, in ONE bound section (no await inside).
++    const ready = inArchive(arc, () => {
++      const prior = journalFor(state, arc);
++      if (prior?.status === 'prepared' || prior?.status === 'rolling-back') {
++        throw new Refusal(`An earlier ${prior.status === 'prepared' ? 'apply' : 'rollback'} did not finish. Run \`rollback\` first; nothing else was changed.`);
+       }
+-    };
+-    step('copy');
++      if (prior && !['published', 'not-needed'].includes(prior.publication)) {
++        throw new Refusal('An earlier change is not yet published (or its publication is unconfirmed). Run `retry` first; nothing else was changed.');
++      }
++      const plan = planMaintenance('.', action);
++      if (plan.id !== previewId) throw new Refusal('The archive changed since that preview (or the preview is for something else). Preview again; nothing was changed.');
++      if (plan.noop) return { done: { ok: true, status: 'unchanged', lines: plan.lines } };
+ 
+-    // 2. The edit, each write proved against what the plan saw. Any failure is put back, automatically.
+-    let scanned;
+-    try {
+-      if (plan.registry) replaceDeclaration(ctx, REGISTRY, plan.registry.after, digest(plan.registry.before));
+-      step('registry');
+-      if (plan.log) replaceDeclaration(ctx, LOG, plan.log.after, digest(plan.log.before));
+-      step('log');
+-      if (plan.rename) moveExact(ctx, plan.rename.from, plan.rename.to, plan.rename);
+-      step('rename');
+-      at('scan', 'archive');
+-      scanned = validateAndScan(root, state, action);
+-    } catch (err) {
+-      if (err instanceof Interrupted) throw err;
++      // 1. The private rollback copy, BEFORE any edit.
++      const copy = join(state, `${new Date().toISOString().replace(/[:.]/g, '-')}-${plan.id}`);
++      mkdirSync(copy);
++      // BOTH declarations, whatever this action edits: a rollback restores the pair as it was.
++      const registryBefore = readDeclaration('.', REGISTRY, true);
++      const logBefore = readDeclaration('.', LOG, false);
++      const logWasPresent = logBefore !== null;
++      writeFileSync(join(copy, REGISTRY), registryBefore, { flag: 'wx' });
++      if (logWasPresent) writeFileSync(join(copy, LOG), logBefore, { flag: 'wx' });
++      // What this change WROTE, by digest: the only state a restore may undo.
++      const digest = (t) => (t === null ? null : sha(t));
++      const wrote = {
++        registry: { before: digest(registryBefore), after: digest(plan.registry ? plan.registry.after : registryBefore) },
++        log: { before: digest(logBefore), after: digest(plan.log ? plan.log.after : logBefore) },
++      };
++      const journal = { id: plan.id, action, copy, rootId: rootIdOf(arc), rootIno: arc.ino, logWasPresent, wrote, rename: plan.rename, lockToken: token, status: 'prepared' };
++      writeFileSync(join(copy, 'manifest.json'), `${JSON.stringify(journal, null, 2)}\n`);
++      writeJournal(state, journal);
++      const step = (name) => {
++        if (interruptAfter === name) {
++          interrupted = true;
++          throw new Interrupted(`interrupted after ${name}`);
++        }
++      };
++      step('copy');
++
++      // 2. The edit, each write proved against what the plan saw. Any failure is put back, automatically.
+       try {
+-        restore({ ...ctx, written: null }, journal, undefined, ctx.written);
+-      } catch (why) {
+-        // The journal stays `prepared`: `rollback` is still offered, never a false "put back".
+-        throw new Refusal(`The change did not validate (${err.message}), and it could not be put back automatically (${why.message}). The private copy is kept; check, then run \`rollback\`.`);
++        if (plan.registry) replaceDeclaration(ctx, REGISTRY, plan.registry.after, digest(plan.registry.before));
++        step('registry');
++        if (plan.log) replaceDeclaration(ctx, LOG, plan.log.after, digest(plan.log.before));
++        step('log');
++        if (plan.rename) moveExact(ctx, plan.rename.from, plan.rename.to, plan.rename);
++        step('rename');
++        ctx.at('scan', 'archive');
++        return { journal, scanned: validateAndScan(arc, state, action), lines: plan.lines };
++      } catch (err) {
++        if (err instanceof Interrupted) throw err;
++        try {
++          // Back in the bound archive first: a failure inside a session folder may have left the working directory anywhere.
++          enter(arc);
++          restore({ ...ctx, written: null }, journal, undefined, ctx.written);
++        } catch (why) {
++          // The journal stays `prepared`: `rollback` is still offered, never a false "put back".
++          throw new Refusal(`The change did not validate (${err.message}), and it could not be put back automatically (${why.message}). The private copy is kept; check, then run \`rollback\`.`);
++        }
++        // This run published nothing, and the archive is as it was before it.
++        writeJournal(state, { ...journal, status: 'rolled-back', publication: 'not-needed', unresolved: [] });
++        throw new Refusal(`The change did not validate (${err.message}); ${ctx.written.size ? 'everything it changed was put back from the private copy' : 'it had changed nothing in the archive'}.`);
+       }
+-      // This run published nothing, and the archive is as it was before it.
+-      writeJournal(state, { ...journal, status: 'rolled-back', publication: 'not-needed', unresolved: [] });
+-      throw new Refusal(`The change did not validate (${err.message}); ${ctx.written.size ? 'everything it changed was put back from the private copy' : 'it had changed nothing in the archive'}.`);
+-    }
++    });
++    if (ready.done) return ready.done;
+     // 3. Publication, through the existing job.
+-    return { ...(await publishStep(state, { ...journal, status: 'applied', unresolved: [] }, scanned, publish, token)), lines: plan.lines };
++    return { ...(await publishStep(state, { ...ready.journal, status: 'applied', unresolved: [] }, ready.scanned, publish, token)), lines: ready.lines };
+   } finally {
+-    if (!interrupted) unlock(root, token);
++    if (!interrupted) release(arc, token);
+   }
+ }
+ 
+@@ -839,9 +994,10 @@ export async function applyMaintenance({ root: rootArg, state: stateArg, action,
+  * limits the judgement to what that run is known to have written.
+  */
+ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
++  // Inside the bound archive (`inArchive`): every read and write by bare name; `root` only labels the test seam.
+   const { root } = ctx;
+   const current = (name) => {
+-    const t = readDeclaration(root, name, false);
++    const t = readDeclaration('.', name, false);
+     return t === null ? null : sha(t);
+   };
+   const steps = [];
+@@ -863,10 +1019,10 @@ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
+   }
+   const r = only && !only.has('rename') ? null : journal.rename;
+   if (r) {
+-    const fromSt = lstatOrNull(mediaPath(root, r.from));
+-    const toSt = lstatOrNull(mediaPath(root, r.to));
++    const fromSt = lstatOrNull(mediaPath('.', r.from));
++    const toSt = lstatOrNull(mediaPath('.', r.to));
+     const holds = (rel) => {
+-      const bytes = readFileSync(mediaPath(root, rel));
++      const bytes = readFileSync(mediaPath('.', rel));
+       return bytes.length === r.size && sha(bytes) === r.sha256;
+     };
+     if (!fromSt && toSt?.isFile()) {
+@@ -875,9 +1031,9 @@ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
+     } else if (same(fromSt, toSt) && toSt.isFile()) {
+       // A move stopped between its two names: the new name is the one to drop — the bytes stay at the old one, whatever they are.
+       steps.unshift(() => {
+-        assertOwner(root, ctx.owner);
++        assertOwner(ctx, r.to);
+         const [from, to] = [r.from, r.to].map((rel) => rel.split('/')[1]);
+-        inFolder(root, r.from.split('/')[0], (stillBound) => {
++        inFolder(ctx.arc, r.from.split('/')[0], (stillBound) => {
+           const kept = lstatOrNull(from);
+           const drop = stillBound() && same(kept, lstatOrNull(to)) ? dropName(to, kept, from, ctx.at, join(root, r.to), join(root, r.from)) : 'changed';
+           if (drop === 'kept-changed') throw new Refusal(`"${r.from}" was replaced or removed while this ran; the bytes stay as "${r.to}", and nothing was put back.`);
+@@ -894,18 +1050,21 @@ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
+ 
+ /** Validate, scan and publish again from the retained state — after a failed, unconfirmed or interrupted publication. */
+ export async function retryMaintenance({ root: rootArg, state: stateArg, publish }) {
+-  const root = resolve(rootArg);
+-  const state = stateDir(root, stateArg);
+-  const token = lock(root);
++  const arc = bindArchive(resolve(rootArg));
++  const state = stateDir(arc, stateArg);
++  const token = inArchive(arc, lock);
+   try {
+-    const journal = journalFor(state, root, true);
+-    if (!journal) throw new Refusal('Nothing has been applied here yet.');
+-    if (journal.status === 'prepared' || journal.status === 'rolling-back') {
+-      throw new Refusal(`The last ${journal.status === 'prepared' ? 'apply' : 'rollback'} did not finish; run \`rollback\`.`);
+-    }
+-    return await publishStep(state, { ...journal, lockToken: token }, validateAndScan(root, state, null), publish, token);
++    const [journal, scanned] = inArchive(arc, () => {
++      const j = journalFor(state, arc, true);
++      if (!j) throw new Refusal('Nothing has been applied here yet.');
++      if (j.status === 'prepared' || j.status === 'rolling-back') {
++        throw new Refusal(`The last ${j.status === 'prepared' ? 'apply' : 'rollback'} did not finish; run \`rollback\`.`);
++      }
++      return [j, validateAndScan(arc, state, null)];
++    });
++    return await publishStep(state, { ...journal, lockToken: token }, scanned, publish, token);
+   } finally {
+-    unlock(root, token);
++    release(arc, token);
+   }
+ }
+ 
+@@ -919,29 +1078,32 @@ export async function retryMaintenance({ root: rootArg, state: stateArg, publish
+  */
+ export async function rollbackMaintenance({ root: rootArg, state: stateArg, publish, interruptAfter, at = noSeam }) {
+   const root = resolve(rootArg);
+-  const state = stateDir(root, stateArg);
+-  const token = lock(root);
++  const arc = bindArchive(root);
++  const state = stateDir(arc, stateArg);
++  const token = inArchive(arc, lock);
+   let interrupted = false;
+   try {
+-    const journal = journalFor(state, root, true);
+-    if (!journal || journal.status === 'rolled-back') {
+-      throw new Refusal(
+-        journal && !['published', 'not-needed'].includes(journal.publication)
+-          ? 'The last change is already rolled back but not yet published; run `retry`.'
+-          : 'There is no change here to roll back.',
+-      );
+-    }
+-    restore({ root, owner: token, at }, journal, () => {
+-      writeJournal(state, { ...journal, status: 'rolling-back', lockToken: token });
+-      if (interruptAfter === 'mark') {
+-        interrupted = true;
+-        throw new Interrupted('interrupted after mark');
++    const [journal, scanned] = inArchive(arc, () => {
++      const j = journalFor(state, arc, true);
++      if (!j || j.status === 'rolled-back') {
++        throw new Refusal(
++          j && !['published', 'not-needed'].includes(j.publication)
++            ? 'The last change is already rolled back but not yet published; run `retry`.'
++            : 'There is no change here to roll back.',
++        );
+       }
++      restore({ root, arc, owner: token, at: guarded(at) }, j, () => {
++        writeJournal(state, { ...j, status: 'rolling-back', lockToken: token });
++        if (interruptAfter === 'mark') {
++          interrupted = true;
++          throw new Interrupted('interrupted after mark');
++        }
++      });
++      return [j, validateAndScan(arc, state, null)];
+     });
+-    const scanned = validateAndScan(root, state, null);
+     return await publishStep(state, { ...journal, status: 'rolled-back', lockToken: token }, scanned, publish, token);
+   } finally {
+-    if (!interrupted) unlock(root, token);
++    if (!interrupted) release(arc, token);
+   }
+ }
+ 
 diff --git a/tests/setar-maintenance.test.ts b/tests/setar-maintenance.test.ts
-index 075cc4664d7915f497533b3e9abcb05ca31689a4..6f033966593ec9feb7959e5a8f5fe05ec517cf26 100644
+index 6f033966593ec9feb7959e5a8f5fe05ec517cf26..da5783ee92f3e67cda6afa358ec7138469fa6b88 100644
 --- a/tests/setar-maintenance.test.ts
 +++ b/tests/setar-maintenance.test.ts
-@@ -6,11 +6,11 @@ import { dirname, join } from 'node:path';
+@@ -1,12 +1,12 @@
+ import { execFile } from 'node:child_process';
+ import { createHash } from 'node:crypto';
+-import { chmodSync, closeSync, existsSync, utimesSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
++import { chmodSync, closeSync, cpSync, existsSync, utimesSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
+ import { tmpdir } from 'node:os';
+ import { dirname, join } from 'node:path';
  import { promisify } from 'node:util';
  import { describe, expect, it, vi } from 'vitest';
  // @ts-expect-error — untyped operator tools; these are the real ones.
--import { applyMaintenance, Interrupted, planMaintenance, releaseLock, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
-+import { applyMaintenance, Interrupted, planMaintenance, publishWithRunner, releaseLock, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
+-import { applyMaintenance, Interrupted, planMaintenance, publishWithRunner, releaseLock, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
++import { applyMaintenance, bindArchive, inArchive, Interrupted, planMaintenance, publishWithRunner, releaseLock, retryMaintenance, rollbackMaintenance } from '../scripts/setar-archive-maintenance.mjs';
  // @ts-expect-error — see above.
  import { scanToIndex } from '../scripts/scan-setar-classes.mjs';
  // @ts-expect-error — see above.
--import { archiveConfirmation, ARCHIVE_LOCK, DEFAULT_SEAT_PORT, makeGitHubIndexTransport, publishIndex, readArchiveLock, SOURCE_INDEX_BRANCH, INDEX_PATH } from '../scripts/publish-setar-index.mjs';
-+import { archiveConfirmation, ARCHIVE_LOCK, DEFAULT_SEAT_PORT, makeGitHubIndexTransport, publishIndex, readArchiveLock, SOURCE_INDEX_BRANCH, INDEX_PATH, takeSeat } from '../scripts/publish-setar-index.mjs';
- import { followRenames } from '../src/domain/sourceReconcile';
- import SOURCE from './fixtures/setar-lifecycle-source.json' with { type: 'json' };
- import EXPECTED from './fixtures/setar-lifecycle-expected.json' with { type: 'json' };
-@@ -46,14 +46,16 @@ function scratch() {
-   return { base, root, state };
- }
- 
--/** Every media byte, by path — what "without altering media" is checked against. */
-+/** Every media byte, by path, as the scanner sees it (dotfiles skipped) — what "without altering media" is checked against. */
- function media(root: string): Record<string, string> {
-   const out: Record<string, string> = {};
-   for (const d of readdirSync(root).filter((n) => n.startsWith('session-'))) {
--    for (const f of readdirSync(join(root, d))) out[`${d}/${f}`] = sha(readFileSync(join(root, d, f)));
-+    for (const f of readdirSync(join(root, d)).filter((n) => !n.startsWith('.'))) out[`${d}/${f}`] = sha(readFileSync(join(root, d, f)));
-   }
-   return out;
- }
-+/** The hidden names a run retired in a session folder (never unlinked): each must be the inode of a file still there. */
-+const retained = (root: string, folder: string) => readdirSync(join(root, folder)).filter((n) => n.includes('.superseded-'));
- const declarations = (root: string) => ({ pieces: readFileSync(join(root, 'PIECES.csv'), 'utf8'), log: readFileSync(join(root, 'RENAME-LOG.csv'), 'utf8') });
- 
- /** A fake Git boundary; its `publish` is the real publisher, confirming against `root` before every ref write. */
-@@ -258,6 +260,8 @@ describe('maintaining the Setar archive', () => {
-       expect(await apply({ kind: 'rename', from, to })).toMatchObject({ ok: true, status: 'unchanged' });
-       const unmoved = Object.fromEntries(Object.entries(media0).filter(([path]) => path !== from));
-       expect(media(root)).toEqual({ ...unmoved, [to]: media0[from] });
-+      // The old name is never unlinked: it is retired to ONE hidden name of the very same file (no bytes copied).
-+      expect(retained(root, from.split('/')[0]!).map((n) => lstatSync(join(root, from.split('/')[0]!, n)).ino)).toEqual([lstatSync(join(root, to)).ino]);
- 
-       // --- AN EXACT CONTINUATION, and no fork or loop ever -----------------
-       const a = `${S39}/نمونه-ضربی-سه-گاه-لطفی.mp4`;
-@@ -345,7 +349,9 @@ describe('maintaining the Setar archive', () => {
-       git.fail(true);
-       const failed = await apply({ kind: 'roster', session: 41, pieces: [z] });
-       expect(failed).toMatchObject({ ok: false, status: 'publish-failed' });
--      expect(failed.message).toMatch(/This attempt published nothing, so the source-index branch is as it was.*retry/s);
-+      // A proof covers THIS attempt only, never the branch: unconfirmed, never "as it was".
-+      expect(failed.message).toMatch(/this attempt published nothing, but what the source-index branch holds is not confirmed.*retry/s);
-+      expect(failed.message).not.toMatch(/as it was/);
-       expect(git.published()).toBe(good);
-       await expect(apply({ kind: 'register', piece: 'یکی-دیگر' })).rejects.toThrow(/retry/);
-       git.fail(false);
-@@ -570,7 +576,8 @@ describe('maintaining the Setar archive', () => {
-       const done = await cli(['register', '--piece', 'یکی-دیگر', '--apply', id!]);
-       // No config here, so the job itself refuses: the change stands, validated, with a retry.
-       expect(done.code).toBe(1);
--      expect(done.out).toMatch(/publication failed .*NAS job exited 2.*retry/s);
-+      expect(done.out).toMatch(/could not be confirmed .*NAS job exited 2 before publishing: No readable config.*this run published nothing.*this attempt published nothing, but what the source-index branch holds is not confirmed.*retry/s);
-+      expect(done.out).not.toMatch(/as it was/);
-       expect(declarations(root).pieces).toContain('یکی-دیگر,');
- 
-       // --- THE REAL WRAPPER publishes only the validated index, on evidence -
-@@ -614,7 +621,7 @@ describe('maintaining the Setar archive', () => {
-       mkdirSync(noArchive);
-       writeFileSync(join(noArchive, 'config.env'), `PC_ARCHIVE_ROOT=${join(noArchive, 'missing')}\nPC_INDEX_REPO=nobody/nothing\nPC_INDEX_TOKEN=not-a-token\nPC_INDEX_WORKDIR=${noArchive}\n`);
-       const scanFailed = await via(undefined, { PC_INDEX_CONFIG: join(noArchive, 'config.env') });
--      expect([scanFailed.code, scanFailed.out]).toEqual([1, expect.stringMatching(/exited 4 before publishing: The scan failed; nothing was published.*an earlier attempt is still unconfirmed/s)]);
-+      expect([scanFailed.code, scanFailed.out]).toEqual([1, expect.stringMatching(/exited 4 before publishing: The scan failed; this run published nothing.*an earlier attempt is still unconfirmed/s)]);
-       // The REAL runner, configured for ANOTHER archive root, refuses before
-       // any request — the published index is untouched, and it says so.
-       const otherArchive = scratch();
-@@ -697,7 +704,8 @@ describe('maintaining the Setar archive', () => {
-           expect(edit === 'replace' ? readFileSync(k.at(name), 'utf8') : existsSync(k.at(name)), `${name} ${edit}`).toBe(edit === 'replace' ? theirs : false);
-           expect([media(k.root), k.g.published(), k.g.calls, existsSync(k.lock)], `${name} ${edit}`).toEqual([pre.media, pre.index, [], false]);
-           expect(k.j(), `${name} ${edit}`).toMatchObject({ status: 'rolled-back', publication: 'not-needed' });
--          expect(hidden(k.root, `.${name}`), `${name} ${edit}`).toEqual([]);
-+          // Theirs, put back, keeps the private name it was judged on as a hidden name of the SAME file — never unlinked.
-+          expect(hidden(k.root, `.${name}`).map((f) => lstatSync(k.at(f)).ino), `${name} ${edit}`).toEqual(edit === 'replace' ? [lstatSync(k.at(name)).ino] : []);
-         }
+@@ -1202,6 +1202,201 @@ describe('maintaining the Setar archive', () => {
+         expect(await k.back()).toMatchObject({ ok: true });
        }
-       {
-@@ -878,7 +886,7 @@ describe('maintaining the Setar archive', () => {
-           expect([declarations(x.root), media(x.root), readFileSync(join(x.state, 'journal.json'), 'utf8'), existsSync(x.lock)]).toEqual([...now, false]);
-           for (const f of left) {
-             const name = f.replace(/^(.*\/)?\.(.+)\.(captured|dropping)-.*$/, '$1$2');
--            if (existsSync(x.at(name))) renameSync(x.at(f), x.at(f.replace('.captured-', '.superseded-')));
-+            if (existsSync(x.at(name))) renameSync(x.at(f), x.at(f.replace(/\.(captured|dropping)-/, '.superseded-')));
-             else renameSync(x.at(f), x.at(name));
-           }
-           expect(leftovers(x)).toEqual([]);
-@@ -918,47 +926,165 @@ describe('maintaining the Setar archive', () => {
-         expect([sha(readFileSync(y.at(A))), existsSync(y.at(B))]).toEqual([yBytes, false]);
-         for (const x of [f, u, v, g, h, w, y]) expect(leftovers(x)).toEqual([]);
-         // The OTHER name — the one a drop leaves the file under — replaced or removed at the judgement, or
--        // between the judgement and the unlink: the file never loses its last name. It goes back to the
--        // name being dropped (from the still-open file if its name was already gone), the run refuses, and
--        // says only what is true: a move's final drop, its judged-failure undo (the concurrent in-place
--        // bytes kept), a rollback's reverse move, and a stopped move's recovery alike.
--        for (const point of ['judge-drop', 'unlink-aside'] as const) {
-+        // after the private name was retired: the file never loses its last name. The VERY file (its inode,
-+        // never a copy of its bytes) goes back to the name being dropped, the run refuses, and says only
-+        // what is true: a move's final drop, its judged-failure undo (the concurrent in-place bytes kept), a
-+        // rollback's reverse move, and a stopped move's recovery alike. A handle opened before the run
-+        // writes into that file after it.
-+        for (const point of ['judge-drop', 'retain-aside'] as const) {
-           for (const other of ['replace', 'remove'] as const) {
-             const tag = `${point} ${other}`;
-             type Box = ReturnType<typeof box>;
-             const hit = (x: Box, rel: string) => (other === 'replace' ? swapIn(x.at(rel), `theirs at ${rel}`) : () => rmSync(x.at(rel)));
-             const stands = (x: Box, rel: string) => (existsSync(x.at(rel)) ? readFileSync(x.at(rel), 'utf8') : null);
-             const theirs = (rel: string) => (other === 'replace' ? `theirs at ${rel}` : null);
--            /** The seam: at the drop's judgement of `dropped`, or just before the unlink judged against `kept`. */
-+            /** The seam: at the drop's judgement of `dropped`, or after its private name was retired, before `kept` is judged. */
-             const seam = (x: Box, dropped: string, kept: string, ...before: [string, string, () => void][]) =>
--              when(...before, point === 'judge-drop' ? ['judge-drop', x.at(dropped), hit(x, kept)] : ['unlink-aside', x.at(kept), hit(x, kept)]);
-+              when(...before, point === 'judge-drop' ? ['judge-drop', x.at(dropped), hit(x, kept)] : ['retain-aside', x.at(kept), hit(x, kept)]);
-             const fw = box();
-             const fwBytes = sha(readFileSync(fw.at(A)));
-             const fwDecl = declarations(fw.root);
-             const fwIno = lstatSync(fw.at(A)).ino;
-             chmodSync(fw.at(A), 0o640);
-             utimesSync(fw.at(A), 1_700_000_000, 1_700_000_000);
-+            const fwFd = openSync(fw.at(A), 'r+');
-             await expect(fw.go(MOVE, { at: seam(fw, A, B) }), tag).rejects.toThrow(/was replaced or removed while this ran; whatever stands there is left, and .* was put back — nothing was moved.*everything it changed was put back/s);
-             expect([sha(readFileSync(fw.at(A))), stands(fw, B), declarations(fw.root), fw.j().status, leftovers(fw)], tag).toEqual([fwBytes, theirs(B), fwDecl, 'rolled-back', []]);
--            // Caught before the unlink, it is the original file itself; only a name lost IN that instant is a copy of its bytes.
--            expect(lstatSync(fw.at(A)).ino === fwIno, tag).toBe(point === 'judge-drop');
-+            // At either instant it is the original file itself: nothing is ever reconstructed from bytes.
-+            expect(lstatSync(fw.at(A)).ino, tag).toBe(fwIno);
-             expect([lstatSync(fw.at(A)).mode & 0o7777, lstatSync(fw.at(A)).mtimeMs], tag).toEqual([0o640, 1_700_000_000_000]);
-+            writeSync(fwFd, 'later', 0);
-+            closeSync(fwFd);
-+            expect(readFileSync(fw.at(A)).subarray(0, 5).toString(), tag).toBe('later');
-             const un = box();
-             const inPlace = sha(Buffer.alloc(500, 7));
-+            const unIno = lstatSync(un.at(A)).ino;
-             await expect(un.go(MOVE, { at: seam(un, B, A, ['link', B, () => writeFileSync(un.at(A), Buffer.alloc(500, 7))]) }), tag).rejects.toThrow(/does not hold the bytes this change recorded.*was then replaced or removed; the file it named is kept as .*could not be put back automatically/s);
--            expect([sha(readFileSync(un.at(B))), stands(un, A), un.j().status, leftovers(un)], tag).toEqual([inPlace, theirs(A), 'prepared', []]);
-+            expect([sha(readFileSync(un.at(B))), stands(un, A), un.j().status, leftovers(un), lstatSync(un.at(B)).ino], tag).toEqual([inPlace, theirs(A), 'prepared', [], unIno]);
-             const rv = box();
-             const rvBytes = sha(readFileSync(rv.at(A)));
-+            const rvIno = lstatSync(rv.at(A)).ino;
-             expect(await rv.go(MOVE)).toMatchObject({ ok: true });
-             await expect(rv.back({ at: seam(rv, B, A) }), tag).rejects.toThrow(/was replaced or removed while this ran; whatever stands there is left, and .* was put back — nothing was moved/);
--            expect([sha(readFileSync(rv.at(B))), stands(rv, A), leftovers(rv)], tag).toEqual([rvBytes, theirs(A), []]);
-+            expect([sha(readFileSync(rv.at(B))), stands(rv, A), leftovers(rv), lstatSync(rv.at(B)).ino], tag).toEqual([rvBytes, theirs(A), [], rvIno]);
-             const st = box();
-             const stBytes = sha(readFileSync(st.at(A)));
-+            const stIno = lstatSync(st.at(A)).ino;
-             await expect(st.go(MOVE, { at: when(['unlink', A, cut]) })).rejects.toThrow(/power cut/);
-             await expect(st.back({ at: seam(st, B, A) }), tag).rejects.toThrow(/was replaced or removed while this ran; the bytes stay as .*nothing was put back/);
--            expect([sha(readFileSync(st.at(B))), stands(st, A), leftovers(st)], tag).toEqual([stBytes, theirs(A), []]);
-+            expect([sha(readFileSync(st.at(B))), stands(st, A), leftovers(st), lstatSync(st.at(B)).ino], tag).toEqual([stBytes, theirs(A), [], stIno]);
-           }
-         }
-+        // A run KILLED inside a retirement — after the second name, before either goes — at every consumer,
-+        // alone or with the file's other name replaced in that same instant: the file is never without a
-+        // private name of this tool. The next run refuses and names it, and that name is the VERY file (its
-+        // inode, never a copy). Put back by hand, Rollback finishes — or, where the archive is not as any
-+        // change left it, refuses and leaves it so — and the file still has a name.
-+        {
-+          type Box = ReturnType<typeof box>;
-+          const inoOf = (x: Box, rel: string) => lstatSync(x.at(rel)).ino;
-+          const named = (x: Box, ino: number) =>
-+            ['', S39].flatMap((d) => readdirSync(x.at(d)).map((n) => (d ? `${d}/${n}` : n))).filter((rel) => lstatSync(x.at(rel)).ino === ino);
-+          type Consumer = { name: string; finishes: boolean; kept: (x: Box) => string; go: (x: Box, seam: () => void) => Promise<number> };
-+          const consumers: Consumer[] = [
-+            { name: "apply's final drop", finishes: true, kept: (x) => x.at(B), go: async (x, seam) => {
-+                const ino = inoOf(x, A);
-+                await expect(x.go(MOVE, { at: when(['retain-aside', x.at(B), seam]) })).rejects.toThrow(/power cut/);
-+                return ino;
-+              },
-+            },
-+            {
-+              name: 'the judged-failure undo',
-+              finishes: true,
-+              kept: (x) => x.at(A),
-+              go: async (x, seam) => {
-+                const ino = inoOf(x, A);
-+                await expect(x.go(MOVE, { at: when(['link', B, () => writeFileSync(x.at(A), Buffer.alloc(500, 7))], ['retain-aside', x.at(A), seam]) })).rejects.toThrow(/power cut/);
-+                return ino;
-+              },
-+            },
-+            { name: "rollback's reverse move", finishes: true, kept: (x) => x.at(A), go: async (x, seam) => {
-+                const ino = inoOf(x, A);
-+                expect(await x.go(MOVE)).toMatchObject({ ok: true });
-+                await expect(x.back({ at: when(['retain-aside', x.at(A), seam]) })).rejects.toThrow(/power cut/);
-+                return ino;
-+              },
-+            },
-+            {
-+              name: "a stopped move's recovery",
-+              finishes: true,
-+              kept: (x) => x.at(A),
-+              go: async (x, seam) => {
-+                const ino = inoOf(x, A);
-+                await expect(x.go(MOVE, { at: when(['unlink', A, cut]) })).rejects.toThrow(/power cut/);
-+                await expect(x.back({ at: when(['retain-aside', x.at(A), seam]) })).rejects.toThrow(/power cut/);
-+                return ino;
-+              },
-+            },
-+            {
-+              name: 'a put-back after a declaration changed',
-+              finishes: false,
-+              kept: (x) => x.at('PIECES.csv'),
-+              go: async (x, seam) => {
-+                let theirs = 0;
-+                const save = () => (replaceWith(x.at('PIECES.csv'), `${SOURCE.registryBefore}their-save,,,,,,,,,\n`)(), (theirs = inoOf(x, 'PIECES.csv')));
-+                await expect(x.go(REG, { at: when(['capture', 'PIECES.csv', save], ['retain-aside', 'PIECES.csv', seam]) })).rejects.toThrow(/power cut/);
-+                return theirs;
-+              },
-+            },
-+            {
-+              name: 'a put-back after an install failed',
-+              finishes: true,
-+              kept: (x) => x.at('PIECES.csv'),
-+              go: async (x, seam) => {
-+                const ino = inoOf(x, 'PIECES.csv');
-+                await expect(x.go(REG, { at: when(['install', 'PIECES.csv', () => rmSync(x.at(hidden(x.root, '.PIECES.csv.maintenance-')[0]!))], ['retain-aside', 'PIECES.csv', seam]) })).rejects.toThrow(/power cut/);
-+                return ino;
-+              },
-+            },
-+            {
-+              name: 'a put-back after a name changed at its drop',
-+              finishes: false,
-+              kept: (x) => x.at(A),
-+              go: async (x, seam) => {
-+                let theirs = 0;
-+                const swap = () => (swapIn(x.at(A), 'theirs at the old name')(), (theirs = inoOf(x, A)));
-+                await expect(x.go(MOVE, { at: when(['unlink', A, swap], ['retain-aside', x.at(A), seam]) })).rejects.toThrow(/power cut/);
-+                return theirs;
-+              },
-+            },
-+          ];
-+          for (const c of consumers) {
-+            for (const replaced of [false, true]) {
-+              const tag = `${c.name}${replaced ? ', its other name replaced' : ''}`;
-+              const x = box();
-+              const ino = await c.go(x, () => {
-+                // A declaration replaced by another valid registry, so every entry point can still read it.
-+                if (replaced) swapIn(c.kept(x), c.kept(x).endsWith('PIECES.csv') ? `${SOURCE.registryBefore}a-third-save,,,,,,,,,\n` : 'a third file')();
-+                cut();
-+              });
-+              // The refusal names a private name, and that name is the very file.
-+              expect(leftovers(x).map((rel) => inoOf(x, rel)), tag).toEqual([ino]);
-+              await handBack(x);
-+              expect(named(x, ino).length, tag).toBeGreaterThan(0);
-+              if (c.finishes && !replaced) {
-+                expect(await x.back(), tag).toMatchObject({ ok: true });
-+                expect(named(x, ino).filter((rel) => !rel.includes('.superseded-')), tag).toEqual([c.name.includes('install') ? 'PIECES.csv' : A]);
-+              } else {
-+                await expect(x.back(), tag).rejects.toThrow(/left exactly as it is|neither as this change left them nor as they were/);
-+              }
-+              expect(named(x, ino).length, tag).toBeGreaterThan(0);
-+            }
-+          }
-+          // A handle opened before a SUCCESSFUL move writes, after it, into the file at its new name — and its
-+          // retired old name is a hidden name of that same file, never a copy.
-+          const ok = box();
-+          const okFd = openSync(ok.at(A), 'r+');
-+          expect(await ok.go(MOVE)).toMatchObject({ ok: true });
-+          writeSync(okFd, 'later', 0);
-+          closeSync(okFd);
-+          expect([readFileSync(ok.at(B)).subarray(0, 5).toString(), retained(ok.root, S39).map((n) => lstatSync(ok.at(`${S39}/${n}`)).ino)]).toEqual(['later', [lstatSync(ok.at(B)).ino]]);
-+        }
-         // The name being DROPPED removed just before its drop: the moved file keeps its new name, said as such.
-         {
-           const dr = box();
-@@ -969,7 +1095,7 @@ describe('maintaining the Setar archive', () => {
-         // A PUT-BACK's own link-to-unlink interval: the name it just restored replaced or removed again
-         // before its private name goes — the restored file keeps that private name (its bytes from the
-         // still-open file if the name was already gone), named in the refusal; nothing is lost.
--        for (const point of ['put-back', 'unlink-aside'] as const) {
-+        for (const point of ['put-back', 'retain-aside'] as const) {
-           for (const other of ['replace', 'remove'] as const) {
-             const tag = `${point} ${other}`;
-             const d = box();
-@@ -1305,11 +1431,11 @@ describe('maintaining the Setar archive', () => {
-         };
-         const hashNow = () => scanToIndex(k.root).contentHash as string;
  
--        // A FIRST publication failing before its branch read: "as it was" — no promise that any index exists.
-+        // A FIRST publication failing before its branch read: this attempt proved nothing published, the branch unconfirmed.
-         const first = await k.go(REG, { publish: spy(failing('getRef')) });
--        expect(first.message).toMatch(/This attempt published nothing, so the source-index branch is as it was/);
--        expect(first.message).not.toMatch(/last good|previous|still the published/);
--        expect([k.j().publication, k.j().unresolved, k.g.published()]).toEqual(['failed', [], null]);
-+        expect(first.message).toMatch(/this attempt published nothing, but what the source-index branch holds is not confirmed/);
-+        expect(first.message).not.toMatch(/as it was|last good|previous|still the published/);
-+        expect([k.j().publication, k.j().unresolved, k.g.published()]).toEqual(['unknown', [], null]);
-         // Accepted, response lost: unknown, bound to H.
-         const H = hashNow();
-         expect(await k.again({ publish: spy(lossy) })).toMatchObject({ ok: false, message: expect.stringMatching(/may already be published/) });
-@@ -1395,6 +1521,93 @@ describe('maintaining the Setar archive', () => {
-         expect(await k.again({ publish: k.g.publish }), variant).toMatchObject({ ok: true });
-         expect([k.j().publication, k.j().unresolved, JSON.parse(k.g.published()!).contentHash, existsSync(k.g.shared.intent)], variant).toEqual(['published', [], H0, false]);
-       }
-+      // The same SCHEDULED predecessor, and a newer run whose publication fails BEFORE the publisher reads
-+      // any record — an expected-hash refusal, a busy seat or one that throws, the publisher CLI's unreadable index,
-+      // the real runner's refused configuration, missing value, missing work folder and failed scan, and the
-+      // wrapper's every proving exit (2, 3, 4). Each proves only that THIS attempt published nothing: Apply,
-+      // Retry and Rollback alike stay unconfirmed, never "the branch is as it was" — and the scheduled
-+      // write can indeed still land, until a retry publishes over it.
++      // --- THE ARCHIVE IS BOUND: its path replaced never carries a write ---
++      // The authorised archive is the DIRECTORY the run bound, never its path. Whatever moves the
++      // archive away and puts another folder there — here an exact external copy, its lock record
++      // and all — that copy is never touched, and no run reports success over it.
++      /** Every entry under `dir`, dotfiles and the lock included, by what it holds. */
++      const tree = (dir: string) =>
++        (readdirSync(dir, { recursive: true }) as string[])
++          .sort()
++          .map((n) => {
++            const st = lstatSync(join(dir, n));
++            return `${n}:${st.isFile() ? sha(readFileSync(join(dir, n))) : st.isDirectory() ? 'dir' : 'link'}`;
++          })
++          .join('\n');
++      const swapper = (k: ReturnType<typeof box>) => {
++        const real = join(k.base, 'the-real-archive');
++        let outside: string | null = null;
++        return {
++          swap: () => {
++            renameSync(k.root, real);
++            cpSync(real, k.root, { recursive: true, verbatimSymlinks: true });
++            outside = tree(k.root);
++          },
++          /** The external copy exactly as it was made, then the archive back at its path. */
++          unswap: () => {
++            expect(outside).not.toBeNull();
++            expect(tree(k.root)).toBe(outside);
++            rmSync(k.root, { recursive: true });
++            renameSync(real, k.root);
++            outside = null;
++          },
++          real,
++        };
++      };
++      // The PRIMITIVE first: a section is bound to the directory, not to the path it was entered by.
 +      {
-+        const PUBLISHER = join(process.cwd(), 'scripts', 'publish-setar-index.mjs');
-+        const withEnv = (env: Record<string, string | undefined>, inner: (text: string, hash: string, holder: string) => Promise<unknown>) => async (text: string, hash: string, holder: string) => {
-+          const saved = Object.fromEntries(Object.keys(env).map((key) => [key, process.env[key]]));
-+          const put = (e: Record<string, string | undefined>) => Object.entries(e).forEach(([key, v]) => (v === undefined ? delete process.env[key] : (process.env[key] = v)));
-+          put(env);
-+          try {
-+            return await inner(text, hash, holder);
-+          } finally {
-+            put(saved);
-+          }
-+        };
-+        type Box = ReturnType<typeof box>;
-+        const runner = (k: Box, config: string | null, extra: Record<string, string> = {}) => {
-+          const file = join(k.base, `config-${Object.keys(extra).join('-') || 'plain'}.env`);
-+          if (config !== null) writeFileSync(file, config);
-+          return withEnv({ PC_MAINT_PUBLISH: undefined, PC_INDEX_CONFIG: config === null ? join(k.base, 'no-config.env') : file, ...extra }, publishWithRunner(k.root));
-+        };
-+        const full = (k: Box, archive: string) => `PC_ARCHIVE_ROOT=${archive}\nPC_INDEX_REPO=o/r\nPC_INDEX_TOKEN=t\n`;
-+        const stubExit = (k: Box, code: number) => {
-+          const stub = join(k.base, 'exit-job.mjs');
-+          writeFileSync(stub, `process.stderr.write('refused\\n'); process.exit(${code});`);
-+          return withEnv({ PC_MAINT_PUBLISH: `node ${JSON.stringify(stub)}` }, publishWithRunner(k.root));
-+        };
-+        const direct = (k: Box, opts: (hash: string) => object) => async (text: string, hash: string, holder: string) =>
-+          publishIndex({ transport: k.g.transport, indexText: text, expectedContentHash: hash, confirm: archiveConfirmation(k.root, holder), intent: k.g.shared.intent, ...opts(hash) });
-+        const modes: [string, (k: Box) => (text: string, hash: string, holder: string) => Promise<unknown>][] = [
-+          ['expected-hash refusal', (k) => direct(k, (hash) => ({ expectedContentHash: hash.replace(/./, (c) => (c === 'f' ? '0' : 'f')) }))],
-+          ['seat busy', (k) => async (text, hash, holder) => {
-+            const leave = await takeSeat({ port: DEFAULT_SEAT_PORT + 3 });
-+            try {
-+              return await direct(k, () => ({ seat: { port: DEFAULT_SEAT_PORT + 3, wait: 0 } }))(text, hash, holder);
-+            } finally {
-+              await leave();
-+            }
-+          }],
-+          // A seat that throws before it listens proves nothing (unproved: "may already be published"); a listen
-+          // error other than busy carries the same `nothingPublished` as a busy seat, so it reads as the busy case.
-+          ['seat throws before listening', (k) => direct(k, () => ({ seat: { port: 70_000, wait: 0 } }))],
-+          ['runner without config', (k) => runner(k, null)],
-+          ['runner missing a value', (k) => runner(k, `PC_ARCHIVE_ROOT=${k.root}\nPC_INDEX_REPO=o/r\n`)],
-+          ['runner without work folder', (k) => runner(k, full(k, k.root), { PC_INDEX_WORKDIR: join(k.base, 'no-such-folder') })],
-+          ['runner scan fails', (k) => runner(k, full(k, join(k.base, 'no-archive')), { PC_INDEX_WORKDIR: k.base })],
-+          ['publisher cannot read its index', (k) => withEnv({ PC_MAINT_PUBLISH: `f() { PC_INDEX_REPO=o/r PC_INDEX_TOKEN=t node ${JSON.stringify(PUBLISHER)} --index ${JSON.stringify(join(k.base, 'missing.json'))} --root ${JSON.stringify(k.root)} --expect "$1" --holder "$2"; }; f` }, publishWithRunner(k.root))],
-+          ['job exit 2', (k) => stubExit(k, 2)],
-+          ['job exit 3', (k) => stubExit(k, 3)],
-+          ['job exit 4', (k) => stubExit(k, 4)],
++        const k = box();
++        const x = swapper(k);
++        const arc = bindArchive(k.root);
++        const cwd = process.cwd();
++        inArchive(arc, () => {
++          x.swap();
++          writeFileSync('probe', 'written by bare name');
++        });
++        expect(process.cwd()).toBe(cwd);
++        expect([existsSync(join(x.real, 'probe')), existsSync(join(k.root, 'probe'))]).toEqual([true, false]);
++        // Entering again by the recorded path finds another folder: refused, nothing run.
++        let ran = false;
++        expect(() => inArchive(arc, () => (ran = true))).toThrow(/moved, or another folder put at its path/);
++        expect(ran).toBe(false);
++        rmSync(join(x.real, 'probe'));
++        x.unswap();
++        expect(inArchive(arc, () => readFileSync('PIECES.csv', 'utf8'))).toBe(SOURCE.registryBefore);
++      }
++      // Then EVERY archive write, its path replaced just after its owner check: Apply's registry,
++      // its log (present, and created when absent) and its move; Rollback's registry, its log taken
++      // out again (text null), its reverse move; a stopped move's recovery; and the automatic put-back.
++      // The write lands in the bound archive or not at all, the run refuses, and once the archive is
++      // back at its path, `rollback` leaves it exactly as it was before the change.
++      {
++        const before = (k: ReturnType<typeof box>) => ({ d: existsSync(k.at('RENAME-LOG.csv')) ? declarations(k.root) : readFileSync(k.at('PIECES.csv'), 'utf8'), m: media(k.root) });
++        const consumers: [string, boolean, (k: ReturnType<typeof box>, swap: () => void) => Promise<unknown>][] = [
++          ['apply registry', true, (k, swap) => k.go(REG, { at: when(['owned', 'PIECES.csv', swap]) })],
++          ['apply log', true, (k, swap) => k.go(MOVE, { at: when(['owned', 'RENAME-LOG.csv', swap]) })],
++          ['apply absent log', false, (k, swap) => k.go(MOVE, { at: when(['owned', 'RENAME-LOG.csv', swap]) })],
++          ['apply move', true, (k, swap) => k.go(MOVE, { at: when(['owned', A, swap]) })],
++          ['apply move, folder selected', true, (k, swap) => k.go(MOVE, { at: when(['link', B, swap]) })],
++          ['rollback registry', true, async (k, swap) => (await k.go(REG), k.back({ at: when(['owned', 'PIECES.csv', swap]) }))],
++          ['rollback log taken out', false, async (k, swap) => (await k.go(MOVE), k.back({ at: when(['owned', 'RENAME-LOG.csv', swap]) }))],
++          ['rollback reverse move', true, async (k, swap) => (await k.go(MOVE), k.back({ at: when(['owned', B, swap]) }))],
++          [
++            'stopped-move recovery',
++            true,
++            async (k, swap) => {
++              await expect(k.go(MOVE, { at: when(['unlink', A, () => { throw new Interrupted('power cut'); }]) })).rejects.toThrow(/power cut/);
++              return k.back({ at: when(['owned', B, swap]) });
++            },
++          ],
++          [
++            'automatic put-back',
++            true,
++            (k, swap) => k.go(MOVE, { at: when(['link', B, () => writeFileSync(k.at(A), Buffer.alloc(500, 7))], ['owned', 'RENAME-LOG.csv', swap, 2]) }),
++          ],
 +        ];
-+        for (const variant of ['update', 'create', 'unknown'] as const) {
-+          for (const [mode, make] of modes) {
-+            const tag = `${variant} / ${mode}`;
-+            const k = box();
-+            const t = k.g.transport as Record<string, (...a: unknown[]) => Promise<unknown>>;
-+            if (variant === 'update') expect(await k.go(REG), tag).toMatchObject({ ok: true, status: 'published' });
-+            const lost = async () => Promise.reject(new TypeError('fetch failed: the response was lost'));
-+            if (variant === 'unknown') writeFileSync(k.g.shared.intent, 'not json');
-+            else await expect(publishIndex({ transport: { ...t, updateRef: lost, createRef: lost }, indexText: '{"scheduled":1}\n', intent: k.g.shared.intent }), tag).rejects.not.toHaveProperty('nothingPublished');
-+            const pending = readFileSync(k.g.shared.intent, 'utf8');
-+            const fails = make(k);
-+            const outcomes = [
-+              await k.go(variant === 'update' ? { kind: 'register', piece: 'یکی-دیگر' } : REG, { publish: fails }),
-+              await k.again({ publish: fails }),
-+              await k.back({ publish: fails }),
-+            ];
-+            for (const [i, r] of outcomes.entries()) {
-+              const said = mode === 'seat throws before listening' ? /could not be confirmed .*may already be published/s : /could not be confirmed .*this attempt published nothing, but/s;
-+              expect(r, `${tag} #${i}`).toMatchObject({ ok: false, message: expect.stringMatching(said) });
-+              expect(r.message, `${tag} #${i}`).not.toMatch(/as it was|still the good|published one is unchanged/);
-+            }
-+            expect([k.j().status, k.j().publication, readFileSync(k.g.shared.intent, 'utf8')], tag).toEqual(['rolled-back', 'unknown', pending]);
-+            await expect(k.go({ kind: 'register', piece: 'یکی-دیگر-باز' }), tag).rejects.toThrow(/Run `retry`/);
-+            if (variant !== 'unknown') {
-+              const [{ parent, commit }] = JSON.parse(pending) as { parent: string | null; commit: string }[];
-+              expect(await (parent ? t.updateRef!(SOURCE_INDEX_BRANCH, commit, parent) : t.createRef!(SOURCE_INDEX_BRANCH, commit)), tag).toBe('ok');
-+              expect(k.g.published(), tag).toBe('{"scheduled":1}\n');
-+            }
-+            expect(await k.again({ publish: k.g.publish }), tag).toMatchObject({ ok: true });
-+            expect([k.j().publication, k.j().unresolved, JSON.parse(k.g.published()!).contentHash, existsSync(k.g.shared.intent)], tag).toEqual(['published', [], scanToIndex(k.root).contentHash, false]);
++        for (const [name, withLog, run] of consumers) {
++          const k = box(withLog);
++          const was = before(k);
++          const x = swapper(k);
++          // The put-back was already past its owner check: it finishes IN the bound archive, and says so.
++          const said = name === 'automatic put-back' ? /everything it changed was put back from the private copy/ : /moved, or another folder put at its path|could not be put back automatically/;
++          await expect(run(k, x.swap), name).rejects.toThrow(said);
++          x.unswap();
++          // The run could not re-enter its archive to release its own record: it stands there, for the operator.
++          if (existsSync(k.lock)) {
++            const shown = /--record ([0-9a-f]{16})/.exec(releaseLock({ root: k.root }).lines.join('\n'))![1];
++            expect(releaseLock({ root: k.root, record: shown }), name).toMatchObject({ released: true });
++          }
++          // Put back from wherever it stopped: an unfinished apply or rollback finishes; one that put itself back is done.
++          if (['prepared', 'rolling-back', 'applied'].includes(k.j().status)) expect(await k.back(), name).toMatchObject({ ok: true });
++          // The automatic put-back's own media write (500 bytes of 7s) is the test's, not the run's: it stays.
++          const after = before(k);
++          expect(after.d, name).toEqual(was.d);
++          if (name !== 'automatic put-back') expect(after.m, name).toEqual(was.m);
++          expect([existsSync(k.lock), readdirSync(k.root).filter((n) => n.includes('.captured-') || n.includes('.maintenance-'))], name).toEqual([false, []]);
++        }
++      }
++      // Across runs too: a change applied, then its archive moved away and a copy put at its path —
++      // neither `rollback` nor `retry` acts on the copy; once the archive is back, `rollback` does.
++      {
++        const k = box();
++        const was = { d: declarations(k.root), m: media(k.root) };
++        expect(await k.go(MOVE)).toMatchObject({ ok: true });
++        const x = swapper(k);
++        x.swap();
++        for (const next of [() => k.back(), () => k.again()]) await expect(next()).rejects.toThrow(/not the one this change was made in/);
++        x.unswap();
++        expect(await k.back()).toMatchObject({ ok: true });
++        expect({ d: declarations(k.root), m: media(k.root) }).toEqual(was);
++      }
++      // A run's own release, its archive moved while it published: its record is never removed
++      // through the folder now at the path — the lock stays in the bound archive for the operator.
++      {
++        const k = box();
++        const x = swapper(k);
++        let holder = '';
++        await k.go(REG, { publish: async (text: string, hash: string, h: string) => ((holder = h), x.swap(), { status: 'published' }) });
++        expect(readArchiveLock(x.real).token).toBe(holder);
++        x.unswap();
++        const shown = /--record ([0-9a-f]{16})/.exec(releaseLock({ root: k.root }).lines.join('\n'))![1];
++        expect(releaseLock({ root: k.root, record: shown })).toMatchObject({ released: true });
++        // And the operator's release binds the same way: its archive moved at the release, the copy keeps its lock.
++        await k.go(REG, { publish: async () => ({ status: 'published' }) }).catch(() => undefined);
++        mkdirSync(k.lock);
++        const dead = ['3f3f3f3f', '0000', '4000', '8000', '000000000000'].join('-');
++        writeFileSync(join(k.lock, `${dead}.json`), JSON.stringify({ token: dead, pid: 1, host: 'h', since: 's' }));
++        const id = readArchiveLock(k.root).digest.slice(0, 16);
++        expect(releaseLock({ root: k.root, record: id, at: when(['release', ARCHIVE_LOCK, x.swap]) })).toMatchObject({ released: true });
++        expect([existsSync(join(x.real, ARCHIVE_LOCK)), readArchiveLock(k.root).token]).toEqual([false, dead]);
++        x.unswap();
++      }
++
++      // --- A RELEASE removes only the exact entry the operator saw -----------
++      // A legacy lock FILE, or a folder entry reused at the same name, replaced after the record was
++      // shown (at the release) or in the instant it is judged: the replacement is never removed.
++      {
++        const lockOf = (k: ReturnType<typeof box>, asFolder: boolean, text: string) => {
++          if (!asFolder) return writeFileSync(k.lock, text);
++          mkdirSync(k.lock, { recursive: true });
++          writeFileSync(join(k.lock, 'partial.json'), text);
++        };
++        const entry = (k: ReturnType<typeof box>, asFolder: boolean) => (asFolder ? join(k.lock, 'partial.json') : k.lock);
++        for (const asFolder of [false, true]) {
++          const tag = asFolder ? 'folder entry' : 'legacy file';
++          // Replaced after it was shown: refused, the replacement stands byte for byte.
++          const k = box();
++          lockOf(k, asFolder, 'record A');
++          const id = readArchiveLock(k.root).digest.slice(0, 16);
++          const replace = () => replaceWith(entry(k, asFolder), 'record B')();
++          expect(() => releaseLock({ root: k.root, record: id, at: when(['release', ARCHIVE_LOCK, replace]) }), tag).toThrow(/not the record you saw/);
++          expect(readFileSync(entry(k, asFolder), 'utf8'), tag).toBe('record B');
++          expect(readdirSync(k.root).filter((n) => n.includes('.releasing-')), tag).toEqual([]);
++          // A taken in its judgement's instant, B put at the freed name meanwhile: A alone is removed.
++          const k2 = box();
++          lockOf(k2, asFolder, 'record A');
++          const id2 = readArchiveLock(k2.root).digest.slice(0, 16);
++          const p2 = entry(k2, asFolder);
++          expect(releaseLock({ root: k2.root, record: id2, at: when(['judge-release', asFolder ? join(ARCHIVE_LOCK, 'partial.json') : ARCHIVE_LOCK, () => writeFileSync(p2, 'record B')]) }), tag).toMatchObject({ released: true });
++          expect(readFileSync(p2, 'utf8'), tag).toBe('record B');
++          // B replaced A after it was shown AND C took the name while B was judged: B is never removed,
++          // kept under its private name and said; a legacy one blocks the next run until put back.
++          const k3 = box();
++          lockOf(k3, asFolder, 'record A');
++          const id3 = readArchiveLock(k3.root).digest.slice(0, 16);
++          const p3 = entry(k3, asFolder);
++          const label = asFolder ? join(ARCHIVE_LOCK, 'partial.json') : ARCHIVE_LOCK;
++          expect(() =>
++            releaseLock({ root: k3.root, record: id3, at: when(['release', ARCHIVE_LOCK, () => replaceWith(p3, 'record B')()], ['judge-release', label, () => writeFileSync(p3, 'record C')]) }),
++          ).toThrow(/a newer one now stands; what had replaced the record you saw is kept as .*\.releasing-/);
++          const dir = asFolder ? k3.lock : k3.root;
++          const kept = readdirSync(dir).filter((n) => n.includes('.releasing-'));
++          expect([readFileSync(p3, 'utf8'), kept.map((n) => readFileSync(join(dir, n), 'utf8'))], tag).toEqual(['record C', ['record B']]);
++          if (!asFolder) {
++            rmSync(p3);
++            await expect(k3.go(REG), tag).rejects.toThrow(new RegExp(`mv -n '${kept[0]!.replace(/\./g, '\\.')}' '\\${ARCHIVE_LOCK}'`));
 +          }
 +        }
 +      }
-     } finally {
-       for (const b of boxes) rmSync(b, { recursive: true, force: true });
-     }
-```
++
++      // --- A FAILED PUBLICATION proves only its own attempt, in every current instruction too -
++      // An earlier or scheduled write whose answer was lost may still land, so no operator page
++      // may promise that a failure leaves the branch, or "the previous index", as it was.
++      for (const doc of ['docs/setar-archive.md', 'docs/nas-topology.md']) {
++        const text = readFileSync(join(process.cwd(), doc), 'utf8').replace(/\s+/g, ' ');
++        expect(text, doc).not.toMatch(/(previous|old|last good) index (still |stays |remains )?(published|exactly where)|leaves the (previous|last good) index/i);
++      }
++
+       // --- RELEASES never take a NEWER run's lock --------------------------
+       {
+         // Two operators release the same dead record; between the first's release and the
+````
 
 **Paths the rework touched:**
 
+- `docs/nas-topology.md`
 - `docs/setar-archive.md`
 - `scripts/publish-setar-index.mjs`
-- `scripts/run-setar-index.sh`
 - `scripts/setar-archive-maintenance.mjs`
 - `tests/setar-maintenance.test.ts`
 
 **The builder's rework commit messages — claims to verify against the diff, never evidence:**
 
 ```
-f13db3c Setar maintenance retires names by rename, never unlink; a failed publish claims only its own attempt
+3e59e7a Setar maintenance writes only inside the archive directory it bound; a lock release removes only the exact entry shown
 
-Two invariant families, each closed at its one shared primitive.
+Invariant (archive binding): every archive read-then-write and every lock
+housekeeping step acts on the directory --root named when the run started,
+by inode, never on whatever its pathname names later. bindArchive records
+the directory (inode + real path); inArchive runs a synchronous section with
+the working directory ON it and bare names only, re-entry proved by inode
+or refused; no section spans an await. inFolder selects its session folder
+by bare name against the bound archive, judges stillBound through its own
+"..", and returns by ".." (proved) or the recorded path (proved), else
+refuses. assertOwner proves home + lock before each write (new `owned`
+seam just after it). rootId hashes the bound archive's real path.
 
-1. A file never loses its last name, and the original inode (not a copy of
-   its bytes) is what survives. The private-name retirement every
-   maintenance path goes through no longer unlinks and no longer rebuilds a
-   file from an open descriptor. It renames the private name to a hidden
-   `.superseded-` name (the scanner skips dotfiles, and a rename never
-   lowers the link count), then judges the other name. If that name was
-   replaced or removed, it renames back and returns false, so callers keep
-   their put-back contract. With no copy path left, ENOSPC, short writes,
-   a kill mid-step and later writes through handles opened earlier cannot
-   lose data. The old read/write/fchmod/futimes reconstruction is deleted.
-   Consumers, all routed through it and each exercised in ac-2: Apply's
-   final drop, the judged-failure undo, Rollback's reverse move, restore of
-   a stopped move, and putBack after a declaration mismatch, after an
-   install error, and after a changed name at a drop. Checked clean:
-   replaced declarations (already kept), the tool's own temp and lock
-   cleanup, and leftover refusal (it still matches only `.captured-` and
-   `.dropping-`, so retained names never block a run).
-
-2. A publication failure proves only that this attempt published nothing.
-   It never shows the branch is unchanged, because another publisher (the
-   scheduled job) may have an unanswered write in a record this run cannot
-   read. publishStep now records every failure as `unknown`. The older
-   `failed` value is still read as unknown. Messages keep the
-   proved/unproved distinction for the attempt and never say the branch is
-   "as it was". The publisher CLI (an unreadable index, and its proved
-   exit 4) and the runner's comments and messages make the same narrower
-   claim. Consumers: Apply, Ret
+Consumers, each routed and covered:
+- lock / assertOwner / unlock / dropEmptyLock / refuseLeftovers: bare names
+  in the bound archive; a run's end-of-run release that cannot re-enter
+  leaves its lock in the real archive for release-lock (never removed
+  through another folder).
+- replaceDeclaration: create-when-absent link, capture/judge/install/keep,
+  and text=null (log taken out) — via Apply registry, Apply log (present and
+  absent), Rollback registry, Rollback log removal, automatic put-back.
+- moveExact: Apply move (retarget after owner check, and after the folder
+  was selected) and Rollback reverse move.
+- restore's stopped-move recovery: owner check then bound folder selection.
+- validateAndScan: home proved before and after the scan (the scanner reads
+  through a path), so a retarget never scans or publishes another folder.
+- journalFor / stateDir: from the binding, not a re-resolved pathname; the
+  journal records the bound directory's inode (exact, as text; never the
+  device, which a remount may renumber), so the binding spans runs: rollback
+  and retry refuse a different folder at the archive's path (journa
 … (truncated)
-
-d197d4a Setar maintenance removes a private name only while a second one holds the file
-
-Tightens the name-retirement invariant from the previous commit. The file
-must always have a private name of the tool's own, so that a kill at any
-instant leaves something the next run refuses on and names.
-
-The rename-first retirement had a gap. If the other name was replaced and
-the process died before the rename back, the original was left only under
-a hidden `.superseded-` name. No run would refuse on it, and Rollback could
-not point to it. Retirement now first hard-links a second, hidden name
-(with a fresh id), then judges the other name, then removes exactly one:
-the private name when the other name holds the file, otherwise the hidden
-one. Between those steps the file always has at least one private name, and
-no bytes are ever copied.
-
-ac-2 now kills the run inside the retirement at every consumer, both alone
-and with the file's other name replaced in the same instant. The
-consumers are: Apply's final drop, the judged-failure undo, Rollback's
-reverse move, restore of a stopped move, and the three put-back routes
-(declaration changed, install failed, name changed at its drop). Each time
-it checks four things:
-
-- the refusal names exactly one private name;
-- that name is the original inode;
-- after putting it back by hand, Rollback either finishes or refuses,
-  leaving the archive as it is;
-- the file still has a name.
-
-This matrix fails against the previous commit's version.
-
-The publication matrix's port-70000 mode is relabelled as a seat that
-throws before listening. It is an unproved failure ("may already be
-published"), and the test now asserts exactly that. A listen error other
-than busy carries the same proved flag as a busy seat, so it falls in the
-busy case already covered.
-
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
 
 ## Check against the contract
