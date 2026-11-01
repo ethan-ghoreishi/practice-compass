@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmodSync, closeSync, cpSync, existsSync, utimesSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
+import { chmodSync, closeSync, cpSync, existsSync, utimesSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it, vi } from 'vitest';
 // @ts-expect-error — untyped operator tools; these are the real ones.
@@ -1385,6 +1385,86 @@ describe('maintaining the Setar archive', () => {
           if (!asFolder) {
             rmSync(p3);
             await expect(k3.go(REG), tag).rejects.toThrow(new RegExp(`mv -n '${kept[0]!.replace(/\./g, '\\.')}' '\\${ARCHIVE_LOCK}'`));
+          }
+        }
+      }
+
+      // --- A REJECTED entry linked back survives a writer at its name ------
+      // After the entry a removal refused is linked back at its name, another writer replaces that
+      // name or removes it before the private name goes: through every removal caller — the
+      // operator's release of a legacy file, a folder file or a legacy link, a run's own release,
+      // and a failed take's cleanup — and for a file and a link alike, the entry is never lost: it
+      // stays under its private name, said (the operator's release says it; a run's end keeps it).
+      {
+        type Kept = { kind: 'file' | 'link'; v: string };
+        /** Another writer's atomic save of a file, or of a link, at `p`. */
+        const put = (p: string, { kind, v }: Kept) => {
+          if (kind === 'file') return replaceWith(p, v)();
+          symlinkSync(v, `${p}.editor`);
+          renameSync(`${p}.editor`, p);
+        };
+        const show = (p: string) => {
+          try {
+            return lstatSync(p).isSymbolicLink() ? `link:${readlinkSync(p)}` : `file:${readFileSync(p, 'utf8')}`;
+          } catch {
+            return null;
+          }
+        };
+        const C: Kept = { kind: 'file', v: 'record C' };
+        const after = (p: string, edit: 'replace' | 'remove') => () => (edit === 'remove' ? rmSync(p) : put(p, C));
+        /** What stands at the public name, and every entry kept under a private name beside it. */
+        const outcome = (p: string) => [show(p), readdirSync(dirname(p)).filter((n) => n.includes('.releasing-')).map((n) => show(join(dirname(p), n)))];
+        for (const edit of ['replace', 'remove'] as const) {
+          const stands = edit === 'replace' ? 'file:record C' : null;
+          const said = new RegExp(`lock changed while it was being released${edit === 'replace' ? ', and a newer one now stands' : ''}; what had replaced the record you saw is kept as .*\\.releasing-`);
+          // The OPERATOR's release: A shown, B put at its name before the release, the writer at the link back.
+          for (const [form, A, B] of [
+            ['legacy file', { kind: 'file', v: 'record A' }, { kind: 'file', v: 'record B' }],
+            ['folder file', { kind: 'file', v: 'record A' }, { kind: 'file', v: 'record B' }],
+            ['legacy link', { kind: 'link', v: 'to-a' }, { kind: 'link', v: 'to-b' }],
+          ] as const) {
+            const tag = `operator release, ${form}, ${edit}`;
+            const k = box();
+            const inFolder = form === 'folder file';
+            if (inFolder) mkdirSync(k.lock);
+            const p = inFolder ? join(k.lock, 'partial.json') : k.lock;
+            put(p, A);
+            const id = readArchiveLock(k.root).digest.slice(0, 16);
+            const label = inFolder ? join(ARCHIVE_LOCK, 'partial.json') : ARCHIVE_LOCK;
+            expect(() => releaseLock({ root: k.root, record: id, at: when(['release', ARCHIVE_LOCK, () => put(p, B)], ['restored', label, after(p, edit)]) }), tag).toThrow(said);
+            expect(outcome(p), tag).toEqual([stands, [`${B.kind}:${B.v}`]]);
+          }
+          for (const B of [{ kind: 'file', v: 'record B' }, { kind: 'link', v: 'to-b' }] as const) {
+            // A RUN's own release: its record leaf replaced by B just after an owner check.
+            {
+              const tag = `run release, ${B.kind}, ${edit}`;
+              const k = box();
+              let p = '';
+              const at = (point: string, name: string) => {
+                if (point === 'owned' && name === 'PIECES.csv') put((p = join(k.lock, readdirSync(k.lock)[0]!)), B);
+                if (point === 'restored' && p && name === join(ARCHIVE_LOCK, basename(p))) after(p, edit)();
+              };
+              const end = await k.go(REG, { at }).then(
+                (r) => r as { ok: boolean },
+                () => ({ ok: false }),
+              );
+              expect([end.ok, outcome(p)], tag).toEqual([false, [stands, [`${B.kind}:${B.v}`]]]);
+            }
+            // A failed TAKE's cleanup: the archive held, the private record replaced by B before the take.
+            {
+              const tag = `take cleanup, ${B.kind}, ${edit}`;
+              const k = box();
+              const dead = ['5f5f5f5f', '0000', '4000', '8000', '000000000000'].join('-');
+              mkdirSync(k.lock);
+              writeFileSync(join(k.lock, `${dead}.json`), JSON.stringify({ token: dead, pid: 1, host: 'h', since: 's' }));
+              let p = '';
+              const at = (point: string, name: string) => {
+                if (point === 'lock-take') put((p = join(k.at(name), `${name.slice(ARCHIVE_LOCK.length + 1)}.json`)), B);
+                if (point === 'restored' && p && name === join(basename(dirname(p)), basename(p))) after(p, edit)();
+              };
+              await expect(k.go(REG, { at }), tag).rejects.toThrow(/maintenance lock is held by run 5f5f5f5f/);
+              expect(outcome(p), tag).toEqual([stands, [`${B.kind}:${B.v}`]]);
+            }
           }
         }
       }

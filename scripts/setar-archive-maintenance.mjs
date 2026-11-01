@@ -30,7 +30,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -429,7 +429,7 @@ function lock(arc, at = noSeam) {
     renameSync(tmp, ARCHIVE_LOCK);
   } catch (err) {
     try {
-      if (record) inFolder(arc, tmp, (stillBound) => same(statSync('.', { bigint: true }), folder) && removeLockEntry(name, (st) => same(st, record) && stillBound()));
+      if (record) inFolder(arc, tmp, (stillBound) => same(statSync('.', { bigint: true }), folder) && removeLockEntry(name, (st) => same(st, record) && stillBound(), at, join(tmp, name)));
     } catch {
       // not this run's folder any more: whatever stands there is left
     }
@@ -441,7 +441,7 @@ function lock(arc, at = noSeam) {
     if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR'].includes(err?.code)) throw lockRefusal();
     throw err;
   }
-  const owner = { token, folder, record, holder: lockHolder(token, folder, record) };
+  const owner = { token, folder, record, holder: lockHolder(token, folder, record), at };
   try {
     if (!holds(owner)) throw new Refusal('The archive’s lock was replaced as this run took it; nothing was changed. Run release-lock to see it.');
     refuseLeftovers();
@@ -491,7 +491,7 @@ function dropEmptyLock() {
 function unlock(arc, owner) {
   try {
     ensureHome(arc);
-    inFolder(arc, ARCHIVE_LOCK, (stillBound) => same(statSync('.', { bigint: true }), owner.folder) && removeLockEntry(`${owner.token}.json`, (st) => same(st, owner.record) && stillBound()));
+    inFolder(arc, ARCHIVE_LOCK, (stillBound) => same(statSync('.', { bigint: true }), owner.folder) && removeLockEntry(`${owner.token}.json`, (st) => same(st, owner.record) && stillBound(), owner.at, join(ARCHIVE_LOCK, `${owner.token}.json`)));
     dropEmptyLock(); // only from the proved archive
   } catch (err) {
     if (!(err instanceof Refusal)) throw err; // not in the archive, or no real folder at the name: nothing of this run's to remove there
@@ -519,8 +519,11 @@ function release(arc, owner) {
  * held the name at that instant — so an entry put at that name since, or
  * replacing it in the judgement's instant, is never removed: it is linked
  * back, never over anything, or kept under the private name and said. Returns
- * whether it removed the entry. `at` is the test seam, between the move and
- * the judgement.
+ * whether it removed the entry. An entry linked back is unlinked from its
+ * private name only once `name` is proved to hold it after; a writer who
+ * replaced or removed `name` meanwhile leaves it recreated under the private
+ * name and said. `at` is the test seam: between the move and the judgement,
+ * and after the link back (`restored`).
  */
 function removeLockEntry(name, isIt, at = noSeam, label = name) {
   const aside = `${name}.releasing-${randomUUID()}`;
@@ -536,18 +539,37 @@ function removeLockEntry(name, isIt, at = noSeam, label = name) {
     unlinkSync(aside);
     return true;
   }
+  const kept = (stands = true) => new Refusal(`The lock changed while it was being released${stands ? ', and a newer one now stands' : ''}; what had replaced the record you saw is kept as ${label.replace(/[^/]*$/, aside)}. Nothing else was removed.`);
   try {
     if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), name);
     else if (st.isFile()) linkSync(aside, name);
     else renameSync(aside, name); // a folder: replaces only an empty one, never anyone's record
   } catch (err) {
-    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR'].includes(err?.code)) {
-      throw new Refusal(`The lock changed while it was being released, and a newer one now stands; what had replaced the record you saw is kept as ${label.replace(/[^/]*$/, aside)}. Nothing else was removed.`);
-    }
+    if (['EEXIST', 'ENOTEMPTY', 'ENOTDIR', 'EISDIR'].includes(err?.code)) throw kept();
     throw err;
   }
-  if (!st.isDirectory()) unlinkSync(aside); // `name` holds that very file again
-  return false;
+  if (st.isDirectory()) return false;
+  // `name` holds that entry again, but a writer may replace it before the private name goes. The
+  // entry is held open (its inode can't be reused) and its target read; once the private name is
+  // gone, if `name` no longer holds it, it is recreated under that private name — never over anything — and said.
+  const target = st.isSymbolicLink() ? readlinkSync(aside) : null;
+  const fd = target === null ? openSync(aside, 'r') : null;
+  try {
+    at('restored', label);
+    unlinkSync(aside);
+    let now = null;
+    try {
+      now = lstatSync(name, { bigint: true });
+      if (target === null ? same(now, st) : now.isSymbolicLink() && readlinkSync(name) === target) return false;
+    } catch {
+      // gone, or replaced as it was read: not back
+    }
+    if (target === null) writeFileSync(aside, readFileSync(fd), { flag: 'wx' });
+    else symlinkSync(target, aside);
+    throw kept(Boolean(now));
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
 }
 
 /**
