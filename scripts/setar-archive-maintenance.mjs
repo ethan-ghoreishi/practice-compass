@@ -490,11 +490,12 @@ function dropEmptyLock() {
  */
 function unlock(arc, owner) {
   try {
+    ensureHome(arc);
     inFolder(arc, ARCHIVE_LOCK, (stillBound) => same(statSync('.', { bigint: true }), owner.folder) && removeLockEntry(`${owner.token}.json`, (st) => same(st, owner.record) && stillBound()));
+    dropEmptyLock(); // only from the proved archive
   } catch (err) {
-    if (!(err instanceof Refusal)) throw err; // not a real folder at the name: nothing of this run's to remove there
+    if (!(err instanceof Refusal)) throw err; // not in the archive, or no real folder at the name: nothing of this run's to remove there
   }
-  dropEmptyLock();
 }
 
 /**

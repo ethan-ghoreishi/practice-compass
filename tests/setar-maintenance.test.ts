@@ -1430,32 +1430,71 @@ describe('maintaining the Setar archive', () => {
           expect([files(ext), isLink(k.lock), files(k.lock), files(away)], tag).toEqual([{ 'partial.json': 'record A' }, how === 'link', { 'partial.json': 'record A' }, { 'partial.json': 'record A' }]);
         }
 
-        // A RUN's ownership: between two of its writes (the log's, then the move's), its lock folder
-        // is replaced by a link to an outside copy, by a real copy, or its record leaf alone by a copy.
-        // The next write refuses, the move never happens, and the run's end removes no replacement.
-        for (const how of ['link', 'copy', 'leaf'] as const) {
-          const tag = `run ownership, ${how}`;
-          const k = box();
-          const was = media(k.root);
-          let ext = '';
-          let shown: Record<string, string> = {};
-          const swap = () => {
-            const [rec] = readdirSync(k.lock);
-            const bytes = readFileSync(join(k.lock, rec!), 'utf8');
-            if (how === 'leaf') replaceWith(join(k.lock, rec!), bytes)();
-            else {
-              renameSync(k.lock, join(k.base, 'lock-moved-away'));
-              if (how === 'link') symlinkSync((ext = outside(k, { [rec!]: bytes })), k.lock);
+        // A RUN's ownership, across every consumer: just after an owner check — Apply's registry, log
+        // and move, Rollback's registry, log and reverse move, a stopped move's recovery, the automatic
+        // put-back, and Retry at its publication — the lock folder is replaced by a link to an outside
+        // copy, by a real copy, or its record leaf alone by a copy. The run never succeeds (its next
+        // write, or its publisher, refuses), and its end removes no replacement and nothing outside.
+        const lockConsumers: [string, (k: ReturnType<typeof box>, swap: () => void) => Promise<unknown>][] = [
+          ['apply registry', (k, swap) => k.go(REG, { at: when(['owned', 'PIECES.csv', swap]) })],
+          ['apply log', (k, swap) => k.go(MOVE, { at: when(['owned', 'RENAME-LOG.csv', swap]) })],
+          ['apply move', (k, swap) => k.go(MOVE, { at: when(['owned', A, swap]) })],
+          ['rollback registry', async (k, swap) => (await k.go(REG), k.back({ at: when(['owned', 'PIECES.csv', swap]) }))],
+          ['rollback log', async (k, swap) => (await k.go(MOVE), k.back({ at: when(['owned', 'RENAME-LOG.csv', swap]) }))],
+          ['rollback reverse move', async (k, swap) => (await k.go(MOVE), k.back({ at: when(['owned', B, swap]) }))],
+          [
+            'stopped-move recovery',
+            async (k, swap) => {
+              await expect(k.go(MOVE, { at: when(['unlink', A, () => { throw new Interrupted('power cut'); }]) })).rejects.toThrow(/power cut/);
+              return k.back({ at: when(['owned', B, swap]) });
+            },
+          ],
+          ['automatic put-back', (k, swap) => k.go(MOVE, { at: when(['link', B, () => writeFileSync(k.at(A), Buffer.alloc(500, 7))], ['owned', 'RENAME-LOG.csv', swap, 2]) })],
+          [
+            'retry',
+            async (k, swap) => {
+              const failing = async (text: string, hash: string, h: string) =>
+                publishIndex({ transport: { ...k.g.transport, getRef: async () => Promise.reject(new Error('GitHub refused getRef (HTTP 500)')) }, indexText: text, expectedContentHash: hash, confirm: archiveConfirmation(k.root, h) });
+              expect(await k.go(REG, { publish: failing })).toMatchObject({ ok: false });
+              return k.again({ publish: async (text: string, hash: string, h: string) => (swap(), k.g.publish(text, hash, h)) });
+            },
+          ],
+        ];
+        for (const [consumer, run] of lockConsumers) {
+          for (const how of ['link', 'copy', 'leaf'] as const) {
+            const tag = `run ownership, ${consumer}, ${how}`;
+            const k = box();
+            let ext = '';
+            let shown: Record<string, string> = {};
+            const swap = () => {
+              const [rec] = readdirSync(k.lock);
+              const bytes = readFileSync(join(k.lock, rec!), 'utf8');
+              if (how === 'leaf') replaceWith(join(k.lock, rec!), bytes)();
               else {
-                mkdirSync(k.lock);
-                writeFileSync(join(k.lock, rec!), bytes);
+                renameSync(k.lock, join(k.base, 'lock-moved-away'));
+                if (how === 'link') symlinkSync((ext = outside(k, { [rec!]: bytes })), k.lock);
+                else {
+                  mkdirSync(k.lock);
+                  writeFileSync(join(k.lock, rec!), bytes);
+                }
               }
-            }
-            shown = files(k.lock);
-          };
-          await expect(k.go(MOVE, { at: when(['owned', 'RENAME-LOG.csv', swap]) }), tag).rejects.toThrow(/no longer holds the archive’s maintenance lock/);
-          expect([media(k.root), files(k.lock), Object.keys(shown).length], tag).toEqual([was, shown, 1]);
-          if (ext) expect(files(ext), tag).toEqual(shown);
+              shown = files(k.lock);
+            };
+            const end = await run(k, swap).then(
+              (r) => r as { ok: boolean; message?: string },
+              (e: Error) => ({ ok: false, message: e.message }),
+            );
+            // A later write is refused at its own owner check; a run with none left is refused by its publisher.
+            const said =
+              consumer === 'automatic put-back'
+                ? /everything it changed was put back/
+                : ['apply log', 'rollback reverse move', 'stopped-move recovery'].includes(consumer)
+                  ? /no longer holds the archive’s maintenance lock .*stopped before its next write/
+                  : /publication could not be confirmed \(The maintenance run that asked for this publication no longer holds the archive/;
+            expect([end.ok, end.message], tag).toEqual([false, expect.stringMatching(said)]);
+            expect([files(k.lock), Object.keys(shown).length], tag).toEqual([shown, 1]);
+            if (ext) expect(files(ext), tag).toEqual(shown);
+          }
         }
 
         // TAKING the lock: the run's private folder is replaced by a link to an outside folder before
