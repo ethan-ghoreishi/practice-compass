@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
+import { chmodSync, closeSync, existsSync, utimesSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync, writeSync, appendFileSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
@@ -917,6 +917,83 @@ describe('maintaining the Setar archive', () => {
         expect(await y.back()).toMatchObject({ ok: true });
         expect([sha(readFileSync(y.at(A))), existsSync(y.at(B))]).toEqual([yBytes, false]);
         for (const x of [f, u, v, g, h, w, y]) expect(leftovers(x)).toEqual([]);
+        // The OTHER name — the one a drop leaves the file under — replaced or removed at the judgement, or
+        // between the judgement and the unlink: the file never loses its last name. It goes back to the
+        // name being dropped (from the still-open file if its name was already gone), the run refuses, and
+        // says only what is true: a move's final drop, its judged-failure undo (the concurrent in-place
+        // bytes kept), a rollback's reverse move, and a stopped move's recovery alike.
+        for (const point of ['judge-drop', 'unlink-aside'] as const) {
+          for (const other of ['replace', 'remove'] as const) {
+            const tag = `${point} ${other}`;
+            type Box = ReturnType<typeof box>;
+            const hit = (x: Box, rel: string) => (other === 'replace' ? swapIn(x.at(rel), `theirs at ${rel}`) : () => rmSync(x.at(rel)));
+            const stands = (x: Box, rel: string) => (existsSync(x.at(rel)) ? readFileSync(x.at(rel), 'utf8') : null);
+            const theirs = (rel: string) => (other === 'replace' ? `theirs at ${rel}` : null);
+            /** The seam: at the drop's judgement of `dropped`, or just before the unlink judged against `kept`. */
+            const seam = (x: Box, dropped: string, kept: string, ...before: [string, string, () => void][]) =>
+              when(...before, point === 'judge-drop' ? ['judge-drop', x.at(dropped), hit(x, kept)] : ['unlink-aside', x.at(kept), hit(x, kept)]);
+            const fw = box();
+            const fwBytes = sha(readFileSync(fw.at(A)));
+            const fwDecl = declarations(fw.root);
+            const fwIno = lstatSync(fw.at(A)).ino;
+            chmodSync(fw.at(A), 0o640);
+            utimesSync(fw.at(A), 1_700_000_000, 1_700_000_000);
+            await expect(fw.go(MOVE, { at: seam(fw, A, B) }), tag).rejects.toThrow(/was replaced or removed while this ran; whatever stands there is left, and .* was put back — nothing was moved.*everything it changed was put back/s);
+            expect([sha(readFileSync(fw.at(A))), stands(fw, B), declarations(fw.root), fw.j().status, leftovers(fw)], tag).toEqual([fwBytes, theirs(B), fwDecl, 'rolled-back', []]);
+            // Caught before the unlink, it is the original file itself; only a name lost IN that instant is a copy of its bytes.
+            expect(lstatSync(fw.at(A)).ino === fwIno, tag).toBe(point === 'judge-drop');
+            expect([lstatSync(fw.at(A)).mode & 0o7777, lstatSync(fw.at(A)).mtimeMs], tag).toEqual([0o640, 1_700_000_000_000]);
+            const un = box();
+            const inPlace = sha(Buffer.alloc(500, 7));
+            await expect(un.go(MOVE, { at: seam(un, B, A, ['link', B, () => writeFileSync(un.at(A), Buffer.alloc(500, 7))]) }), tag).rejects.toThrow(/does not hold the bytes this change recorded.*was then replaced or removed; the file it named is kept as .*could not be put back automatically/s);
+            expect([sha(readFileSync(un.at(B))), stands(un, A), un.j().status, leftovers(un)], tag).toEqual([inPlace, theirs(A), 'prepared', []]);
+            const rv = box();
+            const rvBytes = sha(readFileSync(rv.at(A)));
+            expect(await rv.go(MOVE)).toMatchObject({ ok: true });
+            await expect(rv.back({ at: seam(rv, B, A) }), tag).rejects.toThrow(/was replaced or removed while this ran; whatever stands there is left, and .* was put back — nothing was moved/);
+            expect([sha(readFileSync(rv.at(B))), stands(rv, A), leftovers(rv)], tag).toEqual([rvBytes, theirs(A), []]);
+            const st = box();
+            const stBytes = sha(readFileSync(st.at(A)));
+            await expect(st.go(MOVE, { at: when(['unlink', A, cut]) })).rejects.toThrow(/power cut/);
+            await expect(st.back({ at: seam(st, B, A) }), tag).rejects.toThrow(/was replaced or removed while this ran; the bytes stay as .*nothing was put back/);
+            expect([sha(readFileSync(st.at(B))), stands(st, A), leftovers(st)], tag).toEqual([stBytes, theirs(A), []]);
+          }
+        }
+        // The name being DROPPED removed just before its drop: the moved file keeps its new name, said as such.
+        {
+          const dr = box();
+          const drBytes = sha(readFileSync(dr.at(A)));
+          await expect(dr.go(MOVE, { at: when(['unlink', A, () => rmSync(dr.at(A))]) })).rejects.toThrow(/was replaced or removed while this ran; whatever stands there is left, and the moved file is kept as/);
+          expect([existsSync(dr.at(B)) ? sha(readFileSync(dr.at(B))) : sha(readFileSync(dr.at(A))), leftovers(dr)]).toEqual([drBytes, []]);
+        }
+        // A PUT-BACK's own link-to-unlink interval: the name it just restored replaced or removed again
+        // before its private name goes — the restored file keeps that private name (its bytes from the
+        // still-open file if the name was already gone), named in the refusal; nothing is lost.
+        for (const point of ['put-back', 'unlink-aside'] as const) {
+          for (const other of ['replace', 'remove'] as const) {
+            const tag = `${point} ${other}`;
+            const d = box();
+            const again = other === 'replace' ? replaceWith(d.at('PIECES.csv'), 'a third save\n') : () => rmSync(d.at('PIECES.csv'));
+            await expect(d.go(REG, { at: when(['capture', 'PIECES.csv', replaceWith(d.at('PIECES.csv'), 'their save\n')], [point, 'PIECES.csv', again]) }), tag).rejects.toThrow(/PIECES\.csv was replaced or removed while this ran;.*kept beside it as \.PIECES\.csv\.captured-/s);
+            const set = hidden(d.root, '.PIECES.csv.captured-');
+            expect([existsSync(d.at('PIECES.csv')) ? readFileSync(d.at('PIECES.csv'), 'utf8') : null, set.map((n) => readFileSync(d.at(n), 'utf8'))], tag).toEqual([other === 'replace' ? 'a third save\n' : null, ['their save\n']]);
+            // The same interval after an install that failed for its own reason (its temp gone).
+            const ie = box();
+            const dropTemp = () => rmSync(ie.at(hidden(ie.root, '.PIECES.csv.maintenance-')[0]!));
+            const ieAgain = other === 'replace' ? replaceWith(ie.at('PIECES.csv'), 'a third save\n') : () => rmSync(ie.at('PIECES.csv'));
+            const ieDecl = declarations(ie.root).pieces;
+            await expect(ie.go(REG, { at: when(['install', 'PIECES.csv', dropTemp], [point, 'PIECES.csv', ieAgain]) }), tag).rejects.toThrow(/PIECES\.csv was replaced or removed while this ran;.*kept beside it as \.PIECES\.csv\.captured-/s);
+            expect([existsSync(ie.at('PIECES.csv')) ? readFileSync(ie.at('PIECES.csv'), 'utf8') : null, hidden(ie.root, '.PIECES.csv.captured-').map((n) => readFileSync(ie.at(n), 'utf8'))], tag).toEqual([other === 'replace' ? 'a third save\n' : null, [ieDecl]]);
+            const m = box();
+            const mBytes = sha(readFileSync(m.at(A)));
+            const third = other === 'replace' ? swapIn(m.at(A), 'a third file') : () => rmSync(m.at(A));
+            await expect(m.go(MOVE, { at: when(['unlink', A, swapIn(m.at(A), 'theirs at the old name')], [point, m.at(A), third]) }), tag).rejects.toThrow(/was replaced or removed while this ran;.*kept beside it as \..*\.dropping-/s);
+            // Theirs keeps its private name; the moved file stays as B — or, its old name free, is moved back.
+            const shaOf = (rel: string) => (existsSync(m.at(rel)) ? sha(readFileSync(m.at(rel))) : null);
+            expect([shaOf(A), shaOf(B)], tag).toEqual(other === 'replace' ? [sha('a third file'), mBytes] : [mBytes, null]);
+            expect(leftovers(m).map((n) => readFileSync(m.at(n), 'utf8')), tag).toEqual(['theirs at the old name']);
+          }
+        }
         // A run stopped with a declaration SET ASIDE: refused, named, put back by hand, then rolled back exactly.
         const t = box();
         const tDecl = declarations(t.root);
@@ -1279,6 +1356,44 @@ describe('maintaining the Setar archive', () => {
         // Every call above saw its own index already written down as open, before any remote work.
         expect(seen.every((x) => (x as { intended: boolean; scanned: boolean; publication: string }).intended && (x as { scanned: boolean }).scanned && (x as { publication: string }).publication === 'pending')).toBe(true);
         expect(seen.map((x) => (x as { status: string }).status)).toEqual(['applied', 'applied', ...Array(6).fill('applied'), 'rolled-back', 'rolled-back']);
+      }
+      // A SCHEDULED write still unanswered when a newer run's FIRST branch read fails: nothing proves the
+      // branch stayed as it was, so the run is unconfirmed (open in its journal), never "published nothing"
+      // — for a pending update, a pending create, and an intent record that cannot be read.
+      for (const variant of ['update', 'create', 'unknown'] as const) {
+        const k = box();
+        const t = k.g.transport as Record<string, (...a: unknown[]) => Promise<unknown>>;
+        if (variant === 'update') expect(await k.go(REG)).toMatchObject({ ok: true, status: 'published' });
+        const lost = async () => Promise.reject(new TypeError('fetch failed: the response was lost'));
+        if (variant === 'unknown') writeFileSync(k.g.shared.intent, 'not json');
+        else {
+          await expect(publishIndex({ transport: { ...t, updateRef: lost, createRef: lost }, indexText: '{"scheduled":1}\n', intent: k.g.shared.intent })).rejects.not.toHaveProperty('nothingPublished');
+        }
+        const pending = readFileSync(k.g.shared.intent, 'utf8');
+        const before = k.g.published();
+        const readFails = async (text: string, hash: string, holder: string) =>
+          publishIndex({ transport: { ...t, getRef: async () => Promise.reject(new Error('GitHub refused getRef (HTTP 500)')) }, indexText: text, expectedContentHash: hash, confirm: archiveConfirmation(k.root, holder), intent: k.g.shared.intent });
+        const r = await k.go(variant === 'update' ? { kind: 'register', piece: 'یکی-دیگر' } : REG, { publish: readFails });
+        expect(r.message, variant).toMatch(/could not be confirmed .*may already be published/s);
+        expect(r.message, variant).not.toMatch(/as it was|published nothing/);
+        const H = scanToIndex(k.root).contentHash;
+        expect([k.j().publication, k.j().unresolved, readFileSync(k.g.shared.intent, 'utf8'), k.g.published()], variant).toEqual(['unknown', [H], pending, before]);
+        await expect(k.go({ kind: 'register', piece: 'یکی-دیگر-باز' }), variant).rejects.toThrow(/Run `retry`/);
+        // Retry and Rollback share the classification: still open, never "as it was".
+        const retried = await k.again({ publish: readFails });
+        expect([retried.message, k.j().publication, k.j().unresolved], variant).toEqual([expect.not.stringMatching(/as it was|published nothing/), 'unknown', [H]]);
+        const rolled = await k.back({ publish: readFails });
+        const H0 = scanToIndex(k.root).contentHash;
+        expect([rolled.message, k.j().status, k.j().publication, k.j().unresolved], variant).toEqual([expect.not.stringMatching(/as it was|published nothing/), 'rolled-back', 'unknown', [H, H0]]);
+        // …and the uncertainty was real: the scheduled write lands after all.
+        if (variant !== 'unknown') {
+          const [{ parent, commit }] = JSON.parse(pending) as { parent: string | null; commit: string }[];
+          expect(await (parent ? t.updateRef!(SOURCE_INDEX_BRANCH, commit, parent) : t.createRef!(SOURCE_INDEX_BRANCH, commit))).toBe('ok');
+          expect(k.g.published(), variant).toBe('{"scheduled":1}\n');
+        }
+        // Only a positive observation closes it: the retry publishes over whatever landed, and retires the record.
+        expect(await k.again({ publish: k.g.publish }), variant).toMatchObject({ ok: true });
+        expect([k.j().publication, k.j().unresolved, JSON.parse(k.g.published()!).contentHash, existsSync(k.g.shared.intent)], variant).toEqual(['published', [], H0, false]);
       }
     } finally {
       for (const b of boxes) rmSync(b, { recursive: true, force: true });

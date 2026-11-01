@@ -167,6 +167,10 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
       let commitSha;
       let open = [];
       try {
+        // Until a head is OBSERVED, every recorded unanswered write may still
+        // land: a failed branch read proves nothing about them.
+        const all = intent ? readIntents(intent) : [];
+        guarded = all.length > 0;
         ref = await transport.getRef(branch);
         const head = ref?.sha ?? null;
         // An earlier write asked for and never answered can still land while
@@ -175,7 +179,6 @@ export async function publishIndex({ transport, indexText, branch = SOURCE_INDEX
         // one; a refused write never does. While one is open this write moves
         // the ref (a commit even for unchanged content), after which it cannot.
         if (intent) {
-          const all = readIntents(intent);
           open = all.filter((e) => e.unknown || (e.parent === head && e.commit !== head));
           if (open.length !== all.length) writeIntents(intent, open);
         }

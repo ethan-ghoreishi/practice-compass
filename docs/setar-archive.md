@@ -668,6 +668,11 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   size and SHA-256, and only then loses its old name — and any name is dropped
   only after it is first moved to a private name and judged THERE, so a file
   renamed onto it meanwhile keeps its name (put back, never overwritten). A
+  private name (a drop's, or a put-back's) is removed only while the file's
+  other name still holds it, with the file held open: that name replaced or
+  removed at any instant, the file keeps a name — back at the one being
+  dropped, or its private name, named in the refusal; its bytes from the open
+  file if its name was already gone — so no file ever loses its last name. A
   rename stays inside its session folder, and every media write runs inside
   that folder bound by inode, so a folder swapped for a link meanwhile cannot
   carry a write outside the archive. An edit, deletion or new file from
@@ -715,7 +720,8 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   ref (a commit even for unchanged content), so it can never land afterwards;
   only the branch observed elsewhere, or a later write's own acceptance,
   retires it — never a refused write (a 422 need not mean the ref moved), and
-  a run that ends while one is still guarded is unconfirmed, never "nothing
+  a run that ends while one is still guarded — or fails before it could read
+  the branch while any record exists — is unconfirmed, never "nothing
   published". A paused or orphaned publisher therefore never puts an older index over a
   newer one. Success needs the publisher's last line
   `published-index <status> <hash>` naming that hash. The runner is the only

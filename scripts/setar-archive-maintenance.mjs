@@ -27,7 +27,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { constants, copyFileSync, existsSync, linkSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, constants, copyFileSync, existsSync, fchmodSync, futimesSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readlinkSync, readSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync, writeSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -452,18 +452,61 @@ function capture(dir, name) {
   }
 }
 
-/** Put a captured file back, never over anything that appeared meanwhile — then both are kept, and said. */
-function putBack(dir, name, aside) {
+/**
+ * THE ONE PLACE a private name of this tool is removed: only while `kept`
+ * still names the same file (a link: the same target), so a file never loses
+ * its last name. The file is held open throughout: if `kept` is replaced or
+ * removed in the instant between that judgement and the unlink, its bytes are
+ * written back under the private name from the open file. Returns whether the
+ * private name is gone and `kept` held the file after it went; on false the
+ * private name holds the file (or its bytes). `at(point, label)` is the seam.
+ */
+function unlinkKeeping(aside, kept, at, label) {
   const st = lstatSync(aside);
+  const target = st.isSymbolicLink() ? readlinkSync(aside) : null;
+  const fd = target === null ? openSync(aside, 'r') : null;
+  const holds = () => {
+    const k = lstatOrNull(kept);
+    return target === null ? same(k, st) : Boolean(k?.isSymbolicLink()) && readlinkSync(kept) === target;
+  };
+  try {
+    if (!holds()) return false;
+    at('unlink-aside', label);
+    rmSync(aside);
+    if (holds()) return true;
+    if (target !== null) symlinkSync(target, aside);
+    else {
+      const out = openSync(aside, 'wx');
+      try {
+        const buf = Buffer.allocUnsafe(1 << 20);
+        for (let pos = 0, n; (n = readSync(fd, buf, 0, buf.length, pos)) > 0; pos += n) writeSync(out, buf, 0, n);
+        // ponytail: mode and times kept; the owner is this tool's (chown needs root), the operator fixes it if it matters.
+        fchmodSync(out, st.mode & 0o7777);
+        futimesSync(out, st.atime, st.mtime);
+      } finally {
+        closeSync(out);
+      }
+    }
+    return false;
+  } finally {
+    if (fd !== null) closeSync(fd);
+  }
+}
+
+/** Put a captured file back, never over anything that appeared meanwhile, nor losing it if its name is replaced again — then both are kept, and said. */
+function putBack(dir, name, aside, at, label = name) {
+  const st = lstatSync(aside);
+  const both = `${name} was replaced or removed while this ran; whatever stands there now is left, and the one before is kept beside it as ${basename(aside)}.`;
   try {
     if (st.isSymbolicLink()) symlinkSync(readlinkSync(aside), join(dir, name));
     else if (st.isFile()) linkSync(aside, join(dir, name));
     else throw new Refusal(`${name} was replaced by something that is not a file while this ran; it is kept as ${basename(aside)}. Put it back by hand.`);
   } catch (err) {
-    if (err?.code === 'EEXIST') throw new Refusal(`${name} was replaced while this ran; the new one stands, and the one before is kept beside it as ${basename(aside)}.`);
+    if (err?.code === 'EEXIST') throw new Refusal(both);
     throw err;
   }
-  rmSync(aside);
+  at('put-back', label);
+  if (!unlinkKeeping(aside, join(dir, name), at, label)) throw new Refusal(both);
 }
 
 /** A replaced declaration is KEPT, never unlinked, under a name no other write uses. */
@@ -505,7 +548,7 @@ function replaceDeclaration({ root, owner, at, written }, name, text, expected, 
     if (!aside) throw new Refusal(`${name} was removed while this ran; nothing was put in its place.`);
     const st = lstatSync(aside);
     if (!st.isFile() || sha(readFileSync(aside)) !== expected) {
-      putBack(root, name, aside);
+      putBack(root, name, aside, at);
       throw new Refusal(`${name} changed while this ran; it was left as the other edit made it.`);
     }
     at('install', name);
@@ -516,7 +559,7 @@ function replaceDeclaration({ root, owner, at, written }, name, text, expected, 
       if (tmp && err?.code === 'EEXIST') {
         throw new Refusal(`${name} was written by someone else while this ran; theirs stands, and the one it replaced is kept beside it as ${basename(keep(aside))}.`);
       }
-      putBack(root, name, aside);
+      putBack(root, name, aside, at);
       throw err;
     }
     written?.add(name);
@@ -558,8 +601,11 @@ function inFolder(root, folder, fn) {
  * moving bytes other than the recorded ones: the new name is LINKED (fails if
  * anything is there), what it names is judged (same file, recorded size and
  * SHA-256, the folder still at its name), and only then is the old name
- * removed. A judged failure removes only the name this call made — inside the
- * bound folder, wherever it now is; nothing has moved.
+ * removed — while the new name still holds the file. A judged failure removes
+ * only the name this call made, while the old name still holds the file —
+ * inside the bound folder, wherever it now is; nothing has moved. Whichever
+ * name another writer replaces meanwhile, the file keeps the other, and the
+ * refusal says which.
  */
 function moveExact({ root, owner, at, written }, fromRel, toRel, expect) {
   assertOwner(root, owner);
@@ -580,41 +626,51 @@ function moveExact({ root, owner, at, written }, fromRel, toRel, expect) {
     const bound = stillBound();
     const bytes = bound && same(a, b) && b.isFile() ? readFileSync(to) : null;
     if (!bytes || bytes.length !== expect.size || sha(bytes) !== expect.sha256) {
-      if (same(a, b)) dropName(to, a, at, join(root, toRel));
-      throw new Refusal(
-        bound
-          ? `"${fromRel}" does not hold the bytes this change recorded (it changed since the preview); nothing was moved.`
-          : `The folder of "${fromRel}" was moved or replaced while this ran; the name this run made there was removed again, and nothing outside it was touched.`,
-      );
+      const why = bound ? `"${fromRel}" does not hold the bytes this change recorded (it changed since the preview)` : `The folder of "${fromRel}" was moved or replaced while this ran`;
+      const undo = same(a, b) ? dropName(to, a, from, at, join(root, toRel), join(root, fromRel)) : 'dropped';
+      if (undo === 'kept-changed') throw new Refusal(`${why}, and "${fromRel}" was then replaced or removed; the file it named is kept as "${toRel}", and nothing was moved back.`);
+      if (undo === 'changed') {
+        written?.delete('rename');
+        throw new Refusal(`${why}, and "${toRel}" was then replaced or removed; whatever stands there is left, and nothing was moved.`);
+      }
+      throw new Refusal(bound ? `${why}; nothing was moved.` : `${why}; the name this run made there was removed again, and nothing outside it was touched.`);
     }
     at('unlink', fromRel);
-    if (!dropName(from, b, at, join(root, fromRel))) throw new Refusal(`"${fromRel}" was replaced while this ran; both files are kept, the moved one as "${toRel}".`);
+    const drop = dropName(from, b, to, at, join(root, fromRel), join(root, toRel));
+    if (drop === 'changed') throw new Refusal(`"${fromRel}" was replaced or removed while this ran; whatever stands there is left, and the moved file is kept as "${toRel}".`);
+    if (drop === 'kept-changed') {
+      written?.delete('rename');
+      throw new Refusal(`"${toRel}" was replaced or removed while this ran; whatever stands there is left, and "${fromRel}" was put back — nothing was moved.`);
+    }
   });
 }
 
 /**
  * Remove the leaf name `name` (inside a bound folder) only while it names the
- * file `inode` (an lstat) — judged on a PRIVATE name it was first moved to
- * (atomic: whatever held the name at that instant), so no file renamed onto it
- * meanwhile can lose its name. Anything else is put back, never over a newer
- * file. Returns whether the name was removed; the bytes always stay under
- * their other name. `label` is what the test seam is told.
+ * file `inode` (an lstat) AND its other name `kept` still does — judged on a
+ * PRIVATE name it was first moved to (atomic: whatever held the name at that
+ * instant), so no file renamed onto either name meanwhile, nor the file
+ * itself, can lose its last name. Anything else is put back, never over a
+ * newer file. Returns 'dropped'; 'changed' (`name` held another file, put
+ * back); or 'kept-changed' (`kept` was replaced or removed: the file is put
+ * back at `name`). `label`/`keptLabel` are what the test seam is told.
  */
-function dropName(name, inode, at, label) {
+function dropName(name, inode, kept, at, label, keptLabel) {
   const aside = `.${name}.dropping-${randomUUID()}`;
   try {
     renameSync(name, aside);
   } catch (err) {
-    if (err?.code === 'ENOENT') return false;
+    if (err?.code === 'ENOENT') return 'changed';
     throw err;
   }
   at('judge-drop', label);
   if (!same(lstatSync(aside), inode)) {
-    putBack('.', name, aside);
-    return false;
+    putBack('.', name, aside, at, label);
+    return 'changed';
   }
-  rmSync(aside);
-  return true;
+  if (unlinkKeeping(aside, kept, at, keptLabel)) return 'dropped';
+  putBack('.', name, aside, at, label);
+  return 'kept-changed';
 }
 
 /** Thrown by the test seam to stand in for a process killed mid-apply. */
@@ -829,9 +885,9 @@ function restore(ctx, journal, beforeWriting = () => {}, only = null) {
         const [from, to] = [r.from, r.to].map((rel) => rel.split('/')[1]);
         inFolder(root, r.from.split('/')[0], (stillBound) => {
           const kept = lstatOrNull(from);
-          if (!stillBound() || !same(kept, lstatOrNull(to)) || !dropName(to, kept, ctx.at, join(root, r.to))) {
-            throw new Refusal(`"${r.to}" changed while this ran; it is left as it is, and nothing was put back there.`);
-          }
+          const drop = stillBound() && same(kept, lstatOrNull(to)) ? dropName(to, kept, from, ctx.at, join(root, r.to), join(root, r.from)) : 'changed';
+          if (drop === 'kept-changed') throw new Refusal(`"${r.from}" was replaced or removed while this ran; the bytes stay as "${r.to}", and nothing was put back.`);
+          if (drop !== 'dropped') throw new Refusal(`"${r.to}" changed while this ran; it is left as it is, and nothing was put back there.`);
         });
       });
     } else if (!(fromSt?.isFile() && !toSt)) {
