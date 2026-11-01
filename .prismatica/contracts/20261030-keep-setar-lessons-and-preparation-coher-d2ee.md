@@ -4,7 +4,7 @@ title: Keep Setar lessons and preparation coherent from archive to next class
 issue: https://github.com/ethan-ghoreishi/practice-compass/issues/60
 intent: 20261030-keep-setar-lessons-and-preparation-coher-d2ee
 tier: heavy
-stage: review
+stage: accept
 baseline:
   commit: 7c9e8e4c704dac5ebf9286ee3583972491983252
   branch: main
