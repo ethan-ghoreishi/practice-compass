@@ -22,8 +22,8 @@ truth:
       assumes: []
       evidence:
         method: manual
-        at: 2026-10-29T21:06:23.674Z
-        commit: 7799ac89a1555f5ec79240db8c24da2cb58eccd3
+        at: 2026-11-01T19:45:24.268Z
+        commit: ccb9b036e2a9c9fdd5137e68d598bc694ee59dd2
     - actor: The musician
       action: Practises with no network at all.
       shows: Everything works — recommendations, blocks, reviews, notes.
