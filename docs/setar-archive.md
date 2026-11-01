@@ -668,15 +668,18 @@ $M release-lock [--record <id>]   # a lock no run holds: shown, then released by
   size and SHA-256, and only then loses its old name — and any name is dropped
   only after it is first moved to a private name and judged THERE, so a file
   renamed onto it meanwhile keeps its name (put back, never overwritten). A
-  private name (a drop's, or a put-back's) is NEVER unlinked and its bytes
-  never copied: it is renamed to a hidden `.<name>.superseded-<id>` beside it
-  (in the root or the session folder), and only then is the file's other name
-  judged; replaced or removed, the hidden name is renamed back and the file
-  stays at the name being dropped, or its private name, named in the
-  refusal. A rename never takes a file's last name, so no failure, kill or
-  concurrent write can, and a program holding the file open keeps writing
-  into a named file. The hidden names are the same file, no extra bytes; the
-  operator may delete them once nothing needs them. A
+  private name (a drop's, or a put-back's) is retired without copying a
+  byte: the file first gets a second, hidden name `.<name>.superseded-<id>`
+  beside it (in the root or the session folder), then the file's other name
+  is judged, and only then is one of the two removed — the private name if
+  the other name holds the file, else the hidden one, the file staying at
+  the name being dropped or its private name, named in the refusal. A name
+  is removed only while another of the tool's names holds the same file, so
+  no failure, kill or concurrent write leaves it nameless (killed anywhere,
+  the private name is left for the next run to refuse on), and a program
+  holding the file open keeps writing into a named file. The hidden names
+  are the same file, no extra bytes; the operator may delete them once
+  nothing needs them. A
   rename stays inside its session folder, and every media write runs inside
   that folder bound by inode, so a folder swapped for a link meanwhile cannot
   carry a write outside the archive. An edit, deletion or new file from

@@ -22,9 +22,10 @@
 // The scanner stays read-only; this is the only writer, and it writes only
 // PIECES.csv, RENAME-LOG.csv, the one file a `rename` names, its own dotfiles
 // in the archive root (the archive's lock, a write's temp and capture) and in
-// that file's folder, and its own --state folder. A name it takes away is
-// never unlinked: it is kept as a hidden `.<name>.superseded-<id>` (the same
-// file, no bytes copied), so nothing anyone has open loses its file. Every write is proved against the exact state it expects
+// that file's folder, and its own --state folder. A name it takes away stays
+// as a hidden `.<name>.superseded-<id>` (the same file, no bytes copied), and
+// a private name is removed only while another of its names holds the same
+// file, so nothing anyone has open loses its file. Every write is proved against the exact state it expects
 // at the moment it is made, under the archive's one lock. Node stdlib only.
 
 import { createHash, randomUUID } from 'node:crypto';
@@ -456,25 +457,31 @@ function capture(dir, name) {
 }
 
 /**
- * THE ONE PLACE a private name of this tool is retired — NEVER unlinked, and
- * its bytes never copied: it is RENAMED to a retained `.superseded-` name (the
- * scanner skips dotfiles; a rename never drops a file's last name), and only
- * then is `kept` judged to still name the same file (a link: the same
- * target). If it does not, the retained name is renamed back to `aside` and
- * false is returned: the private name still holds the very file. So no
- * failure, interruption or concurrent replacement can leave the file without
- * a name, and a program holding it open keeps writing into a named file.
- * `at(point, label)` is the seam, between the rename and the judgement.
+ * THE ONE PLACE a private name of this tool is retired, its bytes never
+ * copied: the file first gets a SECOND private name, a hidden `.superseded-`
+ * one (the scanner skips dotfiles; a fresh id, never the `mv -n` target a
+ * refusal suggests), then `kept` is judged to still name the same file (a
+ * link: the same target), and only then is ONE of the two removed — `aside`
+ * when `kept` holds it (the hidden name stays), else the hidden one (false:
+ * `aside` still holds the very file). A name is removed only while another
+ * private name of this tool holds the same file, so no failure, kill or
+ * concurrent replacement leaves it without a name — killed anywhere, `aside`
+ * is still there for the next run to refuse on and name — and a program
+ * holding it open keeps writing into a named file. `at` is the seam, between
+ * the second name and the judgement.
  */
 function retireKeeping(aside, kept, at, label) {
   const st = lstatSync(aside);
   const target = st.isSymbolicLink() ? readlinkSync(aside) : null;
-  const retained = keep(aside);
+  const retained = aside.replace(/\.(captured|dropping)-[^/]*$/, `.superseded-${randomUUID()}`);
+  // A link is re-made, never hard-linked: link(2) follows a symlink on macOS.
+  if (target === null) linkSync(aside, retained);
+  else symlinkSync(target, retained);
   at('retain-aside', label);
   const k = lstatOrNull(kept);
-  if (target === null ? same(k, st) : Boolean(k?.isSymbolicLink()) && readlinkSync(kept) === target) return true;
-  renameSync(retained, aside);
-  return false;
+  const holds = target === null ? same(k, st) : Boolean(k?.isSymbolicLink()) && readlinkSync(kept) === target;
+  rmSync(holds ? aside : retained);
+  return holds;
 }
 
 /** Put a captured file back, never over anything that appeared meanwhile, nor losing it if its name is replaced again — then both are kept, and said. */
@@ -493,12 +500,12 @@ function putBack(dir, name, aside, at, label = name) {
   if (!retireKeeping(aside, join(dir, name), at, label)) throw new Refusal(both);
 }
 
-/** A private name RETIRED: the file is kept, never unlinked, under a name no other write uses. */
-function keep(aside) {
-  const kept = aside.replace(/\.(captured|dropping)-/, '.superseded-');
+/** A replaced declaration is KEPT, never unlinked, under a name no other write uses. */
+const keep = (aside) => {
+  const kept = aside.replace('.captured-', '.superseded-');
   renameSync(aside, kept);
   return kept;
-}
+};
 
 /**
  * Replace a declaration (or, with `text` null, take it out of the archive) only
@@ -585,7 +592,7 @@ function inFolder(root, folder, fn) {
  * moving bytes other than the recorded ones: the new name is LINKED (fails if
  * anything is there), what it names is judged (same file, recorded size and
  * SHA-256, the folder still at its name), and only then is the old name
- * retired to a hidden `.superseded-` name, never unlinked — while the new name still holds the file. A judged failure removes
+ * retired to a hidden `.superseded-` name of the same file — while the new name still holds it. A judged failure removes
  * only the name this call made, while the old name still holds the file —
  * inside the bound folder, wherever it now is; nothing has moved. Whichever
  * name another writer replaces meanwhile, the file keeps the other, and the
@@ -630,8 +637,8 @@ function moveExact({ root, owner, at, written }, fromRel, toRel, expect) {
 }
 
 /**
- * Take the leaf name `name` away (inside a bound folder; kept hidden, never
- * unlinked: `retireKeeping`) only while it names the
+ * Take the leaf name `name` away (inside a bound folder; kept hidden:
+ * `retireKeeping`) only while it names the
  * file `inode` (an lstat) AND its other name `kept` still does — judged on a
  * PRIVATE name it was first moved to (atomic: whatever held the name at that
  * instant), so no file renamed onto either name meanwhile, nor the file
