@@ -3,7 +3,7 @@ id: 20261110-update-prismatica-ci-gate-to-0-12-0-f8e9
 title: Update Prismatica CI gate to 0.12.0
 issue: update/0.12.0
 tier: light
-stage: frame
+stage: prove
 baseline:
   commit: fecaec1a4dc5aaf84b78a2e9b1c63dfa7d685349
   branch: main
